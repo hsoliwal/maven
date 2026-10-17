@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "case": "default-stock",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "forked": false,
+      "native_opt_in": false
+    },
+    {
+      "case": "enabled-stock-refusal",
+      "refusal": "plug-in not found: M3AST"
+    },
+    {
+      "case": "enabled-m3",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "forked": false,
+      "native_opt_in": true
+    },
+    {
+      "case": "api-trace",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "forked": false,
+      "image_sha256": "dd2fb7aff789684189477c5811262396ffdda36f137dc250982275a1eb99c8a3",
+      "native_opt_in": true,
+      "slots_sha256": "fe9a127d4be7a070e8da3ca15c5c5074e45c1ff962e4dce1f2ed3b4fa88f59f2",
+      "trace_sha256": "5e1a4f1fb35a32fb6f0075df541cc70630424a4e0b75c13abcea15f91d846a62",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "0",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    },
+    {
+      "case": "command-line-trace",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "forked": true,
+      "image_sha256": "dd2fb7aff789684189477c5811262396ffdda36f137dc250982275a1eb99c8a3",
+      "native_opt_in": true,
+      "slots_sha256": "fe9a127d4be7a070e8da3ca15c5c5074e45c1ff962e4dce1f2ed3b4fa88f59f2",
+      "trace_sha256": "6924d199ddc94fc84c7ea1b56a83aaab551da6881300e82682827c071fef601e",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "0",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    },
+    {
+      "case": "compiler-error",
+      "forked": false,
+      "image_absent": true,
+      "native_opt_in": true,
+      "trace_sha256": "aa5c5cbd207322048e33c37e233bb0e85070e51d9259387f5f5e87c5653a31d6",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "1",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    }
+  ],
+  "core_jar_sha256": "820e08dd87e7533e116b54feddf8e111958744b0b0943152e0df1886b4a11912",
+  "full_m3_vm_acceptance": true,
+  "jdk_home": "/tmp/m3-ast-product-build/images/jdk",
+  "maven_home": "/workspace/scratch/13309be96b09/build-work/native-maven-distribution-v4",
+  "maven_source_commit": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+  "maven_version_output": "Apache Maven 4.1.0-SNAPSHOT\nMaven home: /workspace/scratch/13309be96b09/build-work/native-maven-distribution-v4\nJava version: 21-internal, vendor: N/A, runtime: /tmp/m3-ast-product-build/images/jdk\nDefault locale: en, platform encoding: UTF-8, time zone: America/Mexico_City\nOS name: \"linux\", version: \"6.18.55\", arch: \"amd64\", family: \"unix\"\n",
+  "processor_sha256": "c7e8d0fbc7d61c18e9a63938fdbc6ec8862836bf8d36c22395d455b8df5c00cc",
+  "qualified_source_build_acceptance": true,
+  "qualified_source_fixture": "/workspace/scratch/13309be96b09/build-work/maven-generated-source-v4",
+  "source_build_log_sha256": "d4b6f8808e197a7c55ffe056daba531da917b88368fe9c7fe2d5235d68b5fb8e",
+  "source_build_provenance": "/workspace/scratch/13309be96b09/build-work/maven-fork-final-source-build.log",
+  "status": "ACTUAL_MAVEN4_SOURCE_DISTRIBUTION_NATIVE_OPTION_PASS"
+}

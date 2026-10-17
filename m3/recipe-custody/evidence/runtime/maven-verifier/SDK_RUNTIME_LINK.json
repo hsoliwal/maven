@@ -1,0 +1,43 @@
+{
+  "schema": "M3_MAVEN_PORTABLE_VERIFIER_SDK_RUNTIME_LINK_V1",
+  "status": "PASS",
+  "dataset": "maven-runtime-verifier",
+  "runtime_cases": 6,
+  "verifier_path": "m3/verify_ast_consumer.py",
+  "verifier_sha256": "4c092f6111b54c14b34315648c60ba59075c031d15feb9873b5f9f52cf256830",
+  "sdk_inputs_sha256": "0852e758a4c400b6e9aa5e802d9f21ec4d6931cb1eb8240ce337455f5e568d5b",
+  "sdk_results_sha256": "8fbcb0e79c95882a960b2a95ad8354f7166022bf7508152de731add99cd3dce8",
+  "records": [
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-portable-sdk-proof/RECEIPT.json",
+      "retained_path": "SDK_RUNTIME_RECEIPT.json",
+      "sha256": "d96cfdd49a440bb6d2a7d9713d774c94432cdb99b6f90b3d0e85ee84c4833732",
+      "bytes": 5742
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/MAVEN_PORTABLE_REPEAT_PROOF.json",
+      "retained_path": "REPEATABILITY_RECEIPT.json",
+      "sha256": "cb81f787b702abe2924da69471a644e8c5ab1524133f03218d627c914b64385d",
+      "bytes": 1499
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-portable-runtime-proof-1/RECEIPT.json",
+      "retained_path": "FIRST_RUNTIME_RECEIPT.json",
+      "sha256": "a5cbf9e7aaa3e54032bdc756c273e8f56b94179d89f9b6235caf9d10844fc2e8",
+      "bytes": 5742
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-portable-runtime-proof-2/RECEIPT.json",
+      "retained_path": "SECOND_RUNTIME_RECEIPT.json",
+      "sha256": "5fc4845738e31113d7c865bb18046cb62dfa20b5294a15ad55644d3a6c515baf",
+      "bytes": 5742
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/compiler-work/qualification/product-build-receipt.json",
+      "retained_path": "FULL_PRODUCT_BUILD_RECEIPT.json",
+      "sha256": "69a73330a169fbda61326144209583104bb9f8666d8e00ba4155ab9ce02284bb",
+      "bytes": 11956
+    }
+  ],
+  "scope": "Exact emitted standalone verifier executed against the final source-built native Maven4 distribution and complete product M3JDK. The original two author-source runs establish deterministic fixture/cache reuse; their source bytes equal the emitted source. Native Maven source build and complete JDK build receipts remain separate provenance."
+}

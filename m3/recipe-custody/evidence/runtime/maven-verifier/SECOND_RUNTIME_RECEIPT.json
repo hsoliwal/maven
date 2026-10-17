@@ -1,0 +1,126 @@
+{
+  "cases": [
+    {
+      "case": "default-stock",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "compile_log_sha256": "3c4f02774369f1d1aa6aae6df6fe6ea0e32ca28509f8050c4af10b841b8ff110",
+      "forked": false,
+      "method_parameters_retained": true,
+      "native_opt_in": false,
+      "processor_path_and_option_retained": true
+    },
+    {
+      "case": "enabled-stock-refusal",
+      "compile_log_sha256": "9c6193bae54b3931e4655f934c4d1ea2dc3f5b1274fde653d313911e7f2a5efd",
+      "forked": false,
+      "native_opt_in": true,
+      "refusal": "plug-in not found: M3AST"
+    },
+    {
+      "case": "enabled-m3",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "compile_log_sha256": "a6ec90a72dfe0f88e1dac0a090210e8f8d39c7d0b794ac3b718de47bc0b16a9c",
+      "forked": false,
+      "method_parameters_retained": true,
+      "native_opt_in": true,
+      "processor_path_and_option_retained": true
+    },
+    {
+      "case": "api-trace",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "compile_log_sha256": "0fa4979aaeb6521738a3345a8c8d08b70d323d3c4aad207b406af95f96ae4694",
+      "forked": false,
+      "image_sha256": "dd2fb7aff789684189477c5811262396ffdda36f137dc250982275a1eb99c8a3",
+      "method_parameters_retained": true,
+      "native_opt_in": true,
+      "processor_path_and_option_retained": true,
+      "slots_sha256": "fe9a127d4be7a070e8da3ca15c5c5074e45c1ff962e4dce1f2ed3b4fa88f59f2",
+      "trace_sha256": "f5ae5acb1c522d2fff0cd8fadeb0351d1f58a14dc5f125e66f4ff668868e572e",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "0",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    },
+    {
+      "case": "command-line-trace",
+      "class_sha256": {
+        "fixture/Generated.class": "b115df94a94f7b32ece72073fd13ff043698f75f7eca08c163374e5f77f3155d",
+        "fixture/Main.class": "64243778a073e02269f543afe061f61e9ba7b02f2098f9f72affa9f7e1cd4648"
+      },
+      "compile_log_sha256": "2389a917ade408495299167995ac2b61dbe9fe9954283a1b27ba3f9ecc9d7498",
+      "forked": true,
+      "image_sha256": "dd2fb7aff789684189477c5811262396ffdda36f137dc250982275a1eb99c8a3",
+      "method_parameters_retained": true,
+      "native_opt_in": true,
+      "processor_path_and_option_retained": true,
+      "slots_sha256": "fe9a127d4be7a070e8da3ca15c5c5074e45c1ff962e4dce1f2ed3b4fa88f59f2",
+      "trace_sha256": "402f1e610775464551234289ca3c047a80a93deadf550c23a99fe8093b99fb20",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "0",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    },
+    {
+      "case": "compiler-error",
+      "compile_log_sha256": "93dcb04cb4a8819009a3ee8c2c3264ab88a8c25c06e59b5bd157fea852eafb27",
+      "forked": false,
+      "image_absent": true,
+      "native_opt_in": true,
+      "slots_absent": true,
+      "trace_sha256": "c60023438d6b687af73860c4a0d2dcd428bfed07c02dfe7c6d3c6f38d824bf86",
+      "trace_stats": {
+        "analyzed": "2",
+        "captures": "2",
+        "completed": "true",
+        "consumerFailed": "false",
+        "errors": "1",
+        "extraSourceReads": "0",
+        "hits": "0",
+        "parsed": "2",
+        "projections": "0"
+      }
+    }
+  ],
+  "compiler_plugin": "org.apache.maven.plugins:maven-compiler-plugin:3.16.0:compile",
+  "full_vm_build_provenance": "SUPPLY_BUILD_RECEIPT_SEPARATELY",
+  "input_sha256": {
+    "m3jdk_modules": "e7a2827ebfcb2f1fb474db3a8e4e4bc058ffe5f5dea5f9701803669101b28b8b",
+    "m3jdk_release": "5a3d73c8957e7fcb0da466afc0be260adeaddbf8bb04ad82ebb562710c2989de",
+    "maven_core": "820e08dd87e7533e116b54feddf8e111958744b0b0943152e0df1886b4a11912",
+    "maven_launcher": "db456afa890616e7b73d89fd3336c3f7b70887a0cbf6ff99c543872055d99354",
+    "stock_modules": "70c5465dabf8e1bec2860631ea3ffd342f0ec23a5e2efd3a389d2abe32448f98",
+    "stock_release": "ebbd70bf00bab6d39addf51969c5ff244030b86b29de400b9fb10612ebd3ceec"
+  },
+  "jdk_home": "/tmp/m3-ast-product-build/images/jdk",
+  "maven_home": "/workspace/scratch/13309be96b09/build-work/native-maven-distribution-v4",
+  "maven_version_output": "Apache Maven 4.1.0-SNAPSHOT\nMaven home: /workspace/scratch/13309be96b09/build-work/native-maven-distribution-v4\nJava version: 21-internal, vendor: N/A, runtime: /tmp/m3-ast-product-build/images/jdk\nDefault locale: en, platform encoding: UTF-8, time zone: America/Mexico_City\nOS name: \"linux\", version: \"6.18.55\", arch: \"amd64\", family: \"unix\"\n",
+  "processor_coordinate": "org.m3.fixture:native-consumer-processor:1-bcd36ceb3fdb4e48751880243321c2e66c8a339dea06417acacbb69d50991ba3",
+  "processor_sha256": "bcd36ceb3fdb4e48751880243321c2e66c8a339dea06417acacbb69d50991ba3",
+  "source_build_provenance": "SUPPLY_BUILD_RECEIPT_SEPARATELY",
+  "status": "MAVEN4_NATIVE_OPTION_RUNTIME_PASS",
+  "stock_jdk": "/tmp/m3-toolchain/jdk-21.0.12.1+1",
+  "verifier_sha256": "4c092f6111b54c14b34315648c60ba59075c031d15feb9873b5f9f52cf256830"
+}
