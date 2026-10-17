@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "change": "whitespace only; no token or assertion changed",
+  "originalSha256": "ba57e1fa7a3387b1d32bbda9bf4349929e1c56706527f385192a4d56319d9503",
+  "afterSha256": "14bb0e0cecbc925f5d5553c343d2b679b3ad4c01ae9e0e398c231132bed82382",
+  "nonWhitespaceSha256": "e6271fce68a61c41ce98c3a411e0d87a49463aa83e8124e0d990d58e81380a6d",
+  "failedOriginalGate": "maven/source-build/fork-core-verify-session-services-stage-8.json"
+}

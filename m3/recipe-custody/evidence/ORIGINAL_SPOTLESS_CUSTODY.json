@@ -1,0 +1,17 @@
+{
+  "originalOwner": "Maven root Spotless3.10.2 apply execution",
+  "sourceGate": "maven/source-build/fork-core-verify-session-services-stage-9.json",
+  "change": "Preserve original mandatory ASF license header/formatting; retain Synexia attribution after package so original license formatter preserves it. Resolve actual DIException class in org.apache.maven.di.impl; ten tests and every assertion remain unchanged.",
+  "files": [
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java",
+      "formattedMavenOutputSha256": "809e5f8acb039ff6b72c3fdf631ec5821ee2d676e9f92ecc887e6b4645af7b57",
+      "afterSha256": "eb78cdfd92e658a8d4d9a09a82f35e7b7eea630b2c56d2ba21457eff59db0799"
+    },
+    {
+      "path": "impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3PluginSessionServicesTest.java",
+      "formattedMavenOutputSha256": "15b241d1abbbb646de8699f921034618d5f0e27de9e73a9e9381bdd9dad95bc3",
+      "afterSha256": "443952adefdc6e25883a9594c0ea804cc746da05c67e4db697df179fe06c22b3"
+    }
+  ]
+}

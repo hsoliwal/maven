@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "canonicalHome": "https://github.com/hsoliwal/com.synexia",
+  "recipientBase": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+  "enginesAndFixture": [
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3HashPinnedJavaSnapshotRecipe.java",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourceRevision": "11c94feb18155a53cc213708c353791132edc4a7",
+      "sourcePath": "synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3HashPinnedJavaSnapshotRecipe.java",
+      "sha256": "750f2e8266ca308369daea14d2bb6db9f3ec90a64e45ee7d5aa1cb5192028347",
+      "disposition": "UNCHANGED_CANONICAL_ENGINE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3HashPinnedTextSnapshotRecipe.java",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourceRevision": "11c94feb18155a53cc213708c353791132edc4a7",
+      "sourcePath": "synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3HashPinnedTextSnapshotRecipe.java",
+      "sha256": "504f1616b68fbd10c3df38adaecd0e9d90de5535d791c8c1b57958b7455c9bd3",
+      "disposition": "UNCHANGED_CANONICAL_ENGINE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3EditScope.java",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourceRevision": "11c94feb18155a53cc213708c353791132edc4a7",
+      "sourcePath": "synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3EditScope.java",
+      "sha256": "962d37d62d740c3e8055c365a048ae7ee0479c26a9f6bbfe741e540d6c1134ab",
+      "disposition": "UNCHANGED_CANONICAL_ENGINE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3ScopeInference.java",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourceRevision": "11c94feb18155a53cc213708c353791132edc4a7",
+      "sourcePath": "synexia-openrewrite-recipes/src/main/java/com/synexia/rewrite/M3ScopeInference.java",
+      "sha256": "13660b59f60ec2941ec19e9bc8964ffd4b04689cdc33cd19711fba14b8da09a4",
+      "disposition": "UNCHANGED_CANONICAL_ENGINE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/pom.xml",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourcePath": "synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/pom.xml",
+      "sha256": "c16ef223d677f886efe60492d5ce72e14d6e1fb14115637b8fa3bb638b542a7c",
+      "disposition": "UNCHANGED_QUALIFIED_SHARED_RECIPE_FIXTURE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/README.md",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourcePath": "synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/README.md",
+      "sha256": "2f2dd886ef8cdad30490adce176074f31e5a8c20d232b67a95078befd02f8465",
+      "disposition": "UNCHANGED_QUALIFIED_SHARED_RECIPE_FIXTURE"
+    },
+    {
+      "path": "m3/recipe-custody/synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/src/test/java/com/synexia/rewrite/M3BuildSharedAstRecipeTest.java",
+      "sourceRepository": "https://github.com/hsoliwal/com.synexia",
+      "sourcePath": "synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/src/test/java/com/synexia/rewrite/M3BuildSharedAstRecipeTest.java",
+      "sha256": "64f567bc4e23d314f988e655b0911b8ec5a14d4fcc7a6e41e259b5e073fe4b2f",
+      "disposition": "UNCHANGED_QUALIFIED_SHARED_RECIPE_FIXTURE"
+    }
+  ],
+  "recipeManifestSha256": "45f63e95dc07c6717f8e3696dd0b957d7d9966350909d7ee19b5693de3fcdd92",
+  "productPostimages": [
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java",
+      "sha256": "eb78cdfd92e658a8d4d9a09a82f35e7b7eea630b2c56d2ba21457eff59db0799"
+    },
+    {
+      "path": "impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3PluginSessionServicesTest.java",
+      "sha256": "443952adefdc6e25883a9594c0ea804cc746da05c67e4db697df179fe06c22b3"
+    }
+  ],
+  "sourceBuiltMavenQualification": "evidence/fork-core-verify-session-services-stage-10.json"
+}

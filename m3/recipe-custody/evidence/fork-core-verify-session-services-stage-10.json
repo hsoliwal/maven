@@ -1,0 +1,26 @@
+{
+  "sourceRevision": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+  "recipes": [
+    "m3-maven-plugin-session-services-20261017",
+    "m3-maven-plugin-session-test-format-20261017",
+    "m3-maven-plugin-source-format-20261017"
+  ],
+  "command": [
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/apache-maven-4.0.0-rc-7/bin/mvn",
+    "-B",
+    "-ntp",
+    "-s",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/user/maven-settings.xml",
+    "-Dmaven.repo.local=/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2",
+    "-pl",
+    "impl/maven-core",
+    "-am",
+    "verify"
+  ],
+  "cwd": "/tmp/m3-maven-ci-889ccadfa9c7-20261017",
+  "exitCode": 0,
+  "seconds": 216.637,
+  "logSha256": "e9951b99e82d18f89256fd7ef715fcbce98e1f1e91adac7940363cb64b31e863",
+  "originalTestGatesUnchanged": true,
+  "scope": "core-and-required-reactor-modules"
+}

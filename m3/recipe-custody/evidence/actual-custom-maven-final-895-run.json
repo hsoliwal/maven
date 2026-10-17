@@ -1,0 +1,26 @@
+{
+  "exitCode": 0,
+  "seconds": 18.647,
+  "command": [
+    "python3",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/checkouts/M3jdk21/m3/tooling/module-packs/shared-ast/fixtures/verify-maven.py",
+    "--jdk",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/jdk-21.0.2+13",
+    "--maven",
+    "/tmp/m3-maven-ci-889ccadfa9c7-20261017/target/apache-maven-4.1.0-m3-session-services",
+    "--ast-jar",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/ast/proof/classpath-final-895/m3-shared-ast-classpath.jar",
+    "--dependencies",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/ast/proof/CLASSPATH_SOURCE_DEPENDENCIES.tsv",
+    "--local-repository",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2",
+    "--settings",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/user/maven-settings.xml",
+    "--out",
+    "/tmp/m3-actual-custom-maven-final-895-20261017"
+  ],
+  "logSha256": "eb2a7f672990eafb9cefff3f1c6bbcc6fe33d75528652623ebabaf62311f73e3",
+  "sourceBuiltMaven": "fork-qualified-core-distribution-stage-11.json",
+  "sourceProductionJarSha256": "c3999567838f4253b87a8340d85f421ad95dd64e41a1c3a134c5de641ccb9996",
+  "fullMavenCIGate": "not-claimed"
+}

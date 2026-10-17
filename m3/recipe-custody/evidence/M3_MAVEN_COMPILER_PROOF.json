@@ -1,0 +1,585 @@
+{
+  "status": "PASS",
+  "mavenVersion": "Apache Maven 4.1.0-SNAPSHOT\nMaven home: /tmp/m3-maven-ci-889ccadfa9c7-20261017/target/apache-maven-4.1.0-m3-session-services\nJava version: 21.0.2, vendor: Eclipse Adoptium, runtime: /workspace/scratch/4f99f40718f0/m3-implementation/toolchain/jdk-21.0.2+13\nDefault locale: en, platform encoding: UTF-8, time zone: America/New_York\nOS name: \"linux\", version: \"6.18.55\", arch: \"amd64\", family: \"unix\"",
+  "jdkVersion": "javac 21.0.2",
+  "astJar": {
+    "path": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/proof/classpath-final-895/m3-shared-ast-classpath.jar",
+    "sha256": "c3999567838f4253b87a8340d85f421ad95dd64e41a1c3a134c5de641ccb9996"
+  },
+  "dependencyManifestSha256": "f7270503c6de4bc380951517e962f2725745d1248c26b3c781fa547f62132dd1",
+  "dependencies": [
+    {
+      "coordinate": "ch.randelshofer:fastdoubleparser:1.0.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/ch/randelshofer/fastdoubleparser/1.0.0-m3-source-1/fastdoubleparser-1.0.0-m3-source-1.jar",
+      "sha256": "2e8bf7b92d10b08ed2ea8d14f62f37f5ee330a3f32d3280b82e1cee91000ebda",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/fastdoubleparser-1.0.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "74e976c43cdfd71f76dfe503a0dca8f75a46702a1906f0916719698d395fab16"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.core:jackson-annotations:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/core/jackson-annotations/2.16.1-m3-source-1/jackson-annotations-2.16.1-m3-source-1.jar",
+      "sha256": "76521e8e4b26e41f220de71826719a7b2bef0126842efe48561f3a669cff8ba7",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-annotations-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "2b4a1e1007ed836634542087cf47e2d3cd05bc45702eb73f2215577917271ea2"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.core:jackson-core:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/core/jackson-core/2.16.1-m3-source-1/jackson-core-2.16.1-m3-source-1.jar",
+      "sha256": "19d55270697379714c17d36a03b6d6007bad307895e5fa44bf9d286b266e6422",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-core-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "f4bf5b17ffef063d78daf731b38ffd4e9ef784384811af18fef6459fd7e6c450"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.core:jackson-databind:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/core/jackson-databind/2.16.1-m3-source-1/jackson-databind-2.16.1-m3-source-1.jar",
+      "sha256": "8d040a5b432e11298b62d4e22179950d415ec961193a0b98bba7b5dc19ef0b83",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-databind-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "d7e74493fdc5329b5a8ea64125cbbae67cf5a812710877ef363a5bd44837fe31"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.dataformat:jackson-dataformat-csv:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/dataformat/jackson-dataformat-csv/2.16.1-m3-source-1/jackson-dataformat-csv-2.16.1-m3-source-1.jar",
+      "sha256": "05a429478d88f2655499a9dfe5297f90e2e00a1a7d4d68cb20107df28b455397",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-dataformat-csv-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "71d28eb149aaf5e0c597632c5aad5e878bcbc40cb54224e7f4a51ed8d0540f24"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.dataformat:jackson-dataformat-smile:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/dataformat/jackson-dataformat-smile/2.16.1-m3-source-1/jackson-dataformat-smile-2.16.1-m3-source-1.jar",
+      "sha256": "239e55fe60e43192f517386c9e61399c65a600c16154227d1f9ca005458786f7",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-dataformat-smile-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "277149cd6e0854384d890dd72d868f80ac297f360fd2b7e43750d8d60d498d57"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.16.1-m3-source-1/jackson-datatype-jsr310-2.16.1-m3-source-1.jar",
+      "sha256": "1c386df9f2d8e4fcfbef2693ae85c523c0039a5c6237c49a2855393932465374",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-datatype-jsr310-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "06d59e22249a0c9f32a6bf397e86b54ee73dbf2dad90b5fd7554ee2a85ea034c"
+    },
+    {
+      "coordinate": "com.fasterxml.jackson.module:jackson-module-parameter-names:2.16.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/fasterxml/jackson/module/jackson-module-parameter-names/2.16.1-m3-source-1/jackson-module-parameter-names-2.16.1-m3-source-1.jar",
+      "sha256": "41fe75b6b0a9bfe52017bd1c413fa3bbb6ad51dfb43fa6ff96d327934bdd5887",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jackson-module-parameter-names-2.16.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "d7b9272f56a06b75b7ada8c10e9c66790891a8d529b8e33ef8b30c8750205154"
+    },
+    {
+      "coordinate": "com.google.code.findbugs:jsr305:3.0.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/google/code/findbugs/jsr305/3.0.2-m3-source-1/jsr305-3.0.2-m3-source-1.jar",
+      "sha256": "69bf47148c8d85cc3fd4197a3581cc0a95ffb7f12c862ab3fa3e05907fb7964f",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jsr305-3.0.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "4b336bbe140d3309affdebfd49bc1af6a06b29db61963fd1e8e172a7b9fc07d6"
+    },
+    {
+      "coordinate": "com.google.re2j:re2j:1.8-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/google/re2j/re2j/1.8-m3-source-1/re2j-1.8-m3-source-1.jar",
+      "sha256": "5fa47beb3d36563ab0093c45744564407bb06e1fc487fecc7f1f29fdc34bb129",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/re2j-1.8-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "5c3092b43957eae2c15ace8ecdb30a5c466c3d840b5edd59d2678a4ef96ed175"
+    },
+    {
+      "coordinate": "com.googlecode.javaewah:JavaEWAH:1.1.13-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/googlecode/javaewah/JavaEWAH/1.1.13-m3-source-1/JavaEWAH-1.1.13-m3-source-1.jar",
+      "sha256": "9ad0cde86057efe6e97e919cbaa82dc326b748add59d8d0c94fa2126a6d70e3f",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/JavaEWAH-1.1.13-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "3706c3e1fbd53b4c20928763848cb7753a799d05866612ed9c5b52d970a37a06"
+    },
+    {
+      "coordinate": "com.univocity:univocity-parsers:2.9.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/com/univocity/univocity-parsers/2.9.1-m3-source-1/univocity-parsers-2.9.1-m3-source-1.jar",
+      "sha256": "027adef729c3f6ee5f5e5909aa377115bf0a01cc34abb9a31d8aab55c1749db3",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/univocity-parsers-2.9.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "e90afdb66a62d061bf9074ad35c24be47cb7960a01b7a62d3e7efdb935521df3"
+    },
+    {
+      "coordinate": "commons-codec:commons-codec:1.22.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/commons-codec/commons-codec/1.22.1-m3-source-1/commons-codec-1.22.1-m3-source-1.jar",
+      "sha256": "e84ff9ec632b2db7e05954e6cbe7dad44b2ab715d77f7b8265718aac633b9faf",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/commons-codec-1.22.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "88ec54a20070950a154ef97def535f9d8e60557671a255185e6bbaf2714e2de6"
+    },
+    {
+      "coordinate": "commons-io:commons-io:2.15.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/commons-io/commons-io/2.15.1-m3-source-1/commons-io-2.15.1-m3-source-1.jar",
+      "sha256": "471a12fb92db8c04907e54b0781fd74241b38b5048c18739d4139c4a6bf071c8",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/commons-io-2.15.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "770a53fc7854db106a14af1085e7e7a6c472af6563696b68155d1957fd45ee8e"
+    },
+    {
+      "coordinate": "io.github.classgraph:classgraph:4.8.165-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/io/github/classgraph/classgraph/4.8.165-m3-source-1/classgraph-4.8.165-m3-source-1.jar",
+      "sha256": "046eb4965c75e0b1400a2f244f5d46a502bf40bdbf14fe7a5f160643cb3c13cb",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/classgraph-4.8.165-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "f12d5996115f22bfd077a654a40baae2fcecec67da3dcf53f1b709c5e0578cb0"
+    },
+    {
+      "coordinate": "io.github.fastfilter:fastfilter:1.0.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/io/github/fastfilter/fastfilter/1.0.2-m3-source-1/fastfilter-1.0.2-m3-source-1.jar",
+      "sha256": "5c6571dc9745d1cba063c345884b3a9b7ffbd8914366bdbc9edc33f62161f42d",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/fastfilter-1.0.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "3c691f9331d8b5bc2b5872fb50f6e826488d5f8b28b5eaf6c7362826d24a336b"
+    },
+    {
+      "coordinate": "io.micrometer:micrometer-core:1.9.17-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/io/micrometer/micrometer-core/1.9.17-m3-source-1/micrometer-core-1.9.17-m3-source-1.jar",
+      "sha256": "e6b29c8b9082e4917cf173931ebf561214af4117810bbd707873ce0f1ee4aeea",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/micrometer-core-1.9.17-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "d83d95c78170565435a73249e010eb9da490f540fcfa0465d8fae64d8234b61f"
+    },
+    {
+      "coordinate": "io.quarkus.gizmo:gizmo:1.0.11.Final-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/io/quarkus/gizmo/gizmo/1.0.11.Final-m3-source-1/gizmo-1.0.11.Final-m3-source-1.jar",
+      "sha256": "b76e3d867ba998cbb4b1efd8e7b158003535cd40b45c8ff18bb3acbac1ecd82b",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/gizmo-1.0.11.Final-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "5f8ee14783b954bcd7d0e8e41ba8ec7bb5b64ec6acc735869521d02a140a237d"
+    },
+    {
+      "coordinate": "net.bytebuddy:byte-buddy:1.14.11-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/net/bytebuddy/byte-buddy/1.14.11-m3-source-1/byte-buddy-1.14.11-m3-source-1.jar",
+      "sha256": "4f148cc8315620a0324d078f64425af2c0cab03cca3c05fce289612944e1b4b3",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/byte-buddy-1.14.11-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "05cb40aa7d4cfb96497a955e19aaacfe69db90c2d0d32b5a3c74011cf3dae2b9"
+    },
+    {
+      "coordinate": "net.java.dev.jna:jna-platform:5.14.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/net/java/dev/jna/jna-platform/5.14.0-m3-source-1/jna-platform-5.14.0-m3-source-1.jar",
+      "sha256": "13614eb718cc4525f00e41c0afa614f52625a8bcab92de9273e8921885449242",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jna-platform-5.14.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "bfc9bd1fcac5bb5c773eaaceb8a79d2536d6aa8c5a6602331d9ef3941ab5851d"
+    },
+    {
+      "coordinate": "net.java.dev.jna:jna:5.14.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/net/java/dev/jna/jna/5.14.0-m3-source-1/jna-5.14.0-m3-source-1.jar",
+      "sha256": "6f2248e14669162a30c4507a0950dae158e627f814a5c36360b41745534cadfb",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jna-5.14.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "7aec985ebb7ed39678b0b92a14e2af15cd646d1840cc63a8e929d7391582afc6"
+    },
+    {
+      "coordinate": "org.antlr:antlr4-runtime:4.11.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/antlr/antlr4-runtime/4.11.1-m3-source-1/antlr4-runtime-4.11.1-m3-source-1.jar",
+      "sha256": "0becf77413c873a85359b198cfeff6075bdd2646de898460de318b5060af7be3",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/antlr4-runtime-4.11.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "b955b968ad18e44bc45762ac6ec35888005d971dae9a9dd1de445f6492f6bb24"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-compress:1.26.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/apache/commons/commons-compress/1.26.0-m3-source-1/commons-compress-1.26.0-m3-source-1.jar",
+      "sha256": "03d5437091471c3ffbdb176e234912f5fa933cbf90e18646931c53d943a28df9",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/commons-compress-1.26.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "fc81054380436b192557f3581ef567f27a602067d698cddfa9ea93c8c47d6118"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.14.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/apache/commons/commons-lang3/3.14.0-m3-source-1/commons-lang3-3.14.0-m3-source-1.jar",
+      "sha256": "b65019072eeb23fe7eae83c2640620c879d2e16a8f88199797e8a8702813fcd6",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/commons-lang3-3.14.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "363830c29647027b6ab0db52d0d36d170bfc9041b57e1b49b1d4787d86f72fa9"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-text:1.11.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/apache/commons/commons-text/1.11.0-m3-source-1/commons-text-1.11.0-m3-source-1.jar",
+      "sha256": "b4e42670449ce8b6cfa832ee39f3c5e8d7fac83acb2cece5972814c8f1f14bb4",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/commons-text-1.11.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "04f6b4b5ba1182ba48bca85bd3e6c37ea2999f0a198832577eff8e765664729f"
+    },
+    {
+      "coordinate": "org.apiguardian:apiguardian-api:1.1.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/apiguardian/apiguardian-api/1.1.2-m3-source-1/apiguardian-api-1.1.2-m3-source-1.jar",
+      "sha256": "9ceadb7ed86bd25596d6b62eb4d41a5b5a30c88d82fd35a2a79f388b5cdc8ec5",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/apiguardian-api-1.1.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "3b2ea4c0100fd89831ed16d8a333203d88ca1fe8193cbbda3d588f08d4dda0be"
+    },
+    {
+      "coordinate": "org.assertj:assertj-core:3.25.3-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/assertj/assertj-core/3.25.3-m3-source-1/assertj-core-3.25.3-m3-source-1.jar",
+      "sha256": "fd9d6518a09ae590a246c2402bb5ae33b7b6b7bf1810012784ad96f47c76d25b",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/assertj-core-3.25.3-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "a32690281a4d0c2c1ec2ba1b85bb8ac05e60f26be71476a523f5619434cd1bf9"
+    },
+    {
+      "coordinate": "org.brotli:dec:0.1.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/brotli/dec/0.1.2-m3-source-1/dec-0.1.2-m3-source-1.jar",
+      "sha256": "2ae8b4798783d3ba023f86a14e0069ca07c554a6e89c84228ffb3670e31a281e",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/dec-0.1.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "efefc925b500840e81c04889699bf387fca5e77ba6d0769a2b4a3abb59ee1f8e"
+    },
+    {
+      "coordinate": "org.eclipse.collections:eclipse-collections-api:11.1.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/eclipse/collections/eclipse-collections-api/11.1.0-m3-source-1/eclipse-collections-api-11.1.0-m3-source-1.jar",
+      "sha256": "70b04d59faed55d66b907318216516712549f1d7befa86eae257bbb8124c8b2e",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/eclipse-collections-api-11.1.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "917cf6843c504b9212f34d35dd6ccef2259155c9ae69644f537ab526debaf899"
+    },
+    {
+      "coordinate": "org.eclipse.collections:eclipse-collections:11.1.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/eclipse/collections/eclipse-collections/11.1.0-m3-source-1/eclipse-collections-11.1.0-m3-source-1.jar",
+      "sha256": "9d3df0e81a726726a837d5b566ace60cbae1d4e980fee3e6351aa873ff75d3a4",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/eclipse-collections-11.1.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "c98fe743567ada83d8e26a22765e777b786c0fa2cd3fb7a9115eb004e5c84fe7"
+    },
+    {
+      "coordinate": "org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/eclipse/jgit/org.eclipse.jgit/5.13.3.202401111512-r-m3-source-1/org.eclipse.jgit-5.13.3.202401111512-r-m3-source-1.jar",
+      "sha256": "424c988b0a1d67a073c12d6efa47cb5afde2eb514ee76dfcc65c29e056707097",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/org.eclipse.jgit-5.13.3.202401111512-r-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "7fb33595cfe64c2141842a0044962942126e8198b3b0ec2fb728b5dc85c83bef"
+    },
+    {
+      "coordinate": "org.hdrhistogram:HdrHistogram:2.1.12-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/hdrhistogram/HdrHistogram/2.1.12-m3-source-1/HdrHistogram-2.1.12-m3-source-1.jar",
+      "sha256": "721d608d3ecc718587aead59165aea7573f0d2041c9359f460460d73de771a77",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/HdrHistogram-2.1.12-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "af32caa431ba150a924a3b6cecfdde0ad0804d8ae82dbb121a6c4b6e47b182ce"
+    },
+    {
+      "coordinate": "org.jboss:jandex:2.4.2.Final-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/jboss/jandex/2.4.2.Final-m3-source-1/jandex-2.4.2.Final-m3-source-1.jar",
+      "sha256": "a4303f708aaa167f5796357b02e8e3e87423a411c43914e5e03d45938dfac35c",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/jandex-2.4.2.Final-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "b36e9fd4e316adafc9a7d7a584e4ee79df9981a9e254027feca005de542f700e"
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:24.1.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/jetbrains/annotations/24.1.0-m3-source-1/annotations-24.1.0-m3-source-1.jar",
+      "sha256": "66a8ca9dd42fce33e4f56c2b1b730f0f7cd671eeafbb59bfa395c5d2fdb28102",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/annotations-24.1.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "7ef7034b86dc2ae539e9ac54a739313d1bab7812adc1d2effe9e8d109405dfeb"
+    },
+    {
+      "coordinate": "org.junit.jupiter:junit-jupiter-api:5.10.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/junit/jupiter/junit-jupiter-api/5.10.2-m3-source-1/junit-jupiter-api-5.10.2-m3-source-1.jar",
+      "sha256": "4e787fd7f1f2875f60de6cfb6a6ecc94ce7174252dd735a407a5c699f3a0a9bd",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/junit-jupiter-api-5.10.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "504693c089f60aea9c9a1094eda17e916b70b1fa459a99426f92ebd50d562c6d"
+    },
+    {
+      "coordinate": "org.junit.jupiter:junit-jupiter-params:5.10.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/junit/jupiter/junit-jupiter-params/5.10.2-m3-source-1/junit-jupiter-params-5.10.2-m3-source-1.jar",
+      "sha256": "6760cfe5fbdc6c384ac274f18342377f027a18446f986917ec281e1063919a48",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/junit-jupiter-params-5.10.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "55665212b396c209fda7183f26ef7d95bcb331d3ee13ab4524d6af26ee89f8fd"
+    },
+    {
+      "coordinate": "org.junit.platform:junit-platform-commons:1.10.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/junit/platform/junit-platform-commons/1.10.2-m3-source-1/junit-platform-commons-1.10.2-m3-source-1.jar",
+      "sha256": "3717c655425202594abc3ca150c79a2d6234247890f7e99a02b22c2cc42d96dc",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/junit-platform-commons-1.10.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "11dda3b0de5537243c94475b69fbcf87e049bd5deef08694b655155f8b260f67"
+    },
+    {
+      "coordinate": "org.latencyutils:LatencyUtils:2.0.3-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/latencyutils/LatencyUtils/2.0.3-m3-source-1/LatencyUtils-2.0.3-m3-source-1.jar",
+      "sha256": "6cbb8ae6c36c972666fc4ca675e4deb9149a36bf5e00215551df49fa6d4495dc",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/LatencyUtils-2.0.3-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "1772b13daca0b541627c44d91fe08e071e4bab7886ac892e5a5690c4d9c0f0ae"
+    },
+    {
+      "coordinate": "org.openrewrite.tools:java-object-diff:1.0.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/tools/java-object-diff/1.0.1-m3-source-1/java-object-diff-1.0.1-m3-source-1.jar",
+      "sha256": "a02e13d9c320c7838ca2323ca401ccb63bde73be97ad6cdb50367560b615ce05",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/java-object-diff-1.0.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "cb3acda4accda461fc31d15be7c78ca86be069e20e05db5cccf6ee94f311ecff"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-core:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-core/8.17.1-m3-source-1/rewrite-core-8.17.1-m3-source-1.jar",
+      "sha256": "b039332eba44d07838fdd01522feecf43ffe80f9d0fc569df79fcbd968592cf6",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-core-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "e8df859fa579b6cff01386a6ddac29d0cc5d4066b6277e5c6b8fa4dba2bfb15e"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-java-21:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-java-21/8.17.1-m3-source-1/rewrite-java-21-8.17.1-m3-source-1.jar",
+      "sha256": "f007012c29a24650a3e9a90aa5cf8953da126ff8dbbdcd37c855e327c695840d",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-java-21-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "1ac3a5885a4f3979babee9dc979c4b96ec6118d160404ec414932de3521ee6d0"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-java:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-java/8.17.1-m3-source-1/rewrite-java-8.17.1-m3-source-1.jar",
+      "sha256": "b56fd25a70f44d916459b51c91d16eaa74ffef94417eee1206238529c96d2d70",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-java-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "8a59924c96070c419b0f6e12c2f908a61de14a43a0d69db476aadcb919fe8408"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-test:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-test/8.17.1-m3-source-1/rewrite-test-8.17.1-m3-source-1.jar",
+      "sha256": "a35ba6ec53693b951cab8909f2e1b0a34beff91603461c459778d5275e7f9be4",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-test-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "d09beaa349ac836a785ba33a95570075ae566bc526613fe558b7925862740e02"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-xml:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-xml/8.17.1-m3-source-1/rewrite-xml-8.17.1-m3-source-1.jar",
+      "sha256": "327fd0c903d31f94226b5c8038d66dbcc876e5091d1365083c218fe8097f7c4b",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-xml-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "5fabaeb7c22eb431987ddeacceaf881f14118c8b7629156cb03b772f5026f70b"
+    },
+    {
+      "coordinate": "org.openrewrite:rewrite-yaml:8.17.1-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/openrewrite/rewrite-yaml/8.17.1-m3-source-1/rewrite-yaml-8.17.1-m3-source-1.jar",
+      "sha256": "ff1ae9a5cd5578a30d50ad05500b1cf02d3da9179a5cf0889d491ac7e3c7ac0a",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/rewrite-yaml-8.17.1-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "4c2b7d5cb668da5ba8e7c0625cae85487c3648e78cf7b49a1436e488049b6597"
+    },
+    {
+      "coordinate": "org.opentest4j:opentest4j:1.3.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/opentest4j/opentest4j/1.3.0-m3-source-1/opentest4j-1.3.0-m3-source-1.jar",
+      "sha256": "37c04c2947751449c3e7a2e165a16046fbfcd8f9da9bffcafd886200ba23d04a",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/opentest4j-1.3.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "c296ba8edb42e05bb162282fbe3b4b6f49c755ff9afbd91b890b6094fe48bcab"
+    },
+    {
+      "coordinate": "org.osgi:org.osgi.core:6.0.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/osgi/org.osgi.core/6.0.0-m3-source-1/org.osgi.core-6.0.0-m3-source-1.jar",
+      "sha256": "cbd93b06fbef95ab2175bc4f573a8b9b04a96ff88d6b166c87b0ca839b3b1009",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/org.osgi.core-6.0.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "3ce32c46e87f8cf2b6ec4b955c592c675d95228ab832b0e66e7d0b9cc1dc40aa"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-analysis:9.6-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/ow2/asm/asm-analysis/9.6-m3-source-1/asm-analysis-9.6-m3-source-1.jar",
+      "sha256": "11d853d42aaef82837c01fdaa919f16d5ed94618309af4b13f6c44ad72075acf",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/asm-analysis-9.6-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "757fdd0343cda9d9b20b0d139a36ebc9063e0918b0eed1a46c3cc98cd2127c8a"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.6-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/ow2/asm/asm-tree/9.6-m3-source-1/asm-tree-9.6-m3-source-1.jar",
+      "sha256": "04f9516e74855c50d33700e56acc348a4277bc93fe381b2a4a7d866ac15f2844",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/asm-tree-9.6-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "42074c15ab8accdc59669b62c050ccaa1d4611338b807a4e1d796c82a9475b57"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-util:9.6-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/ow2/asm/asm-util/9.6-m3-source-1/asm-util-9.6-m3-source-1.jar",
+      "sha256": "0124ed62c188373f3d8eb47e7b3b5cd20460e2272dfa06dfc8e7c2e6cbf590a7",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/asm-util-9.6-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "208252eef7e36dc98fcf354ec4483d0b9422188b7ef1ac1ec60bbe1489b0d9bc"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.6-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/ow2/asm/asm/9.6-m3-source-1/asm-9.6-m3-source-1.jar",
+      "sha256": "feeedb8f9102078ebbfe599e965e53f668d7590e7347400fbc4f84535c27b015",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/asm-9.6-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "6af4dd57326de137a1672652e3fe2e7e9304a14d52fe5577425f7a36dce0ab08"
+    },
+    {
+      "coordinate": "org.projectlombok:lombok:1.18.42",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/deps/lombok-1.18.42.jar",
+      "sha256": "3488a4e9994c26596baaceebee58cad36a50e3bdaec5be72b5834d3c3b560306",
+      "module": "",
+      "admission": "BUILD_TOOL",
+      "provenance": "",
+      "provenance_sha256": ""
+    },
+    {
+      "coordinate": "org.slf4j:slf4j-api:2.0.12-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/slf4j/slf4j-api/2.0.12-m3-source-1/slf4j-api-2.0.12-m3-source-1.jar",
+      "sha256": "7339b9b7480aae62e6cd63a99aedaf72ac74404da2923a9ced86ab8f4b97ce03",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/slf4j-api-2.0.12-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "11a3c3788a7ad3b498d16a9d8a3bdcea14334d25caf1cbb1765286ca19603e84"
+    },
+    {
+      "coordinate": "org.tukaani:xz:1.10-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/tukaani/xz/1.10-m3-source-1/xz-1.10-m3-source-1.jar",
+      "sha256": "7d4924c8124244e659c0f5f0072ac036b659407209bfc2dafff9ef40b350a7e7",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/xz-1.10-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "46440034be7defb08c8938a1cf58db0be3785009c58849e0d78da1337ab2e122"
+    },
+    {
+      "coordinate": "org.xerial.snappy:snappy-java:1.1.10.5-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/xerial/snappy/snappy-java/1.1.10.5-m3-source-1/snappy-java-1.1.10.5-m3-source-1.jar",
+      "sha256": "446b05767a4c6385b64b1eb456ddf60982a9a531f7befd59eddac6761e1f13b6",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/snappy-java-1.1.10.5-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "f592f20877ee5c594cb15dc7571211e35a164fb7c27c793f4d032413a462c45a"
+    },
+    {
+      "coordinate": "org.xerial:sqlite-jdbc:3.45.1.0-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/xerial/sqlite-jdbc/3.45.1.0-m3-source-1/sqlite-jdbc-3.45.1.0-m3-source-1.jar",
+      "sha256": "a13eb2eb3ddfcc56bb2146f1f7c9bd1d85a828f4ccf1687d1b1f48f46cec82d1",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/sqlite-jdbc-3.45.1.0-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "ef841e1918cf4904ea425ecd50f66e47c9329dfde3bbfe353d3a368331abeae1"
+    },
+    {
+      "coordinate": "org.yaml:snakeyaml:2.2-m3-source-1",
+      "jar": "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2/org/yaml/snakeyaml/2.2-m3-source-1/snakeyaml-2.2-m3-source-1.jar",
+      "sha256": "9c136b8b9b75c3323144f753df984bb27ec41a5c3840d5e31a782937bf024e01",
+      "module": "",
+      "admission": "SOURCE",
+      "provenance": "/workspace/scratch/4f99f40718f0/m3-implementation/ast/source-dependencies/proof/snakeyaml-2.2-m3-source-1/SOURCE_BUILD.json",
+      "provenance_sha256": "232e4e426fed5aca56be9df1658cdd293f4ca0142fbc73baefd8822a5c50fda8"
+    }
+  ],
+  "fixtureSource": {
+    "maven-consumers/src/main/java/m3/fixture/M3FirstConsumer.java": "da401f929e5578d52b79513b1ad659de737767d9235026c6cd1d9920ff0f77e4",
+    "maven-consumers/src/main/java/m3/fixture/M3Generator.java": "cdef5f2a853bff713a2f52bfe0734c9874a525b74fdb86c755f9460b89cee7f4",
+    "maven-consumers/src/main/java/m3/fixture/M3Probe.java": "b4066928c74d8a65fbdb4849528970635eece645237e58d33c345e4ec89e4fb4",
+    "maven-consumers/src/main/java/m3/fixture/M3SecondConsumer.java": "a7bfcb7555753ac4875ef0c4389c3282c6dc05ac2096acc22480f94a9fdeff51",
+    "maven-consumers/src/main/resources/META-INF/services/javax.annotation.processing.Processor.txt": "904779ab8657a7825ba16f6402b030006d079d044611f5040a88054833290f28",
+    "maven-consumers/src/main/resources/META-INF/services/jdk.m3.ast.M3ASTCompilerConsumer.txt": "c804c146f6a8b3e923a330e80b5c4e3ca271336d4c2ac008a4ef6832b1e14bee",
+    "maven-project/.mvn/maven.properties": "9a7f36e8cacb31c97271d299b880825d986e05411b47ec48a7f3378d27fbd5d7",
+    "maven-project/pom.xml": "b8d797b473355c9b5c93a4b07db54e6e21113f385fba1173509a9c23e66b817d",
+    "maven-project/src/main/java/m3/sample/M3BuildFixture.java": "0150344e75f3ea8093911ab1e7cd765f19377af28efb8a8ffdc1f8930fdf390a",
+    "maven-project/src/main/java/m3/sample/M3Helper.java": "f56ea15b75c4e0ec362403f7cc31f6bb248f4d76e2b03c944b235c51b69e8152"
+  },
+  "serviceMappings": {
+    "jdk.m3.ast.M3ASTCompilerConsumer": {
+      "source": "maven-consumers/src/main/resources/META-INF/services/jdk.m3.ast.M3ASTCompilerConsumer.txt",
+      "sha256": "c804c146f6a8b3e923a330e80b5c4e3ca271336d4c2ac008a4ef6832b1e14bee"
+    },
+    "javax.annotation.processing.Processor": {
+      "source": "maven-consumers/src/main/resources/META-INF/services/javax.annotation.processing.Processor.txt",
+      "sha256": "904779ab8657a7825ba16f6402b030006d079d044611f5040a88054833290f28"
+    }
+  },
+  "consumerJarSha256": "daa0469e57fbb20835ec96fc783b70e17365b6b9910e78b6d8d669904448f39f",
+  "observations": {
+    "javac": {
+      "classes": {
+        "m3/sample/GeneratedValue.class": "7a4880a0dfb7d25ba63525735f47094fb091b2983b1d9868c38675ea444cd3c5",
+        "m3/sample/M3BuildFixture.class": "668f32be74c1513b587cf26fc984c65cbc781e101b1e04b856b292dc6ec1aa08",
+        "m3/sample/M3Helper.class": "069891d41052caf50ad757a382e77fbedbcffaf4a480ac6fe7f690f5c9e79d4a"
+      },
+      "generatedSources": {
+        "m3/sample/GeneratedValue.java": "3dffa4de5dc6b2e6b474f169c1ee072be76e764a687f9a85499d8e78d6128274"
+      },
+      "unchangedCompileRetainedClassTimes": true
+    },
+    "m3": {
+      "classes": {
+        "m3/sample/GeneratedValue.class": "7a4880a0dfb7d25ba63525735f47094fb091b2983b1d9868c38675ea444cd3c5",
+        "m3/sample/M3BuildFixture.class": "668f32be74c1513b587cf26fc984c65cbc781e101b1e04b856b292dc6ec1aa08",
+        "m3/sample/M3Helper.class": "069891d41052caf50ad757a382e77fbedbcffaf4a480ac6fe7f690f5c9e79d4a"
+      },
+      "generatedSources": {
+        "m3/sample/GeneratedValue.java": "3dffa4de5dc6b2e6b474f169c1ee072be76e764a687f9a85499d8e78d6128274"
+      },
+      "unchangedCompileRetainedClassTimes": true,
+      "compilerService": {
+        "consumerDeliveries": "4",
+        "indexCaptures": "0",
+        "originalParseEvents": "3",
+        "providers": "2",
+        "retainedSources": "2",
+        "sameOriginalUnit": "true",
+        "sameRetainedInput": "true",
+        "sameSession": "true",
+        "unretainedParseEvents": "1"
+      }
+    }
+  },
+  "sourcePackPomSha256": "99541e60dbfed52130e520111abfa1a5c0b2fc8394fbde564aab562aa130b59b",
+  "scope": "Actual Maven compiler-plugin dependency realm, source-built compiler SPI, source custody, annotation processing and class-byte parity."
+}

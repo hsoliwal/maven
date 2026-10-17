@@ -1,0 +1,3 @@
+# path	before_sha256	after_sha256	template
+impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java	55b7b23ecce0c066fefc14625749effc9298c7514b20f6391776aa1ae6743f98	eb78cdfd92e658a8d4d9a09a82f35e7b7eea630b2c56d2ba21457eff59db0799	DefaultMavenPluginManager.java.txt
+impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3PluginSessionServicesTest.java	ABSENT	443952adefdc6e25883a9594c0ea804cc746da05c67e4db697df179fe06c22b3	M3PluginSessionServicesTest.java.txt

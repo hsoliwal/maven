@@ -1,0 +1,31 @@
+{
+  "command": [
+    "/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/apache-maven-3.9.9/bin/mvn",
+    "-o",
+    "-B",
+    "-ntp",
+    "-Dmaven.repo.local=/workspace/scratch/4f99f40718f0/m3-implementation/toolchain/m2",
+    "-f",
+    "/workspace/scratch/4f99f40718f0/m3-implementation/convergence/synexia-openrewrite-recipes/verification/m3-build-shared-ast-20261017/pom.xml",
+    "-Dm3.crate=m3-maven-qualified-session-services-20261017",
+    "-Dm3.kind=java",
+    "-Dm3.input=/workspace/scratch/4f99f40718f0/m3-implementation/baseline/maven",
+    "-Dm3.output=/workspace/scratch/4f99f40718f0/m3-implementation/generated/maven-qualified-session-services-stage-4",
+    "verify"
+  ],
+  "exitCode": 0,
+  "seconds": 8.376,
+  "logSha256": "6fa8a90be0cbc5a5f7e13d2c38438f94e270434dad8392848194b50e177a3c68",
+  "offline": true,
+  "surefire": {
+    "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd",
+    "version": "3.0",
+    "name": "com.synexia.rewrite.M3BuildSharedAstRecipeTest",
+    "time": "4.729",
+    "tests": "1",
+    "errors": "0",
+    "skipped": "0",
+    "failures": "0"
+  },
+  "reportSha256": "8efabd039a5fce720e38d5c9958440dc1cfbe6503b3b9ebbdafd957562b8e077"
+}
