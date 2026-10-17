@@ -608,6 +608,9 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         // processes them. See interpolateConfiguration() javadoc for details.
         pomConfiguration = interpolateConfiguration(pomConfiguration, expressionEvaluator, session);
 
+        pomConfiguration =
+                M3AstCompilerConfiguration.configure(session, mojoDescriptor, pomConfiguration, expressionEvaluator);
+
         populateMojoExecutionFields(
                 mojo,
                 mojoExecution.getExecutionId(),
@@ -792,6 +795,9 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         // dynamically at runtime by scripts) would reach type converters unresolved, causing
         // failures like URISyntaxException for URI-typed parameters containing ${...}.
         pomConfiguration = interpolateConfiguration(pomConfiguration, expressionEvaluator, session);
+
+        pomConfiguration =
+                M3AstCompilerConfiguration.configure(session, mojoDescriptor, pomConfiguration, expressionEvaluator);
 
         populateMojoExecutionFields(
                 mojo,

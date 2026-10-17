@@ -1,0 +1,23 @@
+{
+  "cases_per_run": 6,
+  "fixture_artifact_stat_unchanged": true,
+  "full_vm_build_provenance": "SUPPLY_BUILD_RECEIPT_SEPARATELY",
+  "processor_coordinate": "org.m3.fixture:native-consumer-processor:1-bcd36ceb3fdb4e48751880243321c2e66c8a339dea06417acacbb69d50991ba3",
+  "processor_sha256": "bcd36ceb3fdb4e48751880243321c2e66c8a339dea06417acacbb69d50991ba3",
+  "receipts": {
+    "/workspace/scratch/13309be96b09/build-work/maven-portable-runtime-proof-1/RECEIPT.json": "a5cbf9e7aaa3e54032bdc756c273e8f56b94179d89f9b6235caf9d10844fc2e8",
+    "/workspace/scratch/13309be96b09/build-work/maven-portable-runtime-proof-2/RECEIPT.json": "5fc4845738e31113d7c865bb18046cb62dfa20b5294a15ad55644d3a6c515baf"
+  },
+  "runs": 2,
+  "runtime_inputs_sha256": {
+    "m3jdk_modules": "e7a2827ebfcb2f1fb474db3a8e4e4bc058ffe5f5dea5f9701803669101b28b8b",
+    "m3jdk_release": "5a3d73c8957e7fcb0da466afc0be260adeaddbf8bb04ad82ebb562710c2989de",
+    "maven_core": "820e08dd87e7533e116b54feddf8e111958744b0b0943152e0df1886b4a11912",
+    "maven_launcher": "db456afa890616e7b73d89fd3336c3f7b70887a0cbf6ff99c543872055d99354",
+    "stock_modules": "70c5465dabf8e1bec2860631ea3ffd342f0ec23a5e2efd3a389d2abe32448f98",
+    "stock_release": "ebbd70bf00bab6d39addf51969c5ff244030b86b29de400b9fb10612ebd3ceec"
+  },
+  "source_build_provenance": "SUPPLY_BUILD_RECEIPT_SEPARATELY",
+  "status": "TWO_REAL_MAVEN_RUNTIME_RUNS_AND_CACHE_REUSE_PASS",
+  "verifier_sha256": "4c092f6111b54c14b34315648c60ba59075c031d15feb9873b5f9f52cf256830"
+}

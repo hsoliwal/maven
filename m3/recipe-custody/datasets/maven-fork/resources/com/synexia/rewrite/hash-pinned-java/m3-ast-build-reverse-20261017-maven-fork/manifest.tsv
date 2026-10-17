@@ -1,0 +1,3 @@
+impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java	55b7b23ecce0c066fefc14625749effc9298c7514b20f6391776aa1ae6743f98	09f65f5fd2cd4790273ec714f9237cacd429e1d04c14eca3adff4ab8a229b535	0001-DefaultMavenPluginManager.java.txt
+impl/maven-core/src/main/java/org/apache/maven/plugin/internal/M3AstCompilerConfiguration.java	ABSENT	9e7e79f85ba86ffbd0784aa97b3939b652645fe7cb4370a8d64ddccb7501ebf2	0002-M3AstCompilerConfiguration.java.txt
+impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3AstCompilerConfigurationTest.java	ABSENT	6b8e9a367a794d9477a811eb4d6db258caff0fbaba1e1e125accec5654f3b47c	0003-M3AstCompilerConfigurationTest.java.txt

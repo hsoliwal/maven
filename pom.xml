@@ -859,6 +859,15 @@ under the License.
               <exclude>.jbang/**</exclude>
               <exclude>.claude/**</exclude>
               <exclude>.worktrees/**</exclude>
+              <!-- Byte-pinned recipe metadata; covered by m3/recipe-custody/LICENSE.txt. -->
+              <exclude>m3/recipe-custody/ENGINE_SOURCES.tsv</exclude>
+              <exclude>m3/recipe-custody/datasets/maven-fork/ENGINE_EFFECTIVE.tsv</exclude>
+              <exclude>m3/recipe-custody/datasets/maven-fork/MODES.tsv</exclude>
+              <exclude>m3/recipe-custody/datasets/maven-fork/resources/META-INF/rewrite/m3-ast-build-reverse-20261017-maven-fork.yml</exclude>
+              <exclude>m3/recipe-custody/datasets/maven-fork/resources/com/synexia/rewrite/hash-pinned-java/m3-ast-build-reverse-20261017-maven-fork/manifest.tsv</exclude>
+              <exclude>m3/recipe-custody/datasets/maven-fork/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-fork/manifest.tsv</exclude>
+              <exclude>m3/recipe-custody/evidence/maven-fork/SDK_INPUTS.tsv</exclude>
+              <exclude>m3/recipe-custody/evidence/maven-fork/SDK_RESULTS.tsv</exclude>
               <!--
                 ! Excluded the license files itself cause they do not have a license of themselves.
               -->
