@@ -1,0 +1,235 @@
+{
+  "schema": "synexia.public-custody-two-stage-runs.v1",
+  "canonical_commit": "215546d1ca0e724eb2c8e2e8ef6b4adce724733a",
+  "target_base_sha": "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+  "binding": [
+    {
+      "mode": "--plan",
+      "label": "plan",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --plan /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/binding"
+      ],
+      "started_at_utc": "2026-10-18T07:54:20.111833+00:00",
+      "finished_at_utc": "2026-10-18T07:54:24.047495+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/binding/plan.log",
+      "log_sha256": "597a14b68ce696586565c7474052d22a90e692b93c7590f25092057221c9855b",
+      "expected_changes": 3,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "5827aed55af0f5dbf22c8bb6d9fea846fb7639ed54b99046256af6574355c656",
+        "3",
+        "false"
+      ]
+    },
+    {
+      "mode": "--apply",
+      "label": "apply",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --apply /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/binding"
+      ],
+      "started_at_utc": "2026-10-18T07:54:24.048550+00:00",
+      "finished_at_utc": "2026-10-18T07:54:29.982275+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/binding/apply.log",
+      "log_sha256": "7005c91c23448716e5bb5307530ece4bb73377814a8f189fa96b747ff9112e25",
+      "expected_changes": 3,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "5827aed55af0f5dbf22c8bb6d9fea846fb7639ed54b99046256af6574355c656",
+        "3",
+        "true"
+      ]
+    },
+    {
+      "mode": "--check",
+      "label": "check-1",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --check /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/binding"
+      ],
+      "started_at_utc": "2026-10-18T07:54:29.982958+00:00",
+      "finished_at_utc": "2026-10-18T07:54:36.150182+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/binding/check-1.log",
+      "log_sha256": "c93f37658b92fe8b0ba606b79dd2793011ff96ae083750bc219f576b25e95e80",
+      "expected_changes": 0,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "5827aed55af0f5dbf22c8bb6d9fea846fb7639ed54b99046256af6574355c656",
+        "0",
+        "false"
+      ]
+    },
+    {
+      "mode": "--check",
+      "label": "check-2",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --check /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/binding"
+      ],
+      "started_at_utc": "2026-10-18T07:54:36.150885+00:00",
+      "finished_at_utc": "2026-10-18T07:54:42.372785+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/binding/check-2.log",
+      "log_sha256": "7129edb96ab89560492e64b20d6693fb5de212fe85591bbf48d400186e2664d0",
+      "expected_changes": 0,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "5827aed55af0f5dbf22c8bb6d9fea846fb7639ed54b99046256af6574355c656",
+        "0",
+        "false"
+      ]
+    }
+  ],
+  "execution_receipt": [
+    {
+      "mode": "--plan",
+      "label": "plan",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --plan /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/execution"
+      ],
+      "started_at_utc": "2026-10-18T07:54:42.388957+00:00",
+      "finished_at_utc": "2026-10-18T07:54:48.628002+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/execution/plan.log",
+      "log_sha256": "2f8bc0008002200a4479eb904294cd24cb81813cef4b5ea53a74604eefebb642",
+      "expected_changes": 1,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "6f452886fa7690affb40bac30a98d66c609f5d1322feaf92ca857e765a905d77",
+        "1",
+        "false"
+      ]
+    },
+    {
+      "mode": "--apply",
+      "label": "apply",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --apply /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/execution"
+      ],
+      "started_at_utc": "2026-10-18T07:54:48.628614+00:00",
+      "finished_at_utc": "2026-10-18T07:54:52.354232+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/execution/apply.log",
+      "log_sha256": "351134b99bb3d7e6d9f908fc4b82b7e6066c7fa1147a034a3a1a05bf43d6cbd8",
+      "expected_changes": 1,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "6f452886fa7690affb40bac30a98d66c609f5d1322feaf92ca857e765a905d77",
+        "1",
+        "true"
+      ]
+    },
+    {
+      "mode": "--check",
+      "label": "check-1",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --check /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/execution"
+      ],
+      "started_at_utc": "2026-10-18T07:54:52.354699+00:00",
+      "finished_at_utc": "2026-10-18T07:54:57.013779+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/execution/check-1.log",
+      "log_sha256": "25c1ab649399b586c919cc83069d6903a35ca88c984a82eb3c7cea34c33ad09e",
+      "expected_changes": 0,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "6f452886fa7690affb40bac30a98d66c609f5d1322feaf92ca857e765a905d77",
+        "0",
+        "false"
+      ]
+    },
+    {
+      "mode": "--check",
+      "label": "check-2",
+      "command": [
+        "/workspace/scratch/9032dcaaba5c/toolchains/apache-maven-3.9.9/bin/mvn",
+        "-o",
+        "-B",
+        "-ntp",
+        "-f",
+        "/workspace/scratch/9032dcaaba5c/canonical-engine/synexia-openrewrite-recipes/tasks/recipe-qualification/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/9032dcaaba5c/toolchains/maven-offline",
+        "org.codehaus.mojo:exec-maven-plugin:3.5.0:exec",
+        "-Dexec.executable=/workspace/scratch/9032dcaaba5c/toolchains/jdk-21.0.12.1+1/bin/java",
+        "-Dexec.args=-Xmx1g -cp /workspace/scratch/9032dcaaba5c/canonical-engine/build/replay-classes com.synexia.rewrite.Replay --check /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/candidate /workspace/scratch/9032dcaaba5c/public-binding-preparation/candidates-215546d1ca0e-r2/maven/packets/execution"
+      ],
+      "started_at_utc": "2026-10-18T07:54:57.014298+00:00",
+      "finished_at_utc": "2026-10-18T07:55:00.453294+00:00",
+      "exit_code": 0,
+      "log": ".m3/recipe-source-custody-20261018/logs/execution/check-2.log",
+      "log_sha256": "4af078ccb5dd37454a47242681b06db5b96fccce6d1dbbf8f279d0286f5127fb",
+      "expected_changes": 0,
+      "report": [
+        "bd11c44cd98aef16a3d049db0ebd8477608ccf4d",
+        "6f452886fa7690affb40bac30a98d66c609f5d1322feaf92ca857e765a905d77",
+        "0",
+        "false"
+      ]
+    }
+  ],
+  "product_files_changed_by_these_packets": 0,
+  "promotion_authority": false
+}
