@@ -18,6 +18,9 @@
  */
 package org.apache.maven.plugin.internal;
 
+// SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+// SPDX-License-Identifier: Apache-2.0
+
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
@@ -62,8 +65,9 @@ import org.apache.maven.api.services.PathScopeRegistry;
 import org.apache.maven.api.xml.XmlNode;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.classrealm.ClassRealmManager;
-import org.apache.maven.di.Injector;
 import org.apache.maven.di.Key;
+import org.apache.maven.di.impl.Binding;
+import org.apache.maven.di.impl.InjectorImpl;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.scope.internal.MojoExecutionScope;
 import org.apache.maven.execution.scope.internal.MojoExecutionScopeModule;
@@ -549,6 +553,38 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
     }
 
+    /**
+     * Session suppliers have default priority zero. Older Maven 4 plugins can already provide
+     * that same unqualified service through a factory taking Session. Adding another default
+     * makes an otherwise usable plugin ambiguous. Admit the core supplier only when it does not
+     * introduce that tie; leave higher priorities, named defaults and genuine plugin ambiguity
+     * to the existing injector. Inspect metadata only, without constructing either service.
+     */
+    @SuppressWarnings("unchecked")
+    private static void bindSessionServices(
+            InjectorImpl injector, Map<Class<? extends Service>, Supplier<? extends Service>> services) {
+        services.forEach((itf, supplier) -> {
+            Set<? extends Binding<?>> bindings = injector.getAllBindings(itf);
+            boolean defaultPeer = false;
+            if (bindings != null) {
+                for (Binding<?> binding : bindings) {
+                    if (binding.getPriority() > 0) {
+                        defaultPeer = false;
+                        break;
+                    }
+                    Key<?> key = binding.getOriginalKey();
+                    Object qualifier = key != null ? key.getQualifier() : null;
+                    if (binding.getPriority() == 0 && (qualifier == null || "".equals(qualifier))) {
+                        defaultPeer = true;
+                    }
+                }
+            }
+            if (!defaultPeer) {
+                injector.bindSupplier((Class<Service>) itf, (Supplier<Service>) supplier);
+            }
+        });
+    }
+
     private <T> T loadV4Mojo(
             Class<T> mojoInterface,
             MavenSession session,
@@ -566,7 +602,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         org.apache.maven.api.plugin.Log log = new DefaultLog(
                 LoggerFactory.getLogger(mojoExecution.getMojoDescriptor().getImplementation()));
         try {
-            Injector injector = Injector.create();
+            InjectorImpl injector = new InjectorImpl();
             injector.discover(pluginRealm);
             // Add known classes
             // TODO: get those from the existing plexus scopes ?
@@ -576,7 +612,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             injector.bindInstance(org.apache.maven.api.plugin.Log.class, log);
 
             Map<Class<? extends Service>, Supplier<? extends Service>> services = sessionV4.getAllServices();
-            services.forEach((itf, svc) -> injector.bindSupplier((Class<Service>) itf, (Supplier<Service>) svc));
+            bindSessionServices(injector, services);
 
             mojo = mojoInterface.cast(injector.getInstance(
                     Key.of(mojoDescriptor.getImplementationClass(), mojoDescriptor.getRoleHint())));
