@@ -80,3 +80,10 @@ Run a distribution built from this fork against the M3JDK image as a separate
 integration gate. A stock Maven distribution packaging test does not establish
 this native Maven 4 source integration, and a compiler-module image on stock
 OpenJDK does not establish the complete M3JDK VM build.
+
+## Source and class deltas
+
+The [M3JDK21 build reuse contract](BUILD_DELTAS.md) specifies source and class
+observations, compiler dependency invalidation, output ownership, and bounded
+cache reuse. It distinguishes the current same-task compiler integration from
+subsequent cross-build reuse and selective-compilation qualification.
