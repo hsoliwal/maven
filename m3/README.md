@@ -81,6 +81,62 @@ integration gate. A stock Maven distribution packaging test does not establish
 this native Maven 4 source integration, and a compiler-module image on stock
 OpenJDK does not establish the complete M3JDK VM build.
 
+## Source and class content deltas
+
+M3JDK21 owns source and class content comparison in
+`com.m3.file.M3File`, at
+`m3/file/src/main/java/com/m3/file/M3File.java` in the product repository.
+Build consumers should use that existing owner when admitting file generations.
+A retained fingerprint can be compared without invoking a source or class-file
+parser; capturing a fresh fingerprint can still require reading the content.
+
+The `contentDelta` contract uses compact state flags:
+
+| Flag | Value | Meaning |
+| --- | --- | --- |
+| `ADDED` | 1 | The previous content was known absent and current content is present. |
+| `REMOVED` | 2 | Previous content was present and current content is known absent. |
+| `CONTENT_CHANGED` | 4 | Both contents are present and their recorded fingerprints differ. |
+
+A `null` fingerprint means known absence. It must not represent an unread file,
+permission failure, unknown state, or failed capture. A zero delta describes
+equal recorded content states; it does not establish that compilation can be
+skipped. Modification time and size alone cannot establish content equality,
+and fingerprint capture is not an atomic filesystem snapshot during concurrent
+writes.
+
+Keep three inputs distinct:
+
+- Source fingerprints identify observed source bytes. Syntax and semantic facts
+  belong to the original M3AST compiler task and its generation.
+- Class fingerprints identify observed class bytes. A digest comparison does
+  not classify ABI, constant, annotation, module, or dependency changes.
+- Build context includes compiler identity, ordered arguments and classpaths,
+  processors, plugin configuration, declared resources, and required outputs.
+  Context changes can invalidate results while source bytes stay equal.
+
+The existing receiving points remain
+[`M3AstCompilerConfiguration`](../impl/maven-core/src/main/java/org/apache/maven/plugin/internal/M3AstCompilerConfiguration.java)
+and its two calls in
+[`DefaultMavenPluginManager`](../impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java).
+They admit the builtin plugin to the compiler's original task.
+[`M3AstCompilerConfigurationTest`](../impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3AstCompilerConfigurationTest.java)
+qualifies that configuration behavior. Compilation planning still belongs to
+the compiler plugin; lifecycle, plugin realms, and reactor execution retain
+their existing owners.
+
+This change documents the content-comparison contract. It does not install an
+M3File delta receiver in Maven's planner or establish new build skipping.
+A receiving change must handle dependency closure, generated and deleted
+outputs, processor effects, and publication only after successful execution.
+Its build-avoidance evidence must come from the actual Maven distribution.
+
+The upstream
+[compiler incremental policies](https://maven.apache.org/plugins/maven-compiler-plugin-4.x/compile-mojo.html#incrementalCompilation)
+and [build-cache concepts](https://maven.apache.org/extensions/maven-build-cache-extension/concepts.html)
+describe separate compiler and module-output decisions that a receiver must
+respect.
+
 ## Source and class deltas
 
 The [M3JDK21 build reuse contract](BUILD_DELTAS.md) specifies source and class
