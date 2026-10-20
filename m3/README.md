@@ -136,3 +136,10 @@ The upstream
 and [build-cache concepts](https://maven.apache.org/extensions/maven-build-cache-extension/concepts.html)
 describe separate compiler and module-output decisions that a receiver must
 respect.
+
+## Source and class deltas
+
+The [M3JDK21 build reuse contract](BUILD_DELTAS.md) specifies source and class
+observations, compiler dependency invalidation, output ownership, and bounded
+cache reuse. It distinguishes the current same-task compiler integration from
+subsequent cross-build reuse and selective-compilation qualification.
