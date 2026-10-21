@@ -69,6 +69,15 @@ public final class M3ChromeAiReviewPacket {
         } else {
             Files.createDirectory(review);
         }
+        // Keep local source-bearing AI requests out of accidental Git staging.
+        Path ignore = review.resolve(".gitignore");
+        if (Files.exists(ignore, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(ignore) || !"*\n".equals(Files.readString(ignore)))
+                throw new IOException("M3_CHROME_AI_PACKET_IGNORE_DRIFT");
+        } else {
+            Files.writeString(ignore, "*\n", StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        }
         Path file = review.resolve("pr-" + pr + "-" + patchSha256.substring(0, 12) + ".json");
         String json = "{\n"
                 + "  \"schema\":\"M3-CHROME-HUNK-REVIEW/1\",\n"
