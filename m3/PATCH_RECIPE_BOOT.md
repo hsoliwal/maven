@@ -93,8 +93,8 @@ No credentials are embedded in a POM, build log, manifest or HTTPS URI.
 
 ## Test and review
 
-The added `M3GitHubPatchBootstrapSelfTest` verifies 19 fail-closed parser,
-flag, path and pin cases with strict Java 17 compilation; the JUnit wrapper
+The added `M3GitHubPatchBootstrapSelfTest` verifies 21 fail-closed parser,
+flag, pin and actual two-commit Git mbox check/apply cases with strict Java 17 compilation; the JUnit wrapper
 runs it in Maven's original CLI test lane. This is a standalone source
 oracle, not evidence that a full Maven distribution or live PR fetch has
 already passed. Verify the actual Maven 4 reactor and Java 21/JNI receiver
