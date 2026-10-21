@@ -16,6 +16,60 @@ public final class M3GitHubPatchBootstrapSelfTest {
         ++tests; try {test.run();throw new AssertionError("accepted: " + name);} catch (IOException expected) { /* refusal */ }
     }
     @FunctionalInterface private interface Throwing { void run() throws Exception; }
+    /** An actual two-commit Git mbox must replay to its final content, without network. */
+    private static void patchCycleAgainstRealGit() throws Exception {
+        Path root = Files.createTempDirectory("m3-pr-patch-git-");
+        try {
+            git(root, "init", "-q");
+            git(root, "config", "user.email", "tester@example.org");
+            git(root, "config", "user.name", "M3 Test");
+            Path path = Files.createDirectories(root.resolve("src")).resolve("Foo.java");
+            Files.writeString(path, "one\ntwo\n");
+            git(root, "add", ".");
+            git(root, "commit", "-qm", "baseline");
+            String base = git(root, "rev-parse", "HEAD").strip();
+            Files.writeString(path, "one\ntwo\nthree\n");
+            git(root, "commit", "-qam", "first");
+            Files.writeString(path, "one\ntwo\nthree\nfour\n");
+            git(root, "commit", "-qam", "second");
+            String head = git(root, "rev-parse", "HEAD").strip();
+            byte[] mbox = git(root, "format-patch", "--stdout", base + ".." + head).getBytes(StandardCharsets.UTF_8);
+            var receipt = M3GitHubPatchBootstrap.inspectMbox(mbox, head);
+            check(receipt.commits() == 2 && receipt.fileSections() == 2, "actual Git multi-commit mbox");
+            Path patchFile = root.resolve("candidate.patch");
+            Files.write(patchFile, mbox);
+            git(root, "checkout", "-q", base);
+            git(root, "apply", "--check", "--index", patchFile.toString());
+            git(root, "apply", "--index", patchFile.toString());
+            check(Files.readString(path).equals("one\ntwo\nthree\nfour\n"),
+                    "actual Git indexed patch application");
+        } finally {
+            try (var stream = Files.walk(root)) {
+                for (Path path : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
+    }
+
+    private static String git(Path directory, String... arguments) throws Exception {
+        String[] command = new String[arguments.length + 1];
+        command[0] = "git";
+        System.arraycopy(arguments, 0, command, 1, arguments.length);
+        return new String(gitBytes(directory, command), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] gitBytes(Path directory, String... command) throws Exception {
+        Process process = new ProcessBuilder(command).directory(directory.toFile())
+                .redirectErrorStream(true).start();
+        byte[] result = process.getInputStream().readAllBytes();
+        if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS) || process.exitValue() != 0) {
+            process.destroyForcibly();
+            throw new IOException("Git fixture failed: " + String.join(" ", command));
+        }
+        return result;
+    }
+
     public static void main(String[] args) throws Exception {
         String head = "a".repeat(40);
         String patch = "From " + head + " Mon Sep 17 00:00:00 2001\nSubject: [PATCH] foo\n---\n"
@@ -55,6 +109,7 @@ public final class M3GitHubPatchBootstrapSelfTest {
         } finally {
             Files.walk(temp).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {try {Files.deleteIfExists(p);} catch (IOException e) {throw new RuntimeException(e);} });
         }
+        patchCycleAgainstRealGit();
         check(M3GitHubPatchBootstrap.sha256("abc".getBytes(StandardCharsets.UTF_8)).equals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "SHA-256 known answer");
         System.out.println("PASS " + tests + " Maven GitHub patch bootstrap checks");
     }
