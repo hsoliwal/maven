@@ -18,6 +18,17 @@
  */
 package org.apache.maven.plugin.internal;
 
+/*
+ * Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+ * Add opt-in invocation-scoped shared-AST build-fact receipts without changing default compilation.
+ */
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.util.Base64;
+import java.util.UUID;
+
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.PluginConfigurationException;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
@@ -38,6 +49,7 @@ import org.codehaus.plexus.configuration.PlexusConfiguration;
 final class M3AstCompilerConfiguration {
     private static final String ENABLED_PROPERTY = "m3.ast";
     private static final String PLUGIN_ARGUMENT = "-Xplugin:M3AST";
+    private static final String BUILD_FACTS_PROPERTY = "m3.ast.buildFacts";
 
     private M3AstCompilerConfiguration() {}
 
@@ -47,8 +59,16 @@ final class M3AstCompilerConfiguration {
         PluginDescriptor plugin = mojo.getPluginDescriptor();
         if (!"org.apache.maven.plugins".equals(plugin.getGroupId())
                 || !"maven-compiler-plugin".equals(plugin.getArtifactId())
-                || !("compile".equals(mojo.getGoal()) || "testCompile".equals(mojo.getGoal()))
-                || !isEnabled(session)) {
+                || !("compile".equals(mojo.getGoal()) || "testCompile".equals(mojo.getGoal()))) {
+            return configuration;
+        }
+        boolean buildFacts = Boolean.parseBoolean(property(session, BUILD_FACTS_PROPERTY));
+        String astSetting = property(session, ENABLED_PROPERTY);
+        if (buildFacts && astSetting != null && !Boolean.parseBoolean(astSetting)) {
+            throw new PluginConfigurationException(
+                    plugin, "m3.ast.buildFacts=true conflicts with an explicit m3.ast=false setting");
+        }
+        if (!buildFacts && !Boolean.parseBoolean(astSetting)) {
             return configuration;
         }
 
@@ -60,10 +80,29 @@ final class M3AstCompilerConfiguration {
         }
 
         PlexusConfiguration arguments = configuration.getChild("compilerArgs", false);
+        int existingIndex = -1;
+        String existingArgument = null;
         if (arguments != null) {
-            for (PlexusConfiguration argument : arguments.getChildren()) {
-                if (selectsM3Ast(effectiveValue(argument, evaluator, plugin))) {
-                    return configuration;
+            PlexusConfiguration[] children = arguments.getChildren();
+            for (int index = 0; index < children.length; index++) {
+                String value = effectiveValue(children[index], evaluator, plugin);
+                if (selectsM3Ast(value)) {
+                    if (!buildFacts) {
+                        return configuration;
+                    }
+                    if (existingIndex >= 0) {
+                        throw new PluginConfigurationException(
+                                plugin, "m3.ast.buildFacts requires a single -Xplugin:M3AST argument");
+                    }
+                    for (String option : value.split("\\s+")) {
+                        if (option.startsWith("facts64=") || option.startsWith("factsid=")) {
+                            throw new PluginConfigurationException(
+                                    plugin,
+                                    "m3.ast.buildFacts owns facts64/factsid; remove explicit receipt arguments");
+                        }
+                    }
+                    existingIndex = index;
+                    existingArgument = value;
                 }
             }
         }
@@ -72,9 +111,17 @@ final class M3AstCompilerConfiguration {
         // rather than mutating an execution/project model or a transient child wrapper.
         PlexusConfiguration configured = copy(configuration);
         PlexusConfiguration configuredArguments = configured.getChild("compilerArgs", true);
-        PlexusConfiguration argument = new DefaultPlexusConfiguration("arg");
-        argument.setValue(PLUGIN_ARGUMENT);
-        configuredArguments.addChild(argument);
+        String argumentValue = existingArgument == null ? PLUGIN_ARGUMENT : existingArgument;
+        if (buildFacts) {
+            argumentValue += buildFactsArguments(session, mojo, plugin);
+        }
+        if (existingIndex >= 0) {
+            configuredArguments.getChildren()[existingIndex].setValue(argumentValue);
+        } else {
+            PlexusConfiguration argument = new DefaultPlexusConfiguration("arg");
+            argument.setValue(argumentValue);
+            configuredArguments.addChild(argument);
+        }
         return configured;
     }
 
@@ -96,18 +143,58 @@ final class M3AstCompilerConfiguration {
         }
     }
 
-    private static boolean isEnabled(MavenSession session) {
-        String value = session.getUserProperties().getProperty(ENABLED_PROPERTY);
+    private static String property(MavenSession session, String name) {
+        String value = session.getUserProperties().getProperty(name);
         if (value == null) {
             MavenProject project = session.getCurrentProject();
             if (project != null) {
-                value = project.getProperties().getProperty(ENABLED_PROPERTY);
+                value = project.getProperties().getProperty(name);
             }
         }
         if (value == null) {
-            value = session.getSystemProperties().getProperty(ENABLED_PROPERTY);
+            value = session.getSystemProperties().getProperty(name);
         }
-        return Boolean.parseBoolean(value);
+        return value;
+    }
+
+    /**
+     * Ask the existing javac plugin to publish one PARTIAL fact receipt. The UUID
+     * is caller-owned freshness evidence, not proof that the dependency graph is
+     * complete. No directory or receipt is created while configuring a mojo.
+     */
+    private static String buildFactsArguments(MavenSession session, MojoDescriptor mojo, PluginDescriptor plugin)
+            throws PluginConfigurationException {
+        MavenProject project = session.getCurrentProject();
+        if (project == null
+                || project.getBuild() == null
+                || project.getBuild().getDirectory() == null
+                || project.getBuild().getDirectory().isBlank()) {
+            throw new PluginConfigurationException(
+                    plugin, "m3.ast.buildFacts requires a current project with a build directory");
+        }
+        try {
+            Path directory = Path.of(project.getBuild().getDirectory());
+            if (!directory.isAbsolute()) {
+                if (project.getBasedir() == null) {
+                    throw new PluginConfigurationException(
+                            plugin, "m3.ast.buildFacts requires a project base directory for relative build output");
+                }
+                directory = project.getBasedir().toPath().resolve(directory);
+            }
+            String invocation = UUID.randomUUID().toString();
+            Path output = directory
+                    .toAbsolutePath()
+                    .normalize()
+                    .resolve("m3-ast-build-facts")
+                    .resolve(mojo.getGoal() + "-" + invocation + ".tsv");
+            String encoded = Base64.getUrlEncoder()
+                    .withoutPadding()
+                    .encodeToString(output.toString().getBytes(StandardCharsets.UTF_8));
+            return " facts64=" + encoded + " factsid=" + invocation;
+        } catch (InvalidPathException failure) {
+            throw new PluginConfigurationException(
+                    plugin, "m3.ast.buildFacts requires a valid build output path", (Throwable) failure);
+        }
     }
 
     private static boolean selectsM3Ast(String argument) {

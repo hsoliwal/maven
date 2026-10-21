@@ -18,6 +18,9 @@
  */
 package org.apache.maven.internal.impl;
 
+// Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Expose session-owned active reactor queries through the existing ProjectManager API.
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
@@ -32,10 +35,16 @@ import org.apache.maven.api.ProjectScope;
 import org.apache.maven.api.SourceRoot;
 import org.apache.maven.api.model.Source;
 import org.apache.maven.api.services.ArtifactManager;
+import org.apache.maven.api.services.ProjectManager;
+import org.apache.maven.execution.DefaultMavenExecutionRequest;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.graph.DefaultGraphBuilder;
 import org.apache.maven.impl.DefaultModelVersionParser;
 import org.apache.maven.impl.DefaultSourceRoot;
 import org.apache.maven.impl.DefaultVersionParser;
 import org.apache.maven.project.MavenProject;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -395,6 +404,183 @@ class DefaultProjectManagerTest {
         assertTrue(allArtifacts.contains(moduleJarProduced));
         assertFalse(allArtifacts.contains(jarProduced));
     }
+
+    @Test
+    void reactorQueriesPreserveDirectionTransitivityBuildOrderAndImmutability() {
+        MavenProject base = reactorProject("base");
+        MavenProject right = reactorProject("right", base);
+        MavenProject left = reactorProject("left", base);
+        MavenProject leaf = reactorProject("leaf", left, right);
+        MavenProject unrelated = reactorProject("unrelated");
+        List<MavenProject> all = List.of(base, right, left, leaf, unrelated);
+        ReactorFixture fixture = reactor(all, all);
+        Project seed = fixture.session().getProject(base);
+        Project end = fixture.session().getProject(leaf);
+        var graph = fixture.maven().getProjectDependencyGraph();
+        List<Project> direct = fixture.manager().getDownstreamProjects(seed, false);
+        List<Project> transitive = fixture.manager().getDownstreamProjects(seed, true);
+        assertEquals(List.of("right", "left"), reactorIds(direct));
+        assertEquals(List.of("right", "left", "leaf"), reactorIds(transitive));
+        assertEquals(List.of("right", "left"), reactorIds(fixture.manager().getUpstreamProjects(end, false)));
+        assertEquals(
+                List.of("base", "right", "left"), reactorIds(fixture.manager().getUpstreamProjects(end, true)));
+        assertTrue(fixture.manager().getUpstreamProjects(seed, true).isEmpty());
+        assertTrue(fixture.manager().getDownstreamProjects(end, true).isEmpty());
+        assertSame(fixture.session().getProject(right), direct.get(0));
+        assertThrows(UnsupportedOperationException.class, () -> direct.add(seed));
+        assertThrows(UnsupportedOperationException.class, transitive::clear);
+        assertSame(graph, fixture.maven().getProjectDependencyGraph());
+        assertEquals(all, fixture.maven().getProjects());
+        assertEquals(all, fixture.maven().getAllProjects());
+    }
+
+    @Test
+    void reactorQueriesRetainFilteredDirectRelationshipsAndRefuseInactiveSeeds() {
+        MavenProject base = reactorProject("base");
+        MavenProject excluded = reactorProject("excluded", base);
+        MavenProject leaf = reactorProject("leaf", excluded);
+        ReactorFixture fixture = reactor(List.of(base, excluded, leaf), List.of(base, leaf));
+        Project seed = fixture.session().getProject(base);
+        Project end = fixture.session().getProject(leaf);
+        for (boolean transitive : List.of(false, true)) {
+            assertEquals(List.of("leaf"), reactorIds(fixture.manager().getDownstreamProjects(seed, transitive)));
+            assertEquals(List.of("base"), reactorIds(fixture.manager().getUpstreamProjects(end, transitive)));
+        }
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> fixture.manager().getDownstreamProjects(fixture.session().getProject(excluded), true));
+        assertEquals(List.of(base, leaf), fixture.maven().getProjects());
+        assertEquals(List.of(base, excluded, leaf), fixture.maven().getAllProjects());
+    }
+
+    @Test
+    void reactorQueriesRetainOriginalPluginOrderingEdges() {
+        MavenProject tool = reactorProject("reactor-tool");
+        MavenProject consumer = reactorProject("consumer");
+        org.apache.maven.model.Plugin plugin = new org.apache.maven.model.Plugin();
+        plugin.setGroupId(tool.getGroupId());
+        plugin.setArtifactId(tool.getArtifactId());
+        plugin.setVersion(tool.getVersion());
+        org.apache.maven.model.Build build = new org.apache.maven.model.Build();
+        build.addPlugin(plugin);
+        consumer.setBuild(build);
+        ReactorFixture fixture = reactor(List.of(consumer, tool), List.of(consumer, tool));
+        assertEquals(
+                List.of("consumer"),
+                reactorIds(fixture.manager()
+                        .getDownstreamProjects(fixture.session().getProject(tool), false)));
+        assertEquals(
+                List.of("reactor-tool"),
+                reactorIds(
+                        fixture.manager().getUpstreamProjects(fixture.session().getProject(consumer), false)));
+    }
+
+    @Test
+    void reactorQueriesRejectForeignSameCoordinatesAndTemporaryProjectClones() {
+        MavenProject base = reactorProject("base");
+        ReactorFixture fixture = reactor(List.of(base), List.of(base));
+        MavenProject foreign = reactorProject("base");
+        ReactorFixture other = reactor(List.of(foreign), List.of(foreign));
+        Project otherGeneration = other.session().getProject(foreign);
+        assertThrows(
+                IllegalArgumentException.class, () -> fixture.manager().getUpstreamProjects(otherGeneration, true));
+        Project clone = new DefaultProject(fixture.session(), foreign);
+        assertThrows(IllegalArgumentException.class, () -> fixture.manager().getDownstreamProjects(clone, true));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> fixture.manager().getDownstreamProjects(Mockito.mock(Project.class), true));
+        assertThrows(NullPointerException.class, () -> fixture.manager().getUpstreamProjects(null, true));
+    }
+
+    @Test
+    void reactorQueriesAcceptFacadesOfTheSameNativeSessionAndObserveCurrentGraph() {
+        MavenProject base = reactorProject("base");
+        MavenProject first = reactorProject("first", base);
+        ReactorFixture fixture = reactor(List.of(base, first), List.of(base, first));
+        DefaultSession derived = reactorApiSession(fixture.maven());
+        Project seed = derived.getProject(base);
+        List<Project> old = fixture.manager().getDownstreamProjects(seed, true);
+        assertEquals(List.of("first"), reactorIds(old));
+        MavenProject replacement = reactorProject("replacement", base);
+        fixture.maven().setAllProjects(List.of(base, replacement));
+        fixture.maven().setProjects(List.of(base, replacement));
+        installReactorGraph(fixture.maven());
+        assertEquals(List.of("replacement"), reactorIds(fixture.manager().getDownstreamProjects(seed, true)));
+        assertEquals(List.of("first"), reactorIds(old));
+        assertThrows(IllegalArgumentException.class, () -> fixture.manager().getUpstreamProjects(old.get(0), true));
+    }
+
+    @Test
+    void reactorQueriesDistinguishMissingGraphFromAnEmptyClosure() {
+        MavenProject base = reactorProject("base");
+        ReactorFixture fixture = reactor(List.of(base), List.of(base));
+        Project seed = fixture.session().getProject(base);
+        assertTrue(fixture.manager().getDownstreamProjects(seed, true).isEmpty());
+        fixture.maven().setProjectDependencyGraph(null);
+        assertThrows(IllegalStateException.class, () -> fixture.manager().getDownstreamProjects(seed, true));
+        assertThrows(IllegalStateException.class, () -> fixture.manager().getUpstreamProjects(seed, false));
+    }
+
+    @Test
+    void alternateProjectManagerDefaultsRefuseUnsupportedReactorQueries() {
+        ProjectManager alternate = Mockito.mock(ProjectManager.class, Mockito.CALLS_REAL_METHODS);
+        Project seed = Mockito.mock(Project.class);
+        assertThrows(UnsupportedOperationException.class, () -> alternate.getUpstreamProjects(seed, true));
+        assertThrows(UnsupportedOperationException.class, () -> alternate.getDownstreamProjects(seed, false));
+    }
+
+    private static List<String> reactorIds(List<Project> projects) {
+        return projects.stream().map(Project::artifactId).toList();
+    }
+
+    private static MavenProject reactorProject(String name, MavenProject... dependencies) {
+        MavenProject project = new MavenProject();
+        project.setGroupId("org.apache.maven.reactor.test");
+        project.setArtifactId(name);
+        project.setVersion("1");
+        project.setFile(Path.of("target", "reactor-query", name, "pom.xml")
+                .toAbsolutePath()
+                .toFile());
+        List<org.apache.maven.model.Dependency> edges = new java.util.ArrayList<>();
+        for (MavenProject dependency : dependencies) {
+            org.apache.maven.model.Dependency edge = new org.apache.maven.model.Dependency();
+            edge.setGroupId(dependency.getGroupId());
+            edge.setArtifactId(dependency.getArtifactId());
+            edge.setVersion(dependency.getVersion());
+            edges.add(edge);
+        }
+        project.setDependencies(edges);
+        return project;
+    }
+
+    private static ReactorFixture reactor(List<MavenProject> all, List<MavenProject> selected) {
+        MavenSession maven = new MavenSession(
+                null, new DefaultRepositorySystemSession(h -> false), new DefaultMavenExecutionRequest(), null);
+        maven.setAllProjects(all);
+        maven.setProjects(selected);
+        installReactorGraph(maven);
+        DefaultSession api = reactorApiSession(maven);
+        return new ReactorFixture(maven, api, new DefaultProjectManager(api, Mockito.mock(ArtifactManager.class)));
+    }
+
+    private static void installReactorGraph(MavenSession maven) {
+        // The original builder constructs the actual filtered graph. No graph is mocked.
+        var result = new DefaultGraphBuilder().build(maven);
+        assertFalse(result.hasErrors());
+        maven.setProjectDependencyGraph(result.get());
+    }
+
+    private static DefaultSession reactorApiSession(MavenSession maven) {
+        Packaging packaging = Mockito.mock(Packaging.class);
+        return new DefaultSession(maven, Mockito.mock(RepositorySystem.class), List.of(), null, null, null) {
+            @Override
+            public Packaging requirePackaging(String id) {
+                return packaging;
+            }
+        };
+    }
+
+    private record ReactorFixture(MavenSession maven, DefaultSession session, DefaultProjectManager manager) {}
 
     /**
      * Verifies that {@code projectManager.attachArtifact(…)} throws an exception,
