@@ -41,6 +41,8 @@ public final class M3ChromeAiReviewPacketSelfTest {
         Path receipt = M3ChromeAiReviewPacket.write(root, "hsoliwal/M3jdk21", 1621,
                 BASE, HEAD, sha, patch);
         String contents = Files.readString(receipt);
+        require(Files.readString(receipt.getParent().resolve(".gitignore")).equals("*\n"),
+                "local source packet excluded from default Git staging");
         require(receipt.getParent().equals(root.resolve(".m3/patch-ai-reviews")), "receipt stored below project .m3");
         require(contents.contains("\"schema\":\"M3-CHROME-HUNK-REVIEW/1\""), "schema");
         require(contents.contains("\"patchSha256\":\"" + sha + "\""), "pin");
