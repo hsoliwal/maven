@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Hitesh Soliwal and contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Maven 4 M3JDK native build tools
+on:
+  pull_request:
+    paths:
+      - 'api/maven-api-core/src/main/java/org/apache/maven/api/services/M3BuildToolsService.java'
+      - 'impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultM3BuildToolsService.java'
+      - 'impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultM3BuildToolsServiceTest.java'
+      - '.github/workflows/m3-maven-buildtools.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-maven-api-and-impl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Exercise the original Maven 4 API/DI/JUnit reactor
+        run: |
+          mvn -B -ntp -pl impl/maven-impl -am \
+            -Dtest=DefaultM3BuildToolsServiceTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
