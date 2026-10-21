@@ -103,3 +103,21 @@ against the pinned source tree before production promotion.
 The Maven hook is source-compatible with the fork's existing Java 17 CLI
 baseline and leaves Maven's plugin classloaders, reactor dependencies,
 compiler tasks and ordinary default lifecycle unchanged.
+
+## Optional Chrome AI conflict review — pinned, user-activated
+
+When `git apply --check --index` fails after an otherwise complete SHA-256-pinned GitHub PR intake, this Maven fork can create a local *unverified suggestion request*, without applying the patch. The original Git error still aborts the explicit patch check; ordinary Maven builds remain unchanged.
+
+```sh
+# Inspect the pinned PR and, only on Git hunk conflict, write a bounded
+# local review packet; no patch is applied, no Chrome process is launched.
+mvn -Dm3.patch.check=true -Dm3.chrome.ai.review=true verify
+```
+
+The new `M3ChromeAiReviewPacket` refuses mismatched source head/digest, non-UTF-8, NUL, symlinked `.m3` custody and patches exceeding 20 KiB. It creates one immutable `.m3/patch-ai-reviews/pr-<number>-<sha12>.json` with `M3-CHROME-HUNK-REVIEW/1`, original GitHub base/head/patch SHA-256, the exact bounded patch bytes and `mutationAuthorized=false`. An existing receipt is never overwritten. The source-bearing review directory receives a local `*` `.gitignore` to prevent accidental `git add .` of the JSON, and any replaced/symlinked ignore policy is refused. It writes *only* after the user explicitly enables both patch checking and Chrome review, and **never** sends data to an AI server or over an arbitrary network endpoint.
+
+Open the existing [Synexia Chrome MV3 side panel](https://github.com/hsoliwal/com.synexia/pull/12721) and choose the local packet JSON. Its browser-native `LanguageModel` (on-device Gemini Nano Prompt API) is invoked only after clicking Analyze and after checking availability. A SHA-256 mismatch, edited source text, unsupported API or unavailable model results in a HOLD; no source is changed. The suggested repair is exported as an **AI_UNVERIFIED** JSON receipt, then evaluated by the canonical source-sealed OpenRewrite/Maven recipe compiler, `M3HunkResolver`, Java/JNI/ABI tests and active-tree code-loss checks. Never apply a model-generated edit directly.
+
+Chrome's on-device Prompt API requires eligible desktop Chrome and a downloaded compatible model. No proprietary Chrome/Gemini model weights, Chrome2api binaries, user tokens, or external AI credentials are included in this Maven fork. [Chrome's official Prompt API reference](https://developer.chrome.com/docs/ai/prompt-api) describes availability and user activation. The user may instead paste a held hunk manually, which is marked unsealed.
+
+**Verification status for this increment:** `javac --release 17 -Xlint:all -Werror` passed and the existing 21-check Git bootstrap plus 16 new packet checks passed in isolated local execution. Maven 4 full reactor/JUnit, live GitHub patch fetch, installed Chrome extension, model inference, product M3JDK21 HotSpot/JNI/jtreg and cross-platform runs are NOT_RUN. This is draft/source-tested, not automatic fleet merge authority.

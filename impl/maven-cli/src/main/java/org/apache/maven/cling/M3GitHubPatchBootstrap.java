@@ -75,7 +75,21 @@ public final class M3GitHubPatchBootstrap {
             Files.write(temporary, patch);
             // The Git preflight is the mechanical donor. Semantic overlaps are
             // processed only by the canonical Synexia per-file/hunk recipe.
-            run(root, "git", "apply", "--check", "--index", temporary.toString());
+            try {
+                run(root, "git", "apply", "--check", "--index", temporary.toString());
+            } catch (IOException unmerged) {
+                if (setting(args, "m3.chrome.ai.review")) {
+                    try {
+                        Path review = M3ChromeAiReviewPacket.write(root, plan.repository(),
+                                plan.pr(), plan.base(), plan.head(), digest, patch);
+                        // Only a safe local receipt path is printed, never source, token, or model text.
+                        System.err.println("M3_CHROME_AI_REVIEW_PACKET=" + root.relativize(review));
+                    } catch (IOException packetError) {
+                        unmerged.addSuppressed(packetError);
+                    }
+                }
+                throw unmerged; // Chrome AI never authorizes an automatic retry/apply.
+            }
             if (apply) {
                 verifyClean(root);
                 if (!plan.head().equals(remoteHead(root, plan))) throw new IOException("M3_PATCH_HEAD_MOVED_AT_APPLY");
