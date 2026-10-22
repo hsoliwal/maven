@@ -47,10 +47,18 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
 
         private static int compare(Identity left, Identity right) {
             int difference = left.projectId().compareTo(right.projectId());
-            if (difference == 0) difference = left.sourceUri().compareTo(right.sourceUri());
-            if (difference == 0) difference = left.sourceSha256().compareTo(right.sourceSha256());
-            if (difference == 0) difference = left.contextSha256().compareTo(right.contextSha256());
-            if (difference == 0) difference = left.compilerId().compareTo(right.compilerId());
+            if (difference == 0) {
+                difference = left.sourceUri().compareTo(right.sourceUri());
+            }
+            if (difference == 0) {
+                difference = left.sourceSha256().compareTo(right.sourceSha256());
+            }
+            if (difference == 0) {
+                difference = left.contextSha256().compareTo(right.contextSha256());
+            }
+            if (difference == 0) {
+                difference = left.compilerId().compareTo(right.compilerId());
+            }
             return difference;
         }
         /** Binary search over the stable sorted identity lane. */
@@ -59,9 +67,14 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             while (low <= high) {
                 int mid = low + ((high - low) >>> 1);
                 int difference = compare(identities[mid], identity);
-                if (difference == 0) return mid;
-                if (difference < 0) low = mid + 1;
-                else high = mid - 1;
+                if (difference == 0) {
+                    return mid;
+                }
+                if (difference < 0) {
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
             }
             return -low - 1;
         }
@@ -73,7 +86,9 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
                 }
                 return;
             }
-            if (count == MAX_IMAGES) throw new IOException("compiler facts session budget exceeded");
+            if (count == MAX_IMAGES) {
+                throw new IOException("compiler facts session budget exceeded");
+            }
             if (count == images.length) {
                 identities = Arrays.copyOf(identities, Math.min(MAX_IMAGES, count * 2));
                 images = Arrays.copyOf(images, identities.length);
@@ -91,10 +106,13 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
         }
         synchronized void revoke(Identity identity) {
             int index = find(identity);
-            if (index < 0) return;
+            if (index < 0) {
+                return;
+            }
             System.arraycopy(identities, index + 1, identities, index, count - index - 1);
             System.arraycopy(images, index + 1, images, index, count - index - 1);
-            identities[--count] = null; images[count] = null;
+            identities[--count] = null;
+            images[count] = null;
         }
     }
 
@@ -115,7 +133,9 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             throw new IllegalArgumentException("invalid required capabilities");
         }
         Store existing = session.getData().get(KEY);
-        if (existing == null) return Optional.empty();
+        if (existing == null) {
+            return Optional.empty();
+        }
         Optional<Image> found = existing.findCopy(identity);
         if (found.isEmpty() || !found.get().schema().equals(requiredSchema) ||
                 (found.get().capabilities() & requiredCapabilities) != requiredCapabilities) {
@@ -129,7 +149,9 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Store existing = session.getData().get(KEY);
-        if (existing != null) existing.revoke(identity);
+        if (existing != null) {
+            existing.revoke(identity);
+        }
     }
 
     private static Store store(Session session) {
@@ -152,12 +174,18 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             byte[] buffer = new byte[16_384];
             long readTotal = 0L;
             for (int read; (read = in.read(buffer)) != -1;) {
-                if (read == 0) throw new IOException("facts image read stalled");
+                if (read == 0) {
+                    throw new IOException("facts image read stalled");
+                }
                 readTotal += read;
-                if (readTotal > MAX_IMAGE_BYTES) throw new IOException("facts image exceeded byte budget");
+                if (readTotal > MAX_IMAGE_BYTES) {
+                    throw new IOException("facts image exceeded byte budget");
+                }
                 checksum.update(buffer, 0, read);
             }
-            if (readTotal != stat.size()) throw new IOException("facts image changed during read");
+            if (readTotal != stat.size()) {
+                throw new IOException("facts image changed during read");
+            }
         }
         String actual = java.util.HexFormat.of().formatHex(checksum.digest());
         if (!actual.equals(image.imageSha256())) {
