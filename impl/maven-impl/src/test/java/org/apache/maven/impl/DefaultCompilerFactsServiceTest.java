@@ -100,10 +100,16 @@ class DefaultCompilerFactsServiceTest {
     private static final class Memory implements SessionData {
         private final Map<Key<?>, Object> entries = new ConcurrentHashMap<>();
         @Override public synchronized <T> void set(Key<T> key, T value) {
-            if (value == null) entries.remove(key); else entries.put(key, value);
+            if (value == null) {
+                entries.remove(key);
+            } else {
+                entries.put(key, value);
+            }
         }
         @Override public synchronized <T> boolean replace(Key<T> key, T before, T after) {
-            if (entries.get(key) != before) return false;
+            if (entries.get(key) != before) {
+                return false;
+            }
             set(key, after);
             return true;
         }
