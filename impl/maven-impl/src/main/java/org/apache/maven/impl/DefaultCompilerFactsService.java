@@ -1,7 +1,20 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this work.
- * The ASF licenses this file to you under the Apache License, Version 2.0.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.impl;
 
@@ -10,8 +23,8 @@ import java.io.InputStream;
 import java.nio.channels.Channels;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,6 +32,7 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+
 import org.apache.maven.api.Session;
 import org.apache.maven.api.SessionData;
 import org.apache.maven.api.di.Named;
@@ -78,6 +92,7 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             }
             return -low - 1;
         }
+
         synchronized void publish(Image image) throws IOException {
             int old = find(image.identity());
             if (old >= 0) {
@@ -100,10 +115,12 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             images[insertion] = image;
             count++;
         }
+
         synchronized Optional<Image> findCopy(Identity identity) {
             int index = find(identity);
             return index < 0 ? Optional.empty() : Optional.of(images[index]);
         }
+
         synchronized void revoke(Identity identity) {
             int index = find(identity);
             if (index < 0) {
@@ -116,20 +133,23 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
         }
     }
 
-    @Override public void publish(Session session, Image image) throws IOException {
+    @Override
+    public void publish(Session session, Image image) throws IOException {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(image, "image");
         verify(image);
         store(session).publish(image);
     }
 
-    @Override public Optional<Image> find(Session session, Identity identity,
-            String requiredSchema, int requiredCapabilities) throws IOException {
+    @Override
+    public Optional<Image> find(Session session, Identity identity, String requiredSchema, int requiredCapabilities)
+            throws IOException {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(requiredSchema, "requiredSchema");
-        if (requiredSchema.isBlank() || requiredCapabilities <= 0 ||
-                (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
+        if (requiredSchema.isBlank()
+                || requiredCapabilities <= 0
+                || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
             throw new IllegalArgumentException("invalid required capabilities");
         }
         Store existing = session.getData().get(KEY);
@@ -137,15 +157,17 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
             return Optional.empty();
         }
         Optional<Image> found = existing.findCopy(identity);
-        if (found.isEmpty() || !found.get().schema().equals(requiredSchema) ||
-                (found.get().capabilities() & requiredCapabilities) != requiredCapabilities) {
+        if (found.isEmpty()
+                || !found.get().schema().equals(requiredSchema)
+                || (found.get().capabilities() & requiredCapabilities) != requiredCapabilities) {
             return Optional.empty();
         }
         verify(found.orElseThrow());
         return found;
     }
 
-    @Override public void revoke(Session session, Identity identity) {
+    @Override
+    public void revoke(Session session, Identity identity) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Store existing = session.getData().get(KEY);
@@ -161,19 +183,21 @@ public final class DefaultCompilerFactsService implements CompilerFactsService {
     /** Verify actual original provider bytes, not timestamps or filename alone. */
     private static void verify(Image image) throws IOException {
         Path path = image.image();
-        BasicFileAttributes stat = Files.readAttributes(
-                path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        BasicFileAttributes stat = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         if (!stat.isRegularFile() || stat.size() > MAX_IMAGE_BYTES) {
             throw new IOException("compiler facts file is not an admitted regular bounded image");
         }
         MessageDigest checksum;
-        try { checksum = MessageDigest.getInstance("SHA-256"); }
-        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
-        try (InputStream in = Channels.newInputStream(Files.newByteChannel(
-                path, Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)))) {
+        try {
+            checksum = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new AssertionError(impossible);
+        }
+        try (InputStream in = Channels.newInputStream(
+                Files.newByteChannel(path, Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)))) {
             byte[] buffer = new byte[16_384];
             long readTotal = 0L;
-            for (int read; (read = in.read(buffer)) != -1;) {
+            for (int read; (read = in.read(buffer)) != -1; ) {
                 if (read == 0) {
                     throw new IOException("facts image read stalled");
                 }
