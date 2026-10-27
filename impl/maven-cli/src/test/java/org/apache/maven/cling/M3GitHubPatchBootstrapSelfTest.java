@@ -60,6 +60,8 @@ public final class M3GitHubPatchBootstrapSelfTest {
         Path root = Files.createTempDirectory("m3-pr-patch-git-");
         try {
             git(root, "init", "-q");
+            // Keep the private fixture byte-exact across Git for Windows and Unix.
+            git(root, "config", "core.autocrlf", "false");
             git(root, "config", "user.email", "tester@example.org");
             git(root, "config", "user.name", "M3 Test");
             Path path = Files.createDirectories(root.resolve("src")).resolve("Foo.java");
@@ -79,6 +81,7 @@ public final class M3GitHubPatchBootstrapSelfTest {
             Path patchFile = root.resolve("candidate.patch");
             Files.write(patchFile, mbox);
             git(root, "checkout", "-q", base);
+            check(Files.readString(path).equals("one\\ntwo\\n"), "Git checkout retains fixture LF bytes");
             git(root, "apply", "--check", "--index", patchFile.toString());
             git(root, "apply", "--index", patchFile.toString());
             check(Files.readString(path).equals("one\ntwo\nthree\nfour\n"), "actual Git indexed patch application");
