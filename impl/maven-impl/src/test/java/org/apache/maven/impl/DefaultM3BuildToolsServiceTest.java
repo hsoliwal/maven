@@ -94,6 +94,26 @@ class DefaultM3BuildToolsServiceTest {
     }
 
     @Test
+    void dependencyFactsAcceptLfAndCrlfButRejectMixedLineEndings() throws Exception {
+        Path clazz = temp.resolve("LineEndings.class");
+        Files.write(clazz, new byte[] {1, 2, 3, 4});
+        Path runtime = Path.of(System.getProperty("java.home"));
+        var request = new M3BuildToolsService.Request(runtime, clazz, false);
+        for (String ending : new String[] {"\n", "\r\n"}) {
+            NativeProvider provider = new NativeProvider(ending, ending);
+            var service = new DefaultM3BuildToolsService(() -> Optional.of(provider), () -> runtime);
+            assertEquals("CLASS", service.dependencies(session(), request).orElseThrow().scope());
+            assertEquals(1, provider.invocations);
+        }
+        for (String[] endings : new String[][] {{"\r\n", "\n"}, {"\n", "\r\n"}}) {
+            NativeProvider provider = new NativeProvider(endings[0], endings[1]);
+            var service = new DefaultM3BuildToolsService(() -> Optional.of(provider), () -> runtime);
+            assertThrows(IOException.class, () -> service.dependencies(session(), request));
+            assertEquals(1, provider.invocations);
+        }
+    }
+
+    @Test
     void wrongToolchainSymlinkAndMissingProviderFailClosed() throws Exception {
         Path clazz = temp.resolve("Source.class");
         Files.write(clazz, new byte[] {9, 9});
@@ -175,6 +195,17 @@ class DefaultM3BuildToolsServiceTest {
 
     private static final class NativeProvider implements ToolProvider {
         int invocations;
+        private final String headerLineEnding;
+        private final String rowLineEnding;
+
+        NativeProvider() {
+            this(System.lineSeparator(), System.lineSeparator());
+        }
+
+        NativeProvider(String headerLineEnding, String rowLineEnding) {
+            this.headerLineEnding = headerLineEnding;
+            this.rowLineEnding = rowLineEnding;
+        }
 
         @Override
         public String name() {
@@ -188,9 +219,9 @@ class DefaultM3BuildToolsServiceTest {
                 Path source = Path.of(args[args.length - 1]);
                 byte[] digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(source));
                 String hash = java.util.HexFormat.of().formatHex(digest);
-                out.println("M3JDK21_CLASS_DEPS_V1\t" + (args.length == 2 ? "PUBLIC_API" : "CLASS") + "\t" + hash
-                        + "\tcC5Qcm9iZQ\t1");
-                out.println("D\tamF2YS51dGlsLkxpc3Q");
+                out.print("M3JDK21_CLASS_DEPS_V1\t" + (args.length == 2 ? "PUBLIC_API" : "CLASS") + "\t" + hash
+                        + "\tcC5Qcm9iZQ\t1" + headerLineEnding);
+                out.print("D\tamF2YS51dGlsLkxpc3Q" + rowLineEnding);
                 return 0;
             } catch (Exception error) {
                 err.println("failed");
