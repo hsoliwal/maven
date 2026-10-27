@@ -314,6 +314,19 @@ under the License.
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <!-- The opt-in M3 patch bootstrap uses java.net.http from the named CLI module.
+               Javadoc's JPMS source pass needs the same explicit module readability;
+               this is documentation-only and does not change Maven runtime behavior. -->
+          <additionalOptions>
+            <additionalOption>--add-modules=java.net.http</additionalOption>
+            <additionalOption>--add-reads=org.apache.maven.cling=java.net.http</additionalOption>
+          </additionalOptions>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <properties>
