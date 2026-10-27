@@ -11,9 +11,20 @@ import java.util.Properties;
 /** Self-contained Java 17 test runner for deterministic tests without Maven dependency downloading. */
 public final class M3GitHubPatchBootstrapSelfTest {
     private static int tests;
-    private static void check(boolean condition, String reason) { ++tests; if (!condition) throw new AssertionError(reason); }
+    private static void check(boolean condition, String reason) {
+        ++tests;
+        if (!condition) {
+            throw new AssertionError(reason);
+        }
+    }
     private static void rejects(String name, Throwing test) throws Exception {
-        ++tests; try {test.run();throw new AssertionError("accepted: " + name);} catch (IOException expected) { /* refusal */ }
+        ++tests;
+        try {
+            test.run();
+            throw new AssertionError("accepted: " + name);
+        } catch (IOException expected) {
+            // Expected fail-closed refusal.
+        }
     }
     @FunctionalInterface private interface Throwing { void run() throws Exception; }
     /** An actual two-commit Git mbox must replay to its final content, without network. */
@@ -92,8 +103,10 @@ public final class M3GitHubPatchBootstrapSelfTest {
         check(M3GitHubPatchBootstrap.setting(new String[]{"-Dm3.patch.apply=true"}, "m3.patch.apply"), "explicit apply");
         Properties valid = new Properties();
         valid.setProperty("repository", "hsoliwal/M3jdk21");
-        valid.setProperty("pr", "1621"); valid.setProperty("head", head);
-        valid.setProperty("base", "b".repeat(40)); valid.setProperty("patchSha256", "c".repeat(64));
+        valid.setProperty("pr", "1621");
+        valid.setProperty("head", head);
+        valid.setProperty("base", "b".repeat(40));
+        valid.setProperty("patchSha256", "c".repeat(64));
         var plan = M3GitHubPatchBootstrap.Plan.from(valid);
         check(plan.patchUri().toString().equals("https://github.com/hsoliwal/M3jdk21/pull/1621.patch"), "immutable origin");
         valid.setProperty("repository", "evil/../target");
@@ -107,7 +120,15 @@ public final class M3GitHubPatchBootstrapSelfTest {
             Files.writeString(temp.resolve(".m3/patch-boot.properties"), "autoCheck=false\n");
             check(M3GitHubPatchBootstrap.findManifest(nested).equals(temp.resolve(".m3/patch-boot.properties")), "ancestor manifest");
         } finally {
-            Files.walk(temp).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {try {Files.deleteIfExists(p);} catch (IOException e) {throw new RuntimeException(e);} });
+            try (var paths = Files.walk(temp)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException error) {
+                        throw new RuntimeException(error);
+                    }
+                });
+            }
         }
         patchCycleAgainstRealGit();
         check(M3GitHubPatchBootstrap.sha256("abc".getBytes(StandardCharsets.UTF_8)).equals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "SHA-256 known answer");
