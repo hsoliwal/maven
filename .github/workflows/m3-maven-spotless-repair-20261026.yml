@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -pl impl/maven-impl spotless:apply -DskipTests
+          mvn -B -ntp -pl impl/maven-impl spotless:apply -DskipTests
           git diff --check
           git diff --name-only > /tmp/m3-spotless-changed.txt
           if grep -vE '^impl/maven-impl/src/(main|test)/java/org/apache/maven/impl/DefaultCompilerFactsService(Test)?\.java$' /tmp/m3-spotless-changed.txt | grep -q .; then
