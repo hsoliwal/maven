@@ -1,0 +1,97 @@
+name: M3 PR14 Spotless Repair (One Shot)
+
+on:
+  push:
+    branches:
+      - ops/maven-pr14-format-20261027
+
+permissions:
+  contents: write
+
+concurrency:
+  group: m3-pr14-spotless-repair-20261027
+  cancel-in-progress: false
+
+jobs:
+  format-and-forward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact qualified PR head, never master
+        uses: actions/checkout@v4
+        with:
+          ref: 517879f1195bf25f0728791f27b9b1ccc5569bfb
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up JDK 17 for Maven 4 bootstrap
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify exact original and current head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "517879f1195bf25f0728791f27b9b1ccc5569bfb"
+          remote="$(git ls-remote origin refs/heads/codex/apache-maven4-m3-merge-20261025 | cut -f1)"
+          test "$remote" = "517879f1195bf25f0728791f27b9b1ccc5569bfb"
+      - name: Apply repository-owned Spotless formatter only in maven-cli
+        run: ./mvnw -B -ntp -pl impl/maven-cli spotless:apply
+      - name: Retain M3 source contributor attribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          base = Path("impl/maven-cli")
+          files = [
+              base/"src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java",
+              base/"src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java",
+              base/"src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java",
+              base/"src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketSelfTest.java",
+              base/"src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapTest.java",
+              base/"src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketTest.java"
+          ]
+          marker = "// Copyright 2026 Hitesh Soliwal and contributors"
+          for path in files:
+              old = path.read_text(encoding="utf-8")
+              if marker in old:
+                  continue
+              package = "package org.apache.maven.cling;\n"
+              assert old.count(package) == 1, str(path)
+              updated = old.replace(package, package + "\n" + marker + "\n", 1)
+              path.write_text(updated, encoding="utf-8")
+          PY
+      - name: Check exact repository Spotless result
+        run: ./mvnw -B -ntp -pl impl/maven-cli spotless:check
+      - name: Commit ONLY the six original M3 source/test files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          allow = {
+            "impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java",
+            "impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java",
+            "impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java",
+            "impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketSelfTest.java",
+            "impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapTest.java",
+            "impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketTest.java"
+          }
+          changed = set(subprocess.check_output(["git","diff","--name-only"], text=True).splitlines())
+          unexpected = changed - allow
+          if unexpected:
+              raise SystemExit("REFUSE_UNRELATED_FORMAT_CHANGES:" + repr(sorted(unexpected)))
+          if not changed:
+              print("NO_FORMAT_CHANGES")
+          else:
+              print("FORMATTED:" + ",".join(sorted(changed)))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --             impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java             impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java             impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java             impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketSelfTest.java             impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapTest.java             impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketTest.java
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "style(m3): satisfy Maven CLI Spotless with attribution retained"
+            git push origin HEAD:refs/heads/codex/apache-maven4-m3-merge-20261025
+          fi
