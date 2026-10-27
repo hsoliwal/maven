@@ -15,7 +15,9 @@ public final class M3ChromeAiReviewPacketSelfTest {
     private M3ChromeAiReviewPacketSelfTest() { }
 
     private static void require(boolean ok, String name) {
-        if (!ok) throw new AssertionError(name);
+        if (!ok) {
+            throw new AssertionError(name);
+        }
         checked++;
     }
 
