@@ -81,7 +81,7 @@ public final class M3GitHubPatchBootstrapSelfTest {
             Path patchFile = root.resolve("candidate.patch");
             Files.write(patchFile, mbox);
             git(root, "checkout", "-q", base);
-            check(Files.readString(path).equals("one\\ntwo\\n"), "Git checkout retains fixture LF bytes");
+            check(Files.readString(path).equals("one\ntwo\n"), "Git checkout retains fixture LF bytes");
             git(root, "apply", "--check", "--index", patchFile.toString());
             git(root, "apply", "--index", patchFile.toString());
             check(Files.readString(path).equals("one\ntwo\nthree\nfour\n"), "actual Git indexed patch application");
