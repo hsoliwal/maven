@@ -186,8 +186,7 @@ public final class DefaultM3BuildToolsService implements M3BuildToolsService {
                 }
                 final boolean rowCrlf = end > start && receipt.charAt(end - 1) == '\r';
                 if (rowCrlf != crlf
-                        || !receipt.substring(start, rowCrlf ? end - 1 : end)
-                                .matches("D\\t[A-Za-z0-9_-]+")) {
+                        || !receipt.substring(start, rowCrlf ? end - 1 : end).matches("D\\t[A-Za-z0-9_-]+")) {
                     throw new IOException("malformed dependency fact row");
                 }
                 seen++;
