@@ -59,17 +59,25 @@ public final class M3GitHubPatchBootstrap {
         }
         boolean apply = setting(args, "m3.patch.apply");
         boolean check = apply || setting(args, "m3.patch.check") || "true".equals(properties.getProperty("autoCheck"));
-        if (!check) return; // local manifest discovery costs no network or mutation
+        if (!check) {
+            return;
+        } // local manifest discovery costs no network or mutation
         Plan plan = Plan.from(properties);
         Path root = config.getParent().getParent();
         verifyLocalRepository(root, plan);
         String observedHead = remoteHead(root, plan);
-        if (!plan.head().equals(observedHead)) throw new IOException("M3_PATCH_HEAD_DRIFT");
+        if (!plan.head().equals(observedHead)) {
+            throw new IOException("M3_PATCH_HEAD_DRIFT");
+        }
         byte[] patch = download(plan);
         String digest = sha256(patch);
-        if (!plan.sha256().equals(digest)) throw new IOException("M3_PATCH_SHA256_DRIFT");
+        if (!plan.sha256().equals(digest)) {
+            throw new IOException("M3_PATCH_SHA256_DRIFT");
+        }
         MboxReceipt mbox = inspectMbox(patch, plan.head());
-        for (String changed : mbox.paths()) requirePhysicalPath(root, changed);
+        for (String changed : mbox.paths()) {
+            requirePhysicalPath(root, changed);
+        }
         Path temporary = Files.createTempFile("m3-github-pr-", ".patch");
         try {
             Files.write(temporary, patch);
@@ -92,7 +100,9 @@ public final class M3GitHubPatchBootstrap {
             }
             if (apply) {
                 verifyClean(root);
-                if (!plan.head().equals(remoteHead(root, plan))) throw new IOException("M3_PATCH_HEAD_MOVED_AT_APPLY");
+                if (!plan.head().equals(remoteHead(root, plan))) {
+                    throw new IOException("M3_PATCH_HEAD_MOVED_AT_APPLY");
+                }
                 if (!plan.base().equals(run(root, "git", "rev-parse", "HEAD").trim())) {
                     throw new IOException("M3_PATCH_LOCAL_HEAD_MOVED_AT_APPLY");
                 }
@@ -110,15 +120,21 @@ public final class M3GitHubPatchBootstrap {
     static Path findManifest(Path current) {
         for (Path directory = current.toAbsolutePath().normalize(); directory != null; directory = directory.getParent()) {
             Path file = directory.resolve(MANIFEST);
-            if (Files.isRegularFile(file)) return file;
+            if (Files.isRegularFile(file)) {
+                return file;
+            }
         }
         return null;
     }
 
     static boolean setting(String[] args, String key) {
-        if ("true".equals(System.getProperty(key))) return true;
+        if ("true".equals(System.getProperty(key))) {
+            return true;
+        }
         for (String arg : args) {
-            if (("-D" + key + "=true").equals(arg)) return true;
+            if (("-D" + key + "=true").equals(arg)) {
+                return true;
+            }
         }
         return false;
     }
@@ -154,7 +170,9 @@ public final class M3GitHubPatchBootstrap {
         List<String> commits = new ArrayList<>();
         Matcher matches = COMMIT.matcher(text);
         while (matches.find()) {
-            if (commits.contains(matches.group(1))) throw new IOException("M3_PATCH_DUPLICATE_COMMIT");
+            if (commits.contains(matches.group(1))) {
+                throw new IOException("M3_PATCH_DUPLICATE_COMMIT");
+            }
             commits.add(matches.group(1));
         }
         if (commits.isEmpty() || !expectedHead.equals(commits.get(commits.size() - 1))) {
@@ -169,7 +187,9 @@ public final class M3GitHubPatchBootstrap {
                     throw new IOException("M3_PATCH_UNSAFE_FILE_SECTION");
                 }
                 paths.add(file.group(1));
-                if (++sections > MAX_DIFFS) throw new IOException("M3_PATCH_TOO_MANY_SECTIONS");
+                if (++sections > MAX_DIFFS) {
+                    throw new IOException("M3_PATCH_TOO_MANY_SECTIONS");
+                }
             } else if (line.startsWith("deleted file mode ") || line.startsWith("new file mode 120000")
                     || line.startsWith("new file mode 160000") || line.startsWith("new file mode 100755")
                     || line.startsWith("old mode ") || line.startsWith("new mode ")
@@ -180,16 +200,22 @@ public final class M3GitHubPatchBootstrap {
                 throw new IOException("M3_PATCH_UNSUPPORTED_DESTRUCTIVE_OR_OPAQUE");
             }
         }
-        if (sections == 0) throw new IOException("M3_PATCH_MISSING_FILE_HUNKS");
+        if (sections == 0) {
+            throw new IOException("M3_PATCH_MISSING_FILE_HUNKS");
+        }
         return new MboxReceipt(commits.size(), sections, commits.get(commits.size() - 1), List.copyOf(paths));
     }
 
     static boolean safePath(String name) {
         if (name.isBlank() || name.length() > 2048 || name.startsWith("/") || name.contains("\\")
-                || name.contains("\"" ) || name.indexOf('\0') >= 0) return false;
+                || name.contains("\"" ) || name.indexOf('\0') >= 0) {
+            return false;
+        }
         for (String segment : name.split("/", -1)) {
             if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment) || ".git".equals(segment)
-                    || segment.contains(":") || segment.chars().anyMatch(Character::isISOControl)) return false;
+                    || segment.contains(":") || segment.chars().anyMatch(Character::isISOControl)) {
+                return false;
+            }
         }
         return true;
     }
@@ -197,10 +223,14 @@ public final class M3GitHubPatchBootstrap {
     private static void requirePhysicalPath(Path root, String changed) throws IOException {
         Path absoluteRoot = root.toAbsolutePath().normalize();
         Path target = absoluteRoot.resolve(changed).normalize();
-        if (!target.startsWith(absoluteRoot)) throw new IOException("M3_PATCH_ESCAPE");
+        if (!target.startsWith(absoluteRoot)) {
+            throw new IOException("M3_PATCH_ESCAPE");
+        }
         for (Path current = target; current != null && !current.equals(absoluteRoot);
                 current = current.getParent()) {
-            if (Files.isSymbolicLink(current)) throw new IOException("M3_PATCH_SYMLINK_PATH");
+            if (Files.isSymbolicLink(current)) {
+                throw new IOException("M3_PATCH_SYMLINK_PATH");
+            }
         }
     }
 
@@ -210,7 +240,9 @@ public final class M3GitHubPatchBootstrap {
             throw new IOException("M3_PATCH_NOT_AT_REPOSITORY_ROOT");
         }
         String actual = run(root, "git", "rev-parse", "HEAD").trim();
-        if (!plan.base().equals(actual)) throw new IOException("M3_PATCH_LOCAL_BASE_DRIFT");
+        if (!plan.base().equals(actual)) {
+            throw new IOException("M3_PATCH_LOCAL_BASE_DRIFT");
+        }
         String origin = run(root, "git", "remote", "get-url", "origin").trim();
         String expected = plan.repository().toLowerCase(Locale.ROOT);
         String normalized = origin.toLowerCase(Locale.ROOT);
@@ -218,7 +250,9 @@ public final class M3GitHubPatchBootstrap {
                 || normalized.equals("https://github.com/" + expected)
                 || normalized.equals("git@github.com:" + expected + ".git")
                 || normalized.equals("git@github.com:" + expected);
-        if (!allowed) throw new IOException("M3_PATCH_REPOSITORY_ORIGIN_MISMATCH");
+        if (!allowed) {
+            throw new IOException("M3_PATCH_REPOSITORY_ORIGIN_MISMATCH");
+        }
     }
 
     private static void verifyClean(Path root) throws IOException {
@@ -254,7 +288,9 @@ public final class M3GitHubPatchBootstrap {
                         current = current.resolve(location);
                         continue;
                     }
-                    if (code != 200) throw new IOException("M3_PATCH_FETCH_HTTP_" + code);
+                    if (code != 200) {
+                        throw new IOException("M3_PATCH_FETCH_HTTP_" + code);
+                    }
                     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                     byte[] buffer = new byte[8192];
                     int count;
