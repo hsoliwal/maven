@@ -22,8 +22,12 @@ package org.apache.maven.cling;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.DosFileAttributeView;
 import java.util.Properties;
 
 /** Self-contained Java 17 test runner for deterministic tests without Maven dependency downloading. */
@@ -79,11 +83,67 @@ public final class M3GitHubPatchBootstrapSelfTest {
             git(root, "apply", "--index", patchFile.toString());
             check(Files.readString(path).equals("one\ntwo\nthree\nfour\n"), "actual Git indexed patch application");
         } finally {
-            try (var stream = Files.walk(root)) {
-                for (Path path :
-                        stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                    Files.deleteIfExists(path);
+            deleteFixtureTree(root);
+        }
+    }
+
+    /**
+     * Git marks loose objects read-only on some Windows filesystems. The fixture owns
+     * this private directory, so clear that attribute before deleting. A short bounded
+     * retry permits Windows antivirus/file indexing handles to close; persistent
+     * failures remain fatal rather than being hidden or reported as passing tests.
+     */
+    private static void deleteFixtureTree(Path root) throws IOException {
+        try (var entries = Files.walk(root)) {
+            for (Path path : entries.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                deleteFixturePath(path);
+            }
+        }
+    }
+
+    private static void deleteFixturePath(Path path) throws IOException {
+        IOException last = null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            try {
+                DosFileAttributeView dos =
+                        Files.getFileAttributeView(path, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+                if (dos != null && dos.readAttributes().isReadOnly()) {
+                    dos.setReadOnly(false);
                 }
+                Files.deleteIfExists(path);
+                return;
+            } catch (NoSuchFileException alreadyDeleted) {
+                return;
+            } catch (AccessDeniedException locked) {
+                last = locked;
+                if (attempt < 7) {
+                    try {
+                        Thread.sleep(25L << attempt);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("M3_GIT_FIXTURE_CLEANUP_INTERRUPTED", interrupted);
+                    }
+                }
+            }
+        }
+        throw last;
+    }
+
+    private static void checkReadOnlyGitFixtureCleanup() throws Exception {
+        Path root = Files.createTempDirectory("m3-pr-patch-readonly-git-");
+        try {
+            Path object = Files.createDirectories(root.resolve(".git/objects/aa")).resolve("loose-object");
+            Files.writeString(object, "fixture");
+            DosFileAttributeView dos =
+                    Files.getFileAttributeView(object, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+            if (dos != null) {
+                dos.setReadOnly(true);
+            }
+            deleteFixtureTree(root);
+            check(!Files.exists(root), "Git fixture removes a read-only loose object");
+        } finally {
+            if (Files.exists(root)) {
+                deleteFixtureTree(root);
             }
         }
     }
@@ -178,16 +238,9 @@ public final class M3GitHubPatchBootstrapSelfTest {
                     M3GitHubPatchBootstrap.findManifest(nested).equals(temp.resolve(".m3/patch-boot.properties")),
                     "ancestor manifest");
         } finally {
-            try (var paths = Files.walk(temp)) {
-                paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException error) {
-                        throw new RuntimeException(error);
-                    }
-                });
-            }
+            deleteFixtureTree(temp);
         }
+        checkReadOnlyGitFixtureCleanup();
         patchCycleAgainstRealGit();
         check(
                 M3GitHubPatchBootstrap.sha256("abc".getBytes(StandardCharsets.UTF_8))
