@@ -102,7 +102,9 @@ class DefaultM3BuildToolsServiceTest {
         for (String ending : new String[] {"\n", "\r\n"}) {
             NativeProvider provider = new NativeProvider(ending, ending);
             var service = new DefaultM3BuildToolsService(() -> Optional.of(provider), () -> runtime);
-            assertEquals("CLASS", service.dependencies(session(), request).orElseThrow().scope());
+            assertEquals(
+                    "CLASS",
+                    service.dependencies(session(), request).orElseThrow().scope());
             assertEquals(1, provider.invocations);
         }
         for (String[] endings : new String[][] {{"\r\n", "\n"}, {"\n", "\r\n"}}) {
