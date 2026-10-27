@@ -35,6 +35,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "517879f1195bf25f0728791f27b9b1ccc5569bfb"
           remote="$(git ls-remote origin refs/heads/codex/apache-maven4-m3-merge-20261025 | cut -f1)"
           test "$remote" = "517879f1195bf25f0728791f27b9b1ccc5569bfb"
+      - name: Bootstrap Maven 4 wrapper with the repository's CI version
+        run: mvn --errors --batch-mode --show-version org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper "-Dmaven=4.0.0-rc-7"
       - name: Apply repository-owned Spotless formatter only in maven-cli
         run: ./mvnw -B -ntp -pl impl/maven-cli spotless:apply
       - name: Retain M3 source contributor attribution
