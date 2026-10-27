@@ -67,7 +67,9 @@ public final class M3ChromeAiReviewPacketSelfTest {
         require(
                 Files.readString(receipt.getParent().resolve(".gitignore")).equals("*\n"),
                 "local source packet excluded from default Git staging");
-        require(receipt.getParent().equals(root.toRealPath().resolve(".m3/patch-ai-reviews")), "receipt stored below project .m3");
+        require(
+                receipt.getParent().equals(root.toRealPath().resolve(".m3/patch-ai-reviews")),
+                "receipt stored below project .m3");
         require(contents.contains("\"schema\":\"M3-CHROME-HUNK-REVIEW/1\""), "schema");
         require(contents.contains("\"patchSha256\":\"" + sha + "\""), "pin");
         require(contents.contains("\"mutationAuthorized\":false"), "no mutation authority");
