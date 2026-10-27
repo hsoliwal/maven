@@ -53,8 +53,9 @@ public final class M3ChromeAiReviewPacket {
         } catch (CharacterCodingException malformed) {
             throw new IOException("M3_CHROME_AI_PACKET_NON_UTF8", malformed);
         }
-        if (decoded.indexOf('\0') >= 0)
+        if (decoded.indexOf('\0') >= 0) {
             throw new IOException("M3_CHROME_AI_PACKET_NUL");
+        }
         Path root = repositoryRoot.toRealPath();
         Path m3 = root.resolve(".m3");
         if (!Files.isDirectory(m3, LinkOption.NOFOLLOW_LINKS)
@@ -64,16 +65,18 @@ public final class M3ChromeAiReviewPacket {
         Path review = m3.resolve(SUBDIR);
         if (Files.exists(review, LinkOption.NOFOLLOW_LINKS)) {
             if (!Files.isDirectory(review, LinkOption.NOFOLLOW_LINKS)
-                    || Files.isSymbolicLink(review))
+                    || Files.isSymbolicLink(review)) {
                 throw new IOException("M3_CHROME_AI_PACKET_UNSAFE_DIR");
+            }
         } else {
             Files.createDirectory(review);
         }
         // Keep local source-bearing AI requests out of accidental Git staging.
         Path ignore = review.resolve(".gitignore");
         if (Files.exists(ignore, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(ignore) || !"*\n".equals(Files.readString(ignore)))
+            if (Files.isSymbolicLink(ignore) || !"*\n".equals(Files.readString(ignore))) {
                 throw new IOException("M3_CHROME_AI_PACKET_IGNORE_DRIFT");
+            }
         } else {
             Files.writeString(ignore, "*\n", StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
