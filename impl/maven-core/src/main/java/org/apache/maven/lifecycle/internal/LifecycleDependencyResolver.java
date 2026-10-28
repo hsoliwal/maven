@@ -46,6 +46,7 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectDependenciesResolver;
 import org.apache.maven.project.artifact.InvalidDependencyVersionException;
 import org.apache.maven.project.artifact.ProjectArtifactsCache;
+import org.codehaus.plexus.classworlds.realm.ClassRealm;
 import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.graph.DependencyFilter;
 import org.eclipse.aether.graph.DependencyNode;
@@ -112,9 +113,12 @@ public class LifecycleDependencyResolver {
             throws LifecycleExecutionException {
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
         try {
-            ClassLoader projectRealm = project.getClassRealm();
-            if (projectRealm != null && projectRealm != tccl) {
-                Thread.currentThread().setContextClassLoader(projectRealm);
+            ClassRealm projectRealm = project.getClassRealm();
+            if (projectRealm != null) {
+                ClassLoader projectClassLoader = projectRealm;
+                if (projectClassLoader != tccl) {
+                    Thread.currentThread().setContextClassLoader(projectClassLoader);
+                }
             }
 
             if (project.getDependencyArtifacts() == null) {
@@ -258,8 +262,12 @@ public class LifecycleDependencyResolver {
             eventSpyDispatcher.onEvent(request);
 
             result = dependenciesResolver.resolve(request);
+            eventSpyDispatcher.onEvent(result);
         } catch (DependencyResolutionException e) {
             result = e.getResult();
+
+            // the listeners get the result when the resolution fails as well, not only when it succeeds
+            eventSpyDispatcher.onEvent(result);
 
             /*
              * MNG-2277, the check below compensates for our bad plugin support where we ended up with aggregator
@@ -279,8 +287,6 @@ public class LifecycleDependencyResolver {
                 throw new LifecycleExecutionException(messageBuilderFactory, null, project, e);
             }
         }
-
-        eventSpyDispatcher.onEvent(result);
 
         Set<Artifact> artifacts = new LinkedHashSet<>();
         if (result.getDependencyGraph() != null

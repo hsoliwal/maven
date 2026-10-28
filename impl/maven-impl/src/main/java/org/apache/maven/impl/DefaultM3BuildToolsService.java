@@ -161,7 +161,10 @@ public final class DefaultM3BuildToolsService implements M3BuildToolsService {
         if (firstEnd < 0) {
             throw new IOException("missing native build-fact header");
         }
-        String[] header = receipt.substring(0, firstEnd).split("\t", -1);
+        // The provider writes platform-native line endings. Validate each record
+        // without modifying the original source receipt or its SHA-256 identity.
+        final boolean crlf = firstEnd > 0 && receipt.charAt(firstEnd - 1) == '\r';
+        String[] header = receipt.substring(0, crlf ? firstEnd - 1 : firstEnd).split("\t", -1);
         String expected = publicApi ? "PUBLIC_API" : "CLASS";
         if (header.length != 5
                 || !DEPENDENCY_SCHEMA.equals(header[0])
@@ -178,7 +181,12 @@ public final class DefaultM3BuildToolsService implements M3BuildToolsService {
             int seen = 0, start = firstEnd + 1;
             while (start < receipt.length()) {
                 int end = receipt.indexOf('\n', start);
-                if (end < 0 || !receipt.substring(start, end).matches("D\\t[A-Za-z0-9_-]+")) {
+                if (end < 0) {
+                    throw new IOException("malformed dependency fact row");
+                }
+                final boolean rowCrlf = end > start && receipt.charAt(end - 1) == '\r';
+                if (rowCrlf != crlf
+                        || !receipt.substring(start, rowCrlf ? end - 1 : end).matches("D\\t[A-Za-z0-9_-]+")) {
                     throw new IOException("malformed dependency fact row");
                 }
                 seen++;

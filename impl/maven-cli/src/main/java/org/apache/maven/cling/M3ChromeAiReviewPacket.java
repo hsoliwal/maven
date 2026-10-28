@@ -1,6 +1,24 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Hitesh Soliwal and contributors
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.apache.maven.cling;
+
+// Copyright 2026 Hitesh Soliwal and contributors
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -19,64 +37,71 @@ import java.util.regex.Pattern;
  * No browser/model is launched by Maven and no recommendation may apply source.
  */
 public final class M3ChromeAiReviewPacket {
-    //FLLDCIM: RECIPE - opt-in, SHA-pinned, fail-closed file-local AI review custody.
+    // FLLDCIM: RECIPE - opt-in, SHA-pinned, fail-closed file-local AI review custody.
     private static final Pattern REPO = Pattern.compile("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+");
     private static final Pattern SHA40 = Pattern.compile("[a-f0-9]{40}");
     private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");
     private static final int MAX_REVIEW_BYTES = 20 * 1024;
     private static final String SUBDIR = "patch-ai-reviews";
 
-    private M3ChromeAiReviewPacket() { }
+    private M3ChromeAiReviewPacket() {}
 
     /**
      * Writes one immutable, auditable packet only after an explicitly requested
      * Git check has found an unresolved conflict. Never writes changed source.
      */
-    static Path write(Path repositoryRoot, String repository, int pr,
-                      String base, String head, String patchSha256, byte[] patch)
+    static Path write(
+            Path repositoryRoot, String repository, int pr, String base, String head, String patchSha256, byte[] patch)
             throws IOException {
         Objects.requireNonNull(repositoryRoot, "repositoryRoot");
         Objects.requireNonNull(patch, "patch");
-        if (!REPO.matcher(repository).matches() || repository.contains("..")
-                || pr < 1 || !SHA40.matcher(base).matches() || !SHA40.matcher(head).matches()
+        if (!REPO.matcher(repository).matches()
+                || repository.contains("..")
+                || pr < 1
+                || !SHA40.matcher(base).matches()
+                || !SHA40.matcher(head).matches()
                 || !SHA256.matcher(patchSha256).matches()
-                || patch.length == 0 || patch.length > MAX_REVIEW_BYTES
+                || patch.length == 0
+                || patch.length > MAX_REVIEW_BYTES
                 || !patchSha256.equals(M3GitHubPatchBootstrap.sha256(patch))) {
             throw new IOException("M3_CHROME_AI_PACKET_UNSEALED_OR_TOO_LARGE");
         }
         String decoded;
         try {
-            decoded = StandardCharsets.UTF_8.newDecoder()
+            decoded = StandardCharsets.UTF_8
+                    .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(patch)).toString();
+                    .decode(ByteBuffer.wrap(patch))
+                    .toString();
         } catch (CharacterCodingException malformed) {
             throw new IOException("M3_CHROME_AI_PACKET_NON_UTF8", malformed);
         }
-        if (decoded.indexOf('\0') >= 0)
+        if (decoded.indexOf('\0') >= 0) {
             throw new IOException("M3_CHROME_AI_PACKET_NUL");
+        }
         Path root = repositoryRoot.toRealPath();
         Path m3 = root.resolve(".m3");
-        if (!Files.isDirectory(m3, LinkOption.NOFOLLOW_LINKS)
-                || Files.isSymbolicLink(m3)) {
+        if (!Files.isDirectory(m3, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(m3)) {
             throw new IOException("M3_CHROME_AI_PACKET_M3_DIR_REQUIRED");
         }
         Path review = m3.resolve(SUBDIR);
         if (Files.exists(review, LinkOption.NOFOLLOW_LINKS)) {
-            if (!Files.isDirectory(review, LinkOption.NOFOLLOW_LINKS)
-                    || Files.isSymbolicLink(review))
+            if (!Files.isDirectory(review, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(review)) {
                 throw new IOException("M3_CHROME_AI_PACKET_UNSAFE_DIR");
+            }
         } else {
             Files.createDirectory(review);
         }
         // Keep local source-bearing AI requests out of accidental Git staging.
         Path ignore = review.resolve(".gitignore");
         if (Files.exists(ignore, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(ignore) || !"*\n".equals(Files.readString(ignore)))
+            if (Files.isSymbolicLink(ignore) || !"*\n".equals(Files.readString(ignore))) {
                 throw new IOException("M3_CHROME_AI_PACKET_IGNORE_DRIFT");
+            }
         } else {
-            Files.writeString(ignore, "*\n", StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            Files.writeString(
+                    ignore, "*\n", StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         }
         Path file = review.resolve("pr-" + pr + "-" + patchSha256.substring(0, 12) + ".json");
         String json = "{\n"
@@ -92,8 +117,7 @@ public final class M3ChromeAiReviewPacket {
                 + "  \"mutationAuthorized\":false\n"
                 + "}\n";
         // CREATE_NEW is essential: no silent replacement of reviewer evidence.
-        Files.writeString(file, json, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        Files.writeString(file, json, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         return file;
     }
 

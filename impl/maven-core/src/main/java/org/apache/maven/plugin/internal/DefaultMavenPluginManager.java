@@ -434,6 +434,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
 
         pluginArtifacts = toMavenArtifacts(result);
 
+        // Classic classpath-based plugin
         pluginRealm = classRealmManager.createPluginRealm(
                 plugin, parent, null, foreignImports, toAetherArtifacts(pluginArtifacts));
 
@@ -492,7 +493,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             MavenProject project, ClassLoader parent, List<String> imports, boolean v4api) {
         Map<String, ClassLoader> foreignImports = new HashMap<>();
 
-        ClassLoader projectRealm = project.getClassRealm();
+        ClassRealm projectRealm = project.getClassRealm();
         if (projectRealm != null) {
             foreignImports.put("", projectRealm);
         } else {
@@ -602,6 +603,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         org.apache.maven.api.plugin.Log log = new DefaultLog(
                 LoggerFactory.getLogger(mojoExecution.getMojoDescriptor().getImplementation()));
         try {
+            // Discover components from the effective ClassLoader (module layer loader for modular plugins)
             InjectorImpl injector = new InjectorImpl();
             injector.discover(pluginRealm);
             // Add known classes
@@ -615,7 +617,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             bindSessionServices(injector, services);
 
             mojo = mojoInterface.cast(injector.getInstance(
-                    Key.of(mojoDescriptor.getImplementationClass(), mojoDescriptor.getRoleHint())));
+                    Key.of(pluginRealm.loadClass(mojoDescriptor.getImplementation()), mojoDescriptor.getRoleHint())));
 
         } catch (Exception e) {
             throw new PluginContainerException(mojoDescriptor, pluginRealm, "Unable to lookup Mojo", e);
