@@ -104,6 +104,20 @@ class M3ProjectWatchTest {
         }
 
         @Test
+        void aTrailingOrRepeatedCleanGoalIsNormalizedBeforeTheLifecycle() throws Exception {
+            var original = request(1);
+            original.setGoals(List.of("verify", "clean", "test", "clean"));
+            var observed = new ArrayList<List<String>>();
+            var result = execute(original, next -> {
+                observed.add(List.copyOf(next.getGoals()));
+                return successful("target");
+            });
+            assertFalse(result.hasExceptions(), result.getExceptions().toString());
+            assertEquals(List.of(List.of("clean", "verify", "test")), observed);
+            assertEquals(List.of("verify", "clean", "test", "clean"), original.getGoals());
+        }
+
+        @Test
         void sameTimeMutationRemainsPendingAndEachDelegationGetsAFreshRequest() throws Exception {
             var original = request(2);
             Files.createDirectories(root.resolve(".mvn"));
