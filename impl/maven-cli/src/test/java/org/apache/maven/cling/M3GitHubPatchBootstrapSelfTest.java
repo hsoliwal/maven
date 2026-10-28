@@ -135,7 +135,8 @@ public final class M3GitHubPatchBootstrapSelfTest {
     private static void checkReadOnlyGitFixtureCleanup() throws Exception {
         Path root = Files.createTempDirectory("m3-pr-patch-readonly-git-");
         try {
-            Path object = Files.createDirectories(root.resolve(".git/objects/aa")).resolve("loose-object");
+            Path object =
+                    Files.createDirectories(root.resolve(".git/objects/aa")).resolve("loose-object");
             Files.writeString(object, "fixture");
             DosFileAttributeView dos =
                     Files.getFileAttributeView(object, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
