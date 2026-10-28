@@ -79,9 +79,9 @@ final class M3ProjectWatch {
                     watch.report(snapshot, options, completed == 0, logger);
                     MavenExecutionRequest request = DefaultMavenExecutionRequest.copy(prototype);
                     List<String> goals = new ArrayList<>(request.getGoals());
-                    if (!goals.contains("clean")) {
-                        goals.add(0, "clean");
-                    }
+                    // Normalize every watched execution, including user-supplied trailing clean goals.
+                    goals.removeIf("clean"::equals);
+                    goals.add(0, "clean");
                     request.setGoals(goals);
                     request.setRepositoryCache(new DefaultRepositoryCache());
                     // DefaultGraphBuilder binds the new live session before reading projects.
