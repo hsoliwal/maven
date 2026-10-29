@@ -1,3 +1,0 @@
-validate
--Dcolor2=gray
--Dcolor3=yellow

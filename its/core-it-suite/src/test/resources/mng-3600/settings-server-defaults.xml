@@ -1,8 +1,0 @@
-<settings xmlns='http://maven.apache.org/SETTINGS/1.0.0'>
-  <servers>
-    <server>
-      <id>id</id>
-    </server>
-  </servers>
-</settings>
-

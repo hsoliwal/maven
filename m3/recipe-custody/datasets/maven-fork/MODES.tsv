@@ -1,5 +1,0 @@
-impl/maven-core/src/main/java/org/apache/maven/plugin/internal/DefaultMavenPluginManager.java	0644
-impl/maven-core/src/main/java/org/apache/maven/plugin/internal/M3AstCompilerConfiguration.java	0644
-impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3AstCompilerConfigurationTest.java	0644
-m3/README.md	0644
-pom.xml	0644
