@@ -1,0 +1,25 @@
+{
+  "schema": "synexia.m3.maven-buildtools-budget-receiver.v1",
+  "canonical_recipe": "com.synexia.m3.ProjectDelta20261021",
+  "canonical_synexia_pr": "https://github.com/hsoliwal/com.synexia/pull/14711",
+  "canonical_synexia_head": "d2b8411f61098234072f5c9c45defe2d5722e662",
+  "receiver_base_commit": "758b456b567f758de5a2a91d1cafeb654c610b69",
+  "target_repository": "hsoliwal/maven",
+  "target_artifact": "Maven 4.1.0-SNAPSHOT",
+  "targets": [
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultM3BuildToolsService.java",
+      "original_git_blob": "7cbe77b2aa3861c06b732074e6f84516f61cca57",
+      "original_sha256": "ed38035e1cbb14c385eb4d6b9be02240b2ffa8c27362ba6d9390aeac4574697b",
+      "received_sha256": "43b5403643f324c51ad07ebad3e1080b4c25b7f0e7e2de55d1b0c3dc9a405739"
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultM3BuildToolsServiceTest.java",
+      "original_git_blob": "aab7b6b182f7f538db999901a2c4cbbabacef36d",
+      "original_sha256": "c2a020e2966a7e986382c63b035f363e42e59c6b42cb6e7218e92eba8957b17a",
+      "received_sha256": "e73a7d2442f0ca1c2e88124715f252da611fa46b095075d03d0b586bdfe729a6"
+    }
+  ],
+  "qualification": "PENDING_MAVEN_JUNIT_AND_OPENREWRITE_SDK",
+  "published_as": "SOURCE_SEALED_REVIEW_ONLY"
+}

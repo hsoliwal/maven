@@ -113,15 +113,17 @@ public final class DefaultM3BuildToolsService implements M3BuildToolsService {
                 }
                 remove(at);
             }
+            // Refuse before invoking the original JDK tool if this *new*
+            // identity cannot be stored. Replacements already released a slot.
+            if (size == MAX_RECEIPTS) {
+                throw new IOException("M3 build receipt session budget exceeded");
+            }
             Receipt result = invoke(provider, request.publicApiOnly(), file);
             int slot = Arrays.binarySearch(keys, 0, size, key);
             if (slot >= 0) {
                 throw new IllegalStateException("duplicate facts cache slot");
             }
             slot = -slot - 1;
-            if (size == MAX_RECEIPTS) {
-                throw new IOException("M3 build receipt session budget exceeded");
-            }
             if (size == keys.length) {
                 keys = Arrays.copyOf(keys, Math.min(MAX_RECEIPTS, keys.length * 2));
                 receipts = Arrays.copyOf(receipts, keys.length);
