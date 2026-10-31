@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: Maven 4 native core plugin evidence API
+on:
+  pull_request:
+    paths:
+      - 'api/maven-api-core/src/main/java/org/apache/maven/api/services/M3PluginEvidenceService.java'
+      - 'impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultM3PluginEvidenceService.java'
+      - 'impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultM3PluginEvidenceServiceTest.java'
+      - 'm3/recipe-custody/maven-core-plugin-evidence-20261031.json'
+      - '.github/workflows/m3-core-plugin-evidence-20261031.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-maven-service:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Verify original canonical Synexia source hashes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          receipt=json.loads(Path('m3/recipe-custody/maven-core-plugin-evidence-20261031.json').read_text())
+          assert receipt['receiver_base_commit']=='758b456b567f758de5a2a91d1cafeb654c610b69'
+          assert len(receipt['targets'])==3
+          for item in receipt['targets']:
+              p=Path(item['path'])
+              assert p.is_file() and not p.is_symlink(),p
+              assert item['before_sha256']=='ABSENT',p
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==item['after_sha256'],p
+          print('M3_MAVEN_CORE_PLUGIN_RECEIVER_PASS targets=3')
+          PY
+      - name: Execute original Maven 4 API/DI/JUnit reactor
+        run: >-
+          mvn -B -ntp -pl impl/maven-impl -am
+          -Dtest=DefaultM3PluginEvidenceServiceTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
