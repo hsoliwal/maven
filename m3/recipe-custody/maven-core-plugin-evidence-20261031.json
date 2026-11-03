@@ -1,0 +1,34 @@
+{
+  "schema": "synexia.m3.maven-core-plugin-evidence-receiver.v1",
+  "canonical_recipe_pr": "https://github.com/hsoliwal/com.synexia/pull/14720",
+  "canonical_source_commit": "fa4d718af8724a7b5a661a11efeef5eac9816c22",
+  "receiver": "hsoliwal/maven",
+  "receiver_base_commit": "758b456b567f758de5a2a91d1cafeb654c610b69",
+  "version": "4.1.0-SNAPSHOT",
+  "targets": [
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/M3PluginEvidenceService.java",
+      "before_sha256": "ABSENT",
+      "after_sha256": "9d2e3f012cf17786539e66d705ad73af422cc58a879272b0815f5c2d269a9713",
+      "reviewed_git_blob": "4929f5047fa7ec2f1627f4b5810e1ef6a5f7f012"
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultM3PluginEvidenceService.java",
+      "before_sha256": "ABSENT",
+      "after_sha256": "c0c184b170819892244ad3deb9c9b07233116de70c629cd5bbf7a73412e11b50",
+      "reviewed_git_blob": "53a317870992c364508fbf9d593376ac221ff853"
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultM3PluginEvidenceServiceTest.java",
+      "before_sha256": "ABSENT",
+      "after_sha256": "3e7e398103b927b4e65d3b9e562b3acebfa4e975489681e2d027098563a19491",
+      "reviewed_git_blob": "ea154cb669c448b1dae11336214abceaad2dcf4e"
+    }
+  ],
+  "original_maven_reactor": "PASS: four plugin-evidence tests and five build-tools tests per JDK on 17 and 21, with Maven master e60f6a39803c6e799837508d508946a581d634ed",
+  "producer_plugin_adapters": "NOT_IMPLEMENTED",
+  "semantic_goal_skip_permission": false,
+  "automatic_deploy_permission": false,
+  "previous_canonical_source_commit": "5ee028cdf284aac9716c2661d4383d5e378f3fd5",
+  "actual_recipe_sdk": "5 passed, no skips; three exact emitted Java postimages"
+}
