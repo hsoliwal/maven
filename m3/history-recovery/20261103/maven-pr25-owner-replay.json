@@ -1,0 +1,896 @@
+{
+  "source_only": true,
+  "github_published": false,
+  "canonical_target": "8f776dbded6b46dc0f5261e86bc93da4ae8b07ee",
+  "upstream_head_already_in_history": "edb74629f61c7f4dc883de82f0f982efcfa9a730",
+  "actual_common_base": "fc5598415bb5c270f1e153d0ba05c540f8c0e9c9",
+  "commit": "0efb0efe27124c10c6e0007339a9361df67f85ca",
+  "tree": "f975704e3fa5baedb0b2750e95ee38f64d70c2fb",
+  "changed_paths": 47,
+  "source_exact": 43,
+  "reversible_poms": 3,
+  "composed_filename_and_eof": 1,
+  "outside_paths_unchanged": true,
+  "proof": [
+    {
+      "path": ".asf.yaml",
+      "before": [
+        "100644",
+        "ef33b3a48c6cb378b617ba03a8aedb04e763359d"
+      ],
+      "aggregate_before": [
+        "100644",
+        "ef33b3a48c6cb378b617ba03a8aedb04e763359d"
+      ],
+      "original_donor": [
+        "100644",
+        "b0626e6761848004c520952c0f89043b4c3107a8"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "b0626e6761848004c520952c0f89043b4c3107a8"
+      ]
+    },
+    {
+      "path": "apache-maven/pom.xml",
+      "before": [
+        "100644",
+        "ac06080e0f2c0f3811de51a7325cd43491d21c62"
+      ],
+      "aggregate_before": [
+        "100644",
+        "ac06080e0f2c0f3811de51a7325cd43491d21c62"
+      ],
+      "original_donor": [
+        "100644",
+        "87df1ad227aab5a93b3a4b543a8c1313115e0c18"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "87df1ad227aab5a93b3a4b543a8c1313115e0c18"
+      ]
+    },
+    {
+      "path": "apache-maven/src/assembly/maven/bin/mvn.cmd",
+      "before": [
+        "100644",
+        "c36651e007879cdc689331421e1d412ff8e43aa1"
+      ],
+      "aggregate_before": [
+        "100644",
+        "c36651e007879cdc689331421e1d412ff8e43aa1"
+      ],
+      "original_donor": [
+        "100644",
+        "c399d4a0b71037b0499b595b4647346c35586f48"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "c399d4a0b71037b0499b595b4647346c35586f48"
+      ]
+    },
+    {
+      "path": "apache-maven/src/main/appended-resources/META-INF/LICENSE.vm",
+      "before": [
+        "100644",
+        "2f95d5d771268d671d34edbdeb7126efe6e1ef08"
+      ],
+      "aggregate_before": [
+        "100644",
+        "2f95d5d771268d671d34edbdeb7126efe6e1ef08"
+      ],
+      "original_donor": [
+        "100644",
+        "af50f94620cac862db390408c6a12ffd9eb8b537"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "af50f94620cac862db390408c6a12ffd9eb8b537"
+      ]
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/Dialect.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "1578e2ef94675731555846f0deac09691cd2070e"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "1578e2ef94675731555846f0deac09691cd2070e"
+      ]
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/ExtensibleEnums.java",
+      "before": [
+        "100644",
+        "75892c7651404bfdd19a281ab9c89e66a3a93f4c"
+      ],
+      "aggregate_before": [
+        "100644",
+        "75892c7651404bfdd19a281ab9c89e66a3a93f4c"
+      ],
+      "original_donor": [
+        "100644",
+        "ea094849dac8c0a3c3cc6f4553eba3b6a1a86570"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "ea094849dac8c0a3c3cc6f4553eba3b6a1a86570"
+      ]
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/DialectRegistry.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "4607981e06c2f8f627bbd5f732f68eb963103805"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "4607981e06c2f8f627bbd5f732f68eb963103805"
+      ]
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/ModelDialectManager.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "6de2fbf2453c990685fcf07c6c25f55bd0be7062"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "6de2fbf2453c990685fcf07c6c25f55bd0be7062"
+      ]
+    },
+    {
+      "path": "api/maven-api-spi/src/main/java/org/apache/maven/api/spi/DialectProvider.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "a4cdf8f198d96f2433586c852c32d856a08a368e"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "a4cdf8f198d96f2433586c852c32d856a08a368e"
+      ]
+    },
+    {
+      "path": "api/maven-api-spi/src/main/java/org/apache/maven/api/spi/ModelDialectProvider.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "25a891d7ea46b8ab826462fa0bf5f096d09b7e8e"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "25a891d7ea46b8ab826462fa0bf5f096d09b7e8e"
+      ]
+    },
+    {
+      "path": "api/maven-api-spi/src/main/java/org/apache/maven/api/spi/ModelParser.java",
+      "before": [
+        "100644",
+        "9447e519f57e9af6a4caaede743984dfc6a6d750"
+      ],
+      "aggregate_before": [
+        "100644",
+        "9447e519f57e9af6a4caaede743984dfc6a6d750"
+      ],
+      "original_donor": [
+        "100644",
+        "601cf2b8f41fd22be656e09e87905bacbfe5a2ef"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "601cf2b8f41fd22be656e09e87905bacbfe5a2ef"
+      ]
+    },
+    {
+      "path": "api/maven-api-spi/src/main/java/org/apache/maven/api/spi/ModelWriter.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "ca83214b0fe59b61d520cb8244521cb113590ce4"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "ca83214b0fe59b61d520cb8244521cb113590ce4"
+      ]
+    },
+    {
+      "path": "api/maven-api-spi/src/main/java/org/apache/maven/api/spi/ModelWriterException.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "df951f3d1143a148bd323038859864bee32f92cf"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "df951f3d1143a148bd323038859864bee32f92cf"
+      ]
+    },
+    {
+      "path": "compat/maven-compat/pom.xml",
+      "before": [
+        "100644",
+        "6fd5e533f146e51c00f3a5cb099bb6ffb70d3268"
+      ],
+      "aggregate_before": [
+        "100644",
+        "6fd5e533f146e51c00f3a5cb099bb6ffb70d3268"
+      ],
+      "original_donor": [
+        "100644",
+        "ae2784a9228e5d17f5710e7cb42491947e90526a"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "ae2784a9228e5d17f5710e7cb42491947e90526a"
+      ]
+    },
+    {
+      "path": "compat/maven-embedder/pom.xml",
+      "before": [
+        "100644",
+        "f1343b7bcfd21d06e28ad343367b14ff94396e00"
+      ],
+      "aggregate_before": [
+        "100644",
+        "f1343b7bcfd21d06e28ad343367b14ff94396e00"
+      ],
+      "original_donor": [
+        "100644",
+        "ea221e5f16fbb2f7e201349aeec23d4b0f98b365"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "ea221e5f16fbb2f7e201349aeec23d4b0f98b365"
+      ]
+    },
+    {
+      "path": "compat/maven-model-builder/pom.xml",
+      "before": [
+        "100644",
+        "23fda98f3b1b755844ae46a8331fb4dc2a17f8ea"
+      ],
+      "aggregate_before": [
+        "100644",
+        "23fda98f3b1b755844ae46a8331fb4dc2a17f8ea"
+      ],
+      "original_donor": [
+        "100644",
+        "4d2cee0573cc2367909164a5e5675cc911121ae8"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "4d2cee0573cc2367909164a5e5675cc911121ae8"
+      ]
+    },
+    {
+      "path": "compat/maven-plugin-api/src/main/java/org/apache/maven/plugin/descriptor/PluginDescriptor.java",
+      "before": [
+        "100644",
+        "776ba84c015bb016297c301aa1f7523291e8914a"
+      ],
+      "aggregate_before": [
+        "100644",
+        "776ba84c015bb016297c301aa1f7523291e8914a"
+      ],
+      "original_donor": [
+        "100644",
+        "6ef652cffbd6af550db14f78fc5105f71895e083"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "6ef652cffbd6af550db14f78fc5105f71895e083"
+      ]
+    },
+    {
+      "path": "compat/maven-plugin-api/src/test/java/org/apache/maven/plugin/descriptor/PluginDescriptorTest.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "fe63328dd8ef0407acb0e1313fdbc4804f269f0d"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "fe63328dd8ef0407acb0e1313fdbc4804f269f0d"
+      ]
+    },
+    {
+      "path": "compat/maven-resolver-provider/pom.xml",
+      "before": [
+        "100644",
+        "7130c64d418ed24e45cb89cdbbff0cd8a5809f2d"
+      ],
+      "aggregate_before": [
+        "100644",
+        "7130c64d418ed24e45cb89cdbbff0cd8a5809f2d"
+      ],
+      "original_donor": [
+        "100644",
+        "3154cc66d7b32d4bf6cf72a16b78c591129870bc"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "3154cc66d7b32d4bf6cf72a16b78c591129870bc"
+      ]
+    },
+    {
+      "path": "impl/maven-classworlds/pom.xml",
+      "before": [
+        "100644",
+        "768d4199aa1990054a5bd07cb5223d9b0ec8b937"
+      ],
+      "aggregate_before": [
+        "100644",
+        "768d4199aa1990054a5bd07cb5223d9b0ec8b937"
+      ],
+      "original_donor": [
+        "100644",
+        "3fe65666a913e293c062e50c6472162076ecfdda"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "3fe65666a913e293c062e50c6472162076ecfdda"
+      ]
+    },
+    {
+      "path": "impl/maven-classworlds/src/test/test-data/optionally-existent.conf",
+      "before": [
+        "100644",
+        "fe102574c95d7166b114a92b85b5d5b10bfa02da"
+      ],
+      "aggregate_before": [
+        "100644",
+        "d7c0fd1c131de59163ab766a43f81679c8554522"
+      ],
+      "original_donor": [
+        "100644",
+        "c2a32928d3df2f41383d2222380b6f73dbe6849b"
+      ],
+      "disposition": "COMPOSE_UPSTREAM_JAR_NAME_AND_TARGET_EOF",
+      "reverse_to_target": true,
+      "reverse_to_donor": true,
+      "result": [
+        "100644",
+        "c1b3ee2433b15b29f82435fbf720b1f006e08be3"
+      ]
+    },
+    {
+      "path": "impl/maven-classworlds/src/test/test-data/valid-from-from-from.conf",
+      "before": [
+        "100644",
+        "49895b093c59f7d19f908cae4be2cd1d984a0353"
+      ],
+      "aggregate_before": [
+        "100644",
+        "49895b093c59f7d19f908cae4be2cd1d984a0353"
+      ],
+      "original_donor": [
+        "100644",
+        "e2ec2dc347399e4db8d26881649b25350d131b46"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "e2ec2dc347399e4db8d26881649b25350d131b46"
+      ]
+    },
+    {
+      "path": "impl/maven-classworlds/src/test/test-data/valid.conf",
+      "before": [
+        "100644",
+        "e85024bf009dbb2c55d7e8bc5c8d431a6ac503a7"
+      ],
+      "aggregate_before": [
+        "100644",
+        "e85024bf009dbb2c55d7e8bc5c8d431a6ac503a7"
+      ],
+      "original_donor": [
+        "100644",
+        "d8ba2d9e0f598f9e789c65ef13e01222a62019df"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "d8ba2d9e0f598f9e789c65ef13e01222a62019df"
+      ]
+    },
+    {
+      "path": "impl/maven-cli/pom.xml",
+      "before": [
+        "100644",
+        "6d91bf9da464bfad4dcd1af075625685f8b8325d"
+      ],
+      "aggregate_before": [
+        "100644",
+        "7d864c7bac33d2c9e99e02d5851434343de5b40a"
+      ],
+      "original_donor": [
+        "100644",
+        "10ddf06a4492b1e37a87cffcbabe2796f7f3ba27"
+      ],
+      "disposition": "NATIVE_THREE_WAY_POM_BOTH_EDITS_REVERSIBLE",
+      "reverse_to_target": true,
+      "reverse_to_donor": true,
+      "result": [
+        "100644",
+        "9ec9384f417093edb766776ab662730f00f38480"
+      ]
+    },
+    {
+      "path": "impl/maven-cli/src/main/java/org/apache/maven/cling/invoker/mvnval/ValidateInvoker.java",
+      "before": [
+        "100644",
+        "22ffd3f7e361db7ad3bb463fe3e7b8479cd8b9bd"
+      ],
+      "aggregate_before": [
+        "100644",
+        "22ffd3f7e361db7ad3bb463fe3e7b8479cd8b9bd"
+      ],
+      "original_donor": [
+        "100644",
+        "5388718646e4c81ed7b88b0fdbd4e36d59d801d4"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "5388718646e4c81ed7b88b0fdbd4e36d59d801d4"
+      ]
+    },
+    {
+      "path": "impl/maven-cli/src/test/java/org/apache/maven/cling/invoker/mvnval/ValidateInvokerTest.java",
+      "before": [
+        "100644",
+        "2834a7198f57b64bd4d491ce5b03bc9171a7524e"
+      ],
+      "aggregate_before": [
+        "100644",
+        "2834a7198f57b64bd4d491ce5b03bc9171a7524e"
+      ],
+      "original_donor": [
+        "100644",
+        "a04d29577adc5db1009175d8d6987e7d7282795f"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "a04d29577adc5db1009175d8d6987e7d7282795f"
+      ]
+    },
+    {
+      "path": "impl/maven-core/pom.xml",
+      "before": [
+        "100644",
+        "5b76715677c6613dd350c2c706f4ae39e6312221"
+      ],
+      "aggregate_before": [
+        "100644",
+        "81281a65a140ff7471ff92cac8e86a6f5c6c674e"
+      ],
+      "original_donor": [
+        "100644",
+        "cd7496fa03e874d05907040fe4f3d00ef823f611"
+      ],
+      "disposition": "NATIVE_THREE_WAY_POM_BOTH_EDITS_REVERSIBLE",
+      "reverse_to_target": true,
+      "reverse_to_donor": true,
+      "result": [
+        "100644",
+        "09866ac99c7e77156b97201c1288efc3b5725d0f"
+      ]
+    },
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/extension/internal/CoreExtensionEntry.java",
+      "before": [
+        "100644",
+        "f19a5bf6ef5717c11e2be6a162c7aab3465cd81d"
+      ],
+      "aggregate_before": [
+        "100644",
+        "f19a5bf6ef5717c11e2be6a162c7aab3465cd81d"
+      ],
+      "original_donor": [
+        "100644",
+        "b1d5e39f45bf89755e5d1baf4da14b14ac4aae3f"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "b1d5e39f45bf89755e5d1baf4da14b14ac4aae3f"
+      ]
+    },
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/lifecycle/internal/LifecycleDependencyResolver.java",
+      "before": [
+        "100644",
+        "d1ac674a7e265afa81f37e1e355b29214b3faafc"
+      ],
+      "aggregate_before": [
+        "100644",
+        "d1ac674a7e265afa81f37e1e355b29214b3faafc"
+      ],
+      "original_donor": [
+        "100644",
+        "a6d719e4f194312820a82ed0ee6e9d462c58a86e"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "a6d719e4f194312820a82ed0ee6e9d462c58a86e"
+      ]
+    },
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/logging/LoggingOutputStream.java",
+      "before": [
+        "100644",
+        "e20546196fd0d4f0909269af4057587732ef3582"
+      ],
+      "aggregate_before": [
+        "100644",
+        "e20546196fd0d4f0909269af4057587732ef3582"
+      ],
+      "original_donor": [
+        "100644",
+        "473911fe1280850975ed277f63c5153de30103c2"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "473911fe1280850975ed277f63c5153de30103c2"
+      ]
+    },
+    {
+      "path": "impl/maven-core/src/test/java/org/apache/maven/lifecycle/internal/LifecycleDependencyResolverTest.java",
+      "before": [
+        "100644",
+        "3ff43bc2d2e67aaf596bb57445e8e5a731e41d98"
+      ],
+      "aggregate_before": [
+        "100644",
+        "3ff43bc2d2e67aaf596bb57445e8e5a731e41d98"
+      ],
+      "original_donor": [
+        "100644",
+        "f627a3b34cafb82c3030d4acaf70c57c3106cddb"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "f627a3b34cafb82c3030d4acaf70c57c3106cddb"
+      ]
+    },
+    {
+      "path": "impl/maven-core/src/test/java/org/apache/maven/logging/LoggingOutputStreamTest.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "e61e5166c2f4f7f58c692eafac248d6de423e0c8"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "e61e5166c2f4f7f58c692eafac248d6de423e0c8"
+      ]
+    },
+    {
+      "path": "impl/maven-di/src/main/java/org/apache/maven/di/impl/InjectorImpl.java",
+      "before": [
+        "100644",
+        "fc32b7a0726ba36239eed65e58a21b4930491ad1"
+      ],
+      "aggregate_before": [
+        "100644",
+        "fc32b7a0726ba36239eed65e58a21b4930491ad1"
+      ],
+      "original_donor": [
+        "100644",
+        "fce1c24120f5f172d1de9f37c90bc0e8977f5950"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "fce1c24120f5f172d1de9f37c90bc0e8977f5950"
+      ]
+    },
+    {
+      "path": "impl/maven-di/src/test/java/org/apache/maven/di/impl/InjectorImplTest.java",
+      "before": [
+        "100644",
+        "b2a503264413e85772b7e739a3bd08ee74683353"
+      ],
+      "aggregate_before": [
+        "100644",
+        "b2a503264413e85772b7e739a3bd08ee74683353"
+      ],
+      "original_donor": [
+        "100644",
+        "91ff4d81274ae71daa8a2a23e95968aba3d2517e"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "91ff4d81274ae71daa8a2a23e95968aba3d2517e"
+      ]
+    },
+    {
+      "path": "impl/maven-impl/pom.xml",
+      "before": [
+        "100644",
+        "a2ea7bb8327c5bbfac636aae8e849701453c30ee"
+      ],
+      "aggregate_before": [
+        "100644",
+        "a2ea7bb8327c5bbfac636aae8e849701453c30ee"
+      ],
+      "original_donor": [
+        "100644",
+        "51f7b1a7b6b3b3d4b8552df408e47190c917f986"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "51f7b1a7b6b3b3d4b8552df408e47190c917f986"
+      ]
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/ExtensibleEnumRegistries.java",
+      "before": [
+        "100644",
+        "5716538702bd027dda788f732700aed9fa066724"
+      ],
+      "aggregate_before": [
+        "100644",
+        "5716538702bd027dda788f732700aed9fa066724"
+      ],
+      "original_donor": [
+        "100644",
+        "942a0884172b1f91c3e4b37597392ed1e6af7cf1"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "942a0884172b1f91c3e4b37597392ed1e6af7cf1"
+      ]
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/model/DefaultModelDialectManager.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "758c9142252a5068a1c2c299003109a44ea9c795"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "758c9142252a5068a1c2c299003109a44ea9c795"
+      ]
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultDialectRegistryTest.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "fd1a77ff7400098430fba4d5700e6a387eeec5f3"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "fd1a77ff7400098430fba4d5700e6a387eeec5f3"
+      ]
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/model/DefaultModelDialectManagerTest.java",
+      "before": null,
+      "aggregate_before": null,
+      "original_donor": [
+        "100644",
+        "9b2b4090090ac0485855d7006187517966b97f00"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "9b2b4090090ac0485855d7006187517966b97f00"
+      ]
+    },
+    {
+      "path": "impl/maven-jline/pom.xml",
+      "before": [
+        "100644",
+        "93f97ae4ca1f651eb5c0b3e214255fa25a51735c"
+      ],
+      "aggregate_before": [
+        "100644",
+        "93f97ae4ca1f651eb5c0b3e214255fa25a51735c"
+      ],
+      "original_donor": [
+        "100644",
+        "0364e1bd215df3e5db997e947355d9d5212eeebc"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "0364e1bd215df3e5db997e947355d9d5212eeebc"
+      ]
+    },
+    {
+      "path": "impl/maven-jline/src/main/java/module-info.java",
+      "before": [
+        "100644",
+        "540b4177a611be3c2b05324e4361aab3e9895e67"
+      ],
+      "aggregate_before": [
+        "100644",
+        "540b4177a611be3c2b05324e4361aab3e9895e67"
+      ],
+      "original_donor": [
+        "100644",
+        "8e92fac5277878dbf90d32c4e274ed85dda9fcb8"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "8e92fac5277878dbf90d32c4e274ed85dda9fcb8"
+      ]
+    },
+    {
+      "path": "impl/maven-support/pom.xml",
+      "before": [
+        "100644",
+        "600cf87246b5fc1e1fb8837c4625d559c178f543"
+      ],
+      "aggregate_before": [
+        "100644",
+        "600cf87246b5fc1e1fb8837c4625d559c178f543"
+      ],
+      "original_donor": [
+        "100644",
+        "8bf5bb06928ce474d411aa56389874f64c4930c9"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "8bf5bb06928ce474d411aa56389874f64c4930c9"
+      ]
+    },
+    {
+      "path": "impl/maven-testing/pom.xml",
+      "before": [
+        "100644",
+        "76438a593e68a245449da90692e250f22caf145a"
+      ],
+      "aggregate_before": [
+        "100644",
+        "76438a593e68a245449da90692e250f22caf145a"
+      ],
+      "original_donor": [
+        "100644",
+        "abcbf482e734ba23d0ac01ad6568238c7c4a2454"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "abcbf482e734ba23d0ac01ad6568238c7c4a2454"
+      ]
+    },
+    {
+      "path": "impl/maven-xml/pom.xml",
+      "before": [
+        "100644",
+        "fc4ab22758f3f36f80a3b573e0e7bd8691010ce9"
+      ],
+      "aggregate_before": [
+        "100644",
+        "fc4ab22758f3f36f80a3b573e0e7bd8691010ce9"
+      ],
+      "original_donor": [
+        "100644",
+        "cc8ac781d9c013547dff77f2e584614436c2fbcc"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "cc8ac781d9c013547dff77f2e584614436c2fbcc"
+      ]
+    },
+    {
+      "path": "its/pom.xml",
+      "before": [
+        "100644",
+        "e4f03c8873d000bb3e277830d4974359efa88870"
+      ],
+      "aggregate_before": [
+        "100644",
+        "e4f03c8873d000bb3e277830d4974359efa88870"
+      ],
+      "original_donor": [
+        "100644",
+        "46a0cdd049708572115d42651edfb9f8dcb8f483"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100644",
+        "46a0cdd049708572115d42651edfb9f8dcb8f483"
+      ]
+    },
+    {
+      "path": "pom.xml",
+      "before": [
+        "100644",
+        "5e38f9363612cdc2f5e964fb077006b55b57f3cb"
+      ],
+      "aggregate_before": [
+        "100644",
+        "c1fbf2f44be1e5452fc2fb0a47f5632b752b4f1d"
+      ],
+      "original_donor": [
+        "100644",
+        "14629db1103128e05b68a3113f216942c1bc2f02"
+      ],
+      "disposition": "NATIVE_THREE_WAY_POM_BOTH_EDITS_REVERSIBLE",
+      "reverse_to_target": true,
+      "reverse_to_donor": true,
+      "result": [
+        "100644",
+        "6e8c7ca57d4af4ccbd348bc0664cd392decd3c0e"
+      ]
+    },
+    {
+      "path": "src/graph/ReactorGraph.java",
+      "before": [
+        "100755",
+        "162f14d6035e997580c43ef011bf73590af6e979"
+      ],
+      "aggregate_before": [
+        "100755",
+        "162f14d6035e997580c43ef011bf73590af6e979"
+      ],
+      "original_donor": [
+        "100755",
+        "5f06dfe2fb716d2d1f31a2ca1070b21649af4b57"
+      ],
+      "disposition": "EXACT_DONOR_AT_REAL_OWNER",
+      "result": [
+        "100755",
+        "5f06dfe2fb716d2d1f31a2ca1070b21649af4b57"
+      ]
+    }
+  ],
+  "scope": "Git source-recovery candidate; tests and semantic/API/ABI qualification remain independent. No default branch admission is asserted.",
+  "upstream_pr": "https://github.com/hsoliwal/maven/pull/25",
+  "aggregate_pr": "https://github.com/hsoliwal/maven/pull/28",
+  "existing_target_checkstyle_hold": "The independently tested #24 contribution has 14 Checkstyle violations before its original JUnit execution."
+}
