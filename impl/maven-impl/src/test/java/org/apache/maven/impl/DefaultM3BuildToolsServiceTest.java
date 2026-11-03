@@ -94,6 +94,41 @@ class DefaultM3BuildToolsServiceTest {
     }
 
     @Test
+    void fullSessionBudgetRefusesBeforeNativeInvocationButStillAdmitsAnExistingChangedKey() throws Exception {
+        Path runtime = Path.of(System.getProperty("java.home"));
+        NativeProvider provider = new NativeProvider();
+        var service = new DefaultM3BuildToolsService(() -> Optional.of(provider), () -> runtime);
+        Session current = session();
+        Path first = null;
+        for (int index = 0; index < 256; index++) {
+            Path file = temp.resolve("Capacity" + index + ".class");
+            Files.write(file, new byte[] {(byte) index, (byte) (index >>> 8)});
+            if (first == null) {
+                first = file;
+            }
+            assertTrue(service.dependencies(current, new M3BuildToolsService.Request(runtime, file, false))
+                    .isPresent());
+        }
+        assertEquals(256, provider.invocations);
+        Path overflow = temp.resolve("CapacityOverflow.class");
+        Files.write(overflow, new byte[] {1, 2, 3, 4});
+        var miss = new M3BuildToolsService.Request(runtime, overflow, false);
+        IOException rejected = assertThrows(IOException.class, () -> service.dependencies(current, miss));
+        assertTrue(rejected.getMessage().contains("session budget"));
+        assertEquals(256, provider.invocations, "no native work after rejecting an unadmittable new key");
+
+        var existing = new M3BuildToolsService.Request(runtime, first, false);
+        assertTrue(service.dependencies(current, existing).isPresent());
+        assertEquals(256, provider.invocations, "unchanged original key remains cached at capacity");
+
+        Files.write(first, new byte[] {5, 4, 3, 2, 1});
+        assertTrue(service.dependencies(current, existing).isPresent());
+        assertEquals(257, provider.invocations, "stale original key frees its slot before native re-analysis");
+        assertThrows(IOException.class, () -> service.dependencies(current, miss));
+        assertEquals(257, provider.invocations, "replacement cannot evict unrelated keys or bypass budget");
+    }
+
+    @Test
     void dependencyFactsAcceptLfAndCrlfButRejectMixedLineEndings() throws Exception {
         Path clazz = temp.resolve("LineEndings.class");
         Files.write(clazz, new byte[] {1, 2, 3, 4});
