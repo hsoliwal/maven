@@ -17,6 +17,10 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 -->
+<!--
+Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+Preserve first-party SPDX notices while retaining inherited Java and POM formatting checks.
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
@@ -364,6 +368,23 @@ under the License.
       </plugins>
     </pluginManagement>
     <plugins>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <configuration>
+          <java>
+            <licenseHeader>
+              <!-- Recognize the exact first-party notice without changing inherited Java formatters. -->
+              <onlyIfContentMatches>\A(?!/\*\R \* SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project\R \* SPDX-License-Identifier: Apache-2\.0\R \*/\R)</onlyIfContentMatches>
+            </licenseHeader>
+            <forbidRegex>
+              <name>m3FirstPartyLicense</name>
+              <searchRegex>(?sm)\A(?!/\*\R \* SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project\R \* SPDX-License-Identifier: Apache-2\.0\R \*/\R).*?^\h*(?:public\h+)?(?:final\h+)?class\h+(?:M3ProjectWatch(?:Test)?|M3ExecutionRequestCopyTest)\b</searchRegex>
+              <lintDetail>The three first-party M3 watch classes require their canonical Hitesh Soliwal Apache-2.0 SPDX header.</lintDetail>
+            </forbidRegex>
+          </java>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.eclipse.sisu</groupId>
         <artifactId>sisu-maven-plugin</artifactId>

@@ -1,0 +1,293 @@
+{
+  "schema": "M3_AST_FULL_PRODUCT_BUILD_PROOF_V1",
+  "status": "PASS",
+  "repository": "hsoliwal/M3jdk21",
+  "baseline_commit": "c0f992009f7045c9f0d8ef4f734b3f1113c7a3f6",
+  "local_git_head": "c0f992009f7045c9f0d8ef4f734b3f1113c7a3f6",
+  "canonical_recipe_commit": "c05613123249b74ac4243fe0b924b68494116931",
+  "source_scope": "Complete actual M3JDK source checkout; baseline native VM and all modules built, then qualified compiler/build SDK Results received and product JDK rebuilt.",
+  "configure": {
+    "boot_jdk": "Temurin 21.0.12.1+1",
+    "arguments": [
+      "--with-conf-name=m3-ast-reverse",
+      "--with-boot-jdk=/tmp/m3-toolchain/jdk-21.0.12.1+1",
+      "--with-debug-level=release",
+      "--with-jvm-variants=server",
+      "--enable-headless-only",
+      "--disable-warnings-as-errors",
+      "--with-freetype=bundled",
+      "--disable-javac-server",
+      "--with-num-cores=4",
+      "--with-memory-size=4096"
+    ],
+    "exit": 0
+  },
+  "builds": [
+    {
+      "command": [
+        "make",
+        "JOBS=4",
+        "images"
+      ],
+      "source": "unchanged baseline",
+      "exit": 0
+    },
+    {
+      "command": [
+        "make",
+        "JOBS=4",
+        "jdk-image"
+      ],
+      "source": "29 qualified SDK target files applied through v3 receiver",
+      "exit": 0
+    }
+  ],
+  "receiver": {
+    "datasets": [
+      "m3jdk21-compiler",
+      "m3jdk21-build"
+    ],
+    "applied_targets": 29,
+    "repeated_receive_changes": 0,
+    "owner": "engine-qualified-v3/synexia-openrewrite-recipes"
+  },
+  "image": {
+    "jdk_modules_sha256": "e7a2827ebfcb2f1fb474db3a8e4e4bc058ffe5f5dea5f9701803669101b28b8b",
+    "jdk_release_sha256": "5a3d73c8957e7fcb0da466afc0be260adeaddbf8bb04ad82ebb562710c2989de",
+    "java_version": "openjdk version \"21-internal\" 2023-09-19\nOpenJDK Runtime Environment (build 21-internal-adhoc.root.M3jdk21)\nOpenJDK 64-Bit Server VM (build 21-internal-adhoc.root.M3jdk21, mixed mode, sharing)\n"
+  },
+  "tests": {
+    "shared_frontend_checks": 70,
+    "openrewrite_junit_tests": 5,
+    "jtreg_passed": 3,
+    "jtreg_tests": [
+      "M3ComputeConstantFactsTest",
+      "M3PrimitiveFoldedImageTest",
+      "M3ASTSharedFrontendTest"
+    ],
+    "jtreg_execution": "Real jtreg 7.3.1+1; local test workers run outside the socket-restricted sandbox."
+  },
+  "source_files": [
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/docs/name-mapping.d/m3-shared-frontend.json",
+      "sha256": "463102c3c23c7f1e3d7ee483421d15cff6def4c9a6c020d0e71423dab6e7fabe",
+      "git_blob_sha1": "2affcbbd20be11bbdd927e7d092c576dd5be0bab"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/README.md",
+      "sha256": "8f076c768f832ebcad3e9e25b4e99b0a24f3b2e6a072865d449bf216203c642c",
+      "git_blob_sha1": "304054ec80d62ecf8992dd0446576fed81b56178"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/algorithm-catalogue.tsv",
+      "sha256": "05952a2bfce357b72b25fdd5dba5f570ff5ae3ee29425773e9882b8427e0ab10",
+      "git_blob_sha1": "40b57288b34fb484afe792277f72f607dee70880"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/openrewrite/pom.xml",
+      "sha256": "f6dd1edf87821933d42e0adf549c7c180506455c52526a2d3e46471b58a17382",
+      "git_blob_sha1": "3407e899d0fbecf4a132cd445c82f3423de2eede"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/openrewrite/src/main/java/org/m3jdk/tooling/rewrite/M3RewriteFrontend.java",
+      "sha256": "533ffc0c12992f9a9c5c5232104590f7171b20959145f9fe4acd8da6a30e918f",
+      "git_blob_sha1": "ec0ee38faff56303c3a1fb6a9df802a3fa0eab12"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/openrewrite/src/test/java/org/m3jdk/tooling/rewrite/M3RewriteFrontendTest.java",
+      "sha256": "e7b1ac45e0d23a6dc308b19a4618323303eb4e335fe3a8c8ea549a747cbdf1cf",
+      "git_blob_sha1": "19de4e70cfcdb6293504a5b001387bcf61f282ab"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "m3/tooling/shared-frontend/verify_frontend.py",
+      "sha256": "464f6c5c43af3d4a3f24c63c63144fbe9430f131dcdd3741c91472714ddf9a50",
+      "git_blob_sha1": "399cdbad2b3e7c85c41aa0ef473720720a5c76ef"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "src/jdk.compiler/share/classes/com/sun/source/util/M3AST.java",
+      "sha256": "6a8bccb501a516cca779e71e24ef814ca40825faf92fed744e48f65ad4c1d854",
+      "git_blob_sha1": "dc8bca117d0fe55f534ab2b1b267d207ebaa8e4e"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "src/jdk.compiler/share/classes/com/sun/tools/javac/m3/M3ASTPC.java",
+      "sha256": "845c70bdc5e77a62282417889dc77bf466fd0c0005f72112e86faf27ec616399",
+      "git_blob_sha1": "89b888f296058811ad4d58c76226c34c6a6e8fc2"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "src/jdk.compiler/share/classes/com/sun/tools/javac/m3/M3PrimitiveImageCompiler.java",
+      "sha256": "5827f24f34317707564be6ca031ecb6ef69958b66ca69a42a787080ef6ccb006",
+      "git_blob_sha1": "a04b4094d304958da4574244503c1b9d34e0a330"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "src/jdk.compiler/share/classes/com/sun/tools/javac/main/JavaCompiler.java",
+      "sha256": "129e8c19ef328185c45465b9c8bf9baee43bb24be54842b69833c52e3e6f3dcb",
+      "git_blob_sha1": "cac77db60d93c1692bf4b9cfc18428ad3c36910f"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "src/jdk.compiler/share/classes/module-info.java",
+      "sha256": "ae52d1734570fee7404aeb68b65ef86ea23ad322b72ff0b137c9039c71aafb09",
+      "git_blob_sha1": "13ebbaf1db2e8ba997e48c317f4b64bf8f0cfb1d"
+    },
+    {
+      "dataset": "m3jdk21-compiler",
+      "path": "test/langtools/tools/javac/m3/M3ASTSharedFrontendTest.java",
+      "sha256": "47349ef82633f724f3ca694521250048ba70486b094b069fc51c13b5e64978a5",
+      "git_blob_sha1": "41eee89134939047e81f93b61bdda8c38ef805ed"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/jmod-recipes/tools/jmod_pack.py",
+      "sha256": "a2c1f69f6aaea0de7d5047c14f6f7530fe3231dca97fffdc4defee506daeb454",
+      "git_blob_sha1": "86b62fddc148b372145e807438dd7cd018acca0f"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/README.md",
+      "sha256": "7793bb9e194b22813f8af94333147fa463f4c9d256649714fbb488be367b8a09",
+      "git_blob_sha1": "106d5c3bff8c254ece3c85f8172b06562404671c"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/config/ant-m3ast.xml",
+      "sha256": "609cef3e53e6895f2eff31ae7cac7c52c3d8c47033068319feeed5783ccb1b9a",
+      "git_blob_sha1": "92deaed1c215c83a853e11cb1cd2775229d83d7e"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/config/gradle-m3ast.init.gradle",
+      "sha256": "d0d938186a2ace2ed702790de23cfd257b15438efb9fa9fc4b21486b26ffc790",
+      "git_blob_sha1": "d17211685a1277ac7a3034453e3171fe7cec0c9a"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/config/maven-m3ast.xml",
+      "sha256": "61fcf00281bc4ae3f086319c379bb7ace1c6ca8fa8c6145d32d8a0f8664d1016",
+      "git_blob_sha1": "8074bbb822995ff8687f415601689df45193d6e0"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-ant",
+      "sha256": "1dae04b5386be591dbb40203d32905aab2fb1c15de3724ec38a457fae2fa36d8",
+      "git_blob_sha1": "75b53650ce4859dcb95b3a22627b74cbe83e9a89"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-ant.cmd",
+      "sha256": "4288b7d8cf5371c71e0688f70d88897102176a2dbcaf1324ad15caf5e12a8b5f",
+      "git_blob_sha1": "71f6a7b165ad2c1ee60e108633c28c4951d54d86"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-gradle",
+      "sha256": "2257c556905c67b1dfcf83a2e4e5095d070aedb8353bb95c6cad5c8dccfb72b6",
+      "git_blob_sha1": "4cca642b740ecc9d080fe610e6b571c0e034b69c"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-gradle.cmd",
+      "sha256": "dff184e0045e21f5429521bc0c9450539ba25a8781342fe42845e46e46ea1b95",
+      "git_blob_sha1": "bbef70c7d56bf409fafbd9c2dee1c64139f7cdde"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-mvn",
+      "sha256": "798678a5f5882282afd2e8e53ed99533c3127b979afb1818f829d946d02da9c3",
+      "git_blob_sha1": "d500c1de5461005e9201ddf058dde8ba68095991"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/launchers/m3-mvn.cmd",
+      "sha256": "b0c6a7d3d5b8e6da5391cb80177d0e70dbf1a8a953b0adcebb38496a27149113",
+      "git_blob_sha1": "f311ac6dd4e1c5cd7bd6309db04b908b467e3ae1"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build-tools/verify_maven.py",
+      "sha256": "36e82de3e0f24b4b1004e9d4b15ae09e4bda739ab01cac096e38e797b403f806",
+      "git_blob_sha1": "6d3394b63912654dde175412a25d160d6357b6d2"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/build_pack.py",
+      "sha256": "46ae225a30f007c480338618969eb87928aeb812f6974c9b6bf7b9d5124a6614",
+      "git_blob_sha1": "ca116faebb6f8103eb466eb2c115b82152e13c8e"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/lock_tool_distribution.py",
+      "sha256": "ee0a50592064d8ba5bdb9f9ca9f412e036c9d5e60c062a6985b3062ee1192d4c",
+      "git_blob_sha1": "eafddaddbeef01e0623e00e5144587b3e9987f4f"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/test_tool_packs.py",
+      "sha256": "ba28752dfdcedb66165de9f0d202749c2a848d2c555632c1f846b2f4a724b199",
+      "git_blob_sha1": "5042f9570133f695c018433ce37cb4b2f3d778a0"
+    },
+    {
+      "dataset": "m3jdk21-build",
+      "path": "m3/tooling/module-packs/tool_packs.py",
+      "sha256": "24edd66788009d00eddcae9b2ba1bc61fd492b28aefb5f34c1439eff9e6b5acf",
+      "git_blob_sha1": "511938eed0b48917f95c8bfc4bcd2ff1bd2ebf62"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "product-configure.log",
+      "bytes": 19429,
+      "sha256": "5540d2840c2c3515396291fff946f0d56708aab8d4e811556659925bab479281"
+    },
+    {
+      "path": "product-baseline-build.log",
+      "bytes": 14326,
+      "sha256": "52e7fdc686f5906c8fb1dc03880e34de143488c197523d6d6e63361f80116384"
+    },
+    {
+      "path": "product-final-build.log",
+      "bytes": 2507,
+      "sha256": "e85d67450e1945588dfa96fa3c4e01baa8f43014845da0c2c16d77bedb5d6c61"
+    },
+    {
+      "path": "frontend-product-proof/RESULT.json",
+      "bytes": 530,
+      "sha256": "06941d9f0668dbd4423931a322fa2b1e762f13a52bbb1ef2a332f27e41cef03d"
+    },
+    {
+      "path": "frontend-product-proof/commands.json",
+      "bytes": 1424,
+      "sha256": "a1ddffd5b22df10cbbe61e09a448a44350a2cfbad0aa1a0df8ca45ace459b25d"
+    },
+    {
+      "path": "frontend-product-proof/compiler-contracts.log",
+      "bytes": 425,
+      "sha256": "ad33e48fae9af4643aaed9bc3f38d61247d818d9148ab0971992b375e4bb32d6"
+    },
+    {
+      "path": "frontend-product-proof/openrewrite.log",
+      "bytes": 2803,
+      "sha256": "ac0d583ad2b0ab5e3068413d825b5865f290d7e6a07f2faa5e0f131fa4b69eb5"
+    },
+    {
+      "path": "product-jtreg-local.log",
+      "bytes": 24097,
+      "sha256": "010d63adfd42b4a8f4389c309616cc4611db5946923d8fcd9962d20150a7eaca"
+    }
+  ],
+  "limits": [
+    "Linux x86_64 headless server build; no other platform build claimed.",
+    "The baseline symbol-only image was removed after successful images build to recover disk space; the final jdk-image target includes the complete runtime and compiler.",
+    "No full HotSpot or all-langtools test suite, no whole Synexia reactor test, and no performance claim."
+  ]
+}

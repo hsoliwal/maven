@@ -1,0 +1,263 @@
+{
+  "schema": "M3_NATIVE_RUNTIME_SOURCE_LOGS_V1",
+  "note": "Runtime logs/traces retain exact UTF-8 text inside JSON. The large Maven reactor log uses explicitly labelled selected lines and retains its complete original byte hash. Metadata does not contain compiled artifacts.",
+  "logs": [
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-fork-final-source-build.log",
+      "bytes": 470837,
+      "sha256": "d4b6f8808e197a7c55ffe056daba531da917b88368fe9c7fe2d5235d68b5fb8e",
+      "line_count": 3645,
+      "content_is_excerpt": true,
+      "selected_lines": [
+        {
+          "line": 2760,
+          "text": "[INFO] Running org.apache.maven.plugin.internal.M3AstCompilerConfigurationTest"
+        },
+        {
+          "line": 2761,
+          "text": "[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.231 s -- in org.apache.maven.plugin.internal.M3AstCompilerConfigurationTest"
+        },
+        {
+          "line": 2765,
+          "text": "[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0"
+        },
+        {
+          "line": 3601,
+          "text": "[INFO] Reactor Summary for Apache Maven 4.1.0-SNAPSHOT:"
+        },
+        {
+          "line": 3603,
+          "text": "[INFO] Apache Maven ....................................... SUCCESS [  4.196 s]"
+        },
+        {
+          "line": 3604,
+          "text": "[INFO] Maven 4 API ........................................ SUCCESS [  0.140 s]"
+        },
+        {
+          "line": 3605,
+          "text": "[INFO] Maven 4 API :: Meta annotations .................... SUCCESS [  2.304 s]"
+        },
+        {
+          "line": 3606,
+          "text": "[INFO] Maven 4 API :: Dependency Injection ................ SUCCESS [  0.796 s]"
+        },
+        {
+          "line": 3607,
+          "text": "[INFO] Maven 4 API :: XML ................................. SUCCESS [  0.965 s]"
+        },
+        {
+          "line": 3608,
+          "text": "[INFO] Maven 4 API :: Model ............................... SUCCESS [  1.983 s]"
+        },
+        {
+          "line": 3609,
+          "text": "[INFO] Maven 4 API :: Plugin .............................. SUCCESS [  0.623 s]"
+        },
+        {
+          "line": 3610,
+          "text": "[INFO] Maven 4 API :: Settings ............................ SUCCESS [  0.563 s]"
+        },
+        {
+          "line": 3611,
+          "text": "[INFO] Maven 4 API :: Toolchain ........................... SUCCESS [  0.233 s]"
+        },
+        {
+          "line": 3612,
+          "text": "[INFO] Maven 4 API :: Repository Metadata ................. SUCCESS [  0.188 s]"
+        },
+        {
+          "line": 3613,
+          "text": "[INFO] Maven 4 API :: Core ................................ SUCCESS [  3.336 s]"
+        },
+        {
+          "line": 3614,
+          "text": "[INFO] Maven 4 API :: SPI ................................. SUCCESS [  0.471 s]"
+        },
+        {
+          "line": 3615,
+          "text": "[INFO] Maven 4 API :: CLI ................................. SUCCESS [  0.435 s]"
+        },
+        {
+          "line": 3616,
+          "text": "[INFO] Maven 4 Implementation Modules ..................... SUCCESS [  0.140 s]"
+        },
+        {
+          "line": 3617,
+          "text": "[INFO] Maven 4 XML Implementation ......................... SUCCESS [  1.635 s]"
+        },
+        {
+          "line": 3618,
+          "text": "[INFO] Maven 4 Model Support .............................. SUCCESS [ 41.039 s]"
+        },
+        {
+          "line": 3619,
+          "text": "[INFO] Maven 4 Dependency Injection ....................... SUCCESS [  1.175 s]"
+        },
+        {
+          "line": 3620,
+          "text": "[INFO] Maven 4 JLine integration .......................... SUCCESS [  0.472 s]"
+        },
+        {
+          "line": 3621,
+          "text": "[INFO] Maven 4 Logging .................................... SUCCESS [  0.526 s]"
+        },
+        {
+          "line": 3622,
+          "text": "[INFO] Maven 4 API Implementation ......................... SUCCESS [  9.923 s]"
+        },
+        {
+          "line": 3623,
+          "text": "[INFO] Maven 3 Compatibility Modules ...................... SUCCESS [  0.132 s]"
+        },
+        {
+          "line": 3624,
+          "text": "[INFO] Maven Artifact ..................................... SUCCESS [  0.987 s]"
+        },
+        {
+          "line": 3625,
+          "text": "[INFO] Maven Model ........................................ SUCCESS [  1.560 s]"
+        },
+        {
+          "line": 3626,
+          "text": "[INFO] Maven Builder Support (deprecated) ................. SUCCESS [  0.242 s]"
+        },
+        {
+          "line": 3627,
+          "text": "[INFO] Maven Model Builder (deprecated) ................... SUCCESS [  2.513 s]"
+        },
+        {
+          "line": 3628,
+          "text": "[INFO] Maven 3 Plugin API ................................. SUCCESS [  0.588 s]"
+        },
+        {
+          "line": 3629,
+          "text": "[INFO] Maven Repository Metadata Model .................... SUCCESS [  0.578 s]"
+        },
+        {
+          "line": 3630,
+          "text": "[INFO] Maven Settings ..................................... SUCCESS [  0.523 s]"
+        },
+        {
+          "line": 3631,
+          "text": "[INFO] Maven Toolchain Model .............................. SUCCESS [  0.385 s]"
+        },
+        {
+          "line": 3632,
+          "text": "[INFO] Maven Toolchain Builder (deprecated) ............... SUCCESS [  0.615 s]"
+        },
+        {
+          "line": 3633,
+          "text": "[INFO] Maven 4 Core ....................................... SUCCESS [ 18.379 s]"
+        },
+        {
+          "line": 3634,
+          "text": "[INFO] Maven Settings Builder (deprecated) ................ SUCCESS [  0.673 s]"
+        },
+        {
+          "line": 3635,
+          "text": "[INFO] Maven Artifact Resolver Provider (deprecated) ...... SUCCESS [  1.480 s]"
+        },
+        {
+          "line": 3636,
+          "text": "[INFO] Maven 2 Compat (deprecated) ........................ SUCCESS [  5.342 s]"
+        },
+        {
+          "line": 3637,
+          "text": "[INFO] Maven 4 CLI ........................................ SUCCESS [ 15.862 s]"
+        },
+        {
+          "line": 3638,
+          "text": "[INFO] Maven Embedder (deprecated) ........................ SUCCESS [  1.847 s]"
+        },
+        {
+          "line": 3639,
+          "text": "[INFO] Apache Maven Distribution .......................... SUCCESS [  7.916 s]"
+        },
+        {
+          "line": 3641,
+          "text": "[INFO] BUILD SUCCESS"
+        }
+      ]
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-final-custody-rat.log",
+      "bytes": 692,
+      "sha256": "f02c5c21e45f650996468f50bde0363db7b19dcb5612f6619fe0a5de9cc9fdc3",
+      "line_count": 15,
+      "content_is_excerpt": false,
+      "text": "[INFO] Scanning for projects...\n[INFO] \n[INFO] -----------------------< org.apache.maven:maven >-----------------------\n[INFO] Building Apache Maven 4.1.0-SNAPSHOT\n[INFO]   from pom.xml\n[INFO] --------------------------------[ pom ]---------------------------------\n[INFO] \n[INFO] --- apache-rat:0.18:check (default-cli) @ maven ---\n[INFO] No issues found.\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  5.577 s\n[INFO] Finished at: 2026-10-17T05:21:15-06:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/default-stock/compile.log",
+      "bytes": 979,
+      "sha256": "5db4830e25826aba4ee3256194ff397fa32064615cd69d00c2fa6881f00bcdaa",
+      "line_count": 17,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [debug release 21] to target/classes\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.855 s\n[INFO] Finished at: 2026-10-17T05:21:13-06:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/enabled-stock-refusal/compile.log",
+      "bytes": 1843,
+      "sha256": "b4579c63a94a5cfe6657e60c277934f69573c192c94ba80618af7965950a5b97",
+      "line_count": 32,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [debug release 21] to target/classes\n[INFO] -------------------------------------------------------------\n[ERROR] COMPILATION ERROR : \n[INFO] -------------------------------------------------------------\n[ERROR] plug-in not found: M3AST\n[INFO] 1 error\n[INFO] -------------------------------------------------------------\n[INFO] ------------------------------------------------------------------------\n[ERROR] BUILD FAILURE\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.387 s\n[INFO] Finished at: 2026-10-17T05:21:18-06:00\n[INFO] ------------------------------------------------------------------------\n[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.16.0:compile (default-cli) on project native-compiler: Compilation failure\n[ERROR] plug-in not found: M3AST\n[ERROR] -> [Help 1]\n[ERROR] \n[ERROR] To see the full stack trace of the errors, re-run Maven with the '-e' switch\n[ERROR] Re-run Maven using the '-X' switch to enable verbose output\n[ERROR] \n[ERROR] For more information about the errors and possible solutions, please read the following articles:\n[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/CompilationFailureException\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/enabled-m3/compile.log",
+      "bytes": 979,
+      "sha256": "31d80342b3a8d36a3c9d7e61bc3de86a4b38c62287fef04bfd5544a03f04649e",
+      "line_count": 17,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [debug release 21] to target/classes\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.381 s\n[INFO] Finished at: 2026-10-17T05:21:22-06:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/compile.log",
+      "bytes": 1093,
+      "sha256": "aed14cd1c12a5dad48b05e4fce851d31606a5f95e0fb20020b0d198ed286bec0",
+      "line_count": 18,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [debug release 21] to target/classes\n[INFO] [stdout] M3_PRIMITIVE_IMAGE rows=1 sha256=5d7b956a338324e3b2b205aad3125067734b8622ef2d3ef818e43aa90b856576\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.522 s\n[INFO] Finished at: 2026-10-17T05:21:27-06:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/capture.tsv",
+      "bytes": 828,
+      "sha256": "5e1a4f1fb35a32fb6f0075df541cc70630424a4e0b75c13abcea15f91d846a62",
+      "line_count": 7,
+      "content_is_excerpt": false,
+      "text": "# M3AST-1 actual javac events; no independent parse or attribution\nphase\tsource\ttype\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/src/main/java/fixture/Main.java\t\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/target/generated-sources/annotations/fixture/Generated.java\t\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/src/main/java/fixture/Main.java\tfixture.Main\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/api-trace/target/generated-sources/annotations/fixture/Generated.java\tfixture.Generated\n# parsed=2 analyzed=2 captures=2 extraSourceReads=0 projections=0 hits=0 errors=0 completed=true consumerFailed=false\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/compile.log",
+      "bytes": 986,
+      "sha256": "be4a3448999ad2eabfc02e1a6a536281865dea98eee2f9a11bc0ed3c6822901d",
+      "line_count": 17,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [forked debug release 21] to target/classes\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.998 s\n[INFO] Finished at: 2026-10-17T05:21:31-06:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/capture.tsv",
+      "bytes": 864,
+      "sha256": "6924d199ddc94fc84c7ea1b56a83aaab551da6881300e82682827c071fef601e",
+      "line_count": 7,
+      "content_is_excerpt": false,
+      "text": "# M3AST-1 actual javac events; no independent parse or attribution\nphase\tsource\ttype\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/src/main/java/fixture/Main.java\t\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/target/generated-sources/annotations/fixture/Generated.java\t\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/src/main/java/fixture/Main.java\tfixture.Main\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/command-line-trace/target/generated-sources/annotations/fixture/Generated.java\tfixture.Generated\n# parsed=2 analyzed=2 captures=2 extraSourceReads=0 projections=0 hits=0 errors=0 completed=true consumerFailed=false\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/compile.log",
+      "bytes": 2229,
+      "sha256": "532742b369ca11074348d4a50cf7cb39905b98263f5f9d7437e20d34f4c7d33d",
+      "line_count": 36,
+      "content_is_excerpt": false,
+      "text": "[WARNING] Unable to find the root directory. Create a .mvn directory in the root directory or add the root=\"true\" attribute on the root project's model to identify it.\n[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------------< org.m3.fixture:native-compiler >-------------------\n[INFO] Building native-compiler 1\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-cli) @ native-compiler ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 1 source file with javac [debug release 21] to target/classes\n[INFO] -------------------------------------------------------------\n[ERROR] COMPILATION ERROR : \n[INFO] -------------------------------------------------------------\n[ERROR] /workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/src/main/java/fixture/Main.java:[5,48] cannot find symbol\n  symbol:   variable Unknown\n  location: class fixture.Main\n[INFO] 1 error\n[INFO] -------------------------------------------------------------\n[INFO] ------------------------------------------------------------------------\n[ERROR] BUILD FAILURE\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  1.324 s\n[INFO] Finished at: 2026-10-17T05:21:35-06:00\n[INFO] ------------------------------------------------------------------------\n[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.16.0:compile (default-cli) on project native-compiler: Compilation failure\n[ERROR] /workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/src/main/java/fixture/Main.java:[5,48] cannot find symbol\n[ERROR]   symbol:   variable Unknown\n[ERROR]   location: class fixture.Main\n[ERROR] -> [Help 1]\n[ERROR] \n[ERROR] To see the full stack trace of the errors, re-run Maven with the '-e' switch\n[ERROR] Re-run Maven using the '-X' switch to enable verbose output\n[ERROR] \n[ERROR] For more information about the errors and possible solutions, please read the following articles:\n[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/CompilationFailureException\n"
+    },
+    {
+      "original_path": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/capture.tsv",
+      "bytes": 848,
+      "sha256": "aa5c5cbd207322048e33c37e233bb0e85070e51d9259387f5f5e87c5653a31d6",
+      "line_count": 7,
+      "content_is_excerpt": false,
+      "text": "# M3AST-1 actual javac events; no independent parse or attribution\nphase\tsource\ttype\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/src/main/java/fixture/Main.java\t\nPARSED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/target/generated-sources/annotations/fixture/Generated.java\t\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/src/main/java/fixture/Main.java\tfixture.Main\nANALYZED\tfile:///workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/compiler-error/target/generated-sources/annotations/fixture/Generated.java\tfixture.Generated\n# parsed=2 analyzed=2 captures=2 extraSourceReads=0 projections=0 hits=0 errors=1 completed=true consumerFailed=false\n"
+    }
+  ]
+}

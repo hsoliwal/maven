@@ -1,0 +1,36 @@
+{
+  "schema": "M3_AST_BUILD_SDK_QUALIFICATION_V1",
+  "status": "PASS",
+  "dataset": "maven-runtime-verifier",
+  "repository": "hsoliwal/maven",
+  "baseline_ref": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+  "targets": 1,
+  "openrewrite_version": "8.17.1",
+  "maven_version": "3.9.11",
+  "java_version": "21.0.12.1",
+  "java_vendor": "Eclipse Adoptium",
+  "sdk_tests": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sdk_test_names": [
+    "driftMissingDuplicateAndWrongRepresentationRefuse",
+    "exactReplayFixedPointAndInputOrder",
+    "mixedPreimagesAndPostimages",
+    "postScanChangesRefuse",
+    "qualifiedSdkResultsAreRetained"
+  ],
+  "input_sealer_tests": 8,
+  "receiver_cases": 9,
+  "sdk_inputs_sha256": "0852e758a4c400b6e9aa5e802d9f21ec4d6931cb1eb8240ce337455f5e568d5b",
+  "sdk_results_sha256": "8fbcb0e79c95882a960b2a95ad8354f7166022bf7508152de731add99cd3dce8",
+  "receiver_receipt_sha256": "44c8d7850cc244ea5241a03031bc6a3317050d1b586e60b062d654a0ec69d909",
+  "actual_junit_report_sha256": "2501164f458153d049711be4c4e33010a2e748ad2181077ca57a143f1748a7f8",
+  "actual_maven_log_sha256": "6c1ca728e5e463e0794d44ec7a71c591673b0a10425a7dbe8af6fa48c337693b",
+  "effective_engine_manifest_sha256": "8823045852cbf0d947a33db2448741fbb925187d18fc1b2fa97a3d2a6ea4b3a2",
+  "origin_engine_manifest_sha256": "b2e990a09f2c4b7c355b48cc33a72405829fd009f76d1866153aa07225e6684e",
+  "execution": "Real Maven/OpenRewrite SDK recipes, followed by isolated serial receiver cases.",
+  "product_runtime_behavior_claimed": false
+}

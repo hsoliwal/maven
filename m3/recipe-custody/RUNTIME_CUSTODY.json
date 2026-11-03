@@ -1,0 +1,194 @@
+{
+  "schema": "M3_NATIVE_RUNTIME_ADDITIVE_RECIPE_CUSTODY_V1",
+  "repository": "hsoliwal/maven",
+  "canonical_repository": "hsoliwal/com.synexia",
+  "canonical_crate_path": "synexia-openrewrite-recipes/recipe-crates/m3-ast-build-reverse-20261017",
+  "original_engine_epoch": "e244d68fdee88d4a406be48e4ff1d31b60a17988",
+  "effective_owner_dependency_commit": "3c8e35d08135f7eca500b2ae4d2d8fee9bc6d2d1",
+  "initial_custody_dataset": "maven-custody",
+  "initial_custody_targets": 33,
+  "initial_custody_sdk_results_sha256": "c9f08b1cadf61b8f5135147918311194ad1399cb14bcf1a730a474f807694d68",
+  "original_custody_files_changed": false,
+  "additional_product_targets": 6,
+  "datasets": [
+    {
+      "dataset": "maven-runtime-verifier",
+      "targets": 1,
+      "baseline_commit": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+      "sdk_inputs_sha256": "0852e758a4c400b6e9aa5e802d9f21ec4d6931cb1eb8240ce337455f5e568d5b",
+      "sdk_results_sha256": "8fbcb0e79c95882a960b2a95ad8354f7166022bf7508152de731add99cd3dce8",
+      "engine_manifest_sha256": "8823045852cbf0d947a33db2448741fbb925187d18fc1b2fa97a3d2a6ea4b3a2",
+      "copied_dataset_inputs": 6,
+      "custody_scope": "Exact current metadata, descriptors, manifests and all referenced source/preimage resources; unused historical resource files are excluded. The public mirror executes its own complete SDK source binding."
+    },
+    {
+      "dataset": "maven-runtime-evidence",
+      "targets": 5,
+      "baseline_commit": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+      "sdk_inputs_sha256": "87065b86f243e0e87b06057572c3537758b553acf8e7b7c65d1d524c276efd16",
+      "sdk_results_sha256": "4f7ca08819cf8cf93b844365b9d1fce84b657c158c1c5270e73ed883b262325b",
+      "engine_manifest_sha256": "8823045852cbf0d947a33db2448741fbb925187d18fc1b2fa97a3d2a6ea4b3a2",
+      "copied_dataset_inputs": 10,
+      "custody_scope": "Exact current metadata, descriptors, manifests and all referenced source/preimage resources; unused historical resource files are excluded. The public mirror executes its own complete SDK source binding."
+    }
+  ],
+  "source_copies": [
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/DATASET.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/DATASET.json",
+      "sha256": "fbbcb2e72c766d368c84a379f39c29aa2103ae0a268735668d4d3506e3335e13",
+      "bytes": 661
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/ENGINE_EFFECTIVE.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/ENGINE_EFFECTIVE.tsv",
+      "sha256": "8823045852cbf0d947a33db2448741fbb925187d18fc1b2fa97a3d2a6ea4b3a2",
+      "bytes": 871
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/MODES.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/MODES.tsv",
+      "sha256": "4a682c305e04bdcf9e3c977e2211b8fce1078a103043fe46ca68aadb07dc0ef4",
+      "bytes": 446
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/META-INF/rewrite/m3-ast-build-reverse-20261017-maven-runtime-evidence.yml",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/META-INF/rewrite/m3-ast-build-reverse-20261017-maven-runtime-evidence.yml",
+      "sha256": "f508a301a489eced78b7a9293fbfde6af1ba522fc0a75587778b454a6ed9c17a",
+      "bytes": 495
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0001-EXECUTION_LOGS.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0001-EXECUTION_LOGS.json",
+      "sha256": "f57bbafe2ff9a587a2bdb1f67fc9546ea69c0177a82fdf89d910f2ccaf729e37",
+      "bytes": 21418
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0002-NATIVE_RUNTIME_RECEIPT.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0002-NATIVE_RUNTIME_RECEIPT.json",
+      "sha256": "0d8d154dde2d6c85ca997b000aa9daa42e8e367aad9778811987ee1c8c3a0d6e",
+      "bytes": 4232
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0003-SDK_SOURCE_LINK.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0003-SDK_SOURCE_LINK.json",
+      "sha256": "482172cd43bcbcb722d54a126b27fdaca86cafa7df4829f6a416aa5ed79e21ee",
+      "bytes": 1882
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0004-SOURCE_BUILD_RECEIPT.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0004-SOURCE_BUILD_RECEIPT.json",
+      "sha256": "b3635ce04ec37d69044cea1765ec5e9e08240a584006bbb7cae04a9488935264",
+      "bytes": 1560
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0005-SOURCE_CANDIDATE_PINS.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/0005-SOURCE_CANDIDATE_PINS.json",
+      "sha256": "cca98d3c545d6520ddea186c223a90883f5bab7b62f1e752c9438a1ec45f8ccf",
+      "bytes": 1320
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/manifest.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-evidence/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-evidence/manifest.tsv",
+      "sha256": "03fb27bfd877e4b4e864d26b82d775e2c5b5b2b1b0414ab35688c21e7207b226",
+      "bytes": 928
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/DATASET.json",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/DATASET.json",
+      "sha256": "ba5ed8f7dc8dfd530cedacb616fd0940bd5827da9de01f55095a3caadda683da",
+      "bytes": 661
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/ENGINE_EFFECTIVE.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/ENGINE_EFFECTIVE.tsv",
+      "sha256": "8823045852cbf0d947a33db2448741fbb925187d18fc1b2fa97a3d2a6ea4b3a2",
+      "bytes": 871
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/MODES.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/MODES.tsv",
+      "sha256": "ffb718702b9a0f6b208ed591a1a69a9127a45e337fa99b769acad45e614d3346",
+      "bytes": 155
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/resources/META-INF/rewrite/m3-ast-build-reverse-20261017-maven-runtime-verifier.yml",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/resources/META-INF/rewrite/m3-ast-build-reverse-20261017-maven-runtime-verifier.yml",
+      "sha256": "a381c9c24c57f06376ba29e125e4576a5192c60d447afccb87eefc454f631b2c",
+      "bytes": 495
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-verifier/0001-verify_ast_consumer.py.txt",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-verifier/0001-verify_ast_consumer.py.txt",
+      "sha256": "4c092f6111b54c14b34315648c60ba59075c031d15feb9873b5f9f52cf256830",
+      "bytes": 17210
+    },
+    {
+      "canonical_crate_relative_path": "datasets/maven-runtime-verifier/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-verifier/manifest.tsv",
+      "target_path": "m3/recipe-custody/datasets/maven-runtime-verifier/resources/com/synexia/rewrite/hash-pinned-text/m3-ast-build-reverse-20261017-maven-runtime-verifier/manifest.tsv",
+      "sha256": "85b2c7dfc27017588a0b1c100623def1568b8a0e9cc3efa842e1b796fdd862a5",
+      "bytes": 254
+    },
+    {
+      "canonical_crate_relative_path": "evidence/maven-runtime-evidence/RECEIVER_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/maven-runtime-evidence/RECEIVER_RECEIPT.json",
+      "sha256": "dcaaaae8eadcbc4173b7fa5a4cd503e5ff2fba204e455b27e21540f06444058a",
+      "bytes": 1632
+    },
+    {
+      "canonical_crate_relative_path": "evidence/maven-runtime-evidence/SDK_QUALIFICATION.json",
+      "target_path": "m3/recipe-custody/evidence/maven-runtime-evidence/SDK_QUALIFICATION.json",
+      "sha256": "1d914ac0187ee05a8da32ca5f90acb6a2298ca918ef9d51ad240ef8c175a9473",
+      "bytes": 1552
+    },
+    {
+      "canonical_crate_relative_path": "evidence/maven-runtime-verifier/RECEIVER_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/maven-runtime-verifier/RECEIVER_RECEIPT.json",
+      "sha256": "44c8d7850cc244ea5241a03031bc6a3317050d1b586e60b062d654a0ec69d909",
+      "bytes": 1560
+    },
+    {
+      "canonical_crate_relative_path": "evidence/maven-runtime-verifier/SDK_QUALIFICATION.json",
+      "target_path": "m3/recipe-custody/evidence/maven-runtime-verifier/SDK_QUALIFICATION.json",
+      "sha256": "0c4c2f79979106a2ecbac97dd925ef71854e2888954abb28abe4de563531c02b",
+      "bytes": 1552
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/FIRST_RUNTIME_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/FIRST_RUNTIME_RECEIPT.json",
+      "sha256": "a5cbf9e7aaa3e54032bdc756c273e8f56b94179d89f9b6235caf9d10844fc2e8",
+      "bytes": 5742
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/FULL_PRODUCT_BUILD_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/FULL_PRODUCT_BUILD_RECEIPT.json",
+      "sha256": "69a73330a169fbda61326144209583104bb9f8666d8e00ba4155ab9ce02284bb",
+      "bytes": 11956
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/REPEATABILITY_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/REPEATABILITY_RECEIPT.json",
+      "sha256": "cb81f787b702abe2924da69471a644e8c5ab1524133f03218d627c914b64385d",
+      "bytes": 1499
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/SDK_RUNTIME_LINK.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/SDK_RUNTIME_LINK.json",
+      "sha256": "6151a5ea9bd282f3c50e947d4b4978bdd49460d28d119c3efa07e7ad085868cf",
+      "bytes": 2243
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/SDK_RUNTIME_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/SDK_RUNTIME_RECEIPT.json",
+      "sha256": "d96cfdd49a440bb6d2a7d9713d774c94432cdb99b6f90b3d0e85ee84c4833732",
+      "bytes": 5742
+    },
+    {
+      "canonical_crate_relative_path": "evidence/runtime/maven-verifier/SECOND_RUNTIME_RECEIPT.json",
+      "target_path": "m3/recipe-custody/evidence/runtime/maven-verifier/SECOND_RUNTIME_RECEIPT.json",
+      "sha256": "5fc4845738e31113d7c865bb18046cb62dfa20b5294a15ad55644d3a6c515baf",
+      "bytes": 5742
+    }
+  ],
+  "transfer": "A separate canonical maven-runtime-custody dataset adds this finite mirror. Embedded datasets contain runtime verification sources or evidence, never this custody addendum. Existing owner/harness sources are reused unchanged."
+}

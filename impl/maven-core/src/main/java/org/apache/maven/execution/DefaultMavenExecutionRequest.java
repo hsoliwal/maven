@@ -18,6 +18,11 @@
  */
 package org.apache.maven.execution;
 
+/*
+ * Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+ * Preserve execution-request policy and activation semantics across project-watch rounds.
+ */
+
 import java.io.File;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -196,6 +201,7 @@ public class DefaultMavenExecutionRequest implements MavenExecutionRequest {
         copy.setPluginGroups(original.getPluginGroups());
         copy.setProjectPresent(original.isProjectPresent());
         copy.setUserSettingsFile(original.getUserSettingsFile());
+        copy.setProjectSettingsFile(original.getProjectSettingsFile());
         copy.setInstallationSettingsFile(original.getInstallationSettingsFile());
         copy.setUserToolchainsFile(original.getUserToolchainsFile());
         copy.setInstallationToolchainsFile(original.getInstallationToolchainsFile());
@@ -206,8 +212,13 @@ public class DefaultMavenExecutionRequest implements MavenExecutionRequest {
         copy.setSystemProperties(original.getSystemProperties());
         copy.setUserProperties(original.getUserProperties());
         copy.setShowErrors(original.isShowErrors());
-        copy.setActiveProfiles(original.getActiveProfiles());
-        copy.setInactiveProfiles(original.getInactiveProfiles());
+        // Preserve required/optional activation and non-recursive project selection.
+        ProfileActivation sourceProfiles = original.getProfileActivation();
+        sourceProfiles.getRequiredActiveProfileIds().forEach(copy.profileActivation::activateRequiredProfile);
+        sourceProfiles.getOptionalActiveProfileIds().forEach(copy.profileActivation::activateOptionalProfile);
+        sourceProfiles.getRequiredInactiveProfileIds().forEach(copy.profileActivation::deactivateRequiredProfile);
+        sourceProfiles.getOptionalInactiveProfileIds().forEach(copy.profileActivation::deactivateOptionalProfile);
+        copy.projectActivation.copyFrom(original.getProjectActivation());
         copy.setTransferListener(original.getTransferListener());
         copy.setLoggingLevel(original.getLoggingLevel());
         copy.setGlobalChecksumPolicy(original.getGlobalChecksumPolicy());
@@ -222,7 +233,32 @@ public class DefaultMavenExecutionRequest implements MavenExecutionRequest {
         copy.setExecutionListener(original.getExecutionListener());
         copy.setUseLegacyLocalRepository(original.isUseLegacyLocalRepository());
         copy.setBuilderId(original.getBuilderId());
+        copy.setDegreeOfConcurrency(original.getDegreeOfConcurrency());
+        copy.setReactorFailureBehavior(original.getReactorFailureBehavior());
+        copy.setResume(original.isResume());
+        copy.setResumeFrom(original.getResumeFrom());
+        copy.setMakeBehavior(original.getMakeBehavior());
+        copy.setMultiModuleProjectDirectory(original.getMultiModuleProjectDirectory());
+        copy.setTopDirectory(original.getTopDirectory());
+        try {
+            copy.setRootDirectory(original.getRootDirectory());
+        } catch (IllegalStateException noRoot) {
+            // Root discovery may legitimately be incomplete in an embedding request.
+        }
+        Map<String, List<ToolchainModel>> copiedToolchains = new HashMap<>();
+        original.getToolchains().forEach((key, value) -> copiedToolchains.put(key, new ArrayList<>(value)));
+        copy.setToolchains(copiedToolchains);
+        copy.setEventSpyDispatcher(original.getEventSpyDispatcher());
+        copy.getData().putAll(original.getData());
         copy.setStartInstant(original.getStartInstant());
+        ProjectBuildingRequest configured = original instanceof DefaultMavenExecutionRequest standard
+                ? standard.projectBuildingRequest
+                : original.getProjectBuildingRequest();
+        if (configured != null) {
+            DefaultProjectBuildingRequest buildingCopy = new DefaultProjectBuildingRequest(configured);
+            buildingCopy.setBuildStartInstant(configured.getBuildStartInstant());
+            copy.setProjectBuildingConfiguration(buildingCopy);
+        }
         return copy;
     }
 

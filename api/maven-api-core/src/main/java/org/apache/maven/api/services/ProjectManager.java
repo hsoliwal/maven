@@ -18,6 +18,9 @@
  */
 package org.apache.maven.api.services;
 
+// Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Expose session-owned active reactor queries through the existing ProjectManager API.
+
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -59,6 +62,49 @@ import org.apache.maven.api.annotations.Nullable;
  */
 @Experimental
 public interface ProjectManager extends Service {
+
+    /**
+     * Returns the upstream prerequisites of a project in this manager's active reactor.
+     * The result excludes the input project and is immutable and ordered by the
+     * current reactor's build order. Excluded projects are never added to the result.
+     * A direct relationship in a filtered reactor may pass through excluded projects.
+     * This query does not change project selection or execute a build.
+     *
+     * @param project an original active project from this manager's native build session
+     * @param transitive whether to include indirect prerequisites
+     * @return the upstream projects in active reactor build order
+     * @throws NullPointerException if the project is null
+     * @throws IllegalArgumentException if the project is foreign, inactive or a temporary fork
+     * @throws IllegalStateException if no current reactor graph is available
+     * @throws UnsupportedOperationException if this implementation does not expose reactor queries
+     * @since 4.1.0
+     */
+    @Nonnull
+    default List<Project> getUpstreamProjects(@Nonnull Project project, boolean transitive) {
+        throw new UnsupportedOperationException("Reactor queries are unavailable in this ProjectManager");
+    }
+
+    /**
+     * Returns the downstream dependents of a project in this manager's active reactor.
+     * The result excludes the input project and is immutable and ordered by the
+     * current reactor's build order. Excluded projects are never added to the result.
+     * A direct relationship in a filtered reactor may pass through excluded projects.
+     * This query does not change project selection or execute a build.
+     *
+     * @param project an original active project from this manager's native build session
+     * @param transitive whether to include indirect dependents
+     * @return the downstream projects in active reactor build order
+     * @throws NullPointerException if the project is null
+     * @throws IllegalArgumentException if the project is foreign, inactive or a temporary fork
+     * @throws IllegalStateException if no current reactor graph is available
+     * @throws UnsupportedOperationException if this implementation does not expose reactor queries
+     * @since 4.1.0
+     */
+    @Nonnull
+    default List<Project> getDownstreamProjects(@Nonnull Project project, boolean transitive) {
+        throw new UnsupportedOperationException("Reactor queries are unavailable in this ProjectManager");
+    }
+
     /**
      * Returns the path to the built project artifact file, if the project has been built.
      * This path is only available after the artifact has been produced during the build lifecycle.

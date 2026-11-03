@@ -53,6 +53,7 @@ public class MavenCling extends ClingSupport {
      * circumstances.
      */
     public static void main(String[] args) throws IOException {
+        M3GitHubPatchBootstrap.beforeMaven(args);
         int exitCode = new MavenCling().run(args, null, null, null, false);
         System.exit(exitCode);
     }
@@ -70,6 +71,7 @@ public class MavenCling extends ClingSupport {
         if (mainClass != null && !MavenCling.class.getName().equals(mainClass)) {
             return delegateMain(mainClass, args, world);
         }
+        M3GitHubPatchBootstrap.beforeMaven(args);
         return new MavenCling(world).run(args, null, null, null, false);
     }
 
@@ -114,6 +116,7 @@ public class MavenCling extends ClingSupport {
             @Nullable OutputStream stdOut,
             @Nullable OutputStream stdErr)
             throws IOException {
+        M3GitHubPatchBootstrap.beforeMaven(args);
         return new MavenCling(world).run(args, stdIn, stdOut, stdErr, true);
     }
 

@@ -18,6 +18,9 @@
  */
 package org.apache.maven.internal.impl;
 
+// Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Expose session-owned active reactor queries through the existing ProjectManager API.
+
 import javax.inject.Inject;
 import javax.inject.Named;
 
@@ -25,11 +28,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.apache.maven.RepositoryUtils;
@@ -44,6 +49,8 @@ import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.di.SessionScoped;
 import org.apache.maven.api.services.ArtifactManager;
 import org.apache.maven.api.services.ProjectManager;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.execution.ProjectDependencyGraph;
 import org.apache.maven.impl.DefaultSourceRoot;
 import org.apache.maven.impl.InternalSession;
 import org.apache.maven.impl.MappedList;
@@ -71,6 +78,61 @@ public class DefaultProjectManager implements ProjectManager {
     public DefaultProjectManager(InternalMavenSession session, ArtifactManager artifactManager) {
         this.session = session;
         this.artifactManager = artifactManager;
+    }
+
+    @Nonnull
+    @Override
+    public List<Project> getUpstreamProjects(@Nonnull Project project, boolean transitive) {
+        return getReactorProjects(project, transitive, true);
+    }
+
+    @Nonnull
+    @Override
+    public List<Project> getDownstreamProjects(@Nonnull Project project, boolean transitive) {
+        return getReactorProjects(project, transitive, false);
+    }
+
+    private List<Project> getReactorProjects(Project project, boolean transitive, boolean upstream) {
+        requireNonNull(project, "project cannot be null");
+        MavenSession nativeSession = session.getMavenSession();
+        if (!(project instanceof DefaultProject original)
+                || original.getSession().getMavenSession() != nativeSession) {
+            throw new IllegalArgumentException("Project belongs to a different native Maven session");
+        }
+        ProjectDependencyGraph graph = nativeSession.getProjectDependencyGraph();
+        if (graph == null) {
+            throw new IllegalStateException("No current reactor dependency graph is available");
+        }
+        List<MavenProject> active = graph.getSortedProjects();
+        MavenProject seed = original.getProject();
+        if (active.stream().noneMatch(candidate -> candidate == seed)) {
+            throw new IllegalArgumentException("Project is not an original member of the active reactor");
+        }
+        // Delegate traversal, including filtered direct-edge semantics, to the
+        // original graph. Only adapt its selected members into native API wrappers.
+        List<MavenProject> related =
+                upstream ? graph.getUpstreamProjects(seed, transitive) : graph.getDownstreamProjects(seed, transitive);
+        Set<MavenProject> remaining = Collections.newSetFromMap(new IdentityHashMap<>());
+        remaining.addAll(related);
+        if (remaining.contains(seed)) {
+            throw new IllegalStateException("Reactor query returned its input project");
+        }
+        List<Project> result = new ArrayList<>(remaining.size());
+        for (MavenProject candidate : active) {
+            if (remaining.remove(candidate)) {
+                Project adapted = session.getProject(candidate);
+                if (!(adapted instanceof DefaultProject mapped)
+                        || mapped.getProject() != candidate
+                        || mapped.getSession().getMavenSession() != nativeSession) {
+                    throw new IllegalStateException("Reactor project has no matching native API identity");
+                }
+                result.add(adapted);
+            }
+        }
+        if (!remaining.isEmpty()) {
+            throw new IllegalStateException("Reactor query returned a project outside the active graph");
+        }
+        return List.copyOf(result);
     }
 
     @Nonnull

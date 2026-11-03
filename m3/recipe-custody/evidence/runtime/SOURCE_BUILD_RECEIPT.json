@@ -1,0 +1,27 @@
+{
+  "final_custody_rat_log": "/workspace/scratch/13309be96b09/build-work/maven-final-custody-rat.log",
+  "final_custody_rat_log_sha256": "f02c5c21e45f650996468f50bde0363db7b19dcb5612f6619fe0a5de9cc9fdc3",
+  "full_m3_jdk": "/tmp/m3-ast-product-build/images/jdk",
+  "full_upstream_test_suite_run": false,
+  "notes": [
+    "All37 source reactor modules packaged successfully;15 specific new integration regression tests ran.",
+    "Default stock compile, native option stock refusal, normal/forked M3 compiler captures, annotation processors and compiler-error output suppression all passed.",
+    "Current33-file custody passed real root RAT; source provenance2 files will receive a final RAT check when published."
+  ],
+  "runtime_case_count": 6,
+  "runtime_receipt": "/workspace/scratch/13309be96b09/build-work/maven-native-consumer-final-proof/RECEIPT.json",
+  "runtime_receipt_sha256": "0d8d154dde2d6c85ca997b000aa9daa42e8e367aad9778811987ee1c8c3a0d6e",
+  "source_build_log_sha256": "d4b6f8808e197a7c55ffe056daba531da917b88368fe9c7fe2d5235d68b5fb8e",
+  "source_candidate_manifest_sha256": "cca98d3c545d6520ddea186c223a90883f5bab7b62f1e752c9438a1ec45f8ccf",
+  "source_commit": "889ccadfa9c7d519b57735ffb814bd401f979c44",
+  "source_fixture": "/workspace/scratch/13309be96b09/build-work/maven-generated-source-v4",
+  "source_module_count": 37,
+  "status": "FINAL_QUALIFIED_MAVEN4_SOURCE_AND_NATIVE_RUNTIME_PASS",
+  "targeted_existing_reactor_gate": true,
+  "targeted_junit": {
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "15"
+  }
+}

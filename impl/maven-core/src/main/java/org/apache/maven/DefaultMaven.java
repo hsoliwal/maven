@@ -18,6 +18,11 @@
  */
 package org.apache.maven;
 
+/*
+ * Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+ * Integrate opt-in project watching outside the lifetime of each Maven build session.
+ */
+
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
@@ -143,6 +148,13 @@ public class DefaultMaven implements Maven {
 
     @Override
     public MavenExecutionResult execute(MavenExecutionRequest request) {
+        if (M3ProjectWatch.enabled(request)) {
+            return M3ProjectWatch.execute(request, this::executeOnce, logger);
+        }
+        return executeOnce(request);
+    }
+
+    private MavenExecutionResult executeOnce(MavenExecutionRequest request) {
         MavenExecutionResult result;
 
         try {
@@ -195,6 +207,9 @@ public class DefaultMaven implements Maven {
     @SuppressWarnings("checkstyle:methodlength")
     private MavenExecutionResult doExecute(MavenExecutionRequest request) {
         request.setStartInstant(MonotonicClock.now());
+        if (M3ProjectWatch.enabled(request)) {
+            request.getProjectBuildingRequest().setBuildStartInstant(request.getStartInstant());
+        }
 
         MavenExecutionResult result = new DefaultMavenExecutionResult();
 
@@ -414,12 +429,15 @@ public class DefaultMaven implements Maven {
         if (!Boolean.parseBoolean(System.getProperty("maven.newRepositorySession.warningsDisabled", "false"))) {
             if (logger.isDebugEnabled()) {
                 logger.warn(
-                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; please inspect the stack trace and report this issue to the authors of the caller code",
+                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; please"
+                                + " inspect the stack trace and report this issue to the authors of the caller code",
                         new IllegalStateException(
-                                "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked"));
+                                "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)`"
+                                        + " invoked"));
             } else {
                 logger.warn(
-                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; report this issue to the authors of the caller code (use -X to see stack trace)");
+                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; report"
+                                + " this issue to the authors of the caller code (use -X to see stack trace)");
             }
         }
         RepositorySystemSession result = newCloseableSession(request, new MavenChainedWorkspaceReader());

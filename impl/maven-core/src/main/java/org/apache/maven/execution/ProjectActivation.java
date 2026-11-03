@@ -18,6 +18,11 @@
  */
 package org.apache.maven.execution;
 
+/*
+ * Modified 2026-10-21 by Hitesh Soliwal and Contributors to the Synexia Project:
+ * Preserve optional non-recursive reactor activation when copying execution requests.
+ */
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -47,6 +52,13 @@ public class ProjectActivation {
 
     public List<ProjectActivationSettings> getActivations() {
         return Collections.unmodifiableList(activations);
+    }
+
+    /** Copy immutable activation records into this request's own list. */
+    void copyFrom(ProjectActivation source) {
+        List<ProjectActivationSettings> values = List.copyOf(source.getActivations());
+        activations.clear();
+        activations.addAll(values);
     }
 
     /**
