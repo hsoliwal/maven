@@ -1,18 +1,20 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements. See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.api.services;
 
@@ -37,26 +39,51 @@ public interface M3PluginEvidenceService extends Service {
     int TESTS = 16, DEPENDENCIES = 32, PUBLICATION = 64;
     int KNOWN_CAPABILITIES = INPUTS | OUTPUTS | RESOURCES | ARCHIVE | TESTS | DEPENDENCIES | PUBLICATION;
 
-    /** Exact original Mojo identity and source-bound invocation generation. */
-    record Identity(String project, String pluginGa, String version, String goal,
-                    String execution, String contextSha256, long generation) {
+    /**
+     * Exact original Mojo identity and source-bound invocation generation.
+     *
+     * @param project project identity for the producer invocation
+     * @param pluginGa plugin group and artifact, separated by a colon
+     * @param version plugin version
+     * @param goal executed Mojo goal
+     * @param execution execution identifier
+     * @param contextSha256 lowercase SHA-256 digest of the invocation context
+     * @param generation positive generation of this invocation
+     */
+    record Identity(
+            String project,
+            String pluginGa,
+            String version,
+            String goal,
+            String execution,
+            String contextSha256,
+            long generation) {
         public Identity {
             project = name(project, "project");
             pluginGa = name(pluginGa, "pluginGa");
             int separator = pluginGa.indexOf(':');
-            if (separator <= 0 || separator == pluginGa.length() - 1
-                    || pluginGa.indexOf(':', separator + 1) >= 0) {
+            if (separator <= 0 || separator == pluginGa.length() - 1 || pluginGa.indexOf(':', separator + 1) >= 0) {
                 throw new IllegalArgumentException("pluginGa");
             }
             version = name(version, "version");
             goal = name(goal, "goal");
             execution = name(execution, "execution");
             contextSha256 = sha(contextSha256);
-            if (generation < 1) throw new IllegalArgumentException("generation");
+            if (generation < 1) {
+                throw new IllegalArgumentException("generation");
+            }
         }
     }
 
-    /** A producer-owned immutable receipt, never an assertion of goal parity. */
+    /**
+     * A producer-owned immutable receipt, never an assertion of goal parity.
+     *
+     * @param identity invocation that owns the evidence
+     * @param file producer-owned file containing the evidence
+     * @param schema schema identifier for the file contents
+     * @param sha256 expected lowercase SHA-256 digest of the file
+     * @param capabilities nonempty mask of supported evidence capabilities
+     */
     record Receipt(Identity identity, Path file, String schema, String sha256, int capabilities) {
         public Receipt {
             identity = Objects.requireNonNull(identity, "identity");
@@ -89,7 +116,9 @@ public interface M3PluginEvidenceService extends Service {
 
     private static String sha(String text) {
         Objects.requireNonNull(text, "sha256");
-        if (!text.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("sha256");
+        if (!text.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("sha256");
+        }
         return text;
     }
 }

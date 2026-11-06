@@ -1,18 +1,20 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements. See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.impl;
 
@@ -58,12 +60,24 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
 
         private static int compare(Identity left, Identity right) {
             int c = left.project().compareTo(right.project());
-            if (c == 0) c = left.pluginGa().compareTo(right.pluginGa());
-            if (c == 0) c = left.version().compareTo(right.version());
-            if (c == 0) c = left.goal().compareTo(right.goal());
-            if (c == 0) c = left.execution().compareTo(right.execution());
-            if (c == 0) c = left.contextSha256().compareTo(right.contextSha256());
-            if (c == 0) c = Long.compare(left.generation(), right.generation());
+            if (c == 0) {
+                c = left.pluginGa().compareTo(right.pluginGa());
+            }
+            if (c == 0) {
+                c = left.version().compareTo(right.version());
+            }
+            if (c == 0) {
+                c = left.goal().compareTo(right.goal());
+            }
+            if (c == 0) {
+                c = left.execution().compareTo(right.execution());
+            }
+            if (c == 0) {
+                c = left.contextSha256().compareTo(right.contextSha256());
+            }
+            if (c == 0) {
+                c = Long.compare(left.generation(), right.generation());
+            }
             return c;
         }
 
@@ -71,8 +85,11 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
             int low = 0, high = size;
             while (low < high) {
                 int middle = low + ((high - low) >>> 1);
-                if (compare(identities[middle], key) < 0) low = middle + 1;
-                else high = middle;
+                if (compare(identities[middle], key) < 0) {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
             }
             return low < size && compare(identities[low], key) == 0 ? low : -low - 1;
         }
@@ -87,7 +104,9 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
                 return;
             }
             // Refuse a 513th key BEFORE touching its provider-owned file.
-            if (size == MAX_RECEIPTS) throw new IOException("M3 plugin evidence session budget exceeded");
+            if (size == MAX_RECEIPTS) {
+                throw new IOException("M3 plugin evidence session budget exceeded");
+            }
             verify(receipt);
             int insertion = -found - 1;
             if (size == identities.length) {
@@ -103,7 +122,9 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
 
         synchronized Optional<Receipt> find(Identity key, String schema, int mask) throws IOException {
             int index = locate(key);
-            if (index < 0) return Optional.empty();
+            if (index < 0) {
+                return Optional.empty();
+            }
             Receipt receipt = receipts[index];
             if (!receipt.schema().equals(schema) || (receipt.capabilities() & mask) != mask) {
                 return Optional.empty();
@@ -114,7 +135,9 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
 
         synchronized void revoke(Identity key) {
             int index = locate(key);
-            if (index < 0) return;
+            if (index < 0) {
+                return;
+            }
             int remaining = size - index - 1;
             System.arraycopy(identities, index + 1, identities, index, remaining);
             System.arraycopy(receipts, index + 1, receipts, index, remaining);
@@ -136,8 +159,7 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(schema, "schema");
-        if (schema.isBlank() || requiredCapabilities <= 0
-                || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
+        if (schema.isBlank() || requiredCapabilities <= 0 || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
             throw new IllegalArgumentException("requiredCapabilities/schema");
         }
         Store existing = session.getData().get(KEY);
@@ -149,7 +171,9 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Store existing = session.getData().get(KEY);
-        if (existing != null) existing.revoke(identity);
+        if (existing != null) {
+            existing.revoke(identity);
+        }
     }
 
     private static void verify(Receipt receipt) throws IOException {
@@ -169,12 +193,18 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
             byte[] buffer = new byte[16_384];
             long total = 0;
             for (int read; (read = input.read(buffer)) != -1; ) {
-                if (read == 0) throw new IOException("stalled plugin evidence read");
+                if (read == 0) {
+                    throw new IOException("stalled plugin evidence read");
+                }
                 total += read;
-                if (total > MAX_BYTES) throw new IOException("plugin evidence byte budget exceeded");
+                if (total > MAX_BYTES) {
+                    throw new IOException("plugin evidence byte budget exceeded");
+                }
                 digest.update(buffer, 0, read);
             }
-            if (total != attr.size()) throw new IOException("plugin evidence changed during read");
+            if (total != attr.size()) {
+                throw new IOException("plugin evidence changed during read");
+            }
         }
         if (!HexFormat.of().formatHex(digest.digest()).equals(receipt.sha256())) {
             throw new IOException("plugin evidence content digest mismatch");
