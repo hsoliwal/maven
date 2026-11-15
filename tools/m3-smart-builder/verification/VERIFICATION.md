@@ -1,29 +1,22 @@
-# M3 Smart Maven Builder — verification receipt (2026-11-15)
+# M3 Smart Maven — actual verification receipt, 2026-11-15
 
-This opt-in plugin is isolated under `tools/m3-smart-builder` and does not modify the fork's root POM, Maven Core, Maven Resolver, existing public APIs, or default lifecycle.
+Repository intended: `hsoliwal/maven`, isolated folder `tools/m3-smart-builder` on a review branch. Existing Maven Core and Maven root POM remain unchanged. All 19 original paths were absent on the checked default branch before GitHub create-file calls.
 
-## Executed local checks
+Environment: Linux, OpenJDK / javac 21.0.12.1. Local `mvn` executable is not installed, and no external Maven/plugin dependencies were downloaded. This is **not** a full Maven plugin descriptor, lifecycle or packaging qualification.
 
-| Gate | Observation |
-| --- | --- |
-| Source inventory | 19 new files, absent on the base branch before creation |
-| Shell syntax | `sh -n scripts/verify.sh` passed |
-| POM syntax | Python stdlib XML parser passed (not Maven model validation) |
-| JDK core | OpenJDK 21.0.12.1; `javac -Xlint:all -Werror` passed |
-| Maven adapter | Compiled with isolated test stubs only; **not** actual Maven runtime |
-| Core regression | **9/9 test groups passed** |
-| ChromeLLM MCP | Synthetic stdio server handshake and infer_text fixture passed |
-| Replay | Second JDK test run passed; source hashes unchanged |
-| GitHub source transport | **19/19 remote files read back exactly** after creation |
+| Gate | Executed command | Observed |
+|---|---|---|
+| Syntax | `sh -n scripts/verify.sh` | PASS |
+| POM XML | Python stdlib `xml.etree.ElementTree.parse('pom.xml')` | PASS (well-formed only) |
+| Java core lint + compile | `javac -Xlint:all -Werror` via `scripts/verify.sh` | PASS |
+| Maven adapter compile | `javac -Xlint:all -Werror` with *local API stubs* | PASS (not actual Maven API compatibility) |
+| Java core tests | `SmartBuilderTest` via `scripts/verify.sh` | **10 groups passed** |
+| MCP protocol integration | Synthetic `io.synexia.chromellm.standalone` test fixture module and subprocess | PASS (not a real model) |
+| Repeat test and source SHA-256 | Rerun `scripts/verify.sh`; compare source hashes | PASS, zero changed source files |
+| GitHub transport | Checked remote read-back against the exact local bundle text | **19/19 matched** |
 
-Test categories: strict manifest parsing, duplicate/license/digest rejection, deterministic read-only JSON planning, untrusted LLM candidates, SHA-256 verified cache reuse, offline no-network behavior, corrupt cache hard failure, size/digest rejection without publication, cache symlink defense, strict JSON handling, and synthetic ChromeLLM MCP protocol exchange.
+The tested cases include secure direct-only POM inspection with DTD/XXE rejection, strict manifest parsing, duplicate/license/digest rejection, deterministic review JSON, no execution of candidate text, approved cache provisioning, SHA-256 verification, offline no-network behavior, corrupt cache hard failure, oversize and digest failure without publication, symlink rejection, JSON parser strictness, and a synthetic MCP infer_text exchange.
 
-## Unverified gates
+Not executed: `mvn verify`, actual plugin descriptor generation, real Chrome AI availability, real ChromeLLM inference, live HTTPS downloads, native Dawn/llama.cpp/JNI compilation, GPU driver qualification, real WebGPU inference, Windows/macOS installer. Do not promote any such gate to PASS.
 
-`mvn verify` and plugin descriptor generation (Maven executable unavailable in the test container); installation and execution within real Maven; real Chrome built-in AI; real ChromeLLM inference; live HTTPS asset download; native Dawn/llama.cpp/JNI build; GPU driver qualification; WebGPU inference; Windows/macOS installations.
-
-No browser-managed Gemini Nano weights are accessed, copied, or redistributed. Only explicit SHA-256-pinned, license-approved native/test binaries may be provisioned; no downloaded binary is unpacked or executed.
-
-To re-run the JDK-only proof: `sh tools/m3-smart-builder/scripts/verify.sh`. For full packaging, from the separate plugin folder run `mvn clean verify` on a network-enabled, approved build host.
-
-Source package: `m3-smart-builder-maven-plugin.zip` SHA-256 `3f9f64b784978a050f2ccbdcaa86157b3530a1d6d24dc0800b8ca4ad13af1e8f`. The ZIP includes local logs and per-file hashes; these are not GitHub CI results.
+See `00-toolchain.log`, `01-lint.log`, `02-compile-test.log`, `03-runtime-fixture.log`, `04-idempotent-replay.log` and `SOURCE_SHA256.tsv`. `pre-sha256=ABSENT` denotes newly created files, not a guessed previous digest.
