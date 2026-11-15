@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Execute build-wrapper contracts against a recording Maven executable.
+"""Execute build-wrapper contracts against recording Maven and Java executables.
 
 Only Python's standard library is needed. The recording native-executable
 fixture requires a POSIX host because it uses an executable script with a
@@ -108,8 +108,12 @@ class BuildWrapperContracts(unittest.TestCase):
         self.default_maven = self.make_maven(self.bin / "mvn")
         self.named_maven = self.make_maven(self.bin / "selected-maven")
         self.custom_maven = self.make_maven(self.custom / "maven ; runner")
+        self.default_java = self.make_maven(self.bin / "java")
+        self.agent_jar = self.project / "agent [literal]; library.jar"
+        self.agent_jar.write_bytes(b"recording fixture; not an executable JAR")
         self.env = os.environ.copy()
-        self.env.pop("M3_MAVEN", None)
+        for variable in ("M3_MAVEN", "M3_JAVA", "M3_CHROME_AI_AGENT_JAR", "CHROME_AI_API_TOKEN"):
+            self.env.pop(variable, None)
         self.env["PATH"] = str(self.bin) + os.pathsep + self.env.get("PATH", "")
         self.env["M3_BUILD_TEST_CAPTURE"] = str(self.capture)
         self.env["M3_BUILD_TEST_CALLER"] = str(self.caller_record)
@@ -290,6 +294,130 @@ for shell_name in ("posix", "powershell"):
                                   parameters={"Mode": "resume", "ResumeFrom": "-pl"})
         self.assert_refusal(result, 2 if shell == "posix" else None)
     add_case(shell_name + "_resume_refuses_option_looking_selector", option_resume_case)
+
+
+for shell_name in ("posix", "powershell"):
+    def ai_default_case(self, shell=shell_name):
+        args = ["--endpoint", "http://127.0.0.1:8788", "--task-file", "task.txt",
+                "--output", "target/proposal.json"]
+        result = self.run_wrapper(shell, arguments=["ai-check", *args],
+                                  parameters={"Mode": "ai-check", "ExtraArgs": args},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_MAVEN": str(self.base / "missing-maven")})
+        self.assert_call(result, ["-jar", str(self.agent_jar), *args], self.default_java)
+    add_case(shell_name + "_ai_check_invokes_only_java", ai_default_case)
+
+    def ai_arguments_case(self, shell=shell_name):
+        sentinel = self.base / "should-not-exist"
+        args = ["--endpoint", "http://127.0.0.1:8788", "--token-env", "CUSTOM_AI_TOKEN",
+                "--task-file", "task with spaces.txt", "--context-file", "context.json",
+                "--output", "target/proposal [literal].json", "--timeout-seconds", "30",
+                "", "--", "-leading", "தமிழ்", 'quote"a', "C:\\some dir\\",
+                "$(touch '" + str(sentinel) + "')"]
+        token = "fixture-only-token-must-not-appear-in-command"
+        result = self.run_wrapper(shell, arguments=["ai-check", *args],
+                                  parameters={"Mode": "ai-check", "ExtraArgs": args},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "CUSTOM_AI_TOKEN": token,
+                                               "CHROME_AI_API_TOKEN": token})
+        self.assert_call(result, ["-jar", str(self.agent_jar), *args], self.default_java)
+        self.assertNotIn(token, result[0].stdout + result[0].stderr + json.dumps(result[1]))
+        self.assertFalse(sentinel.exists())
+    add_case(shell_name + "_ai_check_preserves_arguments_without_secret_expansion", ai_arguments_case)
+
+    def ai_relative_jar_case(self, shell=shell_name):
+        relative_jar = "./" + self.agent_jar.name
+        result = self.run_wrapper(shell, arguments=["ai-check"],
+                                  parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": relative_jar})
+        self.assert_call(result, ["-jar", relative_jar], self.default_java)
+    add_case(shell_name + "_ai_check_relative_jar_resolves_from_root", ai_relative_jar_case)
+
+    def ai_exit_case(self, shell=shell_name):
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar)},
+                                  exit_code=37, native_errors=True)
+        self.assert_call(result, ["-jar", str(self.agent_jar)], self.default_java, exit_code=37)
+    add_case(shell_name + "_ai_check_propagates_agent_exit", ai_exit_case)
+
+    def ai_no_token_case(self, shell=shell_name):
+        result = self.run_wrapper(shell, arguments=["ai-check", "--token-env", "CUSTOM_AI_TOKEN"],
+                                  parameters={"Mode": "ai-check",
+                                              "ExtraArgs": ["--token-env", "CUSTOM_AI_TOKEN"]},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar)})
+        self.assert_call(result, ["-jar", str(self.agent_jar), "--token-env", "CUSTOM_AI_TOKEN"],
+                         self.default_java)
+    add_case(shell_name + "_ai_check_delegates_token_validation_to_agent", ai_no_token_case)
+
+    for missing_kind in ("unset", "empty", "missing-file", "directory"):
+        def ai_jar_refusal(self, shell=shell_name, kind=missing_kind):
+            environment = {}
+            if kind != "unset":
+                environment["M3_CHROME_AI_AGENT_JAR"] = (
+                    "" if kind == "empty" else str(self.project if kind == "directory"
+                                                 else self.base / "missing-agent.jar"))
+            result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                      environment=environment)
+            self.assert_refusal(result, 2 if shell == "posix" else None)
+        add_case(shell_name + "_ai_check_refuses_" + missing_kind.replace("-", "_") + "_jar", ai_jar_refusal)
+
+    def ai_java_path_case(self, shell=shell_name):
+        executable = self.make_maven(self.custom / "java ; runner")
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_JAVA": str(executable)})
+        self.assert_call(result, ["-jar", str(self.agent_jar)], executable)
+    add_case(shell_name + "_ai_check_selects_literal_java_path_with_spaces", ai_java_path_case)
+
+    def ai_java_relative_case(self, shell=shell_name):
+        tools = self.project / "java tools [literal]"
+        tools.mkdir()
+        executable = self.make_maven(tools / "java ; runner")
+        relative = "." + os.sep + os.path.relpath(executable, self.project)
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_JAVA": relative})
+        self.assert_call(result, ["-jar", str(self.agent_jar)], executable)
+    add_case(shell_name + "_ai_check_selects_java_relative_to_root", ai_java_relative_case)
+
+    def ai_java_name_case(self, shell=shell_name):
+        executable = self.make_maven(self.bin / "java[1]")
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_JAVA": "java[1]"})
+        self.assert_call(result, ["-jar", str(self.agent_jar)], executable)
+    add_case(shell_name + "_ai_check_selects_literal_java_name", ai_java_name_case)
+
+    def ai_java_missing_case(self, shell=shell_name):
+        self.make_maven(self.bin / "selected-java-one")
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_JAVA": "selected-java-*"})
+        self.assert_refusal(result, 127 if shell == "posix" else None)
+    add_case(shell_name + "_ai_check_missing_java_pattern_refuses", ai_java_missing_case)
+
+    def ai_java_text_case(self, shell=shell_name):
+        result = self.run_wrapper(shell, arguments=["ai-check"], parameters={"Mode": "ai-check"},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar),
+                                               "M3_JAVA": str(self.default_java) + " -Xmx1g"})
+        self.assert_refusal(result, 127 if shell == "posix" else None)
+    add_case(shell_name + "_ai_check_java_selector_is_not_command_text", ai_java_text_case)
+
+    def ai_dormant_case(self, shell=shell_name):
+        result = self.run_wrapper(shell,
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.base / "missing.jar"),
+                                               "M3_JAVA": str(self.base / "missing-java")})
+        self.assert_call(result, ["-B", "-ntp", "verify"])
+    add_case(shell_name + "_default_verify_ignores_ai_environment", ai_dormant_case)
+
+
+for parameter, value in (("Module", "impl/maven-core"), ("ResumeFrom", ":maven-core"),
+                         ("Threads", 2), ("Maven", "mvn")):
+    def ai_ps_maven_parameter_refusal(self, name=parameter, setting=value):
+        result = self.run_wrapper("powershell", parameters={"Mode": "ai-check", name: setting},
+                                  environment={"M3_CHROME_AI_AGENT_JAR": str(self.agent_jar)})
+        self.assert_refusal(result)
+    add_case("powershell_ai_check_refuses_maven_" + parameter.lower(), ai_ps_maven_parameter_refusal)
 
 for help_arg in ("help", "-h", "--help"):
     def help_case(self, arg=help_arg):
