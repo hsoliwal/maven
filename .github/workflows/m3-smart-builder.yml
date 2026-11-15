@@ -1,6 +1,6 @@
 name: M3 Smart Maven Builder
 
-on:
+"on":
   pull_request:
     paths:
       - 'tools/m3-smart-builder/**'
@@ -38,6 +38,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Python runtime-harness contract tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
       - name: JDK-only lint, test, and synthetic MCP qualification
         run: sh scripts/verify.sh
       - name: Maven plugin descriptor, compile, verify, and local install
@@ -153,3 +155,22 @@ jobs:
           test "$BUILD_OUTCOME" = failure
           test "$POST_OUTCOME" = success
           java -cp tools/m3-smart-builder/target/jdk-only io.synexia.maven.smart.BuildHookTest --workflow target/chrome-ai-acceptance
+      - name: Maven plugin descriptor, compile, tests, and isolated install
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3-smart-maven-repository"
+          mvn -B -ntp -Dmaven.repo.local="$RUNNER_TEMP/m3-smart-maven-repository" clean install
+      - name: Real Maven goal invocation, deterministic replay and offline refusal
+        shell: bash
+        run: |
+          python3 scripts/verify_maven_runtime.py --maven mvn --local-repo "$RUNNER_TEMP/m3-smart-maven-repository"
+      - name: Retain real Maven acceptance logs and receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-smart-maven-runtime-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
+            tools/m3-smart-builder/target/m3-runtime-acceptance/acceptance.json
