@@ -18,8 +18,16 @@
  */
 package org.apache.maven.lifecycle.internal.builder.multithreaded;
 
+// Modified 2026-11-15 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Qualify stack-safe lazy critical-path traversal and preserve native reactor contracts.
+
+import java.util.ArrayDeque;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.ToLongFunction;
 
@@ -78,6 +86,7 @@ public class SmartProjectComparator {
      *
      * @param project the project
      * @return the project's weight (higher means longer dependency chain)
+     * @throws IllegalStateException if the traversed downstream graph contains a cycle
      */
     public long getProjectWeight(MavenProject project) {
         // First check if weight is already calculated
@@ -86,7 +95,7 @@ public class SmartProjectComparator {
             return existingWeight;
         }
 
-        // Calculate weight without using computeIfAbsent to avoid recursive update issues
+        // Calculate weight without computeIfAbsent so dependent weights can be published safely
         long weight = calculateWeight(project);
 
         // Use putIfAbsent to handle concurrent access safely
@@ -101,14 +110,55 @@ public class SmartProjectComparator {
     }
 
     private long calculateWeight(MavenProject project) {
-        // Calculate maximum weight of downstream dependencies
-        long maxDownstreamWeight = dependencyGraph.getDownstreamProjects(project, false).stream()
-                .mapToLong(this::getProjectWeight)
-                .max()
-                .orElse(0L);
+        Deque<WeightFrame> stack = new ArrayDeque<>();
+        Set<MavenProject> activeProjects = new HashSet<>();
+        activeProjects.add(project);
+        stack.push(new WeightFrame(
+                project, dependencyGraph.getDownstreamProjects(project, false).iterator()));
 
-        // Weight = 1 + max downstream weight (similar to Takari Smart Builder)
-        return 1L + maxDownstreamWeight;
+        while (true) {
+            WeightFrame frame = stack.peek();
+            if (frame.downstream.hasNext()) {
+                MavenProject downstream = frame.downstream.next();
+                Long cachedWeight = projectWeights.get(downstream);
+                if (cachedWeight != null) {
+                    frame.maxDownstreamWeight = Math.max(frame.maxDownstreamWeight, cachedWeight);
+                } else {
+                    if (!activeProjects.add(downstream)) {
+                        throw new IllegalStateException(
+                                "Cycle detected in reactor dependency graph at " + getProjectId(downstream));
+                    }
+                    stack.push(new WeightFrame(
+                            downstream,
+                            dependencyGraph
+                                    .getDownstreamProjects(downstream, false)
+                                    .iterator()));
+                }
+            } else {
+                long weight = 1L + frame.maxDownstreamWeight;
+                stack.pop();
+                activeProjects.remove(frame.project);
+                if (stack.isEmpty()) {
+                    // The caller retains publication of the requested project's weight.
+                    return weight;
+                }
+                Long previousWeight = projectWeights.putIfAbsent(frame.project, weight);
+                WeightFrame parent = stack.peek();
+                parent.maxDownstreamWeight =
+                        Math.max(parent.maxDownstreamWeight, previousWeight != null ? previousWeight : weight);
+            }
+        }
+    }
+
+    private static final class WeightFrame {
+        private final MavenProject project;
+        private final Iterator<MavenProject> downstream;
+        private long maxDownstreamWeight;
+
+        private WeightFrame(MavenProject project, Iterator<MavenProject> downstream) {
+            this.project = project;
+            this.downstream = downstream;
+        }
     }
 
     private String getProjectId(MavenProject project) {

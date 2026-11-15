@@ -18,13 +18,23 @@
  */
 package org.apache.maven.lifecycle.internal.builder.multithreaded;
 
+// Modified 2026-11-15 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Qualify stack-safe lazy critical-path traversal and preserve native reactor contracts.
+
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.maven.execution.ProjectDependencyGraph;
 import org.apache.maven.lifecycle.internal.stub.ProjectDependencyGraphStub;
@@ -33,6 +43,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -162,21 +174,16 @@ class SmartProjectComparatorTest {
 
     @Test
     void testConcurrentWeightCalculation() throws Exception {
-        // Test that concurrent weight calculation doesn't cause recursive update issues
-        // This test simulates the scenario that causes the IllegalStateException
-
         int numThreads = 10;
         int numIterations = 100;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-        CountDownLatch latch = new CountDownLatch(numThreads);
-        AtomicReference<Exception> exception = new AtomicReference<>();
-
-        for (int i = 0; i < numThreads; i++) {
-            executor.submit(() -> {
-                try {
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < numThreads; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
                     for (int j = 0; j < numIterations; j++) {
-                        // Simulate concurrent access to weight calculation
-                        // This can trigger the recursive update issue
                         List<MavenProject> projects = Arrays.asList(
                                 ProjectDependencyGraphStub.A,
                                 ProjectDependencyGraphStub.B,
@@ -184,28 +191,172 @@ class SmartProjectComparatorTest {
                                 ProjectDependencyGraphStub.X,
                                 ProjectDependencyGraphStub.Y,
                                 ProjectDependencyGraphStub.Z);
-
-                        // Sort projects concurrently - this triggers weight calculation
                         projects.sort(comparator.getComparator());
-
-                        // Also directly access weights to increase contention
                         for (MavenProject project : projects) {
-                            comparator.getProjectWeight(project);
+                            assertTrue(comparator.getProjectWeight(project) > 0L);
                         }
+                        assertEquals(3L, comparator.getProjectWeight(ProjectDependencyGraphStub.A));
+                        assertEquals(2L, comparator.getProjectWeight(ProjectDependencyGraphStub.B));
+                        assertEquals(2L, comparator.getProjectWeight(ProjectDependencyGraphStub.C));
+                        assertEquals(1L, comparator.getProjectWeight(ProjectDependencyGraphStub.X));
+                        assertEquals(1L, comparator.getProjectWeight(ProjectDependencyGraphStub.Y));
+                        assertEquals(1L, comparator.getProjectWeight(ProjectDependencyGraphStub.Z));
                     }
-                } catch (Exception e) {
-                    exception.set(e);
-                } finally {
-                    latch.countDown();
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                // Future.get propagates task Exceptions and Errors, including assertion failures.
+                future.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void testDeepDependencyChain() {
+        int projectCount = 20_000;
+        int[][] downstream = new int[projectCount][];
+        for (int i = 0; i < projectCount; i++) {
+            downstream[i] = i + 1 < projectCount ? new int[] {i + 1} : new int[0];
+        }
+        TestDependencyGraph graph = new TestDependencyGraph(downstream);
+        SmartProjectComparator deepComparator = new SmartProjectComparator(graph);
+
+        assertEquals((long) projectCount, deepComparator.getProjectWeight(graph.projects.get(0)));
+        assertEquals(1L, deepComparator.getProjectWeight(graph.projects.get(projectCount - 1)));
+        assertEquals(projectCount, graph.downstreamReads.get());
+    }
+
+    @Test
+    void testDiamondAndGeneratedDagsMatchBottomUpOracle() {
+        assertWeightsMatchBottomUpOracle(new int[][] {{1, 2}, {3, 4}, {3}, {5}, {5, 6}, {7}, {7}, {}});
+        Random random = new Random(0x4D4156454EL);
+        for (int trial = 0; trial < 12; trial++) {
+            int projectCount = 80;
+            int[][] downstream = new int[projectCount][];
+            for (int project = 0; project < projectCount; project++) {
+                List<Integer> children = new ArrayList<>();
+                for (int child = project + 1; child < projectCount; child++) {
+                    if (random.nextInt(5) == 0) {
+                        children.add(child);
+                    }
                 }
-            });
+                downstream[project] =
+                        children.stream().mapToInt(Integer::intValue).toArray();
+            }
+            assertWeightsMatchBottomUpOracle(downstream);
+        }
+    }
+
+    @Test
+    void testWarmWeightCacheDoesNotReadDependencyGraphAgain() {
+        TestDependencyGraph graph = new TestDependencyGraph(new int[][] {{1, 2}, {3}, {3}, {}});
+        SmartProjectComparator warmComparator = new SmartProjectComparator(graph);
+        assertEquals(3L, warmComparator.getProjectWeight(graph.projects.get(0)));
+        assertEquals(4, graph.downstreamReads.get());
+
+        List<MavenProject> projects = new ArrayList<>(graph.projects);
+        Collections.reverse(projects);
+        projects.sort(warmComparator.getComparator());
+        assertEquals(graph.projects, projects);
+        assertEquals(2L, warmComparator.getProjectWeight(graph.projects.get(1)));
+        assertEquals(2L, warmComparator.getProjectWeight(graph.projects.get(2)));
+        assertEquals(1L, warmComparator.getProjectWeight(graph.projects.get(3)));
+        assertEquals(4, graph.downstreamReads.get(), "warm weights must not reread the graph");
+    }
+
+    @Test
+    void testCyclicDependencyGraphsAreRejected() {
+        for (int[][] downstream : new int[][][] {{{0}}, {{1}, {2}, {0}}}) {
+            TestDependencyGraph graph = new TestDependencyGraph(downstream);
+            SmartProjectComparator cyclicComparator = new SmartProjectComparator(graph);
+            IllegalStateException failure = assertTimeoutPreemptively(
+                    Duration.ofSeconds(5),
+                    () -> assertThrows(
+                            IllegalStateException.class,
+                            () -> cyclicComparator.getProjectWeight(graph.projects.get(0))));
+            assertTrue(failure.getMessage().contains("Cycle detected in reactor dependency graph"));
+            assertEquals(downstream.length, graph.downstreamReads.get());
+        }
+    }
+
+    private static void assertWeightsMatchBottomUpOracle(int[][] downstream) {
+        // Fixtures number each prerequisite before its dependents, so this oracle can
+        // calculate weights directly in reverse order without recursive traversal or caches.
+        long[] expected = new long[downstream.length];
+        for (int project = downstream.length - 1; project >= 0; project--) {
+            long max = 0L;
+            for (int child : downstream[project]) {
+                assertTrue(child > project);
+                max = Math.max(max, expected[child]);
+            }
+            expected[project] = 1L + max;
         }
 
-        latch.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        TestDependencyGraph graph = new TestDependencyGraph(downstream);
+        SmartProjectComparator actual = new SmartProjectComparator(graph);
+        List<Integer> order = new ArrayList<>();
+        for (int project = 0; project < downstream.length; project++) {
+            order.add(project);
+        }
+        Collections.shuffle(order, new Random(0x4D33444147L));
+        for (int project : order) {
+            assertEquals(expected[project], actual.getProjectWeight(graph.projects.get(project)));
+        }
+        assertEquals(downstream.length, graph.downstreamReads.get());
+    }
 
-        if (exception.get() != null) {
-            throw exception.get();
+    private static final class TestDependencyGraph implements ProjectDependencyGraph {
+        private final List<MavenProject> projects;
+        private final Map<MavenProject, List<MavenProject>> downstream = new HashMap<>();
+        private final AtomicInteger downstreamReads = new AtomicInteger();
+
+        private TestDependencyGraph(int[][] edges) {
+            List<MavenProject> nodes = new ArrayList<>();
+            for (int i = 0; i < edges.length; i++) {
+                MavenProject project = new MavenProject();
+                project.setGroupId("org.apache.maven.comparator.test");
+                project.setArtifactId("node-" + i);
+                project.setVersion("1");
+                nodes.add(project);
+            }
+            projects = List.copyOf(nodes);
+            for (int i = 0; i < edges.length; i++) {
+                List<MavenProject> children = new ArrayList<>();
+                for (int child : edges[i]) {
+                    children.add(projects.get(child));
+                }
+                downstream.put(projects.get(i), List.copyOf(children));
+            }
+        }
+
+        @Override
+        public List<MavenProject> getAllProjects() {
+            return projects;
+        }
+
+        @Override
+        public List<MavenProject> getSortedProjects() {
+            return projects;
+        }
+
+        @Override
+        public List<MavenProject> getDownstreamProjects(MavenProject project, boolean transitive) {
+            if (transitive) {
+                throw new UnsupportedOperationException("comparator fixture exposes immediate downstream edges only");
+            }
+            downstreamReads.incrementAndGet();
+            return downstream.getOrDefault(project, List.of());
+        }
+
+        @Override
+        public List<MavenProject> getUpstreamProjects(MavenProject project, boolean transitive) {
+            throw new UnsupportedOperationException("comparator fixture does not expose upstream queries");
         }
     }
 }

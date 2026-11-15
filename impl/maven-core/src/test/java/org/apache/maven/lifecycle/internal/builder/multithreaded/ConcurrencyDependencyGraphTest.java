@@ -18,6 +18,10 @@
  */
 package org.apache.maven.lifecycle.internal.builder.multithreaded;
 
+// Modified 2026-11-15 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Exercise immutable and shared dependency-view ownership through the original helper.
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -28,6 +32,7 @@ import org.apache.maven.project.MavenProject;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 class ConcurrencyDependencyGraphTest {
 
@@ -87,5 +92,66 @@ class ConcurrencyDependencyGraphTest {
         List<MavenProject> activeDependenciesX = graph.getActiveDependencies(ProjectDependencyGraphStub.X);
         // waiting for C
         assertEquals(1, activeDependenciesX.size());
+    }
+
+    @Test
+    void testActiveDependenciesAcceptImmutableViews() {
+        List<MavenProject> dependencies = List.of(ProjectDependencyGraphStub.B, ProjectDependencyGraphStub.C);
+        ConcurrencyDependencyGraph graph = graphWithDependencies(dependencies);
+        graph.getFinishedProjects().add(ProjectDependencyGraphStub.B);
+
+        List<MavenProject> active = graph.getActiveDependencies(ProjectDependencyGraphStub.X);
+        assertEquals(List.of(ProjectDependencyGraphStub.C), active);
+        assertEquals(List.of(ProjectDependencyGraphStub.B, ProjectDependencyGraphStub.C), dependencies);
+        active.clear();
+        assertEquals(List.of(ProjectDependencyGraphStub.C), graph.getActiveDependencies(ProjectDependencyGraphStub.X));
+    }
+
+    @Test
+    void testActiveDependenciesPreserveSharedSingleton() {
+        List<MavenProject> dependencies = new ArrayList<>(List.of(ProjectDependencyGraphStub.A));
+        ConcurrencyDependencyGraph graph = graphWithDependencies(dependencies);
+        graph.getFinishedProjects().add(ProjectDependencyGraphStub.A);
+
+        assertEquals(List.of(), graph.getActiveDependencies(ProjectDependencyGraphStub.C));
+        assertEquals(List.of(ProjectDependencyGraphStub.A), dependencies);
+        assertEquals(List.of(ProjectDependencyGraphStub.A), graph.getDependencies(ProjectDependencyGraphStub.C));
+    }
+
+    @Test
+    void testActiveDependenciesAreOrderedIndependentSnapshots() {
+        List<MavenProject> dependencies = new ArrayList<>(
+                List.of(ProjectDependencyGraphStub.C, ProjectDependencyGraphStub.B, ProjectDependencyGraphStub.A));
+        ConcurrencyDependencyGraph graph = graphWithDependencies(dependencies);
+        graph.getFinishedProjects().add(ProjectDependencyGraphStub.B);
+
+        List<MavenProject> first = graph.getActiveDependencies(ProjectDependencyGraphStub.X);
+        List<MavenProject> second = graph.getActiveDependencies(ProjectDependencyGraphStub.X);
+        assertEquals(List.of(ProjectDependencyGraphStub.C, ProjectDependencyGraphStub.A), first);
+        assertEquals(first, second);
+        assertNotSame(first, second);
+        first.clear();
+        assertEquals(List.of(ProjectDependencyGraphStub.C, ProjectDependencyGraphStub.A), second);
+        assertEquals(
+                List.of(ProjectDependencyGraphStub.C, ProjectDependencyGraphStub.B, ProjectDependencyGraphStub.A),
+                dependencies);
+    }
+
+    @Test
+    void testEmptyActiveDependenciesRemainCallerOwned() {
+        ConcurrencyDependencyGraph graph = graphWithDependencies(List.of());
+        List<MavenProject> active = graph.getActiveDependencies(ProjectDependencyGraphStub.A);
+        active.add(ProjectDependencyGraphStub.B);
+        assertEquals(List.of(), graph.getActiveDependencies(ProjectDependencyGraphStub.A));
+    }
+
+    private static ConcurrencyDependencyGraph graphWithDependencies(List<MavenProject> dependencies) {
+        ProjectDependencyGraph source = new ProjectDependencyGraphStub() {
+            @Override
+            public List<MavenProject> getUpstreamProjects(MavenProject project, boolean transitive) {
+                return dependencies;
+            }
+        };
+        return new ConcurrencyDependencyGraph(new ProjectBuildList(List.of()), source);
     }
 }

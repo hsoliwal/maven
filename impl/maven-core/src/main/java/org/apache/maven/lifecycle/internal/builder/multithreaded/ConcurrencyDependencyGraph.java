@@ -18,6 +18,9 @@
  */
 package org.apache.maven.lifecycle.internal.builder.multithreaded;
 
+// Modified 2026-11-15 by Hitesh Soliwal and Contributors to the Synexia Project:
+// Preserve graph-owned dependency lists when querying unfinished prerequisites.
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -146,7 +149,8 @@ public class ConcurrencyDependencyGraph {
      * @return List of uncompleted prerequisite projects
      */
     public List<MavenProject> getActiveDependencies(MavenProject p) {
-        List<MavenProject> activeDependencies = projectDependencyGraph.getUpstreamProjects(p, false);
+        // Dependency views may be cached or immutable; filtering owns its result.
+        List<MavenProject> activeDependencies = new ArrayList<>(projectDependencyGraph.getUpstreamProjects(p, false));
         activeDependencies.removeAll(finishedProjects);
         return activeDependencies;
     }
