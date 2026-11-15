@@ -52,7 +52,7 @@ For the browser-managed Chrome AI model, use the separately installed Chrome age
 
 ## Verification
 
-`scripts/verify.sh` compiles the dependency-free Java core and runs its offline tests with JDK 21. A real Maven plugin build, a real ChromeLLM MCP session, a browser extension test, network artifact fetching and native GPU execution require separate evidence. Never treat the offline fixtures as those qualifications.
+`scripts/verify.sh` compiles the dependency-free Java core and runs its offline tests with JDK 21. The Maven verification goal explicitly binds its test fixture root to `${project.build.directory}`, independent of the caller's working directory. A real Maven plugin build, a real ChromeLLM MCP session, a browser extension test, network artifact fetching and native GPU execution require separate evidence. Never treat the offline fixtures as those qualifications.
 
 ## Scope boundaries and repository ownership
 
