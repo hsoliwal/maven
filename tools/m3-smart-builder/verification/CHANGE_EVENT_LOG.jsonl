@@ -1,0 +1,10 @@
+{"stage":"inventory","result":"passed","project":"hsoliwal/maven","baseline":"08faf14d2833ee4f0dc940cbf31fda299779ec0a","scope":"tools/m3-smart-builder","notes":"PR38 merged; checked unchanged upstream tree"}
+{"stage":"documentation","result":"written_before_code","path":"docs/DIAGNOSE_CONTRACT.md"}
+{"stage":"patch","result":"applied_local","files_modified":["README.md","scripts/verify.sh","src/main/java/io/synexia/maven/smart/PlanMojo.java","src/main/java/io/synexia/maven/smart/ProvisionMojo.java","src/test/java/io/synexia/maven/smart/SmartBuilderTest.java"],"files_added":["docs/DIAGNOSE_CONTRACT.md","src/main/java/io/synexia/maven/smart/BuildLogFacts.java","src/main/java/io/synexia/maven/smart/SourceInventory.java","src/main/java/io/synexia/maven/smart/SafeBuildOutput.java","src/main/java/io/synexia/maven/smart/DiagnoseEngine.java","src/main/java/io/synexia/maven/smart/DiagnoseMojo.java","src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java"]}
+{"stage":"lint","result":"passed","logs":["11-lint.log"]}
+{"stage":"compile","result":"passed","qualification":"Java21 JDK core and stub Maven APIs"}
+{"stage":"test","result":"passed","counts":{"core":13,"adapter":3}}
+{"stage":"runtime","result":"passed","counts":{"synthetic_mcp_core":14},"qualification":"synthetic only"}
+{"stage":"source_replay","result":"passed","files":27,"changed":0}
+{"stage":"real_maven","result":"unverified","reason":"mvn unavailable"}
+{"stage":"real_chrome_native_webgpu","result":"unverified","reason":"no approved runtime or hardware test"}
