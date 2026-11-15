@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
@@ -33,6 +34,8 @@ import org.slf4j.Logger;
  * changed generation conservatively executes clean followed by the caller's whole
  * lifecycle scope. Merely rerunning a timestamp-based compiler Mojo would not
  * establish that same-time content edits compiled or removed-source outputs vanished.
+ * Optional bounded batching retains only the latest offered input snapshot; every
+ * lifecycle still runs serially on the original watcher-owning thread.
  */
 final class M3ProjectWatch {
     private M3ProjectWatch() {}
@@ -73,8 +76,11 @@ final class M3ProjectWatch {
                     Object snapshot = next.orElseThrow();
                     if (startupSnapshot == null) {
                         startupSnapshot = snapshot;
-                    } else if (watch.startupInputChanged(startupSnapshot, snapshot, options.timestampChanges)) {
-                        throw new IOException("M3 watch: .mvn startup configuration changed; restart Maven");
+                    } else {
+                        if (watch.startupInputChanged(startupSnapshot, snapshot, options.timestampChanges)) {
+                            throw new IOException("M3 watch: .mvn startup configuration changed; restart Maven");
+                        }
+                        snapshot = awaitBatch(watch, snapshot, startupSnapshot, options);
                     }
                     watch.report(snapshot, options, completed == 0, logger);
                     MavenExecutionRequest request = DefaultMavenExecutionRequest.copy(prototype);
@@ -86,17 +92,22 @@ final class M3ProjectWatch {
                     request.setRepositoryCache(new DefaultRepositoryCache());
                     // DefaultGraphBuilder binds the new live session before reading projects.
                     request.getProjectBuildingRequest().setRepositorySession(null);
+                    checkInterrupted();
                     result = executeOnce.apply(request);
+                    checkInterrupted();
                     completed++;
                     options.checkProjectPaths(result);
                     if (result.hasExceptions()) {
                         logger.warn("M3 watch generation {} failed; last successful file state retained", completed);
-                    } else if (!watch.commit(snapshot)) {
-                        logger.info(
-                                "M3 watch generation {} changed during execution; newer work remains pending",
-                                completed);
                     } else {
-                        logger.info("M3 watch generation {} committed", completed);
+                        checkInterrupted();
+                        if (!watch.commit(snapshot)) {
+                            logger.info(
+                                    "M3 watch generation {} changed during execution; newer work remains pending",
+                                    completed);
+                        } else {
+                            logger.info("M3 watch generation {} committed", completed);
+                        }
                     }
                     idleStarted = System.nanoTime();
                     if (options.maxBuilds > 0 && completed >= options.maxBuilds) {
@@ -111,6 +122,66 @@ final class M3ProjectWatch {
             }
             result.addException(failure);
             return result;
+        }
+    }
+
+    /** Coalesce later offers without acknowledging any unbuilt input generation. */
+    private static Object awaitBatch(SharedWatch watch, Object snapshot, Object startupSnapshot, Options options)
+            throws Exception {
+        return awaitBatch(watch, snapshot, startupSnapshot, options, System::nanoTime);
+    }
+
+    private static Object awaitBatch(
+            SharedWatch watch, Object snapshot, Object startupSnapshot, Options options, LongSupplier nanoTime)
+            throws Exception {
+        if (options.quietMillis == 0) {
+            return snapshot;
+        }
+        BatchWindow window = new BatchWindow(nanoTime.getAsLong(), options.quietMillis, options.maxBatchMillis);
+        while (true) {
+            checkInterrupted();
+            long remaining = window.remaining(nanoTime.getAsLong());
+            if (remaining <= 0) {
+                return snapshot;
+            }
+            Optional<?> next = watch.awaitChange(Duration.ofNanos(remaining));
+            if (next.isPresent()) {
+                // commit accepts only the watcher's latest offered snapshot, never an earlier queue entry.
+                snapshot = next.orElseThrow();
+                if (watch.startupInputChanged(startupSnapshot, snapshot, options.timestampChanges)) {
+                    throw new IOException("M3 watch: .mvn startup configuration changed; restart Maven");
+                }
+                window.changed(nanoTime.getAsLong());
+            }
+        }
+    }
+
+    private static void checkInterrupted() throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("M3 watch interrupted");
+        }
+    }
+
+    /** Monotonic scheduling budget; filesystem reconciliation and compilation have their own duration. */
+    private static final class BatchWindow {
+        private final long started;
+        private final long quietNanos;
+        private final long maximumNanos;
+        private long lastChange;
+
+        private BatchWindow(long started, int quietMillis, int maximumMillis) {
+            this.started = started;
+            lastChange = started;
+            quietNanos = Duration.ofMillis(quietMillis).toNanos();
+            maximumNanos = Duration.ofMillis(maximumMillis).toNanos();
+        }
+
+        private long remaining(long now) {
+            return Math.min(quietNanos - (now - lastChange), maximumNanos - (now - started));
+        }
+
+        private void changed(long now) {
+            lastChange = now;
         }
     }
 
@@ -133,6 +204,8 @@ final class M3ProjectWatch {
             int reconcileSeconds,
             int maxBuilds,
             int idleSeconds,
+            int quietMillis,
+            int maxBatchMillis,
             boolean timestampChanges) {
         static Options from(MavenExecutionRequest request) {
             Path root;
@@ -180,6 +253,11 @@ final class M3ProjectWatch {
             if (!timestamps.equalsIgnoreCase("true") && !timestamps.equalsIgnoreCase("false")) {
                 throw new IllegalArgumentException("m3.watch.timestampChanges must be true or false");
             }
+            int quietMillis = integer(request, "m3.watch.quietMillis", 0, 0, 60_000);
+            int maxBatchMillis = integer(request, "m3.watch.maxBatchMillis", 1000, 0, 60_000);
+            if (quietMillis > 0 && maxBatchMillis < quietMillis) {
+                throw new IllegalArgumentException("m3.watch.maxBatchMillis must be at least m3.watch.quietMillis");
+            }
             List<Path> inputs = paths(property(request, "m3.watch.inputs", "."));
             if (inputs.isEmpty()) {
                 throw new IllegalArgumentException("m3.watch.inputs must contain at least one path");
@@ -195,6 +273,8 @@ final class M3ProjectWatch {
                     integer(request, "m3.watch.reconcileSeconds", 30, 1, 86400),
                     integer(request, "m3.watch.maxBuilds", 0, 0, 1_000_000),
                     integer(request, "m3.watch.idleSeconds", 0, 0, 86400),
+                    quietMillis,
+                    maxBatchMillis,
                     Boolean.parseBoolean(timestamps));
         }
 

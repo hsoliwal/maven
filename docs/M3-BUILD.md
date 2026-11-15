@@ -60,6 +60,13 @@ iteration; use `verify` for verification. `full` deliberately removes previous o
 Run `install` explicitly when a separate Maven build needs artifacts in the local repository.
 These commands do not implicitly publish artifacts or select additional profiles.
 
+## Continuous builds
+
+The [M3 watch guide](M3-WATCH.md) describes continuous builds with the installed enhanced
+Maven fork and the M3JDK21 `com.m3.file` module, including bounded batching of saved edits.
+Watch mode currently runs `clean` before each selected lifecycle because compiler facts
+do not yet establish complete dependency and generated-output coverage.
+
 ## Work on a module and its prerequisites
 
 Select a concrete reactor module with `-pl` and include its prerequisites with `-am`:
