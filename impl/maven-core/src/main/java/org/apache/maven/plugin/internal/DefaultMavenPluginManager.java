@@ -58,15 +58,18 @@ import org.apache.maven.api.PathType;
 import org.apache.maven.api.Project;
 import org.apache.maven.api.Service;
 import org.apache.maven.api.Session;
+import org.apache.maven.api.plugin.Log;
 import org.apache.maven.api.plugin.descriptor.Resolution;
 import org.apache.maven.api.services.DependencyResolver;
 import org.apache.maven.api.services.DependencyResolverResult;
+import org.apache.maven.api.services.MessageBuilderFactory;
 import org.apache.maven.api.services.PathScopeRegistry;
 import org.apache.maven.api.xml.XmlNode;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.classrealm.ClassRealmManager;
 import org.apache.maven.di.Key;
 import org.apache.maven.di.impl.Binding;
+import org.apache.maven.di.impl.BindingStyler;
 import org.apache.maven.di.impl.InjectorImpl;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.scope.internal.MojoExecutionScope;
@@ -74,6 +77,7 @@ import org.apache.maven.execution.scope.internal.MojoExecutionScopeModule;
 import org.apache.maven.internal.impl.DefaultLog;
 import org.apache.maven.internal.impl.DefaultMojoExecution;
 import org.apache.maven.internal.impl.InternalMavenSession;
+import org.apache.maven.internal.impl.MessageBuilderBindingStyler;
 import org.apache.maven.internal.impl.SisuDiBridgeModule;
 import org.apache.maven.internal.xml.XmlPlexusConfiguration;
 import org.apache.maven.model.Plugin;
@@ -122,6 +126,7 @@ import org.codehaus.plexus.component.configurator.ComponentConfigurator;
 import org.codehaus.plexus.component.configurator.ConfigurationListener;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluationException;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluator;
+import org.codehaus.plexus.component.configurator.expression.TypeAwareExpressionEvaluator;
 import org.codehaus.plexus.component.repository.ComponentDescriptor;
 import org.codehaus.plexus.component.repository.exception.ComponentLifecycleException;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
@@ -162,6 +167,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private final PlexusContainer container;
+    private final MessageBuilderFactory messageBuilderFactory;
     private final ClassRealmManager classRealmManager;
     private final PluginDescriptorCache pluginDescriptorCache;
     private final PluginRealmCache pluginRealmCache;
@@ -190,8 +196,10 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             MavenPluginValidator pluginValidator,
             List<MavenPluginConfigurationValidator> configurationValidators,
             PluginValidationManager pluginValidationManager,
-            List<MavenPluginPrerequisitesChecker> prerequisitesCheckers) {
+            List<MavenPluginPrerequisitesChecker> prerequisitesCheckers,
+            MessageBuilderFactory messageBuilderFactory) {
         this.container = container;
+        this.messageBuilderFactory = messageBuilderFactory;
         this.classRealmManager = classRealmManager;
         this.pluginDescriptorCache = pluginDescriptorCache;
         this.pluginRealmCache = pluginRealmCache;
@@ -466,7 +474,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
                             new SessionScopeModule(container.lookup(SessionScope.class)),
                             new MojoExecutionScopeModule(container.lookup(MojoExecutionScope.class)),
                             new PluginConfigurationModule(plugin.getDelegate()),
-                            new SisuDiBridgeModule(true));
+                            new SisuDiBridgeModule(true, messageBuilderFactory));
         } catch (ComponentLookupException | CycleDetectedInComponentGraphException e) {
             throw new PluginContainerException(
                     plugin,
@@ -600,18 +608,23 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         Project project = sessionV4.getProject(session.getCurrentProject());
 
         org.apache.maven.api.MojoExecution execution = new DefaultMojoExecution(sessionV4, mojoExecution);
-        org.apache.maven.api.plugin.Log log = new DefaultLog(
+        Log log = new DefaultLog(
                 LoggerFactory.getLogger(mojoExecution.getMojoDescriptor().getImplementation()));
         try {
             // Discover components from the effective ClassLoader (module layer loader for modular plugins)
-            InjectorImpl injector = new InjectorImpl();
+            InjectorImpl injector = new InjectorImpl() {
+                @Override
+                protected BindingStyler getBindingStyler() {
+                    return new MessageBuilderBindingStyler(messageBuilderFactory);
+                }
+            };
             injector.discover(pluginRealm);
             // Add known classes
             // TODO: get those from the existing plexus scopes ?
             injector.bindInstance(Session.class, sessionV4);
             injector.bindInstance(Project.class, project);
             injector.bindInstance(org.apache.maven.api.MojoExecution.class, execution);
-            injector.bindInstance(org.apache.maven.api.plugin.Log.class, log);
+            injector.bindInstance(Log.class, log);
 
             Map<Class<? extends Service>, Supplier<? extends Service>> services = sessionV4.getAllServices();
             bindSessionServices(injector, services);
@@ -645,15 +658,21 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         // MNG-8765: Pre-interpolate configuration values before the ComponentConfigurator
         // processes them. See interpolateConfiguration() javadoc for details.
         pomConfiguration = interpolateConfiguration(pomConfiguration, expressionEvaluator, session);
-
+        PlexusConfiguration beforeM3Configuration = pomConfiguration;
         pomConfiguration =
                 M3AstCompilerConfiguration.configure(session, mojoDescriptor, pomConfiguration, expressionEvaluator);
+        if (pomConfiguration != beforeM3Configuration) {
+            // The enhanced V4 configurator consumes XmlNode rather than PlexusConfiguration.
+            // Forward the private M3 copy without replacing the upstream DOM on no-op paths.
+            dom = toXmlConfiguration(pomConfiguration);
+        }
 
         populateMojoExecutionFields(
                 mojo,
                 mojoExecution.getExecutionId(),
                 mojoDescriptor,
                 pluginRealm,
+                dom,
                 pomConfiguration,
                 expressionEvaluator);
 
@@ -731,6 +750,24 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
 
         return mojo;
+    }
+
+    private static XmlNode toXmlConfiguration(PlexusConfiguration configuration) {
+        if (configuration instanceof XmlPlexusConfiguration xmlConfiguration) {
+            return xmlConfiguration.toXmlNode();
+        }
+        Map<String, String> attributes = new HashMap<>();
+        for (String name : configuration.getAttributeNames()) {
+            String value = configuration.getAttribute(name);
+            if (value != null) {
+                attributes.put(name, value);
+            }
+        }
+        List<XmlNode> children = new ArrayList<>();
+        for (PlexusConfiguration child : configuration.getChildren()) {
+            children.add(toXmlConfiguration(child));
+        }
+        return XmlNode.newInstance(configuration.getName(), configuration.getValue(), attributes, children, null);
     }
 
     private <T> T loadV3Mojo(
@@ -842,6 +879,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
                 mojoExecution.getExecutionId(),
                 mojoDescriptor,
                 pluginRealm,
+                dom,
                 pomConfiguration,
                 expressionEvaluator);
 
@@ -853,6 +891,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             String executionId,
             MojoDescriptor mojoDescriptor,
             ClassRealm pluginRealm,
+            XmlNode configurationDom,
             PlexusConfiguration configuration,
             ExpressionEvaluator expressionEvaluator)
             throws PluginConfigurationException {
@@ -865,6 +904,28 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
 
         try {
+            if ("enhanced".equals(configuratorId) && mojoDescriptor.isV4Api()) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Configuring mojo execution '" + mojoDescriptor.getId() + ':' + executionId
+                            + "' with Maven XML configurator -->");
+                }
+                if (!(expressionEvaluator instanceof TypeAwareExpressionEvaluator tae)) {
+                    throw new PluginConfigurationException(
+                            mojoDescriptor.getPluginDescriptor(),
+                            "Expression evaluator for mojo '"
+                                    + mojoDescriptor.getId()
+                                    + "' does not implement TypeAwareExpressionEvaluator");
+                }
+                new V4MojoConfigurator(
+                                new PlexusMojoExpressionEvaluatorAdapter(tae),
+                                pluginRealm,
+                                mojoDescriptor.getPluginDescriptor())
+                        .configure(mojo, configurationDom);
+                validateParameters(mojoDescriptor, configuration, expressionEvaluator);
+                logger.debug("-- end configuration --");
+                return;
+            }
+
             // TODO could the configuration be passed to lookup and the configurator known to plexus via the descriptor
             // so that this method could entirely be handled by a plexus lookup?
             configurator = container.lookup(ComponentConfigurator.class, configuratorId);

@@ -27,7 +27,7 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven-impl-modules</artifactId>
-    <version>4.1.0-SNAPSHOT</version>
+    <version>4.2.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-core</artifactId>
@@ -52,11 +52,15 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
     <lifecycle.maven-rar-plugin>3.1.0</lifecycle.maven-rar-plugin>
     <lifecycle.maven-resources-plugin>3.5.0</lifecycle.maven-resources-plugin>
     <lifecycle.maven-site-plugin>3.22.0</lifecycle.maven-site-plugin>
-    <lifecycle.maven-surefire-plugin>3.6.0</lifecycle.maven-surefire-plugin>
+    <lifecycle.maven-surefire-plugin>3.6.1</lifecycle.maven-surefire-plugin>
     <lifecycle.maven-war-plugin>3.5.1</lifecycle.maven-war-plugin>
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-utils</artifactId>
+    </dependency>
     <!--  Maven4 API -->
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -428,7 +432,6 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
               <include>org.apache.maven.artifact</include>
               <include>org.apache.maven.classrealm</include>
               <include>org.apache.maven.cli</include>
-              <include>org.apache.maven.configuration</include>
               <include>org.apache.maven.exception</include>
               <include>org.apache.maven.execution</include>
               <include>org.apache.maven.execution.scope</include>

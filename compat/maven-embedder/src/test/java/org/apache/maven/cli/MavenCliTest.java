@@ -18,6 +18,7 @@
  */
 package org.apache.maven.cli;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -116,6 +117,50 @@ class MavenCliTest {
         for (T item : expected) {
             assertTrue(actual.contains(item), "Collection should contain: " + item);
         }
+    }
+
+    /**
+     * With redirected streams there is no console, and the password is read from the standard input, as the
+     * encryption printed an empty result otherwise (MNG-8398).
+     */
+    @Test
+    public void testReadPasswordFromRedirectedInput() throws Exception {
+        ByteArrayInputStream in = new ByteArrayInputStream("secret\nignored\n".getBytes(StandardCharsets.UTF_8));
+
+        assertEquals("secret", MavenCli.readPassword(null, in, "Password: "));
+    }
+
+    @Test
+    public void testReadPasswordFromRedirectedInputIsDecodedAsUtf8() throws Exception {
+        ByteArrayInputStream in = new ByteArrayInputStream("p\u00e4ss\u20ac\n".getBytes(StandardCharsets.UTF_8));
+
+        assertEquals("p\u00e4ss\u20ac", MavenCli.readPassword(null, in, "Password: "));
+    }
+
+    @Test
+    public void testReadPasswordRejectsMissingPassword() {
+        assertThrows(
+                IllegalStateException.class,
+                () -> MavenCli.readPassword(null, new ByteArrayInputStream(new byte[0]), "Password: "));
+        assertThrows(
+                IllegalStateException.class,
+                () -> MavenCli.readPassword(
+                        null, new ByteArrayInputStream("\n".getBytes(StandardCharsets.UTF_8)), "Password: "));
+    }
+
+    /**
+     * An empty or otherwise unparsable extensions descriptor should fail with a message naming the file, not a bare
+     * {@code EOFException} or {@code XMLStreamException} from the XML parser (MNG-8369).
+     */
+    @Test
+    public void testReadCoreExtensionsDescriptorRejectsUnparsableFile(@TempDir Path tempDir) throws Exception {
+        Path extensionsFile = tempDir.resolve("extensions.xml");
+        Files.createFile(extensionsFile);
+
+        IOException e =
+                assertThrows(IOException.class, () -> cli.readCoreExtensionsDescriptor(extensionsFile.toString()));
+
+        assertTrue(e.getMessage().contains(extensionsFile.toString()), e.getMessage());
     }
 
     @Test
