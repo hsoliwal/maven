@@ -42,20 +42,21 @@ public final class McpAdviser {
                      var output = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
                     output.write("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"m3-smart-maven\",\"version\":\"0.1.0\"}}\n");
                     output.flush();
-                    Map<String,Object> hello = frame(input);
-                    if (!"2025-06-18".equals(map(hello.get("result")).get("protocolVersion")))
+                    Map<String,Object> hello = checkedResult(frame(input), "1");
+                    if (!"2025-06-18".equals(hello.get("protocolVersion")))
                         throw new IOException("unexpected MCP protocol version");
                     output.write("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n");
                     output.write("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"infer_text\",\"arguments\":{\"prompt\":"
                             + TinyJson.quote(prompt) + ",\"maxTokens\":512,\"timeoutSeconds\":60}}}\n");
                     output.flush();
-                    Map<String,Object> reply = frame(input);
-                    if (!"2".equals(String.valueOf(reply.get("id")))) throw new IOException("unexpected MCP reply ID");
-                    Map<String,Object> result = map(reply.get("result"));
-                    if (Boolean.TRUE.equals(result.get("isError"))) throw new IOException("ChromeLLM inference returned error");
+                    Map<String,Object> result = checkedResult(frame(input), "2");
+                    if (!Boolean.FALSE.equals(result.get("isError")))
+                        throw new IOException("ChromeLLM inference failed or has no success receipt");
                     Object content = result.get("content");
                     if (!(content instanceof List<?> list) || list.size() != 1) throw new IOException("unexpected MCP content");
-                    Object message = map(list.get(0)).get("text");
+                    Map<String,Object> item = map(list.get(0));
+                    if (!"text".equals(item.get("type"))) throw new IOException("MCP content is not text");
+                    Object message = item.get("text");
                     if (!(message instanceof String text) || text.isEmpty() || text.length() > 32768)
                         throw new IOException("invalid MCP candidate");
                     return text;
@@ -74,6 +75,16 @@ public final class McpAdviser {
             process.waitFor(2, TimeUnit.SECONDS);
         }
     }
+    /** Validate protocol, correlated response ID and success shape before reading candidate data. */
+    private static Map<String,Object> checkedResult(Map<String,Object> reply, String expectedId)
+            throws IOException {
+        if (!"2.0".equals(reply.get("jsonrpc")) || !expectedId.equals(reply.get("id"))) {
+            throw new IOException("unexpected MCP JSON-RPC version or reply ID");
+        }
+        if (reply.containsKey("error")) throw new IOException("MCP JSON-RPC error");
+        return map(reply.get("result"));
+    }
+
     private static Map<String,Object> frame(BufferedReader r) throws IOException {
         // BufferedReader.readLine is bounded below by checking buffered characters as read.
         StringBuilder line = new StringBuilder();
