@@ -1,29 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
 # SPDX-License-Identifier: Apache-2.0
-# Small, opt-in build entry point for this Maven fork.
+# Keep Maven responsible for reactor selection, lifecycle execution and failures.
 [CmdletBinding()]
 param(
-    [ValidateSet('quick', 'test', 'verify', 'full', 'resume')]
+    [Parameter(Position = 0)]
+    [ValidateSet('quick', 'test', 'verify', 'full', 'resume', 'help')]
     [string]$Mode = 'verify',
     [string]$Module,
     [string]$ResumeFrom,
+    [ValidateRange(1, 2147483647)]
     [int]$Threads = 1,
-    [string[]]$ExtraArgs = @()
+    [string]$Maven = $env:M3_MAVEN,
+    [string[]]$ExtraArgs = @(),
+    [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if ($Threads -lt 1) { throw 'Threads must be at least 1.' }
-if ($Mode -eq 'resume' -and [string]::IsNullOrWhiteSpace($ResumeFrom)) {
-    throw 'Resume mode requires -ResumeFrom <module>.'
+if ($Help -or $Mode -eq 'help') {
+    @'
+Usage: ./m3-build.ps1 [-Mode quick|test|verify|full] [-Module <selector>]
+                      [-Threads <count>] [-Maven <executable>] [-ExtraArgs <array>]
+       ./m3-build.ps1 -Mode resume -ResumeFrom <selector> [-ExtraArgs <array>]
+
+Default: verify. quick packages without running tests; full runs clean verify.
+-Module selects a reactor project and its prerequisites (-pl/-am).
+resume delegates to Maven -rf and cannot be combined with -Module.
+Parallel execution is opt-in through -Threads or explicit Maven arguments.
+-Maven defaults to M3_MAVEN, then mvn on PATH.
+Relative executable paths and Maven paths are resolved from this script's directory.
+'@
+    return
 }
-if ($Mode -ne 'resume' -and $ResumeFrom) {
+
+if ($Mode -eq 'resume') {
+    if ([string]::IsNullOrWhiteSpace($ResumeFrom) -or $ResumeFrom.StartsWith('-')) {
+        throw 'Resume mode requires -ResumeFrom <module>.'
+    }
+    if ($Module) {
+        throw 'Use either -Module or resume mode. Resume uses Maven -rf without implicit -am.'
+    }
+} elseif ($ResumeFrom) {
     throw '-ResumeFrom is only valid in resume mode.'
 }
 
-$mvn = Get-Command mvn -ErrorAction SilentlyContinue
-if (-not $mvn) {
-    throw 'Maven is not on PATH. Maven core is bootstrapped using an installed Maven (see README.md).'
-}
+if ([string]::IsNullOrWhiteSpace($Maven)) { $Maven = 'mvn' }
 $goals = switch ($Mode) {
     'quick'  { @('package', '-DskipTests') }
     'test'   { @('test') }
@@ -31,14 +51,24 @@ $goals = switch ($Mode) {
     'full'   { @('clean', 'verify') }
     'resume' { @('verify', '-rf', $ResumeFrom) }
 }
-$argsList = @('-B', '-ntp', '-T', [string]$Threads)
-if ($Module) { $argsList += @('-pl', $Module, '-am') }
-$argsList += $goals
-$argsList += $ExtraArgs
-Push-Location $root
+$mavenArgs = @('-B', '-ntp')
+if ($PSBoundParameters.ContainsKey('Threads')) {
+    $mavenArgs += @('-T', [string]$Threads)
+}
+if ($Module) { $mavenArgs += @('-pl', $Module, '-am') }
+$mavenArgs += $goals
+$mavenArgs += $ExtraArgs
+
+$exitCode = 1
+Push-Location -LiteralPath $PSScriptRoot
 try {
-    & $mvn.Source @argsList
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $command = Get-Command -Name $Maven -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1
+    # Preserve Maven's exit status even when the caller enabled native-error exceptions.
+    $PSNativeCommandUseErrorActionPreference = $false
+    & $command.Source @mavenArgs
+    $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location
 }
+exit $exitCode
