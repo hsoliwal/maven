@@ -7,9 +7,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -47,20 +44,12 @@ public final class ProvisionMojo extends AbstractMojo {
                         + TinyJson.quote(artifact.getFileName().toString()) + "}");
                 getLog().info("Verified " + entry.id() + " SHA-256 " + entry.sha256() + " -> " + artifact);
             }
-            Path root = baseDir.toPath().toAbsolutePath().normalize();
-            Path directory = buildDir.toPath().toAbsolutePath().normalize().resolve("m3-smart");
-            if (!directory.startsWith(root) || directory.equals(root))
-                throw new IllegalArgumentException("Maven build output must remain inside project checkout");
-            Files.createDirectories(directory);
-            Path part = Files.createTempFile(directory, "provision-", ".part");
-            try {
-                String evidence = "{\n  \"schema\": \"m3.smart.provision.v1\",\n  \"manifestSha256\": "
-                        + TinyJson.quote(entries.digest()) + ",\n  \"profile\": "
-                        + TinyJson.quote(profile) + ",\n  \"verifiedArtifacts\": [\n"
-                        + String.join(",\n", receipts) + "\n  ]\n}\n";
-                Files.writeString(part, evidence, StandardCharsets.UTF_8);
-                Files.move(part, directory.resolve("provision.json"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } finally { Files.deleteIfExists(part); }
+            Path directory = SafeBuildOutput.directory(baseDir.toPath(), buildDir.toPath());
+            String evidence = "{\n  \"schema\": \"m3.smart.provision.v1\",\n  \"manifestSha256\": "
+                    + TinyJson.quote(entries.digest()) + ",\n  \"profile\": "
+                    + TinyJson.quote(profile) + ",\n  \"verifiedArtifacts\": [\n"
+                    + String.join(",\n", receipts) + "\n  ]\n}\n";
+            SafeBuildOutput.write(directory, "provision.json", evidence);
         } catch (Exception failure) {
             throw new MojoExecutionException("M3 provisioning failed: " + failure.getClass().getSimpleName(), failure);
         }
