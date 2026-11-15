@@ -77,7 +77,6 @@ import org.apache.maven.cling.utils.CLIReportingUtils;
 import org.apache.maven.eventspy.internal.EventSpyDispatcher;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.impl.SettingsUtilsV4;
-import org.apache.maven.jline.FastTerminal;
 import org.apache.maven.jline.MessageUtils;
 import org.apache.maven.logging.AsyncDrainWriter;
 import org.apache.maven.logging.BuildEventListener;
@@ -90,6 +89,7 @@ import org.codehaus.plexus.PlexusContainer;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jline.terminal.impl.AbstractPosixTerminal;
+import org.jline.terminal.impl.DeferredTerminal;
 import org.jline.terminal.spi.TerminalExt;
 import org.jline.utils.OSUtils;
 import org.slf4j.LoggerFactory;
@@ -170,13 +170,19 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
     }
 
     protected int doInvoke(C context) throws Exception {
+        createTerminal(context);
         validate(context);
         pushCoreProperties(context);
         pushUserProperties(context);
         setupGuiceClassLoading(context);
         configureLogging(context);
-        createTerminal(context);
         activateLogging(context);
+        // doConfigureWithTerminal wraps System.out with LoggingOutputStream, so it
+        // must run AFTER activateLogging() caches the original System.out. Otherwise
+        // the logger would resolve the wrapped stream on each write → infinite loop.
+        // awaitTerminalInitialization() blocks until the background build completes.
+        MessageUtils.awaitTerminalInitialization();
+        doConfigureWithTerminal(context, context.terminal);
         helpOrVersionAndMayExit(context);
         preCommands(context);
         container(context);
@@ -335,13 +341,34 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
 
     protected final void createTerminal(C context) {
         if (context.terminal == null) {
-            MessageUtils.systemInstall(builder -> doCreateTerminal(context, builder), terminal -> {
-                if (OSUtils.IS_WINDOWS && !context.invokerRequest.embedded()) {
-                    // JLine may consume Ctrl+C as terminal input, bypassing the JVM's shutdown hooks.
-                    terminal.handle(Terminal.Signal.INT, signal -> System.exit(SIGINT_EXIT_CODE));
+            if (context.invokerRequest.embedded()) {
+                // Embedded mode: build terminal synchronously (fast with custom streams).
+                // buildDeferred() only supports system terminals, and embedded mode is
+                // fast anyway (no FFM/JNI provider probing with custom streams).
+                // doConfigureWithTerminal() is NOT called here; doInvoke() calls it
+                // explicitly after configureLogging() so context.loggerFactory is set.
+                try {
+                    TerminalBuilder builder =
+                            TerminalBuilder.builder().name("Maven").dumb(true);
+                    doCreateTerminal(context, builder);
+                    Terminal terminal = builder.build();
+                    MessageUtils.systemInstall(terminal);
+                } catch (IOException e) {
+                    throw new InvokerException("Failed to create terminal", e);
                 }
-                doConfigureWithTerminal(context, terminal);
-            });
+            } else {
+                // Start the background terminal build.  doConfigureWithTerminal is intentionally
+                // NOT called here — the onComplete callback runs on the background build thread
+                // before configureLogging() has set context.loggerFactory.  Instead, the main
+                // thread calls doConfigureWithTerminal() explicitly after configureLogging()
+                // (see doInvoke).
+                MessageUtils.systemInstall(builder -> doCreateTerminal(context, builder), terminal -> {
+                    if (OSUtils.IS_WINDOWS) {
+                        // JLine may consume Ctrl+C as terminal input, bypassing the JVM's shutdown hooks.
+                        terminal.handle(Terminal.Signal.INT, signal -> System.exit(SIGINT_EXIT_CODE));
+                    }
+                });
+            }
 
             context.terminal = MessageUtils.getTerminal();
             context.closeables.add(MessageUtils::systemUninstall);
@@ -352,7 +379,8 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
                     new ProjectBuildLogAppender(determineBuildEventListener(context));
             context.closeables.add(projectBuildLogAppender);
         } else {
-            doConfigureWithTerminal(context, context.terminal);
+            // context.terminal is pre-set; doConfigureWithTerminal will be called
+            // by doInvoke() after configureLogging() (see note in doInvoke).
         }
     }
 
@@ -393,7 +421,11 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
         // quiet mode implies raw streams — plugins that write to System.out (e.g. help:evaluate
         // -DforceStdout) must not be decorated with "[INFO] [stdout]" prefix, otherwise scripting
         // use cases like $(mvn -q help:evaluate ...) break (see GH-12730)
-        if (context.options().rawStreams().orElse(false)
+        // Embedded mode also uses raw streams — the caller provides its own streams and
+        // doesn't need the "[stdout]" prefix wrapping. More importantly, the wrapping
+        // creates a circular logging loop (StackOverflowError) when logSink is null.
+        if (context.invokerRequest.embedded()
+                || context.options().rawStreams().orElse(false)
                 || context.options().quiet().orElse(false)) {
             doConfigureWithTerminalWithRawStreamsEnabled(context);
         } else {
@@ -530,8 +562,8 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
         if (terminal == null) {
             return null;
         }
-        if (terminal instanceof FastTerminal ft) {
-            terminal = ft.getTerminal();
+        if (terminal instanceof DeferredTerminal dt) {
+            terminal = dt.getTerminal();
         }
         List<String> subs = new ArrayList<>();
         subs.add("type=" + terminal.getType());
@@ -573,10 +605,8 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
 
     protected void postContainer(C context) throws Exception {
         ProtoSession protoSession = context.protoSession;
-        for (PropertyContributor propertyContributor : context.lookup
-                .lookup(PropertyContributorsHolder.class)
-                .getPropertyContributors()
-                .values()) {
+        for (PropertyContributor propertyContributor :
+                context.lookup.lookup(PropertyContributorsHolder.class).getPropertyContributors()) {
             protoSession = protoSession.toBuilder()
                     .withUserProperties(propertyContributor.contribute(protoSession))
                     .build();
@@ -735,6 +765,9 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
         }
 
         context.effectiveSettings = settingsResult.getEffectiveSettings();
+        context.installationSettings = settingsResult.getInstallationSettings();
+        context.projectSettings = settingsResult.getProjectSettings();
+        context.userSettings = settingsResult.getUserSettings();
         context.interactive = mayDisableInteractiveMode(context, context.effectiveSettings.isInteractiveMode());
         context.localRepositoryPath = localRepositoryPath(context);
 
@@ -742,12 +775,18 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
             int totalProblems = settingsResult.getProblems().totalProblemsReported();
             context.logger.info("");
             context.logger.info(String.format(
-                    "%s %s encountered while building the effective settings (use -e to see details)",
+                    "%s %s encountered while building the effective settings",
                     totalProblems, (totalProblems == 1) ? "problem was" : "problems were"));
 
-            if (context.options().showErrors().orElse(false)) {
-                for (BuilderProblem problem :
-                        settingsResult.getProblems().problems().toList()) {
+            // print the problems themselves by default, as Maven 3 does: a settings element that is skipped (unknown
+            // to this settings model, or misspelt) can change what credentials are sent where, and must not go
+            // unnoticed; -e adds the stack trace of the underlying exception
+            boolean showErrors = context.options().showErrors().orElse(false);
+            for (BuilderProblem problem :
+                    settingsResult.getProblems().problems().toList()) {
+                if (showErrors && problem.getException() != null) {
+                    context.logger.warn(problem.getMessage() + " @ " + problem.getLocation(), problem.getException());
+                } else {
                     context.logger.warn(problem.getMessage() + " @ " + problem.getLocation());
                 }
             }
@@ -758,6 +797,9 @@ public abstract class LookupInvoker<C extends LookupContext> implements Invoker 
             context.projectSettingsPath = null;
             context.userSettingsPath = null;
             context.effectiveSettings = null;
+            context.installationSettings = null;
+            context.projectSettings = null;
+            context.userSettings = null;
             context.interactive = true;
             context.localRepositoryPath = null;
         };

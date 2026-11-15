@@ -1,0 +1,40 @@
+name: Verify Maven PR 33 merge
+
+on:
+  push:
+    branches:
+      - m3/verify-upstream-pr33-20261115
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Prepare the Mockito startup agent
+        run: >-
+          mvn --batch-mode --no-transfer-progress -N
+          org.apache.maven.plugins:maven-dependency-plugin:3.11.0:get
+          -Dartifact=org.mockito:mockito-core:5.24.0 -Dtransitive=false
+      - name: Compile and test the core and CLI reactor
+        # Existing smart-builder files have 38 RAT header violations.
+        # This verification branch retains that known limitation explicitly.
+        run: >-
+          mvn --batch-mode --no-transfer-progress
+          -pl impl/maven-core,impl/maven-cli -am
+          -Drat.skip=true
+          "-DargLine.mockito=-javaagent:${HOME}/.m2/repository/org/mockito/mockito-core/5.24.0/mockito-core-5.24.0.jar"
+          test
