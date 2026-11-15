@@ -33,6 +33,8 @@ args=(--phase "$phase" --project-dir "$project" --build-dir "$build_dir" --backe
 [[ -z ${HOOK_BUILD_OUTCOME:-} ]] || args+=(--build-outcome "$HOOK_BUILD_OUTCOME")
 [[ -z ${HOOK_LOG:-} ]] || args+=(--log-file "$HOOK_LOG")
 [[ -z ${HOOK_SOURCE:-} ]] || args+=(--source-root "$HOOK_SOURCE")
+[[ -z ${HOOK_ATOM_PATTERN_MANIFEST:-} ]] || args+=(--atom-pattern-manifest "$HOOK_ATOM_PATTERN_MANIFEST")
+args+=(--require-atom-pattern "${HOOK_REQUIRE_ATOM_PATTERN:-false}")
 if [[ $backend == chrome ]]; then
   chrome=${HOOK_CHROME:-}
   if [[ -z $chrome ]]; then chrome=$(command -v google-chrome || true); fi

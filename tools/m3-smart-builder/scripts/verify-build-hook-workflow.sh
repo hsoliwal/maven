@@ -20,10 +20,19 @@ printf '%s\n' 'class Broken { MissingType value; }' > "$project/src/main/java/Br
 printf '%s\n' 'synthetic browser path, never executable' > "$work/browser"
 export HOOK_ACTION_PATH="$repository/.github/actions/chrome-ai"
 export HOOK_PROJECT="$project" HOOK_BUILD_DIR=.reports HOOK_BACKEND=chrome
-export HOOK_MODULE="$tool/target/mcp-fixture.jar" HOOK_CHROME="$work/browser" HOOK_PROFILE="$work/profile"
+export HOOK_MODULE="$tool/target/mcp-fixture.jar" HOOK_CHROME="$work/browser" HOOK_PROFILE="$work/evidence-observer"
 export HOOK_HEADLESS=true HOOK_DOWNLOAD=false HOOK_TIMEOUT=30 HOOK_SOURCE=src
+export HOOK_REQUIRE_ATOM_PATTERN=true HOOK_ATOM_PATTERN_MANIFEST=synthetic-checkpoints.tsv
 export GITHUB_OUTPUT="$work/action-outputs"
 test -f "$HOOK_MODULE"
+# This fixture checks structure and source binding, not semantic proof authenticity.
+java -cp "$tool/target/jdk-only" io.synexia.maven.smart.AtomPatternEvidenceTest \
+  --write-action-fixture "$project" src
+if HOOK_PHASE=pre-build HOOK_ATOM_PATTERN_MANIFEST=absent.tsv bash "$HOOK_ACTION_PATH/run.sh"; then
+  printf '%s\n' 'Missing required evidence unexpectedly reached inference' >&2
+  exit 1
+fi
+test ! -e "$HOOK_PROFILE.invoked"
 set +e
 (
   set -e

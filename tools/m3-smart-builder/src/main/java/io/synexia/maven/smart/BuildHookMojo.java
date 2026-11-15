@@ -25,6 +25,10 @@ public final class BuildHookMojo extends AbstractMojo {
     private File logFile;
     @Parameter(property = "m3.smart.sourceRoot")
     private File sourceRoot;
+    @Parameter(property = "m3.smart.atomPatternManifest")
+    private File atomPatternManifest;
+    @Parameter(property = "m3.smart.requireAtomPattern", defaultValue = "false")
+    private boolean requireAtomPattern;
     @Parameter(property = "m3.smart.llmBackend", defaultValue = "none")
     private String llmBackend;
     @Parameter(property = "m3.smart.chromeLlmJar")
@@ -56,6 +60,8 @@ public final class BuildHookMojo extends AbstractMojo {
         if (buildOutcome != null) args.addAll(List.of("--build-outcome", buildOutcome));
         add(args, "--log-file", logFile);
         add(args, "--source-root", sourceRoot);
+        add(args, "--atom-pattern-manifest", atomPatternManifest);
+        args.addAll(List.of("--require-atom-pattern", Boolean.toString(requireAtomPattern)));
         add(args, "--chrome-llm-jar", chromeLlmJar);
         add(args, "--chrome-binary", chromeBin);
         add(args, "--chrome-profile", chromeProfile);

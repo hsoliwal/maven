@@ -31,6 +31,9 @@
       </execution>
       <execution><id>build-hook-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
         <configuration><mainClass>io.synexia.maven.smart.BuildHookTest</mainClass><classpathScope>test</classpathScope></configuration>
+      </execution>
+      <execution><id>atom-pattern-evidence-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.AtomPatternEvidenceTest</mainClass><classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>
