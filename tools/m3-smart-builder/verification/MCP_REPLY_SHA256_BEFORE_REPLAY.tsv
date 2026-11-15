@@ -1,0 +1,4 @@
+6da539f0da376473d662b4f877ef43d2ce5105daf69b922ec624d5e5693a1a0a  docs/MCP_ADVISER_REPLY_CONTRACT.md
+ad6a7e45f652b064141f44ee7e7f2505d3981325e26990bd081e8b80db9e4a2c  src/main/java/io/synexia/maven/smart/McpAdviser.java
+e98910a86864c342a4760b1d69cd4483f06a62df57a27103dac917670c5e823c  src/test/fixture/io/synexia/chromellm/standalone/StandaloneMain.java
+111c4807c7852f8821fb309b0f8174d3945ee569d2c389a8ddb0d8b631bbd7f9  src/test/java/io/synexia/maven/smart/SmartBuilderTest.java
