@@ -21,7 +21,7 @@ public final class SmartBuilderTest {
         root = Path.of(System.getProperty("m3.smart.testRoot", "target")).toAbsolutePath();
         if (!Files.isDirectory(root)) throw new IOException("test root must already exist");
         root = Files.createTempDirectory(root, "m3-smart-fixture-");
-        testManifest(); testPlanner(); testDownloadedCache(); testOffline(); testCorruption(); testRejectedDownloads(); testJson();
+        testManifest(); testPomFacts(); testPlanner(); testDownloadedCache(); testOffline(); testCorruption(); testRejectedDownloads(); testJson();
         testCacheSafety();
         if (System.getProperty("m3.smart.fixtureJar") != null) testMcpFixture();
         System.out.println("M3 SMART CORE TESTS PASS: " + passed);
@@ -36,6 +36,26 @@ public final class SmartBuilderTest {
         expectIOException("insecure URL", () -> ArtifactManifest.load(writeManifest(row().replace("https://", "http://")+"\n")));
         expectIOException("localhost URL", () -> ArtifactManifest.load(writeManifest(row().replace("downloads.example.org", "localhost")+"\n")));
         expectIOException("bad digest", () -> ArtifactManifest.load(writeManifest(row().replace(Hashes.sha256(FIXTURE), "000")+"\n")));
+        passed++;
+    }
+    private static void testPomFacts() throws Exception {
+        Path pom = root.resolve("pom-facts.xml");
+        Files.writeString(pom, """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion><groupId>io.synexia</groupId>
+              <artifactId>demo</artifactId><version>1.0</version>
+              <modules><module>z</module><module>a</module></modules>
+              <dependencies><dependency><groupId>org.example</groupId><artifactId>fixture</artifactId></dependency></dependencies>
+              <dependencyManagement><dependencies><dependency><groupId>ignored</groupId><artifactId>not-direct</artifactId></dependency></dependencies></dependencyManagement>
+            </project>
+            """, StandardCharsets.UTF_8);
+        PomFacts facts = PomFacts.inspect(pom);
+        require(facts.group().equals("io.synexia") && facts.artifact().equals("demo"), "POM coordinates");
+        require(facts.modules().equals(List.of("a", "z")), "modules canonicalized");
+        require(facts.dependencies().equals(List.of("org.example:fixture:")), "only direct dependencies");
+        require(!facts.boundedPrompt().contains("not-direct"), "dependencyManagement excluded");
+        Files.writeString(pom, "<!DOCTYPE project [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><project>&xxe;</project>");
+        expectIOException("XXE / DTD must fail", () -> PomFacts.inspect(pom));
         passed++;
     }
     private static void testPlanner() throws Exception {
