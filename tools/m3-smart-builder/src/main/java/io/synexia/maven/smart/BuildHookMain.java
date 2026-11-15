@@ -16,7 +16,8 @@ public final class BuildHookMain {
             "--build-outcome", "--log-file", "--source-root", "--backend", "--chrome-llm-jar",
             "--chrome-binary", "--chrome-profile", "--headless", "--allow-download",
             "--llama-bin", "--jni-lib", "--model", "--timeout-seconds",
-            "--require-atom-pattern", "--atom-pattern-manifest");
+            "--require-atom-pattern", "--atom-pattern-manifest",
+            "--preparation-required", "--preparation-report");
 
     private BuildHookMain() { }
 
@@ -46,8 +47,19 @@ public final class BuildHookMain {
             boolean download = bool(options, "--allow-download", false);
             boolean headless = bool(options, "--headless", true);
             boolean requireAtomPattern = bool(options, "--require-atom-pattern", false);
+            boolean preparationRequired = bool(options, "--preparation-required", false);
+            if (!preparationRequired && options.containsKey("--preparation-report"))
+                throw new IllegalArgumentException("preparation report requires explicit preparation-required mode");
+            if (preparationRequired) {
+                required(options, "--source-root");
+                required(options, "--preparation-report");
+            }
             rejectIrrelevantOptions(options, provider);
-            Path directory = SafeBuildOutput.directory(base, path(base, options.getOrDefault("--build-dir", ".github-build")));
+            Path requestedBuildDirectory = path(base, options.getOrDefault("--build-dir", ".github-build"));
+            if (preparationRequired && requestedBuildDirectory.resolve("m3-smart")
+                    .startsWith(path(base, options.get("--source-root"))))
+                throw new IllegalArgumentException("preparation mode cannot write into selected sources");
+            Path directory = SafeBuildOutput.directory(base, requestedBuildDirectory);
 
             boolean evidenceRequested = requireAtomPattern || options.containsKey("--atom-pattern-manifest");
             AtomPatternEvidence.Summary evidence = null;
@@ -65,6 +77,19 @@ public final class BuildHookMain {
                 }
             }
             boolean evidenceRejected = evidenceRequested && evidence == null;
+            String preparationFacts = "null";
+            String preparationError = "";
+            if (preparationRequired) {
+                try {
+                    preparationFacts = CanonicalPreparationEvidence.inspect(base,
+                            path(base, options.get("--source-root")),
+                            path(base, options.get("--preparation-report")));
+                } catch (IOException | IllegalArgumentException rejected) {
+                    preparationError = "preparation-report-refused";
+                }
+            }
+            boolean preparationRejected = preparationRequired && !preparationError.isEmpty();
+            boolean admissionRejected = evidenceRejected || preparationRejected;
 
             PomFacts pom = null;
             try { pom = PomFacts.inspect(base.resolve("pom.xml")); }
@@ -92,6 +117,12 @@ public final class BuildHookMain {
                             : evidenceRejected ? "rejected" : "structurally-validated")
                     + ",\"atomPatternError\":" + TinyJson.quote(evidenceError)
                     + ",\"atomPatternFacts\":" + (evidence == null ? "null" : evidence.json());
+            if (preparationRequired) {
+                facts += ",\"preparationRequired\":true"
+                        + ",\"preparationStatus\":" + TinyJson.quote(preparationRejected
+                                ? "refused" : "source-bound")
+                        + ",\"preparationFacts\":" + preparationFacts;
+            }
             String prompt = "Review-only Maven " + phase + " advisory. Build outcome is an observed fact: " + outcome
                     + ". Missing facts are unknown. Do not assert tests ran or override the observed result. "
                     + "Suggest registered recipe categories and verification steps in prose only. "
@@ -102,17 +133,20 @@ public final class BuildHookMain {
             if (phase.equals("post-build") && pom != null && log != null && source != null)
                 prompt += "\n" + DiagnoseEngine.prompt(pom, log, source);
             String candidate = "";
-            String adviceStatus = evidenceRejected ? "blocked-evidence" : provider.equals("none") ? "disabled" : "available";
-            String errorType = evidenceRejected ? "AtomPatternEvidenceRejected" : "";
-            int exit = evidenceRejected ? 2 : 0;
+            String adviceStatus = evidenceRejected ? "blocked-evidence"
+                    : preparationRejected ? "blocked-preparation"
+                    : provider.equals("none") ? "disabled" : "available";
+            String errorType = evidenceRejected ? "AtomPatternEvidenceRejected"
+                    : preparationRejected ? "CanonicalPreparationEvidenceRejected" : "";
+            int exit = admissionRejected ? 2 : 0;
             try {
                 // Complete source/receipt admission before provider construction or subprocess work.
-                if (!evidenceRejected && provider.equals("chrome")) {
+                if (!admissionRejected && provider.equals("chrome")) {
                     McpAdviser.ChromeConfig chrome = new McpAdviser.ChromeConfig(
                             path(base, required(options, "--chrome-llm-jar")), path(base, required(options, "--chrome-binary")),
                             path(base, required(options, "--chrome-profile")), headless, download, timeout);
                     candidate = McpAdviser.propose(chrome, prompt);
-                } else if (!evidenceRejected && Set.of("cli", "jni").contains(provider)) {
+                } else if (!admissionRejected && Set.of("cli", "jni").contains(provider)) {
                     McpAdviser.Config nativeProvider = new McpAdviser.Config(
                             path(base, required(options, "--chrome-llm-jar")), provider,
                             path(base, required(options, provider.equals("jni") ? "--jni-lib" : "--llama-bin")),

@@ -26,7 +26,7 @@ public final class CanonicalPreparationEvidenceTestMain {
         throw new AssertionError("admitted invalid receipt: " + reason);
     }
 
-    private static String report(SourceInventory.Selected selected) {
+    static String report(SourceInventory.Selected selected) {
         SourceInventory.FileFact file = selected.files().getFirst();
         String id = TinyJson.quote(file.path());
         String hash = TinyJson.quote(file.sha256());
