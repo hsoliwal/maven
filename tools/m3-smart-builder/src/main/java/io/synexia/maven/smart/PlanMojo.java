@@ -9,7 +9,6 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
 /** Emits a deterministic review plan. Only explicitly configured providers are invoked. */
 @Mojo(name = "plan", threadSafe = true, requiresProject = true)
@@ -56,17 +55,9 @@ public final class PlanMojo extends AbstractMojo {
                 candidate = McpAdviser.propose(config, PlanEngine.prompt(pom, m, profile));
             }
             String json = PlanEngine.plan(pom, m, profile, candidate);
-            Path root = baseDir.toPath().toAbsolutePath().normalize();
-            Path output = buildDir.toPath().toAbsolutePath().normalize().resolve("m3-smart");
-            if (!output.startsWith(root) || output.equals(root))
-                throw new IllegalArgumentException("Maven build output must remain inside project checkout");
-            Files.createDirectories(output);
-            Path part = Files.createTempFile(output, "plan-", ".part");
-            try {
-                Files.writeString(part, json, StandardCharsets.UTF_8);
-                Files.move(part, output.resolve("plan.json"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } finally { Files.deleteIfExists(part); }
-            getLog().info("M3 review-only plan: " + output.resolve("plan.json"));
+            Path output = SafeBuildOutput.directory(baseDir.toPath(), buildDir.toPath());
+            Path receipt = SafeBuildOutput.write(output, "plan.json", json);
+            getLog().info("M3 review-only plan: " + receipt);
         } catch (Exception failure) {
             throw new MojoExecutionException("M3 planning failed: " + failure.getClass().getSimpleName(), failure);
         }

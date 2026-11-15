@@ -1,0 +1,6 @@
+ad5cf25bf225f320d5192bdfacf9c9cd9f9199b5d133b8727fa8b0f5c58afa4d  README.md
+ecd817cf76074d83d1d9a4d370cbfed600eb195320658a2f2ffef40aeb0e5ebf  pom.xml
+b86049f5f3c1cf6369d7094fcdf0f3d6ba87fabe120a51eea929f96cdc9793ab  scripts/verify.sh
+cbe197b91c4afb52073337bace2eb95e9b727d046c2af2832401387d3b97c36e  src/main/java/io/synexia/maven/smart/PlanMojo.java
+e3d399c56195ade16d13e1ba62c18b166cd2550a11fff225bb297dd893bcdb52  src/main/java/io/synexia/maven/smart/ProvisionMojo.java
+18648e088b9294cb538194d5cdbf2d82d939c6d6b9bbe6b0e42ba15cd5419974  src/test/java/io/synexia/maven/smart/SmartBuilderTest.java
