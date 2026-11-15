@@ -23,6 +23,7 @@ public final class SmartBuilderTest {
         root = Files.createTempDirectory(root, "m3-smart-fixture-");
         testManifest(); testPomFacts(); testPlanner(); testDownloadedCache(); testOffline(); testCorruption(); testRejectedDownloads(); testJson();
         testCacheSafety();
+        testBuildLogFacts(); testSourceInventory(); testDiagnosis(); testSafeBuildOutput();
         if (System.getProperty("m3.smart.fixtureJar") != null) testMcpFixture();
         System.out.println("M3 SMART CORE TESTS PASS: " + passed);
     }
@@ -128,6 +129,77 @@ public final class SmartBuilderTest {
             expectIOException("symlinked cache entry",()->store.verifyOrAcquire(item,false));
         } catch (UnsupportedOperationException | java.nio.file.FileSystemException unsupported) {
             // Some Windows installations do not support symlinks without Developer Mode.
+        }
+        passed++;
+    }
+    private static void testBuildLogFacts() throws Exception {
+        Path file = root.resolve("m3-maven.log");
+        String secret = "credential=DO_NOT_ECHO_THIS_TOKEN";
+        Files.writeString(file, "[ERROR] cannot find symbol " + secret + "\n"
+                + "[ERROR] Could not find artifact x:y:z\n"
+                + "[ERROR] There are test failures.\n"
+                + "[ERROR] failed to execute goal\n"
+                + "[ERROR] undefined reference to Java_symbol\n", StandardCharsets.UTF_8);
+        BuildLogFacts facts = BuildLogFacts.inspect(file);
+        require(facts.lines() == 5, "log line count");
+        for (String category : List.of("compiler", "dependency", "test", "plugin", "native")) {
+            require(facts.categories().get(category) == 1, "log category " + category);
+        }
+        require(!facts.json().contains(secret), "raw log secrets excluded");
+        require(facts.sha256().equals(Hashes.sha256(file)), "log digest covers bytes");
+        passed++;
+    }
+    private static void testSourceInventory() throws Exception {
+        Path sources = Files.createDirectories(root.resolve("m3-src"));
+        Files.writeString(sources.resolve("Api.java"), "public class Api { public native void run(); }\n");
+        Files.writeString(sources.resolve("jni.cpp"), "JNIEXPORT void JNICALL f() {}\n");
+        SourceInventory first = SourceInventory.inspect(root, sources);
+        require(first.files() == 2 && first.javaFiles() == 1 && first.nativeFiles() == 1, "source file counts");
+        require(first.jniExports() == 1 && first.nativeKeywordMarkers() == 1, "JNI markers");
+        require(first.digest().equals(SourceInventory.inspect(root, sources).digest()), "source stable replay");
+        Files.writeString(sources.resolve("Api.java"), "public class Api { public native void changed(); }\n");
+        require(!first.digest().equals(SourceInventory.inspect(root, sources).digest()), "source changed digest");
+        expectIOException("source root outside project", () -> SourceInventory.inspect(sources, root));
+        try {
+            Files.createSymbolicLink(sources.resolve("escape.cpp"), root.resolve("pom.xml"));
+            expectIOException("source tree linked file", () -> SourceInventory.inspect(root, sources));
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException unsupported) {
+            // Native Windows without symlink privileges can skip the symlink case.
+        }
+        passed++;
+    }
+    private static void testDiagnosis() throws Exception {
+        Path pom = root.resolve("diagnose-pom.xml");
+        Files.writeString(pom, "<project><modelVersion>4.0.0</modelVersion><artifactId>demo</artifactId></project>\n");
+        Path log = root.resolve("diagnose-maven.log");
+        Files.writeString(log, "[ERROR] incompatible types\n");
+        Path sources = Files.createDirectory(root.resolve("diagnose-src"));
+        Files.writeString(sources.resolve("One.java"), "public class One {}\n");
+        BuildLogFacts lf = BuildLogFacts.inspect(log);
+        SourceInventory sf = SourceInventory.inspect(root, sources);
+        String a = DiagnoseEngine.diagnose(pom, lf, sf, "run dangerous command");
+        require(a.equals(DiagnoseEngine.diagnose(pom, lf, sf, "run dangerous command")), "diagnosis replay");
+        require(a.contains("\"mode\": \"review-only\""), "diagnosis mode");
+        require(a.contains("\"llmCandidateTrusted\": false"), "advice untrusted");
+        require(DiagnoseEngine.prompt(PomFacts.inspect(pom), lf, sf).contains("incompatible-types"), "prompt has safe facts");
+        passed++;
+    }
+    private static void testSafeBuildOutput() throws Exception {
+        Path project = Files.createDirectory(root.resolve("m3-safe-project"));
+        Path output = SafeBuildOutput.directory(project, project.resolve("target"));
+        SafeBuildOutput.write(output, "plan.json", "one");
+        SafeBuildOutput.write(output, "plan.json", "two");
+        require(Files.readString(output.resolve("plan.json")).equals("two"), "fixed receipt replacement");
+        expectIOException("output outside checkout", () -> SafeBuildOutput.directory(project, root.resolve("outside")));
+        expectIOException("arbitrary output path", () -> SafeBuildOutput.write(output, "../../../bad", "bad"));
+        try {
+            Path project2 = Files.createDirectory(root.resolve("m3-link-project"));
+            Files.createSymbolicLink(project2.resolve("target"), root);
+            expectIOException("linked build output", () -> SafeBuildOutput.directory(project2, project2.resolve("target")));
+            Files.createSymbolicLink(output.resolve("provision.json"), root.resolve("pom.xml"));
+            expectIOException("linked receipt file", () -> SafeBuildOutput.write(output, "provision.json", "bad"));
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException unsupported) {
+            // Windows symlink creation may require elevated developer privileges.
         }
         passed++;
     }
