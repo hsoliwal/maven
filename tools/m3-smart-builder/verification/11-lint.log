@@ -1,0 +1,2 @@
+sh -n scripts/verify.sh: PASS
+pom.xml XML parser: PASS (well-formed only)
