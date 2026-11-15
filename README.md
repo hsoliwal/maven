@@ -14,6 +14,7 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
+<!-- Modified 2026-11-15: document the fork's optional build entry points. -->
 Apache Maven
 ============
 
@@ -77,6 +78,10 @@ Do you like Apache Maven? Then [donate back to the ASF](https://www.apache.org/f
 
 Quick Build
 -------
+For this fork, use `sh ./m3-build.sh` on Linux/macOS or `./m3-build.ps1` in
+PowerShell to run the normal `verify` lifecycle. See [M3 build commands](docs/M3-BUILD.md)
+for bootstrap requirements, quick builds, module selection, resume and Maven options.
+
 If you want to bootstrap Maven, you'll need:
 - Java 17+
 - Maven 3.9.0 or later
