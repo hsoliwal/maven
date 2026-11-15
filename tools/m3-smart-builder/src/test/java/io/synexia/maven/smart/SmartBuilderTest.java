@@ -209,6 +209,13 @@ public final class SmartBuilderTest {
         Path model = Files.writeString(root.resolve("mock-model.gguf"), "fixture");
         String result = McpAdviser.propose(new McpAdviser.Config(jar,"cli",cli,model,10),"Review only");
         require(result.equals("fake MCP advisory"),"MCP exchange");
+        for (String scenario : List.of("init-wrong-id", "init-wrong-rpc", "init-error",
+                "init-wrong-version", "call-wrong-id", "call-wrong-rpc", "call-error",
+                "call-is-error", "call-no-success", "call-nontext", "call-empty")) {
+            Path invalid = Files.writeString(root.resolve("mcp-" + scenario + ".gguf"), "fixture");
+            expectIOException("MCP rejects " + scenario, () -> McpAdviser.propose(
+                    new McpAdviser.Config(jar, "cli", cli, invalid, 10), "Review only"));
+        }
         passed++;
     }
     private static ArtifactManifest manifest() throws Exception { return ArtifactManifest.load(writeManifest(row()+"\n")); }
