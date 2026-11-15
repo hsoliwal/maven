@@ -65,6 +65,13 @@ These commands do not implicitly publish artifacts. Only the explicit `it` mode 
 the existing `run-its` profile. For a clean integration-test run, use `full -Prun-its`
 on POSIX or `-Mode full -ExtraArgs @('-Prun-its')` on PowerShell.
 
+## Continuous builds
+
+The [M3 watch guide](M3-WATCH.md) describes continuous builds with the installed enhanced
+Maven fork and the M3JDK21 `com.m3.file` module, including bounded batching of saved edits.
+Watch mode currently runs `clean` before each selected lifecycle because compiler facts
+do not yet establish complete dependency and generated-output coverage.
+
 ## Work on a module and its prerequisites
 
 Select a concrete reactor module with `-pl` and include its prerequisites with `-am`:

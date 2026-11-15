@@ -6,14 +6,19 @@ package org.apache.maven;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
@@ -38,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -92,6 +98,76 @@ class M3ProjectWatchTest {
         assertTrue(result.getExceptions().toString().contains("explicit goals"));
     }
 
+    @Test
+    void invalidBatchingPolicyRefusesBeforeDelegationOrSdkLoading() throws IOException {
+        for (var properties : List.of(
+                Map.of("m3.watch.quietMillis", "-1"),
+                Map.of("m3.watch.quietMillis", "60001"),
+                Map.of("m3.watch.quietMillis", "invalid"),
+                Map.of("m3.watch.maxBatchMillis", "-1"),
+                Map.of("m3.watch.maxBatchMillis", "60001"),
+                Map.of("m3.watch.maxBatchMillis", "invalid"),
+                Map.of("m3.watch.quietMillis", "2", "m3.watch.maxBatchMillis", "1"),
+                Map.of("m3.watch.quietMillis", "1", "m3.watch.maxBatchMillis", "0"))) {
+            var original = request(1);
+            properties.forEach(original.getUserProperties()::setProperty);
+            var result = execute(original, next -> {
+                throw new AssertionError("invalid batching policy must refuse before delegation");
+            });
+            assertTrue(result.hasExceptions(), properties.toString());
+            assertTrue(result.getExceptions().get(0) instanceof IllegalArgumentException);
+        }
+    }
+
+    @Test
+    void defaultBatchingIsImmediateAndMaximumIsOnlyActiveWithQuietTime() throws Exception {
+        Class<?> type = Class.forName("org.apache.maven.M3ProjectWatch$Options");
+        var from = type.getDeclaredMethod("from", MavenExecutionRequest.class);
+        var quiet = type.getDeclaredMethod("quietMillis");
+        var maximum = type.getDeclaredMethod("maxBatchMillis");
+        from.setAccessible(true);
+        quiet.setAccessible(true);
+        maximum.setAccessible(true);
+        var original = request(1);
+        Object options = from.invoke(null, original);
+        assertEquals(0, quiet.invoke(options));
+        assertEquals(1000, maximum.invoke(options));
+        original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "0");
+        options = from.invoke(null, original);
+        assertEquals(0, quiet.invoke(options));
+        assertEquals(0, maximum.invoke(options));
+    }
+
+    @Test
+    void continuousChangesResetQuietTimeWithoutMovingMaximumEvenAcrossNanoTimeWrap() throws Exception {
+        Class<?> type = Class.forName("org.apache.maven.M3ProjectWatch$BatchWindow");
+        var constructor = type.getDeclaredConstructor(long.class, int.class, int.class);
+        var remaining = type.getDeclaredMethod("remaining", long.class);
+        var changed = type.getDeclaredMethod("changed", long.class);
+        constructor.setAccessible(true);
+        remaining.setAccessible(true);
+        changed.setAccessible(true);
+        long millis = Duration.ofMillis(1).toNanos();
+        for (long start : new long[] {0, Long.MAX_VALUE - 50 * millis}) {
+            Object window = constructor.newInstance(start, 100, 250);
+            assertEquals(100 * millis, remaining.invoke(window, start));
+            changed.invoke(window, start + 90 * millis);
+            assertEquals(100 * millis, remaining.invoke(window, start + 90 * millis));
+            changed.invoke(window, start + 180 * millis);
+            assertEquals(70 * millis, remaining.invoke(window, start + 180 * millis));
+            changed.invoke(window, start + 240 * millis);
+            assertEquals(10 * millis, remaining.invoke(window, start + 240 * millis));
+            assertEquals(0L, remaining.invoke(window, start + 250 * millis));
+            assertEquals(-millis, remaining.invoke(window, start + 251 * millis));
+            window = constructor.newInstance(start, 100, 100);
+            changed.invoke(window, start + 90 * millis);
+            assertEquals(10 * millis, remaining.invoke(window, start + 90 * millis));
+            assertEquals(0L, remaining.invoke(window, start + 100 * millis));
+            window = constructor.newInstance(start, 100, 250);
+            assertEquals(0L, remaining.invoke(window, start + 100 * millis));
+        }
+    }
+
     @Nested
     @EnabledIfSystemProperty(named = "m3.watch.contract", matches = "true")
     @Timeout(15)
@@ -115,6 +191,156 @@ class M3ProjectWatchTest {
             assertFalse(result.hasExceptions(), result.getExceptions().toString());
             assertEquals(List.of(List.of("clean", "verify", "test")), observed);
             assertEquals(List.of("verify", "clean", "test", "clean"), original.getGoals());
+        }
+
+        @Test
+        void theInitialForcedBuildDoesNotWaitForTheConfiguredBatchWindow() throws Exception {
+            var original = request(1);
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "60000");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "60000");
+            var calls = new AtomicInteger();
+            var result = execute(original, next -> {
+                calls.incrementAndGet();
+                return successful("target");
+            });
+            assertFalse(result.hasExceptions(), result.getExceptions().toString());
+            assertEquals(1, calls.get());
+            assertTrue(Files.isRegularFile(image()));
+        }
+
+        @Test
+        void changesDuringOneBuildProduceOneLaterExecutionOfTheLatestGeneration() throws Exception {
+            var original = request(2);
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "20");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "100");
+            Path source = root.resolve("src/Watched.java");
+            var calls = new AtomicInteger();
+            var active = new AtomicInteger();
+            var observed = new ArrayList<String>();
+            var result = execute(original, next -> {
+                assertEquals(1, active.incrementAndGet(), "watched lifecycle executions must remain serial");
+                try {
+                    assertEquals(List.of("clean", "verify"), next.getGoals());
+                    observed.add(new String(bytes(source), java.nio.charset.StandardCharsets.UTF_8));
+                    if (calls.incrementAndGet() == 1) {
+                        write(source, "class Watched { int value = 2; }\n");
+                        write(source, "class Watched { int value = 3; }\n");
+                    }
+                    return successful("target");
+                } finally {
+                    active.decrementAndGet();
+                }
+            });
+            assertFalse(result.hasExceptions(), result.getExceptions().toString());
+            assertEquals(2, calls.get());
+            assertEquals(0, active.get());
+            assertEquals("class Watched { int value = 3; }\n", observed.get(1));
+            assertArrayEquals(
+                    MessageDigest.getInstance("SHA-256").digest(bytes(source)),
+                    persistedDigest(Path.of("src/Watched.java")));
+        }
+
+        @Test
+        void batchingKeepsTheLatestOriginalSdkSnapshotAndRestartsOnlyItsQuietPeriod() throws Exception {
+            var original = request(1);
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "100");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "250");
+            Object startup = snapshot(null);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 2; }\n");
+            Object first = snapshot(startup);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 3; }\n");
+            Object second = snapshot(startup);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 4; }\n");
+            Object latest = snapshot(startup);
+            var watcher = new ScriptedWatcher(new Offer(50, second), new Offer(80, latest), new Offer(100, null));
+            assertSame(latest, batch(original, first, startup, watcher));
+            assertEquals(
+                    List.of(Duration.ofMillis(100), Duration.ofMillis(100), Duration.ofMillis(100)), watcher.waits);
+            assertEquals(3, watcher.next);
+        }
+
+        @Test
+        void emptyPollsDoNotResetTheQuietPeriodAndDefaultPolicyDoesNotPoll() throws Exception {
+            var original = request(1);
+            Object first = snapshot(null);
+            var immediate = new ScriptedWatcher();
+            assertSame(first, batch(original, first, first, immediate));
+            assertEquals(0, immediate.next);
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "100");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "250");
+            var watcher = new ScriptedWatcher(new Offer(40, null), new Offer(60, null));
+            assertSame(first, batch(original, first, first, watcher));
+            assertEquals(List.of(Duration.ofMillis(100), Duration.ofMillis(60)), watcher.waits);
+        }
+
+        @Test
+        void continuousOffersCannotExtendMaximumAndTheOfferReturnedAfterItsDeadlineIsRetained() throws Exception {
+            var original = request(1);
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "100");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "250");
+            Object startup = snapshot(null);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 2; }\n");
+            Object first = snapshot(startup);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 3; }\n");
+            Object second = snapshot(startup);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 4; }\n");
+            Object third = snapshot(startup);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 5; }\n");
+            Object latest = snapshot(startup);
+            for (long start :
+                    new long[] {0, Long.MAX_VALUE - Duration.ofMillis(50).toNanos()}) {
+                var watcher = new ScriptedWatcher(new Offer(90, second), new Offer(90, third), new Offer(100, latest));
+                watcher.now = start;
+                assertSame(latest, batch(original, first, startup, watcher));
+                assertEquals(
+                        List.of(Duration.ofMillis(100), Duration.ofMillis(100), Duration.ofMillis(70)), watcher.waits);
+                assertEquals(3, watcher.next);
+            }
+        }
+
+        @Test
+        void anObservedStartupChangeRefusesBeforeAQueuedRestoredGenerationCanHideIt() throws Exception {
+            var original = request(1);
+            original.getUserProperties().setProperty("m3.watch.timestampChanges", "false");
+            original.getUserProperties().setProperty("m3.watch.quietMillis", "100");
+            original.getUserProperties().setProperty("m3.watch.maxBatchMillis", "250");
+            Path startupFile = root.resolve(".mvn/maven.config");
+            write(startupFile, "-Dfixture=first\n");
+            Object startup = snapshot(null);
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 2; }\n");
+            Object first = snapshot(startup);
+            write(startupFile, "-Dfixture=other\n");
+            Object changed = snapshot(startup);
+            write(startupFile, "-Dfixture=first\n");
+            Object restored = snapshot(startup);
+            var watcher = new ScriptedWatcher(new Offer(50, changed), new Offer(50, restored));
+            IOException failure = assertThrows(IOException.class, () -> batch(original, first, startup, watcher));
+            assertTrue(failure.getMessage().contains("restart Maven"));
+            assertEquals(1, watcher.next, "an observed startup change must refuse before reading the restored offer");
+            assertFalse(Files.exists(image()));
+        }
+
+        @Test
+        void aSuccessfulLookingInterruptedCallbackCannotPublishTheNewBaseline() throws Exception {
+            var original = request(1);
+            assertFalse(execute(original, next -> successful("target")).hasExceptions());
+            byte[] previous = Files.readAllBytes(image());
+            write(root.resolve("src/Watched.java"), "class Watched { int value = 4; }\n");
+            MavenExecutionResult result;
+            boolean interrupted;
+            try {
+                result = execute(original, next -> {
+                    Thread.currentThread().interrupt();
+                    return successful("target");
+                });
+                interrupted = Thread.currentThread().isInterrupted();
+            } finally {
+                Thread.interrupted(); // Do not leak the deliberate callback cancellation into other tests.
+            }
+            assertTrue(interrupted);
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().get(0) instanceof InterruptedException);
+            assertArrayEquals(previous, Files.readAllBytes(image()));
         }
 
         @Test
@@ -344,6 +570,73 @@ class M3ProjectWatchTest {
                     (String) snapshot.getClass().getMethod("pathAt", int.class).invoke(snapshot, slot));
         }
         return paths;
+    }
+
+    private Object snapshot(Object previous) throws Exception {
+        Module module = ModuleLayer.boot().findModule("com.m3.file").orElseThrow();
+        Class<?> ledger = Class.forName(module, "com.m3.file.M3FileDeltaLedger");
+        Class<?> snapshot = Class.forName(module, "com.m3.file.M3FileDeltaLedger$Snapshot");
+        assertNotNull(ledger);
+        assertNotNull(snapshot);
+        return ledger.getMethod("scan", Path.class, snapshot, Collection.class, boolean.class)
+                .invoke(
+                        null,
+                        root,
+                        previous,
+                        List.of(Path.of("pom.xml"), Path.of("src/Watched.java"), Path.of(".mvn/maven.config")),
+                        false);
+    }
+
+    private static Object batch(MavenExecutionRequest request, Object first, Object startup, ScriptedWatcher watcher)
+            throws Exception {
+        Class<?> optionsType = Class.forName("org.apache.maven.M3ProjectWatch$Options");
+        var from = optionsType.getDeclaredMethod("from", MavenExecutionRequest.class);
+        from.setAccessible(true);
+        Object options = from.invoke(null, request);
+        Class<?> watchType = Class.forName("org.apache.maven.M3ProjectWatch$SharedWatch");
+        var constructor = watchType.getDeclaredConstructor(Object.class, Class.class, Module.class);
+        constructor.setAccessible(true);
+        Object shared = constructor.newInstance(
+                watcher,
+                ScriptedWatcher.class,
+                ModuleLayer.boot().findModule("com.m3.file").orElseThrow());
+        var method = M3ProjectWatch.class.getDeclaredMethod(
+                "awaitBatch", watchType, Object.class, Object.class, optionsType, LongSupplier.class);
+        method.setAccessible(true);
+        try {
+            return method.invoke(null, shared, first, startup, options, (LongSupplier) () -> watcher.now);
+        } catch (InvocationTargetException wrapped) {
+            Throwable cause = wrapped.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new AssertionError(cause);
+        }
+    }
+
+    private record Offer(long elapsedMillis, Object snapshot) {}
+
+    /** Scripted timing only; every snapshot and startup comparison still uses the original SDK. */
+    public static final class ScriptedWatcher {
+        private final List<Offer> offers;
+        private final List<Duration> waits = new ArrayList<>();
+        private int next;
+        private long now;
+
+        private ScriptedWatcher(Offer... offers) {
+            this.offers = List.of(offers);
+        }
+
+        public Optional<?> awaitChange(Duration wait) {
+            assertTrue(next < offers.size(), "unexpected poll after the scripted batch deadline");
+            waits.add(wait);
+            Offer offer = offers.get(next++);
+            now += Duration.ofMillis(offer.elapsedMillis).toNanos();
+            return Optional.ofNullable(offer.snapshot);
+        }
     }
 
     private static void write(Path path, String value) {
