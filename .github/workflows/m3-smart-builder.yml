@@ -1,0 +1,30 @@
+name: M3 Smart Maven Builder
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-smart-builder/**'
+      - '.github/workflows/m3-smart-builder.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/m3-smart-builder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: JDK-only lint, test, and synthetic MCP qualification
+        run: sh scripts/verify.sh
+      - name: Maven plugin descriptor, compile, and verify
+        run: mvn -B -ntp verify
