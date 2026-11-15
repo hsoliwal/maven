@@ -4,8 +4,22 @@ name: M3 Smart Maven Builder
   pull_request:
     paths:
       - 'tools/m3-smart-builder/**'
+      - '.github/actions/chrome-ai/**'
       - '.github/workflows/m3-smart-builder.yml'
   workflow_dispatch:
+    inputs:
+      live-chrome:
+        description: Run real Chrome AI around a deliberately failing Maven build
+        type: boolean
+        default: false
+      chrome-runner:
+        description: Runner label with Chrome-eligible CPU/RAM/disk resources
+        type: string
+        default: ubuntu-latest
+      chrome-version:
+        description: Exact Chrome for Testing version
+        type: string
+        default: '157.0.8103.78'
 
 permissions:
   contents: read
@@ -28,6 +42,119 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
       - name: JDK-only lint, test, and synthetic MCP qualification
         run: sh scripts/verify.sh
+      - name: Maven plugin descriptor, compile, verify, and local install
+        run: mvn -B -ntp install
+      - name: Invoke the real Maven hook goal
+        run: >-
+          mvn -B -ntp io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:build-hook
+          -Dm3.smart.phase=pre-build -Dm3.smart.llmBackend=none
+      - name: Failed Maven build retains status and runs post hook
+        run: bash scripts/verify-build-hook-workflow.sh
+
+  live-chrome:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live-chrome }}
+    runs-on: ${{ inputs.chrome-runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check Chrome CPU prerequisites
+        shell: bash
+        env:
+          CHROME_VERSION: ${{ inputs.chrome-version }}
+        run: |
+          [[ "$CHROME_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(getconf _NPROCESSORS_ONLN)" -ge 4
+          awk '/MemTotal:/ { if ($2 * 1024 < 16000000000) exit 1 }' /proc/meminfo
+          df -Pk "$RUNNER_TEMP" | awk 'NR == 2 { if ($4 * 1024 < 22000000000) exit 1 }'
+      - name: Check out the pinned ChromeLLM provider
+        uses: actions/checkout@v7
+        with:
+          repository: hsoliwal/ChromeLLM
+          ref: dcad8ed6b96f6dcb11a207c404a5ebba43fb79a7
+          path: target/chrome-ai-provider
+          persist-credentials: false
+      - name: Bootstrap the independent Java provider and controller checks
+        shell: bash
+        run: |
+          mvn -B -ntp -f target/chrome-ai-provider/standalone/pom.xml -DskipTests package
+          sh tools/m3-smart-builder/scripts/verify.sh
+      - name: Download the selected Chrome binary
+        id: chrome
+        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        with:
+          chrome-version: ${{ inputs.chrome-version }}
+          install-dependencies: false
+          install-chromedriver: false
+          no-sudo: true
+      - name: Prepare the failing Maven acceptance fixture
+        shell: bash
+        run: |
+          mkdir -p target/chrome-ai-acceptance/src/main/java
+          cat > target/chrome-ai-acceptance/pom.xml <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>chrome-ai-failure</artifactId><version>1</version>
+            <properties><maven.compiler.release>21</maven.compiler.release></properties>
+            <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin></plugins></build>
+          </project>
+          POM
+          printf '%s\n' 'class Broken { MissingType value; }' > target/chrome-ai-acceptance/src/main/java/Broken.java
+      - name: Real Chrome AI pre-build
+        id: pre
+        continue-on-error: true
+        uses: ./.github/actions/chrome-ai
+        with:
+          phase: pre-build
+          project-directory: target/chrome-ai-acceptance
+          build-directory: .reports
+          source-root: src
+          chrome-llm-jar: ${{ github.workspace }}/target/chrome-ai-provider/standalone/target/chromellm-standalone-0.1.0-SNAPSHOT.jar
+          chrome-path: ${{ steps.chrome.outputs.chrome-path }}
+          chrome-profile: ${{ runner.temp }}/chrome-ai-profile
+          allow-download: 'true'
+          timeout-seconds: '600'
+      - name: Maven build expected to fail
+        id: build
+        # Only this acceptance fixture uses continue-on-error so the final assertion can inspect it.
+        continue-on-error: true
+        shell: bash
+        run: >-
+          mvn -B -ntp -f target/chrome-ai-acceptance/pom.xml
+          --log-file "$GITHUB_WORKSPACE/target/chrome-ai-acceptance/build.log" clean verify
+      - name: Real Chrome AI post-build
+        id: post
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
+        continue-on-error: true
+        uses: ./.github/actions/chrome-ai
+        with:
+          phase: post-build
+          project-directory: target/chrome-ai-acceptance
+          build-directory: .reports
+          source-root: src
+          log-file: build.log
+          build-outcome: ${{ steps.build.outcome }}
+          chrome-llm-jar: ${{ github.workspace }}/target/chrome-ai-provider/standalone/target/chromellm-standalone-0.1.0-SNAPSHOT.jar
+          chrome-path: ${{ steps.chrome.outputs.chrome-path }}
+          chrome-profile: ${{ runner.temp }}/chrome-ai-profile
+          allow-download: 'true'
+          timeout-seconds: '600'
+      - name: Require actual inference and preserved build failure
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          PRE_OUTCOME: ${{ steps.pre.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          POST_OUTCOME: ${{ steps.post.outcome }}
+        run: |
+          test "$PRE_OUTCOME" = success
+          test "$BUILD_OUTCOME" = failure
+          test "$POST_OUTCOME" = success
+          java -cp tools/m3-smart-builder/target/jdk-only io.synexia.maven.smart.BuildHookTest --workflow target/chrome-ai-acceptance
       - name: Maven plugin descriptor, compile, tests, and isolated install
         shell: bash
         run: |

@@ -28,6 +28,9 @@
           <mainClass>io.synexia.maven.smart.SmartBuilderTest</mainClass><classpathScope>test</classpathScope>
           <systemProperties><systemProperty><key>m3.smart.testRoot</key><value>${project.build.directory}</value></systemProperty></systemProperties>
         </configuration>
+      </execution>
+      <execution><id>build-hook-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.BuildHookTest</mainClass><classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>
