@@ -72,6 +72,41 @@ public final class SmartBuilderAdapterTest {
         require(receipt.contains(digest) && receipt.contains("\"profile\": \"local\""),
                 "offline provision receipt");
         require(Files.isRegularFile(cache.resolve(digest + ".bin")), "cache reused unchanged");
-        System.out.println("M3 SMART ADAPTER TESTS PASS: 3");
+        BuildHookMojo hook = new BuildHookMojo();
+        set(hook, "baseDir", project.toFile());
+        set(hook, "buildDir", build.toFile());
+        set(hook, "phase", "post-build");
+        set(hook, "buildOutcome", "failure");
+        set(hook, "logFile", log.toFile());
+        set(hook, "sourceRoot", source.toFile());
+        set(hook, "llmBackend", "none");
+        set(hook, "llmTimeoutSeconds", 120);
+        hook.execute();
+        String hookReport = Files.readString(build.resolve("m3-smart/post-build.json"));
+        require(hookReport.contains("\"buildOutcome\":\"failure\""), "hook must retain observed Maven outcome");
+        require(!hookReport.contains("ADAPTER_TOKEN"), "hook must not serialize raw log");
+        int count = 4;
+        String fixture = System.getProperty("m3.smart.fixtureJar");
+        if (fixture != null) {
+            Path browser = Files.writeString(project.resolve("browser fixture"), "not an executable");
+            for (Object mojo : java.util.List.of(plan, diagnose, hook)) {
+                set(mojo, "llmBackend", "chrome");
+                set(mojo, "chromeLlmJar", Path.of(fixture).toFile());
+                set(mojo, "chromeBin", browser.toFile());
+                set(mojo, "chromeProfile", project.resolve("chrome profile").toFile());
+                set(mojo, "chromeHeadless", true);
+                set(mojo, "chromeDownload", false);
+                set(mojo, "llmTimeoutSeconds", 7);
+            }
+            plan.execute();
+            diagnose.execute();
+            hook.execute();
+            for (String name : java.util.List.of("plan.json", "diagnose.json", "post-build.json")) {
+                require(Files.readString(build.resolve("m3-smart").resolve(name)).contains("backend=chrome headless=true download=false timeout=7"),
+                        "Maven adapter must select the real Chrome protocol arguments: " + name);
+                count++;
+            }
+        }
+        System.out.println("M3 SMART ADAPTER TESTS PASS: " + count);
     }
 }

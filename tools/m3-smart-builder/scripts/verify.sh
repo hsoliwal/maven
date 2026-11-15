@@ -15,8 +15,10 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/SourceInventory.java \
   src/main/java/io/synexia/maven/smart/SafeBuildOutput.java \
   src/main/java/io/synexia/maven/smart/DiagnoseEngine.java \
-  src/test/java/io/synexia/maven/smart/SmartBuilderTest.java
-# Compile the two Maven adapters against intentionally minimal API stubs.
+  src/main/java/io/synexia/maven/smart/BuildHookMain.java \
+  src/test/java/io/synexia/maven/smart/SmartBuilderTest.java \
+  src/test/java/io/synexia/maven/smart/BuildHookTest.java
+# Compile the Maven adapters against intentionally minimal API stubs.
 # This is NOT a real Maven descriptor or Maven runtime integration test.
 mkdir -p target/adapter-only
 javac -encoding UTF-8 -Xlint:all -Werror -cp target/jdk-only -d target/adapter-only \
@@ -24,6 +26,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -cp target/jdk-only -d target/adapter-o
   src/main/java/io/synexia/maven/smart/PlanMojo.java \
   src/main/java/io/synexia/maven/smart/ProvisionMojo.java \
   src/main/java/io/synexia/maven/smart/DiagnoseMojo.java \
+  src/main/java/io/synexia/maven/smart/BuildHookMojo.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java
 mkdir -p target/mcp-fixture
 javac -encoding UTF-8 -Xlint:all -Werror -d target/mcp-fixture \
@@ -32,6 +35,8 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/mcp-fixture \
 jar --create --file target/mcp-fixture.jar -C target/mcp-fixture .
 # Compiler and all test fixtures are complete before executing tests.
 java -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
-java -Dm3.smart.testRoot="$(pwd)/target" -cp target/jdk-only:target/adapter-only io.synexia.maven.smart.SmartBuilderAdapterTest
+java -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
+java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only:target/adapter-only io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
+java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.BuildHookTest

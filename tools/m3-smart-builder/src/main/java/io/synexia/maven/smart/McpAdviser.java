@@ -6,14 +6,13 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-/** Explicit browser-free ChromeLLM MCP stdio provider. Model text remains untrusted. */
+/** Explicit ChromeLLM MCP stdio provider. Model text remains untrusted. */
 public final class McpAdviser {
     public record Config(Path moduleJar, String backend, Path binary, Path model, int timeoutSeconds) {
         public Config {
@@ -25,15 +24,44 @@ public final class McpAdviser {
             if (timeoutSeconds < 1 || timeoutSeconds > 600) throw new IllegalArgumentException("MCP timeout outside 1..600 seconds");
         }
     }
+    /** Additive Chrome provider configuration; the native Config contract is unchanged. */
+    public record ChromeConfig(Path moduleJar, Path executable, Path profile, boolean headless,
+                               boolean allowDownload, int timeoutSeconds) {
+        public ChromeConfig {
+            if (moduleJar == null || !Files.isRegularFile(moduleJar)
+                    || executable == null || !Files.isRegularFile(executable) || profile == null)
+                throw new IllegalArgumentException("explicit existing module/browser and dedicated profile required");
+            if (timeoutSeconds < 1 || timeoutSeconds > 600)
+                throw new IllegalArgumentException("MCP timeout outside 1..600 seconds");
+        }
+    }
     private McpAdviser() { }
-    @SuppressWarnings("unchecked")
     public static String propose(Config config, String prompt) throws Exception {
-        Path javaExe = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
-        List<String> command = new ArrayList<>(List.of(javaExe.toString(), "--module-path", config.moduleJar().toString(),
-                "--module", "io.synexia.chromellm.standalone/io.synexia.chromellm.standalone.StandaloneMain",
-                "--mcp-stdio", "true", "--backend", config.backend(),
+        List<String> command = command(config.moduleJar());
+        command.addAll(List.of("--backend", config.backend(),
                 config.backend().equals("jni") ? "--jni-lib" : "--llama-bin", config.binary().toString(),
                 "--model", config.model().toString()));
+        return propose(command, config.timeoutSeconds(), prompt);
+    }
+
+    public static String propose(ChromeConfig config, String prompt) throws Exception {
+        List<String> command = command(config.moduleJar());
+        command.addAll(List.of("--backend", "chrome", "--chrome-bin", config.executable().toString(),
+                "--chrome-profile", config.profile().toAbsolutePath().normalize().toString(),
+                "--chrome-headless", Boolean.toString(config.headless()),
+                "--chrome-download", Boolean.toString(config.allowDownload())));
+        return propose(command, config.timeoutSeconds(), prompt);
+    }
+
+    private static List<String> command(Path moduleJar) {
+        Path javaExe = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
+        return new ArrayList<>(List.of(javaExe.toString(), "--module-path", moduleJar.toString(),
+                "--module", "io.synexia.chromellm.standalone/io.synexia.chromellm.standalone.StandaloneMain",
+                "--mcp-stdio", "true"));
+    }
+
+    private static String propose(List<String> command, int timeoutSeconds, String prompt) throws Exception {
         Process process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
         var pool = Executors.newSingleThreadExecutor();
         try {
@@ -47,7 +75,7 @@ public final class McpAdviser {
                         throw new IOException("unexpected MCP protocol version");
                     output.write("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n");
                     output.write("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"infer_text\",\"arguments\":{\"prompt\":"
-                            + TinyJson.quote(prompt) + ",\"maxTokens\":512,\"timeoutSeconds\":60}}}\n");
+                            + TinyJson.quote(prompt) + ",\"maxTokens\":512,\"timeoutSeconds\":" + timeoutSeconds + "}}}\n");
                     output.flush();
                     Map<String,Object> result = checkedResult(frame(input), "2");
                     if (!Boolean.FALSE.equals(result.get("isError")))
@@ -62,17 +90,37 @@ public final class McpAdviser {
                     return text;
                 }
             });
-            try { return future.get(config.timeoutSeconds(), TimeUnit.SECONDS); }
+            try { return future.get(timeoutSeconds, TimeUnit.SECONDS); }
             catch (java.util.concurrent.TimeoutException e) { future.cancel(true); throw new IOException("MCP advisory deadline reached", e); }
+            catch (InterruptedException interrupted) {
+                future.cancel(true);
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            }
             catch (java.util.concurrent.ExecutionException e) {
                 Throwable cause=e.getCause();
                 if (cause instanceof Exception ex) throw ex;
                 throw new IOException("MCP advisory failure",cause);
             }
         } finally {
-            process.destroyForcibly();
+            terminate(process);
             pool.shutdownNow();
-            process.waitFor(2, TimeUnit.SECONDS);
+        }
+    }
+    private static void terminate(Process process) {
+        // The worker closes stdin after a completed transaction, allowing normal shutdown.
+        // Do not close it here: close/flush can block behind a worker writing a full pipe.
+        // On cancellation, retire descendants and the Java parent before closing streams.
+        List<ProcessHandle> descendants = process.descendants().toList();
+        boolean interrupted = Thread.currentThread().isInterrupted();
+        try {
+            if (!interrupted && process.waitFor(2, TimeUnit.SECONDS)) return;
+        } catch (InterruptedException stopped) { interrupted = true; }
+        finally {
+            for (ProcessHandle child : descendants) if (child.isAlive()) child.destroyForcibly();
+            if (process.isAlive()) process.destroyForcibly();
+            try { process.getInputStream().close(); } catch (IOException ignored) { }
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
     /** Validate protocol, correlated response ID and success shape before reading candidate data. */
