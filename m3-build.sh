@@ -6,7 +6,7 @@ set -eu
 
 usage() {
   cat <<'USAGE'
-Usage: sh m3-build.sh [quick|test|verify|full] [Maven arguments...]
+Usage: sh m3-build.sh [quick|test|verify|full|it] [Maven arguments...]
        sh m3-build.sh resume <module> [Maven arguments...]
 
 Default: verify. Maven options alone also use verify.
@@ -14,6 +14,7 @@ Default: verify. Maven options alone also use verify.
   test    Run unit tests.
   verify  Run the configured verification lifecycle.
   full    Clean outputs, then verify.
+  it      Verify with Maven's existing run-its integration-test profile.
   resume  Verify starting at a reactor module, using Maven -rf.
 
 Examples:
@@ -30,7 +31,7 @@ USAGE
 mode=verify
 case "${1-}" in
   help|-h|--help) usage; exit 0 ;;
-  quick|test|verify|full|resume) mode=$1; shift ;;
+  quick|test|verify|full|it|resume) mode=$1; shift ;;
   ''|-*) ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -40,9 +41,14 @@ case "$mode" in
   test) set -- test "$@" ;;
   verify) set -- verify "$@" ;;
   full) set -- clean verify "$@" ;;
+  it) set -- verify -Prun-its "$@" ;;
   resume)
     case "${1-}" in
       ''|-*) echo 'resume requires a module selector, for example :maven-core.' >&2; exit 2 ;;
+    esac
+    case "$1" in
+      *[![:space:]]*) ;;
+      *) echo 'resume requires a nonblank module selector.' >&2; exit 2 ;;
     esac
     resume_from=$1
     shift

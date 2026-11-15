@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('quick', 'test', 'verify', 'full', 'resume', 'help')]
+    [ValidateSet('quick', 'test', 'verify', 'full', 'it', 'resume', 'help')]
     [string]$Mode = 'verify',
     [string]$Module,
     [string]$ResumeFrom,
@@ -18,11 +18,12 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Help -or $Mode -eq 'help') {
     @'
-Usage: ./m3-build.ps1 [-Mode quick|test|verify|full] [-Module <selector>]
+Usage: ./m3-build.ps1 [-Mode quick|test|verify|full|it] [-Module <selector>]
                       [-Threads <count>] [-Maven <executable>] [-ExtraArgs <array>]
        ./m3-build.ps1 -Mode resume -ResumeFrom <selector> [-ExtraArgs <array>]
 
 Default: verify. quick packages without running tests; full runs clean verify.
+it activates Maven's existing run-its integration-test profile for verify.
 -Module selects a reactor project and its prerequisites (-pl/-am).
 resume delegates to Maven -rf and cannot be combined with -Module.
 Parallel execution is opt-in through -Threads or explicit Maven arguments.
@@ -32,6 +33,9 @@ Relative executable paths and Maven paths are resolved from this script's direct
     return
 }
 
+if ($Module -and [string]::IsNullOrWhiteSpace($Module)) {
+    throw '-Module requires a nonblank selector.'
+}
 if ($Mode -eq 'resume') {
     if ([string]::IsNullOrWhiteSpace($ResumeFrom) -or $ResumeFrom.StartsWith('-')) {
         throw 'Resume mode requires -ResumeFrom <module>.'
@@ -49,6 +53,7 @@ $goals = switch ($Mode) {
     'test'   { @('test') }
     'verify' { @('verify') }
     'full'   { @('clean', 'verify') }
+    'it'     { @('verify', '-Prun-its') }
     'resume' { @('verify', '-rf', $ResumeFrom) }
 }
 $mavenArgs = @('-B', '-ntp')
@@ -62,11 +67,43 @@ $mavenArgs += $ExtraArgs
 $exitCode = 1
 Push-Location -LiteralPath $PSScriptRoot
 try {
-    $command = Get-Command -Name $Maven -CommandType Application -ErrorAction Stop |
-        Select-Object -First 1
+    $mavenExecutable = $null
+    if ($Maven.Contains('/') -or $Maven.Contains('\') -or
+            [System.IO.Path]::IsPathRooted($Maven)) {
+        # A selected path is literal. Wildcard discovery could launch a different
+        # installation when the exact requested executable does not exist.
+        $mavenFile = Get-Item -LiteralPath $Maven -ErrorAction SilentlyContinue
+        if ($mavenFile -is [System.IO.FileInfo]) {
+            $mavenExecutable = $mavenFile.FullName
+        }
+    } else {
+        # Match literal executable names, including Windows executable extensions.
+        $windowsHost = [System.IO.Path]::DirectorySeparatorChar -eq '\'
+        $literalNames = @($Maven)
+        if ($windowsHost) {
+            foreach ($extension in ($env:PATHEXT -split ';')) {
+                if ($extension) { $literalNames += $Maven + $extension }
+            }
+        }
+        $commandLookup = @{ CommandType = 'Application'; All = $true; ErrorAction = 'SilentlyContinue' }
+        # Bare names can contain glob syntax on POSIX. Enumerate those names without
+        # passing their literal text to PowerShell's wildcard parser.
+        if ($Maven.IndexOfAny([char[]]'*?[]`') -lt 0) {
+            $commandLookup.Name = $Maven
+        }
+        $command = Get-Command @commandLookup |
+            Where-Object {
+                if ($windowsHost) { $literalNames -contains $_.Name }
+                else { $literalNames -ccontains $_.Name }
+            } | Select-Object -First 1
+        if ($command) { $mavenExecutable = $command.Source }
+    }
+    if (-not $mavenExecutable) {
+        throw "Maven executable not found: $Maven. Supply one literal executable name or path."
+    }
     # Preserve Maven's exit status even when the caller enabled native-error exceptions.
     $PSNativeCommandUseErrorActionPreference = $false
-    & $command.Source @mavenArgs
+    & $mavenExecutable @mavenArgs
     $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location

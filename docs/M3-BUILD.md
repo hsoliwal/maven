@@ -42,6 +42,8 @@ M3_MAVEN='/opt/m3 maven/bin/mvn' sh ./m3-build.sh verify
 Supply one executable path, without embedded command-line options. Put options in the
 normal argument list. Relative executable paths resolve from the checkout root. Maven
 continues to own settings, repository credentials, mirrors, downloads and toolchains.
+Executable selection is literal: an absent name or path fails instead of choosing a
+similarly named installation through wildcard expansion.
 The fork currently has no published release distribution to pin in a Maven Wrapper.
 
 ## Common tasks
@@ -52,13 +54,16 @@ The fork currently has no published release distribution to pin in a Maven Wrapp
 | Compile and package without running tests | `sh ./m3-build.sh quick` | `./m3-build.ps1 -Mode quick` | `package -DskipTests` |
 | Unit tests | `sh ./m3-build.sh test` | `./m3-build.ps1 -Mode test` | `test` |
 | Clean rebuild | `sh ./m3-build.sh full` | `./m3-build.ps1 -Mode full` | `clean verify` |
+| Include integration tests | `sh ./m3-build.sh it` | `./m3-build.ps1 -Mode it` | `verify -Prun-its` |
 | Resume at a failed module | `sh ./m3-build.sh resume :maven-core` | `./m3-build.ps1 -Mode resume -ResumeFrom :maven-core` | `verify -rf :maven-core` |
 | Usage without Maven installed | `sh ./m3-build.sh --help` | `./m3-build.ps1 -Help` | None |
 
 `quick` still compiles tests under Maven's normal `skipTests` semantics. It is for local
 iteration; use `verify` for verification. `full` deliberately removes previous outputs.
 Run `install` explicitly when a separate Maven build needs artifacts in the local repository.
-These commands do not implicitly publish artifacts or select additional profiles.
+These commands do not implicitly publish artifacts. Only the explicit `it` mode adds
+the existing `run-its` profile. For a clean integration-test run, use `full -Prun-its`
+on POSIX or `-Mode full -ExtraArgs @('-Prun-its')` on PowerShell.
 
 ## Work on a module and its prerequisites
 
@@ -115,10 +120,25 @@ test execution, so record them with build results.
 The entry points simplify how the existing build is invoked. Maven's POMs, configured
 checks, compiler integration and dependency resolution retain their existing authority.
 `verify` runs the configured lifecycle; upstream integration tests require the existing
-`run-its` profile and its prerequisites. These commands do not establish M3AST-based
+`run-its` profile and its prerequisites. The `it` mode supplies that profile without
+changing its configured checks. These commands do not establish M3AST-based
 incremental invalidation or cache correctness.
 
 The companion Synexia recipe binds exact inputs and generated script/document outputs.
 Its receipts distinguish argument-forwarding checks, a small real Maven reactor test,
 PowerShell platform verification, and the complete Maven source build. Consult the PR's
 actual results before treating any of those gates as passed.
+
+### Command regression checks
+
+Run the standard-library product test from a POSIX host with Python 3, `sh` and `pwsh`:
+
+```sh
+python3 scripts/tests/test_m3_build.py
+```
+
+It uses a recording executable to verify literal arguments and executable selection,
+root-relative paths, module/resume rules, lifecycle choices, working-directory restoration
+and exit statuses. A missing runtime or unsupported fixture host is reported as skipped;
+both shell lanes must execute for cross-runtime qualification. These command checks are
+separate from the real Maven reactor and native Windows `mvn.cmd` acceptance.
