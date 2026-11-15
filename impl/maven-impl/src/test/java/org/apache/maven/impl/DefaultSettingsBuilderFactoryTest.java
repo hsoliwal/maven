@@ -18,30 +18,29 @@
  */
 package org.apache.maven.impl;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.maven.api.Session;
+import org.apache.maven.api.ProtoSession;
 import org.apache.maven.api.services.BuilderProblem;
 import org.apache.maven.api.services.ProblemCollector;
 import org.apache.maven.api.services.SettingsBuilder;
 import org.apache.maven.api.services.SettingsBuilderException;
 import org.apache.maven.api.services.SettingsBuilderRequest;
 import org.apache.maven.api.services.SettingsBuilderResult;
+import org.apache.maven.api.services.Source;
 import org.apache.maven.api.services.Sources;
-import org.apache.maven.api.services.xml.SettingsXmlFactory;
+import org.apache.maven.api.settings.Mirror;
 import org.apache.maven.api.settings.Proxy;
 import org.apache.maven.api.settings.Server;
 import org.apache.maven.api.settings.Settings;
 import org.apache.maven.impl.model.DefaultInterpolator;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,18 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  *
  */
-@ExtendWith(MockitoExtension.class)
 class DefaultSettingsBuilderFactoryTest {
-
-    @Mock
-    Session session;
-
-    @BeforeEach
-    void setup() {
-        Mockito.lenient()
-                .when(session.getService(SettingsXmlFactory.class))
-                .thenReturn(new DefaultSettingsXmlFactory());
-    }
 
     SettingsBuilderResult execute(String settingsName) {
         return execute(settingsName, Map.of(), Map.of());
@@ -75,11 +63,11 @@ class DefaultSettingsBuilderFactoryTest {
 
     SettingsBuilderResult execute(
             String settingsName, Map<String, String> userProperties, Map<String, String> systemProperties) {
-        Mockito.lenient().when(session.getUserProperties()).thenReturn(userProperties);
-        Mockito.lenient().when(session.getSystemProperties()).thenReturn(systemProperties);
-        Map<String, String> effectiveProperties = new java.util.HashMap<>(systemProperties);
-        effectiveProperties.putAll(userProperties);
-        Mockito.lenient().when(session.getEffectiveProperties()).thenReturn(effectiveProperties);
+        ProtoSession session = ProtoSession.newBuilder()
+                .withTopDirectory(Paths.get("."))
+                .withUserProperties(userProperties)
+                .withSystemProperties(systemProperties)
+                .build();
 
         SettingsBuilder builder =
                 new DefaultSettingsBuilder(new DefaultSettingsXmlFactory(), new DefaultInterpolator(), Map.of());
@@ -208,6 +196,99 @@ class DefaultSettingsBuilderFactoryTest {
     }
 
     @Test
+    void testMergeUserSettingsOverInstallationSettings() {
+        ProtoSession session =
+                ProtoSession.newBuilder().withTopDirectory(Paths.get(".")).build();
+        SettingsBuilder builder =
+                new DefaultSettingsBuilder(new DefaultSettingsXmlFactory(), new DefaultInterpolator(), Map.of());
+
+        Source userSource = new Source() {
+            @Override
+            public Path getPath() {
+                return null;
+            }
+
+            @Override
+            public InputStream openStream() {
+                String xml = "<settings xmlns='http://maven.apache.org/SETTINGS/1.0.0'>"
+                        + "<mirrors>"
+                        + "<mirror>"
+                        + "<id>shared-mirror</id>"
+                        + "<url>http://dominant.example.com/</url>"
+                        + "<mirrorOf>central</mirrorOf>"
+                        + "</mirror>"
+                        + "</mirrors>"
+                        + "</settings>";
+                return new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
+            }
+
+            @Override
+            public String getLocation() {
+                return "user-settings.xml";
+            }
+
+            @Override
+            public Source resolve(String relative) {
+                return null;
+            }
+        };
+
+        Source installationSource = new Source() {
+            @Override
+            public Path getPath() {
+                return null;
+            }
+
+            @Override
+            public InputStream openStream() {
+                String xml = "<settings xmlns='http://maven.apache.org/SETTINGS/1.0.0'>"
+                        + "<mirrors>"
+                        + "<mirror>"
+                        + "<id>shared-mirror</id>"
+                        + "<url>http://recessive.example.com/</url>"
+                        + "<mirrorOf>central</mirrorOf>"
+                        + "</mirror>"
+                        + "<mirror>"
+                        + "<id>maven-default-http-blocker</id>"
+                        + "<url>http://0.0.0.0/</url>"
+                        + "<mirrorOf>external:http:*</mirrorOf>"
+                        + "<blocked>true</blocked>"
+                        + "</mirror>"
+                        + "</mirrors>"
+                        + "</settings>";
+                return new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
+            }
+
+            @Override
+            public String getLocation() {
+                return "installation-settings.xml";
+            }
+
+            @Override
+            public Source resolve(String relative) {
+                return null;
+            }
+        };
+
+        SettingsBuilderRequest request = SettingsBuilderRequest.builder()
+                .session(session)
+                .userSettingsSource(userSource)
+                .installationSettingsSource(installationSource)
+                .build();
+
+        SettingsBuilderResult result = builder.build(request);
+        assertNotNull(result);
+        Settings effective = result.getEffectiveSettings();
+        assertNotNull(effective);
+
+        List<Mirror> mirrors = effective.getMirrors();
+        assertEquals(2, mirrors.size());
+        assertEquals("shared-mirror", mirrors.get(0).getId());
+        assertEquals("http://dominant.example.com/", mirrors.get(0).getUrl());
+        assertEquals("maven-default-http-blocker", mirrors.get(1).getId());
+    }
+
+    @Test
     void emptySettingsGetCentralInBothRepoLists() {
         Settings settings = execute("settings-simple").getEffectiveSettings();
 
@@ -283,9 +364,8 @@ class DefaultSettingsBuilderFactoryTest {
 
         // Also verify that a custom interpolationSource (bypassing session properties) works.
         // This exercises the interpolationSource branch in both interpolateSource() and interpolate().
-        Mockito.lenient().when(session.getUserProperties()).thenReturn(Map.of());
-        Mockito.lenient().when(session.getSystemProperties()).thenReturn(Map.of());
-        Mockito.lenient().when(session.getEffectiveProperties()).thenReturn(Map.of());
+        ProtoSession session =
+                ProtoSession.newBuilder().withTopDirectory(Paths.get(".")).build();
         SettingsBuilder builder =
                 new DefaultSettingsBuilder(new DefaultSettingsXmlFactory(), new DefaultInterpolator(), Map.of());
         SettingsBuilderRequest requestWithSource = SettingsBuilderRequest.builder()
