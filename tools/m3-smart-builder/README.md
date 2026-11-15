@@ -13,6 +13,7 @@ Status: experimental. This project lives **outside the upstream Maven reactor** 
 - No root or home writes are performed implicitly. The output/build directory must resolve within the explicitly invoked project checkout, under Maven's normal build directory. A cache directory must already exist and be operator approved. Plan/receipt filenames are fixed; no AI-controlled path, command or URL is accepted.
 - GitHub native assets or model weights must be independently licensed and immutable SHA-256 pinned. A repository tag alone is not a digest. The manifest provisioner does not extract archives or execute downloads. The explicit Chrome provider delegates its own model provisioning to Chrome; it never extracts browser-managed model bytes.
 - LLM advisory text is untrusted. No automated patch, Maven module selection, build invocation or API change is derived from it.
+- Build hooks can require canonical Java atomization/patternization checkpoint manifests before inference using `m3.smart.requireAtomPattern=true` and `m3.smart.atomPatternManifest`. The gate validates current Java scope coverage and ordered digest binding; non-Java files remain assigned to their existing lanes. It does not authenticate host semantic/JIT proof execution. See [the receipt contract](docs/CHROME_BUILD_HOOKS.md#require-canonical-java-atomization-and-patternization-receipts).
 
 ## Manifest v1
 

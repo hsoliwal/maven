@@ -26,6 +26,9 @@ public final class BuildHookTest {
             require(post.contains("\"buildOutcome\":\"failure\""), "original build failure retained");
             require(hasCompilerFailure(post), "real Maven compiler failure classified with a positive count");
             require(post.contains("\"adviceStatus\":\"available\""), "MCP returned a completed advisory response");
+            require(pre.contains("\"atomPatternStatus\":\"structurally-validated\"")
+                    && post.contains("\"atomPatternStatus\":\"structurally-validated\""), "both action calls validate receipt coverage");
+            require(post.contains("\"semanticProofAuthenticated\":false"), "synthetic receipts cannot claim semantic proof");
             System.out.println("WORKFLOW REPORT CHECKS PASS: " + checks);
             return;
         }

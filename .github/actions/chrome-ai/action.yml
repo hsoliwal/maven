@@ -21,6 +21,12 @@ inputs:
   source-root:
     description: Optional bounded source directory inside the project
     default: ''
+  atom-pattern-manifest:
+    description: Project-local manifest binding canonical Java atomization and patternization checkpoints
+    default: ''
+  require-atom-pattern:
+    description: Require complete current Java checkpoint coverage before inference
+    default: 'false'
   backend:
     description: chrome for real inference, none for deterministic facts only
     default: chrome
@@ -63,6 +69,8 @@ runs:
         HOOK_BUILD_OUTCOME: ${{ inputs.build-outcome }}
         HOOK_LOG: ${{ inputs.log-file }}
         HOOK_SOURCE: ${{ inputs.source-root }}
+        HOOK_ATOM_PATTERN_MANIFEST: ${{ inputs.atom-pattern-manifest }}
+        HOOK_REQUIRE_ATOM_PATTERN: ${{ inputs.require-atom-pattern }}
         HOOK_BACKEND: ${{ inputs.backend }}
         HOOK_MODULE: ${{ inputs.chrome-llm-jar }}
         HOOK_CHROME: ${{ inputs.chrome-path }}

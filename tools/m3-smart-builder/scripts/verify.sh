@@ -13,11 +13,13 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/McpAdviser.java \
   src/main/java/io/synexia/maven/smart/BuildLogFacts.java \
   src/main/java/io/synexia/maven/smart/SourceInventory.java \
+  src/main/java/io/synexia/maven/smart/AtomPatternEvidence.java \
   src/main/java/io/synexia/maven/smart/SafeBuildOutput.java \
   src/main/java/io/synexia/maven/smart/DiagnoseEngine.java \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderTest.java \
-  src/test/java/io/synexia/maven/smart/BuildHookTest.java
+  src/test/java/io/synexia/maven/smart/BuildHookTest.java \
+  src/test/java/io/synexia/maven/smart/AtomPatternEvidenceTest.java
 # Compile the Maven adapters against intentionally minimal API stubs.
 # This is NOT a real Maven descriptor or Maven runtime integration test.
 mkdir -p target/adapter-only
@@ -36,7 +38,9 @@ jar --create --file target/mcp-fixture.jar -C target/mcp-fixture .
 # Compiler and all test fixtures are complete before executing tests.
 java -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
+java -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only:target/adapter-only io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
+java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest

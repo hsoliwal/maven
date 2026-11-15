@@ -40,16 +40,37 @@ jobs:
           java-version: '21'
       - name: Python runtime-harness contract tests
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+      - name: Maven plugin descriptor, compile, tests, and isolated install
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3-smart-maven-repository"
+          mvn -B -ntp -Dmaven.repo.local="$RUNNER_TEMP/m3-smart-maven-repository" clean install
       - name: JDK-only lint, test, and synthetic MCP qualification
+        # Keep the compiled Action fixtures after Maven clean removes target.
         run: sh scripts/verify.sh
-      - name: Maven plugin descriptor, compile, verify, and local install
-        run: mvn -B -ntp install
+      - name: Real Maven goal invocation, deterministic replay and offline refusal
+        shell: bash
+        run: |
+          python3 scripts/verify_maven_runtime.py --maven mvn --local-repo "$RUNNER_TEMP/m3-smart-maven-repository"
       - name: Invoke the real Maven hook goal
         run: >-
-          mvn -B -ntp io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:build-hook
+          mvn -B -ntp -Dmaven.repo.local="$RUNNER_TEMP/m3-smart-maven-repository"
+          io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:build-hook
           -Dm3.smart.phase=pre-build -Dm3.smart.llmBackend=none
       - name: Failed Maven build retains status and runs post hook
+        env:
+          MAVEN_ARGS: -Dmaven.repo.local=${{ runner.temp }}/m3-smart-maven-repository
         run: bash scripts/verify-build-hook-workflow.sh
+      - name: Retain real Maven acceptance logs and receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-smart-maven-runtime-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
+            tools/m3-smart-builder/target/m3-runtime-acceptance/acceptance.json
 
   live-chrome:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.live-chrome }}
@@ -155,22 +176,3 @@ jobs:
           test "$BUILD_OUTCOME" = failure
           test "$POST_OUTCOME" = success
           java -cp tools/m3-smart-builder/target/jdk-only io.synexia.maven.smart.BuildHookTest --workflow target/chrome-ai-acceptance
-      - name: Maven plugin descriptor, compile, tests, and isolated install
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/m3-smart-maven-repository"
-          mvn -B -ntp -Dmaven.repo.local="$RUNNER_TEMP/m3-smart-maven-repository" clean install
-      - name: Real Maven goal invocation, deterministic replay and offline refusal
-        shell: bash
-        run: |
-          python3 scripts/verify_maven_runtime.py --maven mvn --local-repo "$RUNNER_TEMP/m3-smart-maven-repository"
-      - name: Retain real Maven acceptance logs and receipts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: m3-smart-maven-runtime-${{ github.run_attempt }}
-          if-no-files-found: warn
-          retention-days: 7
-          path: |
-            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
-            tools/m3-smart-builder/target/m3-runtime-acceptance/acceptance.json

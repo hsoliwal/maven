@@ -85,7 +85,25 @@ public final class SmartBuilderAdapterTest {
         String hookReport = Files.readString(build.resolve("m3-smart/post-build.json"));
         require(hookReport.contains("\"buildOutcome\":\"failure\""), "hook must retain observed Maven outcome");
         require(!hookReport.contains("ADAPTER_TOKEN"), "hook must not serialize raw log");
-        int count = 4;
+        set(hook, "requireAtomPattern", true);
+        try {
+            hook.execute();
+            throw new AssertionError("required Java checkpoint manifest was not forwarded");
+        } catch (org.apache.maven.plugin.MojoExecutionException expected) {
+            require(Files.readString(build.resolve("m3-smart/post-build.json")).contains("\"atomPatternError\":\"manifest-required\""),
+                    "Maven required-evidence parameter reaches the controller");
+        }
+        set(hook, "atomPatternManifest", project.resolve("absent-checkpoints.tsv").toFile());
+        try {
+            hook.execute();
+            throw new AssertionError("selected manifest path was not forwarded");
+        } catch (org.apache.maven.plugin.MojoExecutionException expected) {
+            require(Files.readString(build.resolve("m3-smart/post-build.json")).contains("\"atomPatternError\":\"unreadable-evidence\""),
+                    "Maven manifest-path parameter reaches the controller");
+        }
+        set(hook, "requireAtomPattern", false);
+        set(hook, "atomPatternManifest", null);
+        int count = 6;
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
             Path browser = Files.writeString(project.resolve("browser fixture"), "not an executable");

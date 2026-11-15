@@ -3,6 +3,7 @@ package io.synexia.chromellm.standalone;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 
 /** Protocol fixture with deterministic negative replies; never runs inference. */
@@ -10,6 +11,9 @@ public final class StandaloneMain {
     public static void main(String[] args) throws Exception {
         java.util.Map<String, String> options = new java.util.HashMap<>();
         for (int i = 0; i < args.length; i += 2) options.put(args[i], args[i + 1]);
+        String profile = options.getOrDefault("--chrome-profile", "");
+        boolean observeEvidence = profile.endsWith("evidence-observer");
+        if (observeEvidence) Files.writeString(Path.of(profile + ".invoked"), "synthetic provider started\n");
         boolean chrome = "chrome".equals(options.get("--backend"));
         if (chrome && (options.containsKey("--model") || options.containsKey("--jni-lib")
                 || options.containsKey("--llama-bin") || !options.containsKey("--chrome-bin")
@@ -41,6 +45,7 @@ public final class StandaloneMain {
         if (!lines.readLine().contains("notifications/initialized"))
             throw new IllegalArgumentException("expected notification");
         String request = lines.readLine();
+        if (observeEvidence) Files.writeString(Path.of(profile + ".request"), request);
         if (!request.contains("infer_text")) throw new IllegalArgumentException("expected infer_text");
         if (request.contains("fixture-provider-error")) scenario = "call-is-error";
         if (request.contains("fixture timeout")) Thread.sleep(15000);
