@@ -8,6 +8,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/ArtifactManifest.java \
   src/main/java/io/synexia/maven/smart/ArtifactStore.java \
   src/main/java/io/synexia/maven/smart/TinyJson.java \
+  src/main/java/io/synexia/maven/smart/PomFacts.java \
   src/main/java/io/synexia/maven/smart/PlanEngine.java \
   src/main/java/io/synexia/maven/smart/McpAdviser.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderTest.java
