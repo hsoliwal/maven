@@ -56,6 +56,7 @@ The fork currently has no published release distribution to pin in a Maven Wrapp
 | Clean rebuild | `sh ./m3-build.sh full` | `./m3-build.ps1 -Mode full` | `clean verify` |
 | Include integration tests | `sh ./m3-build.sh it` | `./m3-build.ps1 -Mode it` | `verify -Prun-its` |
 | Resume at a failed module | `sh ./m3-build.sh resume :maven-core` | `./m3-build.ps1 -Mode resume -ResumeFrom :maven-core` | `verify -rf :maven-core` |
+| Run the installed Chrome AI agent | `sh ./m3-build.sh ai-check <agent arguments>` | `./m3-build.ps1 -Mode ai-check -ExtraArgs <array>` | None |
 | Usage without Maven installed | `sh ./m3-build.sh --help` | `./m3-build.ps1 -Help` | None |
 
 `quick` still compiles tests under Maven's normal `skipTests` semantics. It is for local
@@ -122,6 +123,63 @@ PowerShell forwards `-ExtraArgs` as an argument array, without constructing or e
 a command string. Explicit extra options can change the lifecycle's behavior, including
 test execution, so record them with build results.
 
+## Run the Chrome AI agent explicitly
+
+`ai-check` invokes the existing Synexia Java 21 GitHub build agent as a separate command.
+Set `M3_CHROME_AI_AGENT_JAR` to its installed executable JAR. `M3_JAVA` selects one
+literal Java executable name or path and defaults to `java` on `PATH`. The helper checks
+the selected JAR and forwards arguments directly to `java -jar`; it preserves the agent's
+exit status. It does not run a Maven lifecycle, download a model, or start Chrome.
+
+The agent uses the existing Chrome AI facade at `http://127.0.0.1:8788`. Provision that
+facade and prepare Chrome's model before asking the agent to infer. Store its local API
+token in `CHROME_AI_API_TOKEN`, or use `--token-env` to name a different environment
+variable. The Java agent validates the selected token; the helper never places its value
+in command arguments. Keep credentials out of task/context files and command strings.
+
+Check the provider without inference:
+
+```sh
+export M3_CHROME_AI_AGENT_JAR='/absolute/path/github-build-agent.jar'
+mkdir -p target
+sh ./m3-build.sh ai-check --check --output target/chrome-ai-status.json
+```
+
+```powershell
+$env:M3_CHROME_AI_AGENT_JAR = 'C:\tools\github-build-agent.jar'
+New-Item -ItemType Directory -Path target -Force | Out-Null
+./m3-build.ps1 -Mode ai-check -ExtraArgs @(
+    '--check', '--output', 'target/chrome-ai-status.json')
+```
+
+Request a bounded candidate using a task file and an optional build-context file:
+
+```sh
+sh ./m3-build.sh ai-check --task-file build-task.txt \
+  --context-file build-context.txt --timeout-seconds 60 \
+  --output target/chrome-ai-candidate.json
+```
+
+```powershell
+./m3-build.ps1 -Mode ai-check -ExtraArgs @(
+    '--task-file', 'build-task.txt', '--context-file', 'build-context.txt',
+    '--timeout-seconds', '60', '--output', 'target/chrome-ai-candidate.json')
+```
+
+`--endpoint` selects an explicit loopback facade base URL. `--check` cannot be combined
+with task/context inputs. The output directory must already exist; use a new filename
+for each invocation because the agent does not overwrite an existing artifact. The
+agent writes candidate text to the JSON artifact, not to the console or a shell command.
+Its result does not apply a patch, execute a recipe, or replace compiler and test gates.
+Status mode returns 0 when ready and 3 when not ready; inference returns 0 only after a
+validated candidate response. Agent errors and interruption retain their own exit codes.
+
+Relative JAR, task, context and output paths resolve from the Maven checkout root,
+including when the helper was invoked from another directory. In PowerShell, use
+`-ExtraArgs` for agent flags; `-Module`, `-ResumeFrom`, `-Threads` and `-Maven` are
+rejected in `ai-check` mode. All existing Maven modes retain their previous behavior,
+and merely setting the AI environment variables does not activate the agent.
+
 ## Verification scope
 
 The entry points simplify how the existing build is invoked. Maven's POMs, configured
@@ -144,8 +202,10 @@ Run the standard-library product test from a POSIX host with Python 3, `sh` and 
 python3 scripts/tests/test_m3_build.py
 ```
 
-It uses a recording executable to verify literal arguments and executable selection,
+It uses recording Maven and Java executables to verify literal arguments and executable selection,
 root-relative paths, module/resume rules, lifecycle choices, working-directory restoration
-and exit statuses. A missing runtime or unsupported fixture host is reported as skipped;
+and exit statuses. The agent cases also cover missing JAR/runtime refusal, independent
+token environment selection, and keeping AI inactive during normal Maven verification.
+A missing runtime or unsupported fixture host is reported as skipped;
 both shell lanes must execute for cross-runtime qualification. These command checks are
 separate from the real Maven reactor and native Windows `mvn.cmd` acceptance.
