@@ -19,11 +19,16 @@
 package org.apache.maven.impl;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -34,6 +39,7 @@ import org.apache.maven.di.Injector;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -173,6 +179,210 @@ final class DefaultM3PluginEvidenceServiceTest {
                         next, image, "m3.tests.results.v1", hash, M3PluginEvidenceService.TESTS));
         assertTrue(service.find(session, next, "m3.tests.results.v1", M3PluginEvidenceService.TESTS)
                 .isPresent());
+    }
+
+    @Test
+    void snapshotsOwnTheAuthenticatedBytesAcrossFileAndCallerChanges() throws Exception {
+        Path image = temporary.resolve("snapshot.receipt");
+        byte[] expected = new byte[16_387];
+        Arrays.fill(expected, (byte) 7);
+        expected[expected.length - 1] = 9;
+        Files.write(image, expected);
+        var receipt = receipt(image);
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        service.publish(session, receipt);
+
+        var snapshot = service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities())
+                .orElseThrow();
+        assertSame(receipt, snapshot.receipt());
+        assertArrayEquals(expected, snapshot.bytes());
+        byte[] exposed = snapshot.bytes();
+        exposed[0] = 0;
+        assertArrayEquals(expected, snapshot.bytes());
+
+        Files.write(image, new byte[] {1, 2, 3});
+        assertArrayEquals(expected, snapshot.bytes());
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+        service.revoke(session, receipt.identity());
+        assertTrue(service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities())
+                .isEmpty());
+        assertArrayEquals(new byte[] {1, 2, 3}, Files.readAllBytes(image));
+        assertArrayEquals(expected, snapshot.bytes());
+    }
+
+    @Test
+    void snapshotLookupDoesNotReadUnmatchedOrCrossSessionFiles() throws Exception {
+        Path image = temporary.resolve("matches.receipt");
+        Files.write(image, new byte[] {1, 2, 3});
+        var receipt = receipt(image);
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        service.publish(session, receipt);
+        Files.delete(image);
+
+        assertTrue(service.read(session(), receipt.identity(), receipt.schema(), receipt.capabilities())
+                .isEmpty());
+        assertTrue(service.read(session, receipt.identity(), "different.schema", receipt.capabilities())
+                .isEmpty());
+        assertTrue(service.read(session, receipt.identity(), receipt.schema(), M3PluginEvidenceService.ARCHIVE)
+                .isEmpty());
+        assertTrue(service.read(
+                        session, identity("maven-surefire-plugin", "test", 2), receipt.schema(), receipt.capabilities())
+                .isEmpty());
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+    }
+
+    @Test
+    void snapshotReadRejectsSameLengthChangesAndSymlinkSubstitution() throws Exception {
+        Path image = temporary.resolve("changed.receipt");
+        Files.write(image, new byte[] {1, 2, 3});
+        var receipt = receipt(image);
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        service.publish(session, receipt);
+        Files.write(image, new byte[] {1, 2, 9});
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+
+        Path original = temporary.resolve("original.receipt");
+        Files.write(original, new byte[] {1, 2, 3});
+        Files.delete(image);
+        Files.createSymbolicLink(image, original);
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+        assertThrows(IOException.class, receipt::verify);
+        assertThrows(IOException.class, receipt::snapshot);
+    }
+
+    @Test
+    void verificationAndSnapshotsShareFileTypeAndSizeLimits() throws Exception {
+        Path image = temporary.resolve("bounded.receipt");
+        Files.write(image, new byte[] {1});
+        var receipt = receipt(image);
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        service.publish(session, receipt);
+        try (SeekableByteChannel output = Files.newByteChannel(image, StandardOpenOption.WRITE)) {
+            output.position(M3PluginEvidenceService.MAX_RECEIPT_BYTES);
+            output.write(ByteBuffer.wrap(new byte[] {0}));
+        }
+        assertThrows(IOException.class, receipt::verify);
+        assertThrows(IOException.class, receipt::snapshot);
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+
+        Files.delete(image);
+        Files.createDirectory(image);
+        assertThrows(IOException.class, receipt::verify);
+        assertThrows(IOException.class, receipt::snapshot);
+        assertThrows(
+                IOException.class,
+                () -> service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities()));
+    }
+
+    @Test
+    void legacyImplementationUsesTheDefaultReadWithoutImplementingANewMethod() throws Exception {
+        Path image = temporary.resolve("legacy.receipt");
+        Files.write(image, new byte[] {4, 5, 6});
+        var receipt = receipt(image);
+        M3PluginEvidenceService legacy = legacyService(() -> Optional.of(receipt));
+        var snapshot = legacy.read(session(), receipt.identity(), receipt.schema(), receipt.capabilities())
+                .orElseThrow();
+        assertSame(receipt, snapshot.receipt());
+        assertArrayEquals(new byte[] {4, 5, 6}, snapshot.bytes());
+        assertTrue(legacyService(Optional::empty)
+                .read(session(), receipt.identity(), receipt.schema(), receipt.capabilities())
+                .isEmpty());
+    }
+
+    @Test
+    void legacyFallbackAuthenticatesBytesAgainAfterFindReturns() throws Exception {
+        Path image = temporary.resolve("legacy-changed.receipt");
+        Files.write(image, new byte[] {4, 5, 6});
+        var receipt = receipt(image);
+        M3PluginEvidenceService legacy = legacyService(() -> {
+            receipt.verify();
+            Files.write(image, new byte[] {4, 5, 9});
+            return Optional.of(receipt);
+        });
+        assertThrows(
+                IOException.class,
+                () -> legacy.read(session(), receipt.identity(), receipt.schema(), receipt.capabilities()));
+    }
+
+    @Test
+    void emptyReceiptSnapshotsAreValidAndReadArgumentsAreCheckedBeforeLookup() throws Exception {
+        Path image = temporary.resolve("empty.receipt");
+        Files.write(image, new byte[0]);
+        var receipt = receipt(image);
+        receipt.verify();
+        assertArrayEquals(new byte[0], receipt.snapshot().bytes());
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        service.publish(session, receipt);
+        assertArrayEquals(
+                new byte[0],
+                service.read(session, receipt.identity(), receipt.schema(), receipt.capabilities())
+                        .orElseThrow()
+                        .bytes());
+        assertThrows(
+                NullPointerException.class,
+                () -> service.read(null, receipt.identity(), receipt.schema(), receipt.capabilities()));
+        assertThrows(
+                NullPointerException.class,
+                () -> service.read(session, null, receipt.schema(), receipt.capabilities()));
+        assertThrows(
+                NullPointerException.class,
+                () -> service.read(session, receipt.identity(), null, receipt.capabilities()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.read(session, receipt.identity(), " ", receipt.capabilities()));
+        assertThrows(
+                IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 0));
+        assertThrows(
+                IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 128));
+    }
+
+    private static M3PluginEvidenceService.Receipt receipt(Path image) throws Exception {
+        return new M3PluginEvidenceService.Receipt(
+                identity("maven-surefire-plugin", "test", 1),
+                image,
+                "m3.tests.results.v1",
+                sha(image),
+                M3PluginEvidenceService.TESTS);
+    }
+
+    private static M3PluginEvidenceService legacyService(ReceiptLookup lookup) {
+        return new M3PluginEvidenceService() {
+            @Override
+            public void publish(Session session, Receipt receipt) {
+                throw new UnsupportedOperationException("read must not publish");
+            }
+
+            @Override
+            public Optional<Receipt> find(Session session, Identity identity, String schema, int capabilities)
+                    throws IOException {
+                return lookup.find();
+            }
+
+            @Override
+            public void revoke(Session session, Identity identity) {
+                throw new UnsupportedOperationException("read must not revoke");
+            }
+        };
+    }
+
+    @FunctionalInterface
+    private interface ReceiptLookup {
+        Optional<M3PluginEvidenceService.Receipt> find() throws IOException;
     }
 
     private static M3PluginEvidenceService.Identity identity(String plugin, String goal, long generation) {

@@ -19,20 +19,9 @@
 package org.apache.maven.impl;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.channels.Channels;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 import org.apache.maven.api.Session;
 import org.apache.maven.api.SessionData;
@@ -48,7 +37,6 @@ import org.apache.maven.api.services.M3PluginEvidenceService;
 @Singleton
 public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceService {
     private static final int MAX_RECEIPTS = 512;
-    private static final long MAX_BYTES = 16L * 1024 * 1024;
     private static final SessionData.Key<Store> KEY =
             SessionData.key(Store.class, DefaultM3PluginEvidenceService.class.getName());
 
@@ -100,14 +88,14 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
                 if (!receipts[found].equals(receipt)) {
                     throw new IOException("conflicting plugin receipt for original generation");
                 }
-                verify(receipt);
+                receipt.verify();
                 return;
             }
             // Refuse a 513th key BEFORE touching its provider-owned file.
             if (size == MAX_RECEIPTS) {
                 throw new IOException("M3 plugin evidence session budget exceeded");
             }
-            verify(receipt);
+            receipt.verify();
             int insertion = -found - 1;
             if (size == identities.length) {
                 identities = Arrays.copyOf(identities, Math.min(MAX_RECEIPTS, size * 2));
@@ -121,16 +109,29 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
         }
 
         synchronized Optional<Receipt> find(Identity key, String schema, int mask) throws IOException {
+            Receipt receipt = select(key, schema, mask);
+            if (receipt == null) {
+                return Optional.empty();
+            }
+            receipt.verify();
+            return Optional.of(receipt);
+        }
+
+        synchronized Optional<Snapshot> read(Identity key, String schema, int mask) throws IOException {
+            Receipt receipt = select(key, schema, mask);
+            return receipt == null ? Optional.empty() : Optional.of(receipt.snapshot());
+        }
+
+        private Receipt select(Identity key, String schema, int mask) {
             int index = locate(key);
             if (index < 0) {
-                return Optional.empty();
+                return null;
             }
             Receipt receipt = receipts[index];
             if (!receipt.schema().equals(schema) || (receipt.capabilities() & mask) != mask) {
-                return Optional.empty();
+                return null;
             }
-            verify(receipt);
-            return Optional.of(receipt);
+            return receipt;
         }
 
         synchronized void revoke(Identity key) {
@@ -156,14 +157,26 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
     @Override
     public Optional<Receipt> find(Session session, Identity identity, String schema, int requiredCapabilities)
             throws IOException {
+        validateQuery(session, identity, schema, requiredCapabilities);
+        Store existing = session.getData().get(KEY);
+        return existing == null ? Optional.empty() : existing.find(identity, schema, requiredCapabilities);
+    }
+
+    @Override
+    public Optional<Snapshot> read(Session session, Identity identity, String schema, int requiredCapabilities)
+            throws IOException {
+        validateQuery(session, identity, schema, requiredCapabilities);
+        Store existing = session.getData().get(KEY);
+        return existing == null ? Optional.empty() : existing.read(identity, schema, requiredCapabilities);
+    }
+
+    private static void validateQuery(Session session, Identity identity, String schema, int requiredCapabilities) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(schema, "schema");
         if (schema.isBlank() || requiredCapabilities <= 0 || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
             throw new IllegalArgumentException("requiredCapabilities/schema");
         }
-        Store existing = session.getData().get(KEY);
-        return existing == null ? Optional.empty() : existing.find(identity, schema, requiredCapabilities);
     }
 
     @Override
@@ -173,41 +186,6 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
         Store existing = session.getData().get(KEY);
         if (existing != null) {
             existing.revoke(identity);
-        }
-    }
-
-    private static void verify(Receipt receipt) throws IOException {
-        Path file = receipt.file();
-        BasicFileAttributes attr = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (!attr.isRegularFile() || attr.size() > MAX_BYTES) {
-            throw new IOException("plugin evidence requires a bounded regular source-owned file");
-        }
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new AssertionError(impossible);
-        }
-        try (InputStream input = Channels.newInputStream(
-                Files.newByteChannel(file, Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)))) {
-            byte[] buffer = new byte[16_384];
-            long total = 0;
-            for (int read; (read = input.read(buffer)) != -1; ) {
-                if (read == 0) {
-                    throw new IOException("stalled plugin evidence read");
-                }
-                total += read;
-                if (total > MAX_BYTES) {
-                    throw new IOException("plugin evidence byte budget exceeded");
-                }
-                digest.update(buffer, 0, read);
-            }
-            if (total != attr.size()) {
-                throw new IOException("plugin evidence changed during read");
-            }
-        }
-        if (!HexFormat.of().formatHex(digest.digest()).equals(receipt.sha256())) {
-            throw new IOException("plugin evidence content digest mismatch");
         }
     }
 }
