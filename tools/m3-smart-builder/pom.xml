@@ -24,7 +24,10 @@
     </plugin>
     <plugin><groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.5.0</version>
       <executions><execution><id>core-offline-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
-        <configuration><mainClass>io.synexia.maven.smart.SmartBuilderTest</mainClass><classpathScope>test</classpathScope></configuration>
+        <configuration>
+          <mainClass>io.synexia.maven.smart.SmartBuilderTest</mainClass><classpathScope>test</classpathScope>
+          <systemProperties><systemProperty><key>m3.smart.testRoot</key><value>${project.build.directory}</value></systemProperty></systemProperties>
+        </configuration>
       </execution></executions>
     </plugin>
   </plugins></build>
