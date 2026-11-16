@@ -73,6 +73,17 @@ Exactly five `arg` rows, in this order:
   workspace, `none` or `autobuild` build mode.
 - `analyze`, CLI executable, database directory, query/suite/pack selector, SARIF
   result path relative to workspace (ending `.sarif`).
+- `query`, CLI executable, database directory, source `.ql` file, binary `.bqrs`
+  output. Uses original `codeql query run`, suitable for semantic inventories.
+- `decode`, CLI executable, existing `.bqrs` input, literal `csv`, destination
+  `.csv` path. Uses original `codeql bqrs decode` with CSV field quoting.
+
+For M3 CodeQL's callable, call-dependency and native-boundary inventory queries,
+run explicit `query`/`decode` DAG tasks instead of forcing tabular data through
+SARIF alert interpretation. CSV fields require a CSV parser; never split rows
+blindly on commas. Keep the query/database/CLI versions and input hashes as
+provenance. This plugin does not automatically choose, merge or apply recipes
+based on those records.
 
 The provider emits `codeql database create` or `codeql database analyze` using
 original CLI commands. The `analyze` format is pinned to `sarifv2.1.0`. It does

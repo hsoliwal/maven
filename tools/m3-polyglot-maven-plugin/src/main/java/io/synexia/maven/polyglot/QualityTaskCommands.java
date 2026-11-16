@@ -63,6 +63,29 @@ public final class QualityTaskCommands {
                     "--language=" + language,
                     "--build-mode=" + buildMode);
         }
+        if ("query".equals(operation)) {
+            database = relative(root, args.get(2), "CodeQL database");
+            String query = relative(root, args.get(3), "CodeQL inventory query");
+            if (!query.endsWith(".ql")) {
+                throw new IOException("CodeQL inventory must identify an explicit .ql source file");
+            }
+            String bqrs = relative(root, args.get(4), "CodeQL BQRS output");
+            if (!bqrs.endsWith(".bqrs")) {
+                throw new IOException("CodeQL inventory output must end in .bqrs");
+            }
+            return List.of(cli, "query", "run", query, "--database=" + database, "--output=" + bqrs);
+        }
+        if ("decode".equals(operation)) {
+            String bqrs = relative(root, args.get(2), "CodeQL BQRS input");
+            if (!bqrs.endsWith(".bqrs") || !"csv".equals(args.get(3))) {
+                throw new IOException("CodeQL inventory decoding requires BQRS input and CSV output");
+            }
+            String csv = relative(root, args.get(4), "CodeQL CSV output");
+            if (!csv.endsWith(".csv")) {
+                throw new IOException("CodeQL decoded inventory must end in .csv");
+            }
+            return List.of(cli, "bqrs", "decode", bqrs, "--format=csv", "--output=" + csv);
+        }
         if ("analyze".equals(operation)) {
             database = relative(root, args.get(2), "CodeQL database");
             String suite = name(args.get(3), "CodeQL query suite");

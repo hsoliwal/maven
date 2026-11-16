@@ -25,6 +25,7 @@ public final class QualityProviderContractTestMain {
             Files.writeString(root.resolve("pom.xml"), "<project/>\n", StandardCharsets.UTF_8);
             createsCodeqlDatabaseWithExplicitMode(root);
             analyzesWithStableSarif(root);
+            inventoriesAndDecodesSemanticEvidence(root);
             validatesOpenRewriteModesAndPins(root);
             rejectsMalformedOrEscapingProviderPaths(root);
             graphIncludesProviderChecksBeforeToolExecution(root);
@@ -57,6 +58,26 @@ public final class QualityProviderContractTestMain {
         expectFailure(() -> QualityTaskCommands.command(
                 task("wrong", "@codeql", "analyze", "codeql", "db/java", "--malicious", "reports/ql.sarif"),
                 root, false));
+        passed++;
+    }
+
+    private static void inventoriesAndDecodesSemanticEvidence(Path root) throws Exception {
+        var query = task("ql-query", "@codeql", "query", "codeql", "db/java",
+                "m3-codeql/ql/src/inventory/CallableInventory.ql", "reports/callables.bqrs");
+        var planned = QualityTaskCommands.command(query, root, false);
+        check(planned.equals(List.of("codeql", "query", "run",
+                root.resolve("m3-codeql/ql/src/inventory/CallableInventory.ql").toString(),
+                "--database=" + root.resolve("db/java"),
+                "--output=" + root.resolve("reports/callables.bqrs"))), "CodeQL inventory query argv");
+        var decode = task("ql-decode", "@codeql", "decode", "codeql", "reports/callables.bqrs",
+                "csv", "reports/callables.csv");
+        check(QualityTaskCommands.command(decode, root, false).equals(List.of(
+                "codeql", "bqrs", "decode", root.resolve("reports/callables.bqrs").toString(),
+                "--format=csv", "--output=" + root.resolve("reports/callables.csv"))),
+                "CodeQL CSV decoding argv");
+        expectFailure(() -> QualityTaskCommands.command(
+                task("wrong", "@codeql", "decode", "codeql", "reports/inventory.bqrs",
+                        "json", "reports/inventory.csv"), root, false));
         passed++;
     }
 
