@@ -152,3 +152,66 @@ not bypass compilation, tests or the original execution contract.
 
 The web references describe upstream capabilities; this fork's exact baseline
 and generated-source hashes identify the implementation being changed.
+
+
+## Native dependency insights and toolchain selection (2026-11-16)
+
+The new `DependencyInsightsService` inspects a **previously obtained**
+`DependencyResolverResult`. It does not call Resolver, access repositories,
+open dependency JARs, infer dependency usage, or change resolution decisions.
+Its immutable report includes the original flattened selected artifacts and,
+when the caller requested verbose resolution, explicit omitted/winning nodes
+and managed-version evidence. Output is stable and sorted by Maven artifact
+identity and version, with duplicate evidence removed. The graph walker is
+iterative, keeps visited references by identity, and refuses graphs with more
+than 262,144 nodes/edges instead of returning partial evidence as clean.
+
+```java
+DependencyResolverResult resolved = session.getService(DependencyResolver.class)
+        .resolve(existingRequest); // Caller retains ownership of this request.
+DependencyInsightsService.Report insights = session
+        .getService(DependencyInsightsService.class).inspect(resolved);
+if (!insights.complete()) {
+    // Do not promote an incomplete graph to a dependency-policy verdict.
+}
+if (!insights.verbose()) {
+    // No omission evidence does NOT prove version convergence.
+}
+```
+
+`complete()` only reflects a RESOLVE request with a root and no reported
+resolver errors. It is not proof of downloaded bytes, semantic usage,
+conflict freedom, or permission to omit a plugin. To obtain omitted/winning
+metadata, callers must opt in to `DependencyResolverRequest.getVerbose()`
+when constructing the original request. The new service only observes it.
+
+The native `ToolchainManager` now exposes an optional read-only
+`selectToolchain(session, type, requirements)` convenience method. It
+prefers a type-correct, matching toolchain from the existing build context,
+then checks matching toolchains in the manager's existing configured/provider
+order. It copies requirement inputs and never stores a new toolchain,
+downloads a JDK, overwrites a build-context selection, or changes the
+Toolchains plugin's existing goals. An empty result requires the caller to
+handle missing tooling; it does not trigger fallback to an unqualified JDK.
+
+```java
+Optional<Toolchain> chosen = session.getService(ToolchainManager.class)
+        .selectToolchain(session, "jdk", Map.of("version", "21"));
+// Existing toolchain Mojo selection and storage remain unchanged.
+```
+
+These two APIs are a narrow, opt-in extraction from Dependency/Enforcer and
+Toolchains plugin concerns into the existing Maven 4 owners. Neither plugin
+is replaced. No Build Cache Extension, Compiler, Surefire or archive engine
+was migrated by this change. In particular, `M3PluginEvidenceService`
+receipts are not cache admission or goal-skipping permissions.
+
+Original Maven API/DI tests live under
+`impl/maven-impl/src/test/java/org/apache/maven/impl/`, covering DI,
+sorted immutable selection results, verbose winner/management explanations,
+incomplete resolution, cycles/shared graph nodes, bounded refusal and
+read-only toolchain fallback. Required qualification before merging:
+Maven reactor tests, Checkstyle/Spotless, the upstream API compatibility
+matrix and differential plugin behavior fixtures. Source transformation
+recipes and actual plugin producer adapters are separate migrations, not
+claimed as completed here.
