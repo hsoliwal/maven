@@ -25,6 +25,7 @@ public final class AnalyzerXmlNormalizerContractTestMain {
             spotbugs(root);
             cpd(root);
             sarif(root);
+            semgrep(root);
             refusal(root);
             cli(root);
             System.out.println("M3_ANALYZER_XML_ADAPTER_CONTRACT_PASS");
@@ -464,6 +465,130 @@ public final class AnalyzerXmlNormalizerContractTestMain {
         refusal(root, AnalyzerXmlNormalizer.Format.SARIF,
                 AnalyzerXmlNormalizer.Status.COMPLETE, unresolvedIndex);
 
+    }
+
+    private static void semgrep(Path root) throws Exception {
+        String original = """
+                {
+                  "version": "1.166.0",
+                  "results": [
+                    {
+                      "check_id": "java.security.sql-injection",
+                      "path": "src/B.java",
+                      "start": {"line": 22, "col": 4, "offset": 123},
+                      "end": {"line": 22, "col": 9},
+                      "extra": {
+                        "severity": "CRITICAL",
+                        "message": "Untrusted\\nSQL query",
+                        "fingerprint": "abc/1",
+                        "metadata": {"cwe": ["CWE-89"]},
+                        "lines": "source code that must never enter an M3 report",
+                        "fix": "secret fix that must not be copied",
+                        "is_ignored": false
+                      }
+                    },
+                    {
+                      "check_id": "java.style.rule",
+                      "path": "src/A.java",
+                      "start": {"line": 3, "col": 1},
+                      "end": {"line": 4, "col": 1},
+                      "extra": {
+                        "severity": "MEDIUM",
+                        "message": "Original warning",
+                        "metadata": {},
+                        "fingerprint": "def/1",
+                        "lines": "sensitive source line"
+                      }
+                    },
+                    {
+                      "check_id": "java.nosem.ignored",
+                      "path": "src/Ignored.java",
+                      "start": {"line": 1, "col": 1},
+                      "end": {"line": 1, "col": 2},
+                      "extra": {
+                        "severity": "HIGH",
+                        "message": "Original suppressed match",
+                        "metadata": {},
+                        "fingerprint": "xyz/1",
+                        "lines": "suppressed source",
+                        "is_ignored": true
+                      }
+                    }
+                  ],
+                  "errors": [],
+                  "paths": { "scanned": ["src/A.java", "src/B.java"], "skipped": [] }
+                }
+                """;
+        var report = convert(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE, original);
+        String v1 = new String(report.bytes(), StandardCharsets.UTF_8);
+        check(report.count() == 2, "Semgrep findings are distinct from original ignored matches");
+        check(v1.indexOf("src/A.java") < v1.indexOf("src/B.java"),
+                "Semgrep normalized facts retain numeric/path canonical ordering");
+        check(v1.contains("java.style.rule\tWARNING\tsrc/A.java\t3\t1\t"),
+                "Semgrep MEDIUM mapped to explicit display WARNING");
+        check(v1.contains("java.security.sql-injection\tERROR\tsrc/B.java\t22\t4\t"),
+                "Semgrep CRITICAL maps to explicit display ERROR");
+        check(v1.contains(Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("Untrusted SQL query".getBytes(StandardCharsets.UTF_8))),
+                "multiline original Semgrep message normalized");
+        check(!v1.contains("secret fix") && !v1.contains("sensitive source")
+                && !v1.contains("ignored"), "Semgrep source/fixes/ignored matches not reintroduced");
+        check(report.sha256().equals(convert(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE, original).sha256()),
+                "Semgrep native report digest is deterministic");
+
+        String failed = """
+                {"version":"1.166.0","results":[],"errors":[
+                    {"code":2,"level":"error","type":"ParseError","message":"bad source"}
+                 ],"paths":{"scanned":[],"skipped":[]}}
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE, failed);
+        var partial = convert(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.PARTIAL, failed);
+        check(partial.count() == 1
+                && new String(partial.bytes(), StandardCharsets.UTF_8)
+                .contains("Semgrep.ScanError\tERROR\t\t0\t0\t"),
+                "Semgrep source errors forbid complete and retain partial scan evidence");
+
+        String empty = """
+                {"results":[],"errors":[],"paths":{"scanned":[],"skipped":[]}}
+                """;
+        check(convert(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE, empty).count() == 0,
+                "original Semgrep empty findings are not invented");
+
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("src/A.java", "../escape.java"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"severity\": \"MEDIUM\"", "\"severity\": \"UNKNOWN\""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"line\": 3", "\"line\": -2"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"col\": 1", "\"col\": 0"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"check_id\": \"java.style.rule\",", ""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"errors\": [],", ""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"paths\": {", "\"notPaths\": {"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"results\": [", "\"results\": [], \"results\": ["));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                original.replace("\"is_ignored\": false", "\"is_ignored\": \"false\""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "{ \"results\": [ { \"check_id\": ");
     }
 
     private static void refusal(Path root) throws Exception {
