@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+SPDX-License-Identifier: Apache-2.0
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-ide-bridge-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>maven-plugin</packaging>
+  <name>M3 Maven IDE Delta Advisory Bridge</name>
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <m3.maven.version>4.2.0-SNAPSHOT</m3.maven.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.maven</groupId><artifactId>maven-api-core</artifactId>
+      <version>${m3.maven.version}</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId><artifactId>maven-api-di</artifactId>
+      <version>${m3.maven.version}</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId><artifactId>maven-api-annotations</artifactId>
+      <version>${m3.maven.version}</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+      <version>5.11.4</version><scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId><artifactId>maven-impl</artifactId>
+      <version>${m3.maven.version}</version><scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+      <version>3.14.1</version><configuration>
+        <release>17</release><parameters>true</parameters>
+        <annotationProcessorPaths><path>
+          <groupId>org.apache.maven</groupId><artifactId>maven-api-di</artifactId>
+          <version>${m3.maven.version}</version>
+        </path></annotationProcessorPaths>
+      </configuration>
+    </plugin>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-plugin-plugin</artifactId>
+      <version>4.0.0-beta-2</version>
+      <configuration>
+        <goalPrefix>m3-ide</goalPrefix>
+        <requiredMavenVersion>4.2.0-SNAPSHOT</requiredMavenVersion>
+      </configuration>
+    </plugin>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+      <version>3.5.4</version><configuration><useModulePath>false</useModulePath></configuration>
+    </plugin>
+  </plugins></build>
+</project>
