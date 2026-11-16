@@ -29,6 +29,7 @@ import org.apache.maven.api.services.DependencyInsightsService;
 import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.di.Injector;
+import org.eclipse.aether.graph.DependencyNode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,6 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -112,6 +115,25 @@ final class DefaultDependencyInsightsServiceTest {
         assertEquals(1, report.selected().size());
         assertEquals(1, report.omissions().size());
         assertTrue(report.omissions().get(0).duplicate());
+        assertTrue(report.complete());
+    }
+
+    @Test
+    void nativeResolverWrappersShareOriginalNodeIdentity() {
+        InternalSession owner = mock(InternalSession.class);
+        DependencyNode rootGraph = mock(DependencyNode.class);
+        DependencyNode childGraph = mock(DependencyNode.class);
+        when(rootGraph.getChildren()).thenReturn(List.of(childGraph, childGraph));
+        when(childGraph.getChildren()).thenReturn(List.of(rootGraph));
+        when(owner.getNode(any(DependencyNode.class), eq(true)))
+                .thenAnswer(call -> new DefaultNode(owner, call.getArgument(0), true));
+
+        // DefaultNode.children() reconstructs facade objects on each access.
+        // A facade-identity visited set would loop until its budget fails.
+        Node root = new DefaultNode(owner, rootGraph, true);
+        DependencyInsightsService.Report report = new DefaultDependencyInsightsService()
+                .inspect(result(root, List.of(), List.of(), true));
+        assertEquals(2, report.graphNodes());
         assertTrue(report.complete());
     }
 
