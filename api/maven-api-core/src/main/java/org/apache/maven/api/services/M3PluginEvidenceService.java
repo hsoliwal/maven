@@ -51,8 +51,8 @@ import org.apache.maven.api.annotations.Experimental;
 @Experimental
 public interface M3PluginEvidenceService extends Service {
     int INPUTS = 1, OUTPUTS = 2, RESOURCES = 4, ARCHIVE = 8;
-    int TESTS = 16, DEPENDENCIES = 32, PUBLICATION = 64;
-    int KNOWN_CAPABILITIES = INPUTS | OUTPUTS | RESOURCES | ARCHIVE | TESTS | DEPENDENCIES | PUBLICATION;
+    int TESTS = 16, DEPENDENCIES = 32, PUBLICATION = 64, ANALYSIS = 128;
+    int KNOWN_CAPABILITIES = INPUTS | OUTPUTS | RESOURCES | ARCHIVE | TESTS | DEPENDENCIES | PUBLICATION | ANALYSIS;
 
     /** Maximum receipt size admitted by verification and snapshot reads. */
     int MAX_RECEIPT_BYTES = 16 * 1024 * 1024;
