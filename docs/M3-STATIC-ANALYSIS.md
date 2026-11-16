@@ -157,3 +157,31 @@ DIFF → LINT → COMPILE → TEST and source ABI/behavior checks.
 
 See [shared plugin services](M3-PLUGIN-SERVICES.md) for previously merged
 resource, compiler, dependency, policy and fingerprint primitives.
+
+## Private atomization and Gradle-compatible report pattern (2026-11-16)
+
+The native analyzer service refactors its original operations into small,
+contract-preserving, private Java atoms: `verifiedManifest` checks exact
+receipt ownership; `sortedExpected` validates/sorts/deduplicates invocation
+identities before any evidence read; `appendFindings` enforces an aggregate
+budget before materialization; `canonicalRow` checks framing and LF/NUL/CR
+refusal; `declaredStatus` admits only the original completion states;
+`parseFinding` independently validates typed position and message facts.
+The original `M3StaticAnalysisService` API, `Identity`, schemas, session
+membership, array-backed row index, byte limits, ordering, exceptions and
+plugin behavior remain unchanged.
+
+The canonical v1 wire format is intentionally consumable by the original
+`hsoliwal/gradle` build without installing Maven inside Gradle. The Gradle
+`m3/quality-bridge` provider exposes an explicit `m3ReviewAnalysis` task
+that checks a producer-declared report SHA-256, decodes the same typed rows
+into compact indexed arrays and can optionally publish adapter-claimed
+findings through Gradle's native Problems API. Its default is read-only and
+not wired into `check`. A digest validates exported bytes, **not** Maven
+session membership, real analyzer execution or source completeness.
+
+Both builds preserve their existing analyzers, independent task/goal
+scheduling, dependency resolution and build caches. Original analyzer
+plugins must still execute and remain the authority for their reported
+findings and suppression policies. Differences between Maven's receipt
+membership guarantees and Gradle's standalone digest check are explicit.

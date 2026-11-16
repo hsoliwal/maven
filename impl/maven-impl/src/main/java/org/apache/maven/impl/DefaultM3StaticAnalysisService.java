@@ -83,34 +83,28 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         if (selected.isEmpty()) {
             return Optional.empty();
         }
-        M3PluginEvidenceService.Snapshot snapshot = selected.orElseThrow();
+        return Optional.of(verifiedManifest(identity, selected.orElseThrow()));
+    }
+
+    /**
+     * Atom: validate exact receipt ownership before parsing any untrusted bytes.
+     * The native evidence service already authenticated the snapshot bytes.
+     */
+    private static Manifest verifiedManifest(
+            M3PluginEvidenceService.Identity identity, M3PluginEvidenceService.Snapshot snapshot) throws IOException {
         M3PluginEvidenceService.Receipt receipt = snapshot.receipt();
         if (!identity.equals(receipt.identity())
                 || !SCHEMA.equals(receipt.schema())
                 || (receipt.capabilities() & CAPABILITIES) != CAPABILITIES) {
             throw new IOException("analysis receipt provenance mismatch");
         }
-        return Optional.of(parse(receipt, snapshot.bytes()));
+        return parse(receipt, snapshot.bytes());
     }
 
     @Override
     public Report aggregate(Session session, List<M3PluginEvidenceService.Identity> expected) throws IOException {
         Objects.requireNonNull(session, "session");
-        Objects.requireNonNull(expected, "expected");
-        if (expected.isEmpty() || expected.size() > MAX_PRODUCERS) {
-            throw new IllegalArgumentException("analysis producer budget or empty expectation");
-        }
-        M3PluginEvidenceService.Identity[] identities =
-                expected.toArray(M3PluginEvidenceService.Identity[]::new);
-        for (var identity : identities) {
-            Objects.requireNonNull(identity, "expected identity");
-        }
-        Arrays.sort(identities, IDENTITIES);
-        for (int index = 1; index < identities.length; index++) {
-            if (identities[index - 1].equals(identities[index])) {
-                throw new IllegalArgumentException("duplicate expected analysis invocation");
-            }
-        }
+        M3PluginEvidenceService.Identity[] identities = sortedExpected(expected);
         List<Coverage> coverage = new ArrayList<>(identities.length);
         List<SourcedFinding> findings = new ArrayList<>();
         boolean allComplete = true;
@@ -120,16 +114,43 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             coverage.add(new Coverage(identity, status));
             allComplete &= status == Status.COMPLETE;
             if (selected.isPresent()) {
-                Manifest manifest = selected.orElseThrow();
-                if (manifest.size() > MAX_FINDINGS - findings.size()) {
-                    throw new IOException("analysis aggregate finding budget exceeded");
-                }
-                for (int index = 0; index < manifest.size(); index++) {
-                    findings.add(new SourcedFinding(identity, manifest.entry(index)));
-                }
+                appendFindings(identity, selected.orElseThrow(), findings);
             }
         }
         return new Report(coverage, findings, allComplete);
+    }
+
+    /** Atom: validate, sort and deduplicate complete expected identities before any receipt I/O. */
+    private static M3PluginEvidenceService.Identity[] sortedExpected(
+            List<M3PluginEvidenceService.Identity> expected) {
+        Objects.requireNonNull(expected, "expected");
+        if (expected.isEmpty() || expected.size() > MAX_PRODUCERS) {
+            throw new IllegalArgumentException("analysis producer budget or empty expectation");
+        }
+        M3PluginEvidenceService.Identity[] identities =
+                expected.toArray(M3PluginEvidenceService.Identity[]::new);
+        for (M3PluginEvidenceService.Identity identity : identities) {
+            Objects.requireNonNull(identity, "expected identity");
+        }
+        Arrays.sort(identities, IDENTITIES);
+        for (int index = 1; index < identities.length; index++) {
+            if (identities[index - 1].equals(identities[index])) {
+                throw new IllegalArgumentException("duplicate expected analysis invocation");
+            }
+        }
+        return identities;
+    }
+
+    /** Atom: bound the aggregate before materializing a producer's finding objects. */
+    private static void appendFindings(
+            M3PluginEvidenceService.Identity identity, Manifest manifest, List<SourcedFinding> findings)
+            throws IOException {
+        if (manifest.size() > MAX_FINDINGS - findings.size()) {
+            throw new IOException("analysis aggregate finding budget exceeded");
+        }
+        for (int index = 0; index < manifest.size(); index++) {
+            findings.add(new SourcedFinding(identity, manifest.entry(index)));
+        }
     }
 
     private static Manifest parse(M3PluginEvidenceService.Receipt receipt, byte[] bytes) throws IOException {
@@ -142,24 +163,13 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         int row = 0;
         for (int start = 0; start < text.length(); ) {
             int end = text.indexOf('\n', start);
-            if (end < 0 || end - start > MAX_LINE) {
-                throw new IOException("unterminated or oversized analysis report row");
-            }
-            String line = text.substring(start, end);
-            if (line.indexOf('\r') >= 0 || line.indexOf('\0') >= 0) {
-                throw new IOException("analysis report requires LF-only rows");
-            }
+            String line = canonicalRow(text, start, end);
             if (row == 0) {
                 if (!MAGIC.equals(line)) {
                     throw new IOException("unexpected analysis report schema");
                 }
             } else if (row == 1) {
-                status = switch (line) {
-                    case "status\tCOMPLETE" -> Status.COMPLETE;
-                    case "status\tPARTIAL" -> Status.PARTIAL;
-                    case "status\tFAILED" -> Status.FAILED;
-                    default -> throw new IOException("invalid analysis completion state");
-                };
+                status = declaredStatus(line);
             } else if (row == 2) {
                 if (!COLUMNS.equals(line)) {
                     throw new IOException("invalid analysis report columns");
@@ -174,6 +184,28 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             throw new IOException("incomplete analysis report header");
         }
         return new Packed(receipt, status, rows);
+    }
+
+    /** Atom: enforce LF framing and the bounded canonical row representation. */
+    private static String canonicalRow(String text, int start, int end) throws IOException {
+        if (end < 0 || end - start > MAX_LINE) {
+            throw new IOException("unterminated or oversized analysis report row");
+        }
+        String row = text.substring(start, end);
+        if (row.indexOf('\r') >= 0 || row.indexOf('\0') >= 0) {
+            throw new IOException("analysis report requires LF-only rows");
+        }
+        return row;
+    }
+
+    /** Atom: map only producer-declared execution states, never fabricate MISSING as source success. */
+    private static Status declaredStatus(String row) throws IOException {
+        return switch (row) {
+            case "status\tCOMPLETE" -> Status.COMPLETE;
+            case "status\tPARTIAL" -> Status.PARTIAL;
+            case "status\tFAILED" -> Status.FAILED;
+            default -> throw new IOException("invalid analysis completion state");
+        };
     }
 
     private static String decode(byte[] bytes) throws IOException {
@@ -223,6 +255,21 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         }
     }
 
+    /** Atom: decode and validate an original analyzer row before inserting it into packed lanes. */
+    private static Finding parseFinding(String row) throws IOException {
+        String[] fields = row.split("\t", -1);
+        if (fields.length != 6) {
+            throw new IOException("expected six static analysis fields");
+        }
+        try {
+            return new Finding(
+                    fields[0], Severity.valueOf(fields[1]), fields[2], position(fields[3]),
+                    position(fields[4]), message(fields[5]));
+        } catch (IllegalArgumentException invalid) {
+            throw new IOException("invalid normalized static analysis finding", invalid);
+        }
+    }
+
     /** Immutable backing arrays; report row objects are created only on access. */
     private static final class Parsed {
         private String[] rules = new String[8];
@@ -238,18 +285,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             if (count == MAX_FINDINGS) {
                 throw new IOException("analysis finding budget exceeded");
             }
-            String[] fields = row.split("\t", -1);
-            if (fields.length != 6) {
-                throw new IOException("expected six static analysis fields");
-            }
-            final Finding fact;
-            try {
-                Severity severity = Severity.valueOf(fields[1]);
-                fact = new Finding(fields[0], severity, fields[2], position(fields[3]), position(fields[4]),
-                        message(fields[5]));
-            } catch (IllegalArgumentException invalid) {
-                throw new IOException("invalid normalized static analysis finding", invalid);
-            }
+            Finding fact = parseFinding(row);
             if (previous != null && FINDINGS.compare(previous, fact) >= 0) {
                 throw new IOException("unsorted or duplicate analysis findings");
             }
