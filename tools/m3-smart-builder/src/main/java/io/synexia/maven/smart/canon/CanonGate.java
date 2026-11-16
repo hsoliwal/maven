@@ -192,6 +192,17 @@ public final class CanonGate {
         Process process = builder.start();
         process.getOutputStream().close();
         int exit = process.waitFor();
+        if (exit == 0 && stage.equals("atom_pattern")) {
+            // Reject missing or malformed atom evidence before lint/compile/test.
+            // Seal validates it again after later stages to catch source drift.
+            List<String> evidenceFailures = new ArrayList<>();
+            AtomPattern.check(root, runDir, atomCoverage(state, git.delta(state.base)),
+                    packet.patterns, evidenceFailures);
+            if (!evidenceFailures.isEmpty()) {
+                exit = 1;
+                evidenceFailures.forEach(v -> log.println("canon-gate: " + v));
+            }
+        }
         String result = exit == 0 ? "PASS" : "FAIL";
         state.stages.add(new RunState.StageRun(stage, result, exit, logName));
         if (exit == 0) state.passed.add(stage);
@@ -213,7 +224,7 @@ public final class CanonGate {
         if (packet.dryRun) mutated.forEach(p -> violations.add("DRY_RUN_MUTATION " + p));
         Set<String> delta = git.delta(state.base);
         delta.forEach(p -> Scope.check(packet, p, violations));
-        state.atoms = AtomPattern.check(root, runDir, delta, packet.patterns, violations);
+        state.atoms = AtomPattern.check(root, runDir, atomCoverage(state, delta), packet.patterns, violations);
         Map<String, String> post = Ledger.hashes(root, state.shard);
         String postDigest = Ledger.digest(post);
         Ledger.write(runDir, "POST_HASH.tsv", Ledger.ledger(post));
@@ -230,6 +241,13 @@ public final class CanonGate {
         status(state, "SEAL", violations.isEmpty() ? "PASS" : "FAIL", violations.size(), "violations " + violations.size());
         violations.forEach(v -> log.println("canon-gate: " + v));
         return violations.isEmpty();
+    }
+
+    /** Changed files are always mandatory; selected mode adds all tracked files in this shard. */
+    private Set<String> atomCoverage(RunState state, Set<String> changed) {
+        Set<String> required = new TreeSet<>(changed);
+        if (packet.selectedAtomCoverage) required.addAll(state.shard);
+        return required;
     }
 
     private static String slashes(Path path) {

@@ -36,6 +36,7 @@ public final class CanonGateTest {
         diagnostics();
         atoms();
         nonRegularAtomChanges();
+        selectedCoverage();
         inventory();
         idempotence();
         System.out.println("CanonGateTest: " + checks + " checks passed");
@@ -96,6 +97,9 @@ public final class CanonGateTest {
         p = packet();
         p.put("run.profile", "full");
         expect(2, check(p), "full profile without tests");
+        p = packet();
+        p.put("atom.coverage", "omit");
+        expect(2, check(p), "atom coverage mode must be changed or selected");
     }
 
     private static void dryRun() throws Exception {
@@ -241,6 +245,34 @@ public final class CanonGateTest {
         restore();
         Files.delete(external.resolve("A.java"));
         Files.delete(external);
+    }
+
+    private static void selectedCoverage() throws Exception {
+        // The default remains changed-only; selected coverage is an explicit
+        // stronger packet contract for every tracked file in the chosen shard.
+        Map<String, String> p = packet();
+        p.put("atom.coverage", "selected");
+        p.put("verify.atom_pattern", atoms("VALUE_OBJECT",
+                "src/A.java", "src/Dup1.txt", "src/Dup2.txt", "src/Near.txt"));
+        expect(0, run(p, "selected-full"), "full selected-file atom coverage");
+        contains(base.resolve("runs/selected-full/PROVENANCE.tsv"),
+                "4 atom row(s) over 4 file(s)", "all selected rows counted");
+
+        p = packet();
+        p.put("atom.coverage", "selected");
+        p.put("verify.atom_pattern", atoms("VALUE_OBJECT", "src/A.java"));
+        p.put("verify.lint", "touch \"$CANON_RUN_DIR/lint-should-not-run\"");
+        expect(1, run(p, "selected-missing"), "missing selected-file atoms fail before lint");
+        Path runDir = base.resolve("runs/selected-missing");
+        contains(runDir.resolve("FINAL_REPORT.md"), "ATOM_UNCOVERED src/Dup1.txt",
+                "selected-file evidence incomplete");
+        contains(runDir.resolve("STATUS.tsv"), "\tatom_pattern\tFAIL\t",
+                "atom evidence marks stage as failed");
+        if (Files.exists(runDir.resolve("lint-should-not-run"))) {
+            throw new AssertionError("lint ran after source atom coverage was refused");
+        }
+        checks++;
+        restore();
     }
 
     private static void inventory() throws Exception {

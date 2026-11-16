@@ -28,6 +28,7 @@ comma-separated. Relative file paths resolve from the packet's directory; target
 | `run.mode` | `dry-run` (no file may change during the run) or `apply` |
 | `run.profile` | `fast`, `full` (must include `test`) or `custom` |
 | `run.kind` | `change` (default) or `inventory` (dry-run only; adds the inventory artifacts) |
+| `atom.coverage` | `changed` (default): cover every changed/untracked file; `selected`: additionally require atom rows for all tracked files in the selected shard |
 | `run.workers`, `run.shard_count`, `run.shard_index` | integers; more than one worker or shard requires `compute_resources` |
 | `targets.modules`, `targets.files` | at least one; `.` names the whole repository |
 | `invariant_locks` | must contain `PUBLIC_API:LOCKED,EXTERNAL_BEHAVIOR:LOCKED,DISABLED_PATHS:FORBIDDEN,EXCLUDED_PATHS:FORBIDDEN,BUILD_SCRIPTS:LOCKED` |
@@ -51,7 +52,14 @@ The `atom_pattern` stage must write `$CANON_RUN_DIR/ATOM_PATTERN.tsv`, tab-separ
 - Every row must hash-match the file as it is at the seal (`sha256`).
 - Every pattern must be admitted by `pattern_catalog` or be a typed residue written `RESIDUE:<reason>`; `UNKNOWN` is
   never admitted. A residue that keeps recurring is the candidate for a new catalog row.
-- Every file that differs from `base_ref` needs at least one row.
+- Every file that differs from `base_ref` needs at least one row. With `atom.coverage=selected`,
+  the gate additionally demands at least one row for **every tracked file in the packet's
+  selected shard**, even when that file has not changed. The global changed/untracked
+  set remains required as well. This opt-in enables full selected-source coverage without
+  silently changing the existing `changed` default for old task packets.
+- The gate validates atom rows **immediately after the `atom_pattern` stage**, before any
+  lint/compile/test/runtime command can run; it rechecks at the final seal to detect later
+  source drift. An invalid table marks the atom stage failed and stops downstream stages.
 - Only canonical repository-relative paths are accepted in rows (no absolute paths, `.`/`..` components,
   backslashes, empty components or control characters). A symbolic link does not qualify as a regular
   source even if its target's digest matches. **Every path component, including intermediate
