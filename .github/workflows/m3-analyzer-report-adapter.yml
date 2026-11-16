@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 jobs:
-  checkstyle-pmd-xml-converter:
+  original-analyzer-report-converter:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
@@ -25,11 +25,20 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
           cache-dependency-path: tools/m3-analyzer-report-adapter/pom.xml
-      - name: Compile and run hermetic original XML contract tests
+      - name: Compile and run hermetic XML/SARIF contract tests
         run: |
           mvn -B -ntp -f tools/m3-analyzer-report-adapter/pom.xml verify
-      - name: Verify the original adapter CLI was packaged
+      - name: Verify standalone shaded adapter and canonical SARIF report
         run: |
-          test -s tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar
-          jar tf tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar \
-            | grep -F 'io/synexia/maven/analysis/NormalizeCli.class'
+          jarfile=tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar
+          root="$PWD/tools/m3-analyzer-report-adapter"
+          test -s "$jarfile"
+          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/NormalizeCli.class'
+          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/internal/jackson/core/JsonFactory.class'
+          java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
+            SARIF PARTIAL "$root" "$root/src/test/resources/sarif/basic.sarif" \
+            "$root/target/standalone-sarif.tsv" "$root/target/standalone-sarif.sha256"
+          grep -F 'CodeQL.java/demo-rule' "$root/target/standalone-sarif.tsv"
+          recorded=$(cat "$root/target/standalone-sarif.sha256")
+          actual=$(sha256sum "$root/target/standalone-sarif.tsv" | cut -d ' ' -f 1)
+          test "$recorded" = "$actual"
