@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Standalone Java 17 adapter for ORIGINAL Checkstyle/PMD/SpotBugs XML bytes.
+ * Java 17 adapter for original XML and SARIF 2.1.0 analyzer reports.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD, SPOTBUGS, CPD
+        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF
     }
 
     public enum Status {
@@ -94,9 +94,9 @@ public final class AnalyzerXmlNormalizer {
     private AnalyzerXmlNormalizer() {}
 
     /**
-     * Normalize already produced XML without opening source files.
+     * Normalize already produced XML or SARIF without opening source files.
      * Input file paths must resolve within the caller-supplied original root.
-     * The XML is untrusted, so DTDs/entities, unsupported structure and
+     * The input is untrusted, so XML entities, unsupported structure and
      * oversized output fail closed instead of losing original findings.
      */
     public static Result normalize(Format format, Status status, Path projectRoot, byte[] xml)
@@ -106,7 +106,7 @@ public final class AnalyzerXmlNormalizer {
         Objects.requireNonNull(xml, "xml");
         Path root = Objects.requireNonNull(projectRoot, "projectRoot").toAbsolutePath().normalize();
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || xml.length > MAX_BYTES) {
-            throw new IOException("original source root or XML size is invalid");
+            throw new IOException("original source root or analyzer report size is invalid");
         }
         // Refuse malformed UTF-8 even if an XML provider might guess
         // another character set from an untrusted declaration.
@@ -116,9 +116,11 @@ public final class AnalyzerXmlNormalizer {
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(xml));
         } catch (CharacterCodingException malformed) {
-            throw new IOException("original analyzer XML must be strict UTF-8", malformed);
+            throw new IOException("original analyzer report must be strict UTF-8", malformed);
         }
-        List<Finding> facts = readXml(format, status, root, xml);
+        List<Finding> facts = format == Format.SARIF
+                ? SarifJsonReader.read(root, status, xml)
+                : readXml(format, status, root, xml);
         facts.sort(ORDER);
         StringBuilder result = new StringBuilder(HEADER);
         result.append("status\t").append(status).append('\n').append(COLUMNS);
