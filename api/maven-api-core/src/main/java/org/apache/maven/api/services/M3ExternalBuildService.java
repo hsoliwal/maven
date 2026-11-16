@@ -18,6 +18,7 @@
  */
 package org.apache.maven.api.services;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 
@@ -171,6 +172,21 @@ public interface M3ExternalBuildService extends Service {
     /** Additive convenience overload for an explicitly supplied host generation. */
     default Assessment assess(Generation previous, Generation current, List<Change> changes) {
         return assess(new Request(previous, current, changes));
+    }
+
+    /**
+     * Decodes a bounded source-owned IDE packet through the original service.
+     * The host generation and its fingerprints remain caller-supplied claims;
+     * a change notification is never evidence of a Maven cache hit or goal skip.
+     *
+     * @param packet source-owner M3-IDE-DELTA-V1 bytes
+     * @param previous last successful host generation, or null on first build
+     * @param current caller-supplied host build context, never null
+     * @return advisory assessment, never authorization to skip Maven goals
+     * @throws IOException if the packet violates the external exchange schema
+     */
+    default Assessment assess(byte[] packet, Generation previous, Generation current) throws IOException {
+        return assess(M3ExternalBuildWire.bind(M3ExternalBuildWire.decode(packet), previous, current));
     }
 
     private static String name(String value, String field, int limit) {
