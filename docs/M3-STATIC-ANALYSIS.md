@@ -185,3 +185,19 @@ scheduling, dependency resolution and build caches. Original analyzer
 plugins must still execute and remain the authority for their reported
 findings and suppression policies. Differences between Maven's receipt
 membership guarantees and Gradle's standalone digest check are explicit.
+
+## Constant-time native analyzer severity summaries
+
+The additive `Manifest.count(Severity)` default method preserves existing
+third-party and prior Maven implementations: its fallback delegates to the
+existing public `size()` and `entry()` methods without a new abstract
+contract. Native `DefaultM3StaticAnalysisService` overrides it with a
+precomputed three-counter array populated alongside its compact severity
+byte lane, making repeat summaries O(1), with no retained per-entry objects.
+Severity interpretation and source provenance remain the original analyzer's
+responsibility.
+
+The independently implemented Gradle `M3AnalysisV1` reader follows the
+same pattern, with a byte-array severity lane and parser-maintained error
+counter. This is an optimization of existing evidence indexing, **not**
+an automatic Maven/Gradle policy decision or a plugin-goal replacement.
