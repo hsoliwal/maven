@@ -22,15 +22,21 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/test/java/io/synexia/maven/smart/BuildHookTest.java \
   src/test/java/io/synexia/maven/smart/AtomPatternEvidenceTest.java \
   src/test/java/io/synexia/maven/smart/CanonicalPreparationEvidenceTestMain.java
+# Canon gate: the hard run contract, compiled and tested without any Maven API.
+mkdir -p target/canon-only
+javac -encoding UTF-8 -Xlint:all -Werror -d target/canon-only \
+  src/main/java/io/synexia/maven/smart/canon/*.java \
+  src/test/java/io/synexia/maven/smart/canon/CanonGateTest.java
 # Compile the Maven adapters against intentionally minimal API stubs.
 # This is NOT a real Maven descriptor or Maven runtime integration test.
 mkdir -p target/adapter-only
-javac -encoding UTF-8 -Xlint:all -Werror -cp target/jdk-only -d target/adapter-only \
+javac -encoding UTF-8 -Xlint:all -Werror -cp target/jdk-only:target/canon-only -d target/adapter-only \
   $(find scripts/adapter-stubs -name '*.java' -print | LC_ALL=C sort) \
   src/main/java/io/synexia/maven/smart/PlanMojo.java \
   src/main/java/io/synexia/maven/smart/ProvisionMojo.java \
   src/main/java/io/synexia/maven/smart/DiagnoseMojo.java \
   src/main/java/io/synexia/maven/smart/BuildHookMojo.java \
+  src/main/java/io/synexia/maven/smart/CanonMojo.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java
 mkdir -p target/mcp-fixture
 javac -encoding UTF-8 -Xlint:all -Werror -d target/mcp-fixture \
@@ -41,6 +47,7 @@ jar --create --file target/mcp-fixture.jar -C target/mcp-fixture .
 java -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
 java -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
+java -cp target/canon-only io.synexia.maven.smart.canon.CanonGateTest
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only:target/adapter-only io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
