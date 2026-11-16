@@ -18,6 +18,10 @@
  */
 package org.apache.maven.impl;
 
+// SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+// SPDX-License-Identifier: Apache-2.0
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
@@ -27,6 +31,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +40,7 @@ import java.util.function.Supplier;
 import org.apache.maven.api.Session;
 import org.apache.maven.api.SessionData;
 import org.apache.maven.api.services.M3PluginEvidenceService;
+import org.apache.maven.api.services.ResourceObservation;
 import org.apache.maven.di.Injector;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -349,6 +355,148 @@ final class DefaultM3PluginEvidenceServiceTest {
                 IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 0));
         assertThrows(
                 IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 128));
+    }
+
+    @Test
+    void discoveryIsImmutableSessionBoundAndFilteredWithoutReadingProviderFiles() throws Exception {
+        Path image = Files.write(temporary.resolve("discovery.receipt"), new byte[] {1, 2, 3});
+        String hash = sha(image);
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        var first = identity("maven-resources-plugin", "resources", 1);
+        var second = identity("maven-resources-plugin", "resources", 2);
+        var third = identity("maven-resources-plugin", "resources", 3);
+        int resources = M3PluginEvidenceService.RESOURCES;
+        int inputs = M3PluginEvidenceService.INPUTS;
+        String schema = ResourceObservation.SCHEMA;
+        assertTrue(service.identities(session, schema, resources).isEmpty());
+        service.publish(session, new M3PluginEvidenceService.Receipt(second, image, schema, hash, resources | inputs));
+        service.publish(session, new M3PluginEvidenceService.Receipt(third, image, "other.schema", hash, resources));
+        service.publish(session, new M3PluginEvidenceService.Receipt(first, image, schema, hash, resources));
+
+        List<M3PluginEvidenceService.Identity> snapshot = service.identities(session, schema, resources);
+        assertEquals(List.of(first, second), snapshot);
+        assertEquals(List.of(second), service.identities(session, schema, resources | inputs));
+        assertEquals(List.of(third), service.identities(session, "other.schema", resources));
+        assertTrue(service.identities(session, schema, M3PluginEvidenceService.ARCHIVE)
+                .isEmpty());
+        assertTrue(service.identities(session(), schema, resources).isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.add(third));
+
+        Files.delete(image);
+        assertEquals(snapshot, service.identities(session, schema, resources));
+        assertThrows(IOException.class, () -> service.findResourceObservation(session, first));
+        service.revoke(session, first);
+        assertEquals(List.of(second), service.identities(session, schema, resources));
+        assertEquals(List.of(first, second), snapshot);
+    }
+
+    @Test
+    void olderProvidersRetainOptionalDiscoveryAndInvalidQueriesRefuse() {
+        M3PluginEvidenceService older = mock(M3PluginEvidenceService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        M3PluginEvidenceService nativeService = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        for (M3PluginEvidenceService provider : List.of(older, nativeService)) {
+            var empty = provider.identities(session, ResourceObservation.SCHEMA, M3PluginEvidenceService.RESOURCES);
+            assertTrue(empty.isEmpty());
+            assertThrows(
+                    UnsupportedOperationException.class,
+                    () -> empty.add(identity("maven-resources-plugin", "resources", 1)));
+            assertThrows(
+                    NullPointerException.class,
+                    () -> provider.identities(null, ResourceObservation.SCHEMA, M3PluginEvidenceService.RESOURCES));
+            assertThrows(
+                    NullPointerException.class,
+                    () -> provider.identities(session, null, M3PluginEvidenceService.RESOURCES));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> provider.identities(session, " ", M3PluginEvidenceService.RESOURCES));
+            assertThrows(
+                    IllegalArgumentException.class, () -> provider.identities(session, ResourceObservation.SCHEMA, 0));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> provider.identities(session, ResourceObservation.SCHEMA, 128));
+        }
+    }
+
+    @Test
+    void typedResourceReadChecksSchemaContextAndExactDecodedBytes() throws Exception {
+        var service = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        var id = identity("maven-resources-plugin", "resources", 1);
+        var observation = new ResourceObservation(
+                id.contextSha256(),
+                false,
+                List.of(),
+                temporary.toUri().toString(),
+                List.of(),
+                List.of(),
+                List.of("OUTPUT_OWNERSHIP_UNPROVEN"));
+        ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+        observation.writeTo(encoded);
+        Path file = temporary.resolve("resources.bin");
+        Files.write(file, encoded.toByteArray());
+        var receipt = new M3PluginEvidenceService.Receipt(
+                id, file, ResourceObservation.SCHEMA, sha(file), M3PluginEvidenceService.RESOURCES);
+        assertTrue(service.findResourceObservation(session, id).isEmpty());
+        service.publish(session, receipt);
+        var discovered = service.identities(session, ResourceObservation.SCHEMA, M3PluginEvidenceService.RESOURCES);
+        assertEquals(List.of(id), discovered);
+        assertEquals(
+                observation,
+                service.findResourceObservation(session, discovered.get(0)).orElseThrow());
+        assertEquals(
+                "PARTIAL",
+                service.findResourceObservation(session, id).orElseThrow().completeness());
+        assertTrue(service.findResourceObservation(session(), id).isEmpty());
+        Files.write(file, new byte[] {1});
+        assertThrows(IOException.class, () -> service.findResourceObservation(session, id));
+        service.revoke(session, id);
+        Files.write(file, encoded.toByteArray());
+        var otherContext = new M3PluginEvidenceService.Identity(
+                id.project(), id.pluginGa(), id.version(), id.goal(), id.execution(), "b".repeat(64), 2);
+        service.publish(
+                session,
+                new M3PluginEvidenceService.Receipt(
+                        otherContext, file, ResourceObservation.SCHEMA, sha(file), M3PluginEvidenceService.RESOURCES));
+        assertThrows(IOException.class, () -> service.findResourceObservation(session, otherContext));
+    }
+
+    @Test
+    void typedReadDetectsReplacementAfterReceiptLookup() throws Exception {
+        Session session = session();
+        var id = identity("maven-resources-plugin", "resources", 1);
+        ResourceObservation original = new ResourceObservation(
+                id.contextSha256(),
+                false,
+                List.of(),
+                temporary.toUri().toString(),
+                List.of(),
+                List.of(),
+                List.of("ORIGINAL"));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        original.writeTo(bytes);
+        Path file = temporary.resolve("swapped.bin");
+        Files.write(file, bytes.toByteArray());
+        var receipt = new M3PluginEvidenceService.Receipt(
+                id, file, ResourceObservation.SCHEMA, sha(file), M3PluginEvidenceService.RESOURCES);
+        var service = mock(M3PluginEvidenceService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        when(service.find(session, id, ResourceObservation.SCHEMA, M3PluginEvidenceService.RESOURCES))
+                .thenAnswer(invocation -> {
+                    ResourceObservation changed = new ResourceObservation(
+                            id.contextSha256(),
+                            false,
+                            List.of(),
+                            temporary.toUri().toString(),
+                            List.of(),
+                            List.of(),
+                            List.of("REPLACED"));
+                    try (var output = Files.newOutputStream(file)) {
+                        changed.writeTo(output);
+                    }
+                    return java.util.Optional.of(receipt);
+                });
+        assertThrows(IOException.class, () -> service.findResourceObservation(session, id));
     }
 
     private static M3PluginEvidenceService.Receipt receipt(Path image) throws Exception {

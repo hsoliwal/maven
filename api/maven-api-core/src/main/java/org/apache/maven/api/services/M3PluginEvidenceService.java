@@ -18,6 +18,10 @@
  */
 package org.apache.maven.api.services;
 
+// SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+// SPDX-License-Identifier: Apache-2.0
+
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.Channels;
@@ -29,6 +33,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -159,6 +164,26 @@ public interface M3PluginEvidenceService extends Service {
     /** Binds one immutable provider receipt to this session after byte verification. */
     void publish(Session session, Receipt receipt) throws IOException;
 
+    /**
+     * Discovers registered invocation identities for an exact schema and capability mask.
+     * This immutable session snapshot performs no file reads and may become stale after
+     * return. Consumers must use {@link #find} or a typed reader to verify the evidence.
+     * Providers which do not expose discovery retain the default empty result.
+     *
+     * @param session session that owns the registrations
+     * @param schema exact evidence schema
+     * @param requiredCapabilities nonempty mask which each matching receipt must contain
+     * @return immutable registered identities, or empty when none are exposed
+     */
+    default List<Identity> identities(Session session, String schema, int requiredCapabilities) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(schema, "schema");
+        if (schema.isBlank() || requiredCapabilities <= 0 || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
+            throw new IllegalArgumentException("requiredCapabilities/schema");
+        }
+        return List.of();
+    }
+
     /** Exact schema/mask/identity match, verified against original file bytes again. */
     Optional<Receipt> find(Session session, Identity identity, String schema, int requiredCapabilities)
             throws IOException;
@@ -179,6 +204,34 @@ public interface M3PluginEvidenceService extends Service {
             throws IOException {
         Optional<Receipt> receipt = find(session, identity, schema, requiredCapabilities);
         return receipt.isPresent() ? Optional.of(receipt.get().snapshot()) : Optional.empty();
+    }
+
+    /**
+     * Reads a typed, partial Resources observation from an exactly matched receipt.
+     * The existing authenticated snapshot reader owns byte custody; the decoder checks
+     * the bounded schema and the embedded context against the invocation identity.
+     * This method grants no reuse or output ownership.
+     *
+     * @param session session that owns the receipt
+     * @param identity exact original goal invocation identity
+     * @return the immutable observation, or empty when no matching receipt exists
+     * @throws IOException if the observation, digest or context does not match
+     */
+    default Optional<ResourceObservation> findResourceObservation(Session session, Identity identity)
+            throws IOException {
+        Optional<Snapshot> candidate = read(session, identity, ResourceObservation.SCHEMA, RESOURCES);
+        if (candidate.isEmpty()) {
+            return Optional.empty();
+        }
+        byte[] bytes = candidate.orElseThrow().bytes();
+        if (bytes.length > ResourceObservation.MAX_BYTES) {
+            throw new IOException("resource observation exceeds byte budget");
+        }
+        ResourceObservation observation = ResourceObservation.readFrom(new ByteArrayInputStream(bytes));
+        if (!identity.contextSha256().equals(observation.configurationSha256())) {
+            throw new IOException("resource observation context mismatch");
+        }
+        return Optional.of(observation);
     }
 
     /** Revokes a reference without modifying the provider-owned file. */

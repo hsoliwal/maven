@@ -1,0 +1,353 @@
+{
+  "license_notice": [
+    "SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project",
+    "SPDX-License-Identifier: Apache-2.0"
+  ],
+  "schema": "synexia.maven.resources.result-only-receipt.v1",
+  "scope": "Exact sixteen current product/test/documentation outputs, their completed named-recipe and current-source qualification, and separately pinned earlier native execution. This passive receipt has separate subsequent canonical handoff evidence.",
+  "canonical_execution": {
+    "repository": "hsoliwal/com.synexia",
+    "revision": "f6509147f00337ae6f1753193c9f5ff86b3ed26d",
+    "recipe": "com.synexia.m3.ProjectDelta20261021",
+    "crate": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021",
+    "product_datasets": [
+      "resources-release-20261116",
+      "resources-api-style-20261116"
+    ],
+    "receipts": [
+      {
+        "dataset": "resources-release-20261116",
+        "targets": 15,
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "inputs": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/release-sdk/SDK_INPUTS.tsv",
+          "sha256": "6d002c75000cbba28712bcdbbbec1384f0a5bb82b5e6e3dbd3add370c23f9da4"
+        },
+        "outputs": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/release-sdk/SDK_RESULTS.tsv",
+          "sha256": "711cc35855baa4035ccd44d6ed2475db1983001ecf848719c979cf5421e424ea"
+        },
+        "junit": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/release-sdk/TEST-com.synexia.rewrite.M3TaskRecipeTest.xml",
+          "sha256": "1fd0cbfc0cb0587310eac2d07af35b65886c8e6bdce7567ef2791b9f0d97452c"
+        },
+        "receiver_apply": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/release-sdk/receive-apply.log",
+          "sha256": "10b664bd371ffc50fee6e4300f67809939e7892a2c46bb95fd3efbdb1b63124a"
+        },
+        "receiver_fixed_point": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/release-sdk/receive-check.log",
+          "sha256": "3ac075c17c659c5047b73a57553e2eaf4c27c74fcdb5d3797936e8abcea01677"
+        }
+      },
+      {
+        "dataset": "resources-api-style-20261116",
+        "targets": 1,
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "inputs": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/api-style-sdk/SDK_INPUTS.tsv",
+          "sha256": "2759c0a9778eefbd1483dc281977b38a44e4463c3a1713529f55be0c96486d6c"
+        },
+        "outputs": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/api-style-sdk/SDK_RESULTS.tsv",
+          "sha256": "1423e4da9f8bed46ffc2a8c2cb158c1034d12e9f67665e3c3303dfbf887ccd6e"
+        },
+        "junit": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/api-style-sdk/TEST-com.synexia.rewrite.M3TaskRecipeTest.xml",
+          "sha256": "0795cc89d8cc1011bac1f0102c3730aee87f1fb9e11ff66df199ce28f2eb12b5"
+        },
+        "receiver_apply": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/api-style-sdk/receive-apply.log",
+          "sha256": "0af0c8fe497e34465ec047b79c7ed9d6f4c4b8b6751b030e62e4db6acb8b530f"
+        },
+        "receiver_fixed_point": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/api-style-sdk/receive-check.log",
+          "sha256": "9fffacadcc0c2c6806b09c709aee7ba1abf0b25199f1a17c06a40c84fce9e965"
+        }
+      }
+    ],
+    "execution_description": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/RELEASE_EXECUTION.md",
+      "sha256": "d393a0536fd664b5dbec8e9a53929577ebe6356328e73d649ad6170237a65b1d"
+    }
+  },
+  "receiving": {
+    "repository": "hsoliwal/maven",
+    "base": "780857f6c838879e34ee6332438f4cbb4453f3f8",
+    "qualified_output_count": 16,
+    "receipt_additional_to_qualified_outputs": true
+  },
+  "outputs": [
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/DependencyInsightsService.java",
+      "dataset": "resources-api-style-20261116",
+      "mode": "100644",
+      "before_sha256": "2108b187eaa549ef7c7f932379c157e411faaf6c1101371a123cf1604dcc3738",
+      "sha256": "76e384266fd6b2f9ed299e23578a74ad21aaf9887610e9e9c5bc315317c5672f",
+      "git_blob_sha": "48e613683b29abb9a61d3c93fabbab7032a1ee9e",
+      "bytes": 6521
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/M3PluginEvidenceService.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "b03e62d3689172b5ea93c88194076e11bc9c32c4d3ff0fdc0881ec29f4a4cacf",
+      "sha256": "0288c68ce4ba4d7de642ba895dcb01d312954d1d9978bc641002503cf5caf1cf",
+      "git_blob_sha": "1b2378f4d35c0d542bfcd6070edfefe7c131d03a",
+      "bytes": 13217
+    },
+    {
+      "path": "api/maven-api-core/src/main/java/org/apache/maven/api/services/ResourceObservation.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "ABSENT",
+      "sha256": "d6fd03c2886dbdc508f8f4ad98b76ab02959158a0b8f0d378c741fd3c8132bc4",
+      "git_blob_sha": "35c27fd70b3802498101d2ba545b475b3625597a",
+      "bytes": 15890
+    },
+    {
+      "path": "docs/M3-RESOURCES-EVIDENCE.md",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "ABSENT",
+      "sha256": "f448aae5b6542d893c0a9799c877c4dc5e15d0f5e02da2b754e9b226f6ba34ce",
+      "git_blob_sha": "563c8a72a55a8fb6ae5725cce6714f14b9905304",
+      "bytes": 7963
+    },
+    {
+      "path": "impl/maven-core/src/main/java/org/apache/maven/plugin/internal/M3ResourcesExecutionListener.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "ABSENT",
+      "sha256": "7dabdf7239c2f5ea966c731969112f69d58f88ac5986f1b0a06be61251bba471",
+      "git_blob_sha": "450558d04007cb3370dc9be74ff57917a412e91e",
+      "bytes": 30953
+    },
+    {
+      "path": "impl/maven-core/src/test/java/org/apache/maven/plugin/internal/M3ResourcesExecutionListenerTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "ABSENT",
+      "sha256": "eac01303d7030efa7d378a9f3317641b0aa1676a028eba460141cfc4ab37d4d0",
+      "git_blob_sha": "5efb6af1bad96a19ed0692eb6480e0986c0596b0",
+      "bytes": 37233
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultBuildPolicyService.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "b7cb22b24f7ce84fc96f2cc9d77824fa4a5c9c73c6c75b2db2cee4eded22b474",
+      "sha256": "8b767b983774e9fbb9ad1cc56757844b6142f1ffc58fed17061b093a8aee3adc",
+      "git_blob_sha": "f556dc33600e7f4c369626df3e6a87c820b56a31",
+      "bytes": 5111
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultDependencyInsightService.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "2765556eba58897002ab40eb3fc6d8013df56f52fd2bdbfbcd5d9013a12e39ce",
+      "sha256": "89b9a5b97a7ef52bcdae87371cf2c69fcc652207b3c0a782c55125fd3ca95ff9",
+      "git_blob_sha": "3a60c3c013072759e147503b8c2abc44fdb5c0ef",
+      "bytes": 8832
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultDependencyInsightsService.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "8cf8c6449df8b3c3772839752c9438ccbbfbe30f84f6ec8b2b69af2fb22b6e8a",
+      "sha256": "15dc8c2f839ff84c38e1cf74b2e359034fd579c36698a5921dc3068b55f83f9f",
+      "git_blob_sha": "b0222aa97ec14e2dff61b0f8faf2a33e44993950",
+      "bytes": 8167
+    },
+    {
+      "path": "impl/maven-impl/src/main/java/org/apache/maven/impl/DefaultM3PluginEvidenceService.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "e3de0c81d0ad633077cd0603549a20dee633bcf862e3aa5b6006434eef970228",
+      "sha256": "02ee088dc86fa3aa9cea403fd1d5251de3c43404bb16aef5e40d042c77be17af",
+      "git_blob_sha": "8955b2ef696c97d33686528714e83b7cbb4c676e",
+      "bytes": 8957
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultBuildPolicyServiceTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "d77d2cee8383e864572ed532e01ccc0dd4c32f9bd6b786e25523efad1623a448",
+      "sha256": "d60b5253093c67067cc587d8a8b8a0981f5d869628f8ecc21b72cff065035292",
+      "git_blob_sha": "f66eae0307000296280289f34fae7124a28de648",
+      "bytes": 8851
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultDependencyInsightServiceTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "5243224e2d5ecaa159ba5b4b8fc7c4fe43c175eccad43b24001fe92cfc36bf47",
+      "sha256": "d0f1f755ef31967887faf6457b7184181c3579c5cc698c1e0ebe1ac00d7f27b0",
+      "git_blob_sha": "1029773c77066ecf3f83aee776ce3262f38d1239",
+      "bytes": 7604
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultDependencyInsightsServiceTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "a5cea2426ec11923e6e3b0ae07998b43f418ff0e60c1fef55858b0313d048be5",
+      "sha256": "492f70b23e950db008007e3678120bffc624df3c3011875917fe010b777fbaa2",
+      "git_blob_sha": "155e308d414e00e82a6a35bbed7a165349ee70f7",
+      "bytes": 8983
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/DefaultM3PluginEvidenceServiceTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "3d0c0451de476ae1bd3a2ed163b60c86580e027aee9b3584b4eed82dba3f2165",
+      "sha256": "58f86b2b783afab1bf877ead7b850a8adf47b1e3dcad499b240074fcae710c6e",
+      "git_blob_sha": "a329d951cc7949de86989c8f49bf66894ef782ce",
+      "bytes": 27345
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/ResourceObservationTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "ABSENT",
+      "sha256": "c4c6cbc71ab9d6bc06ecd8ac7b10e1c1e9207f2d032bd5253edd43590c6b6d64",
+      "git_blob_sha": "60c9dd7f22e5b90d4ded13d21eb75ca7646ce56a",
+      "bytes": 13642
+    },
+    {
+      "path": "impl/maven-impl/src/test/java/org/apache/maven/impl/ToolchainSelectionApiTest.java",
+      "dataset": "resources-release-20261116",
+      "mode": "100644",
+      "before_sha256": "86a39ff03f8acedc83401e079198d174a7375ffb0c3658d8af3860f2036eb71e",
+      "sha256": "3a0ff861ca2ccc68b20275f844446a21860306d14ac397da08661d7996a131b3",
+      "git_blob_sha": "eb1d6d1e060d45ba64108c13d2cbf50de238eac0",
+      "bytes": 4618
+    }
+  ],
+  "native_qualification": {
+    "status": "PASS",
+    "receipt": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/native/status.json",
+      "sha256": "c4c015ae9db57a772971e9f324cfcecb55ce7f8cc5adef1be3b7e05493621c36"
+    },
+    "inventory": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/native/inventory.json",
+      "sha256": "a5dc02e9835f5bad9d09b7212bbd2165a408ee92b6af000b8abe729860c5aeb9"
+    },
+    "source_built_maven": "4.2.0-SNAPSHOT",
+    "runtime": "Stock Temurin 21.0.9+10 on Linux",
+    "original_reactor_modules": 39,
+    "selected_test_suites": 9,
+    "selected_tests": 80,
+    "test_failures": 0,
+    "test_errors": 0,
+    "tests_skipped": 0,
+    "resources_versions": [
+      "3.3.1",
+      "3.5.0"
+    ],
+    "stages_per_version_per_lane": 19,
+    "observation_lanes": [
+      "disabled",
+      "enabled"
+    ],
+    "original_goal_invocations": 76,
+    "successful_invocations": 68,
+    "expected_failure_invocations": 8,
+    "unexpected_failure_invocations": 0,
+    "decoded_observations": 32,
+    "comparison": "Original exit statuses, output paths, bytes/link targets, modes and controlled timestamp effects on existing files. Fresh-copy absolute timestamps were measured only.",
+    "api_comparison": {
+      "types": [
+        "org.apache.maven.api.services.M3PluginEvidenceService",
+        "org.apache.maven.api.services.M3PluginEvidenceService.Identity",
+        "org.apache.maven.api.services.M3PluginEvidenceService.Receipt",
+        "org.apache.maven.api.services.M3PluginEvidenceService.Snapshot"
+      ],
+      "existing_public_members_descriptors_constants_removed": 0,
+      "additive_default_methods": 2
+    },
+    "canonical_repository": "hsoliwal/com.synexia",
+    "canonical_revision": "91714260c6c9218bd9cda456563cb566ce5db7cb",
+    "actual_execution_base": "7763e68f958cdb45bab8445371b1572a2b158de3",
+    "actual_execution_output_count": 18,
+    "rerun_on_current_receiving_base": false
+  },
+  "observation_contract": {
+    "schema": "maven.resources.observation.v1",
+    "default_enabled": false,
+    "opt_in": "-Dm3.resources.evidence=true",
+    "completeness": "PARTIAL",
+    "original_goals_execute": true,
+    "cache_or_replay_authority": false,
+    "limitations": [
+      "SOURCE_SELECTION_UNPROVEN",
+      "INPUT_CLOSURE_UNPROVEN",
+      "OUTPUT_OWNERSHIP_UNPROVEN",
+      "FILESYSTEM_NOT_TRANSACTIONAL"
+    ],
+    "test_resources_additional_limitation": "TEST_SKIP_UNOBSERVED",
+    "privacy": "Property maps and source contents are omitted. Configured paths and patterns can contain interpolated values."
+  },
+  "additional_gates": {
+    "full_maven_test_suite": "NOT_RUN",
+    "other_platforms_and_runtimes": "NOT_RUN",
+    "performance_qualification": "NOT_RUN",
+    "complete_canonical_repository_provenance": "NOT_RUN",
+    "hosted_ci": "Reported separately by the linked pull requests.",
+    "full_native_runtime_rerun_on_current_receiving_base": "NOT_RUN; earlier execution and current conservation are separately identified above.",
+    "inherited_chrome_action_workflow_and_shell_test": "NOT_RUN"
+  },
+  "handoff": {
+    "recipe": "com.synexia.m3.ProjectDelta20261021",
+    "dataset": "resources-handoff-20261116",
+    "canonical_followup_branch": "m3/resources-evidence-20261116",
+    "qualification_directory": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff",
+    "qualification_scope": "The pinned current-release revision contains the sixteen current output recipes and their SDK/receiver/source-conservation evidence. The separately pinned original revision contains the earlier native execution. This JSON is emitted and qualified in a subsequent canonical commit, including its original receiver result and final root RAT check; its own hash is not embedded recursively.",
+    "rat_interpretation": "Final root RAT results are recorded separately. A passing configured gate does not imply affirmative license-notice recognition when RAT classifies this JSON as binary."
+  },
+  "current_base_qualification": {
+    "canonical_repository": "hsoliwal/com.synexia",
+    "canonical_revision": "f6509147f00337ae6f1753193c9f5ff86b3ed26d",
+    "source_base": "780857f6c838879e34ee6332438f4cbb4453f3f8",
+    "qualified_output_count": 16,
+    "status": "PASS_CURRENT_DELTA_QUALIFICATION",
+    "receipt": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/current-780/status.json",
+      "sha256": "4a40f575b1f6f2210f8daf63b3f27d3bdb3a45c38d1a5ca818c690e0b5c2c0e1"
+    },
+    "inventory": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/current-780/inventory.json",
+      "sha256": "277d24380f2c5a081b8dc9d110e0997140061e91323e1cf6d6a1fb4619e9c18c"
+    },
+    "source_conservation": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/current-780/source-conservation.json",
+      "sha256": "ff298088550d34e684b1e58e5a968184a6d2b1cbd11c9780ca9879c8b0599ab2"
+    },
+    "compiled_api_comparison": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/current-780/api-code-comparison.json",
+      "sha256": "241af9f120b33343dcd7eef132ffcdc54a83bdf3534bf138b58e0e0f0eb1f4a9"
+    },
+    "api_compile_reactor_modules": 10,
+    "compiled_classes_byte_identical_to_earlier_native_jar": 19,
+    "changed_api_families": 3,
+    "task_postimages_byte_identical_to_earlier_native_source": 15,
+    "additional_source_change": "One original-formatter-only correction preserving current upstream API Javadocs.",
+    "selected_test_source_inputs_byte_identical": 9,
+    "tracked_pom_descriptors_unchanged": 2115,
+    "complete_upstream_delta_entries": 8,
+    "root_rat_before_passive_receipt": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-project-delta-20261021/qualification/resources-evidence-20261116/public-handoff/current-780/root-rat-status.json",
+      "sha256": "f0b23e5b80f659cba7881e9ef51d1652d775463c3a7d46ef8244e4762ce4fe77"
+    },
+    "original_native_tests_and_plugin_invocations_rerun": false,
+    "current_full_runtime_distribution_built": false,
+    "reuse_basis": "Complete upstream source delta accounting, identical task postimages and selected tests/integration fixtures, unchanged POM descriptors and recorded toolchain files, and exact binary/code equality of all nineteen classes in the three upstream-modified API families.",
+    "inherited_unexecuted_scope": "Chrome Action/workflow option-forwarding and executable-mode changes, related documentation, and a new mocked shell test are inherited from the receiving base and were not executed by this qualification."
+  }
+}
