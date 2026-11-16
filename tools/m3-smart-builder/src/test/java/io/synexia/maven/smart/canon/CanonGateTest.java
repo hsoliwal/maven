@@ -39,6 +39,7 @@ public final class CanonGateTest {
         selectedCoverage();
         streamingAtomTable();
         inventory();
+        inventoryDispositions();
         idempotence();
         System.out.println("CanonGateTest: " + checks + " checks passed");
     }
@@ -303,6 +304,37 @@ public final class CanonGateTest {
         contains(dir.resolve("ACTION_QUEUE.tsv"), "P1\tEXACT", "exact action first");
         contains(dir.resolve("ACTION_QUEUE.tsv"), Inventory.SIMILAR, "similarity note");
         contains(dir.resolve("INVENTORY.tsv"), "src/A.java\tsrc\tA\t", "symbol summary");
+    }
+
+    private static void inventoryDispositions() throws Exception {
+        Path out = Files.createDirectories(base.resolve("runs/inventory-dispositions"));
+        Path external = Files.createTempDirectory("canon-inventory-external");
+        Files.writeString(external.resolve("Escaped.java"), "class Escaped {}\n");
+        try {
+            Files.createSymbolicLink(repo.resolve("src/Linked.java"), external.resolve("Escaped.java"));
+            Files.createSymbolicLink(repo.resolve("src/DirLink"), external);
+            Inventory.write(repo, out, List.of("src/A.java", "src/Linked.java",
+                    "src/DirLink/Escaped.java", "src/Missing.java", "src",
+                    "src/../src/A.java"));
+            Path disposition = out.resolve("INVENTORY_DISPOSITIONS.tsv");
+            contains(disposition, "src/A.java\tINVENTORIED\t", "regular file recorded");
+            contains(disposition, "src/Linked.java\tUNSUPPORTED_SYMLINK\t-", "source symlink recorded");
+            contains(disposition, "src/DirLink/Escaped.java\tUNSUPPORTED_SYMLINK\t-",
+                    "parent directory symlink recorded");
+            contains(disposition, "src/Missing.java\tMISSING\t-", "missing file recorded");
+            contains(disposition, "src\tUNSUPPORTED_DIRECTORY\t-", "directory recorded");
+            contains(disposition, "src/../src/A.java\tUNSAFE_PATH\t-", "aliased path rejected");
+            String accepted = Files.readString(out.resolve("INVENTORY.tsv"));
+            if (accepted.contains("Linked.java") || accepted.contains("Escaped.java")
+                    || accepted.contains("Missing.java") || accepted.contains("../")) {
+                throw new AssertionError("nonregular or aliased file appeared as inventoried source");
+            }
+            checks++;
+        } finally {
+            restore();
+            Files.deleteIfExists(external.resolve("Escaped.java"));
+            Files.deleteIfExists(external);
+        }
     }
 
     private static void idempotence() throws Exception {
