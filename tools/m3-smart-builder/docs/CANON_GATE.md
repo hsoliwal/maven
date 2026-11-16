@@ -43,7 +43,7 @@ comma-separated. Relative file paths resolve from the packet's directory; target
 | `base_ref` | optional, default `HEAD`; scope and atom checks apply to every path that differs from it |
 | `baseline_run` | optional earlier run directory; a repeat with a different post-hash digest fails |
 
-Stage commands see `CANON_RUN_DIR`, `CANON_ROOT`, `CANON_STAGE`, `CANON_MODE`, `CANON_WORKERS`, `CANON_SHARD_INDEX`,
+Stage commands see `CANON_RUN_DIR`, `CANON_ROOT`, `CANON_BASE` (the commit `base_ref` resolved to), `CANON_STAGE`, `CANON_MODE`, `CANON_WORKERS`, `CANON_SHARD_INDEX`,
 `CANON_SHARD_COUNT` and `CANON_SHARD_MANIFEST`; `CANON_SHELL` replaces `sh`.
 
 ## Atomization and patternization
@@ -92,6 +92,8 @@ a later stage cannot introduce what `lint` refused and every finding is in `FINA
 | `text_refs` | a workflow, make file, build descriptor, script or test list (tracked or untracked, at most 2 MiB) that still contains a name of `checks.renamed` as a whole word; the first such line of each file is reported. Java sources are left to the compiler | `TEXT_REF_STALE <path>:<line> <name>` | `TEXT_REFS.tsv` |
 
 `VERIFY_CONTRACT.tsv` has one `check` row per listed check and `PROVENANCE.tsv` a `checks` row with their summaries.
+A finding at the lint stage is also appended to the lint log as `path:line: error: CODE detail`, so it is a row of
+`BUILD_LOG.tsv` and counts as a lint error.
 Each check also runs on its own, outside a run:
 
 ```sh

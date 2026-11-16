@@ -27,6 +27,7 @@ final class ChecksTest {
         stampPaths();
         stampNames();
         stampAtSeal();
+        baseForStages();
         extensionPoints();
         textRefs();
         standAlone();
@@ -79,12 +80,22 @@ final class ChecksTest {
         CanonGateTest.expect(1, CanonGateTest.run(packet("stamp", PLAIN), "stamp-name"), "new stamped name refused");
         CanonGateTest.contains(dir("stamp-name").resolve("FINAL_REPORT.md"), "STAMP_NEW_NAME " + PLAIN + ":2 " + UPPER + "Widget",
                 "new stamped name reported with its line");
+        CanonGateTest.contains(dir("stamp-name").resolve("BUILD_LOG.tsv"),
+                "lint\t" + PLAIN + "\t2\t-\terror\tSTAMP_NEW_NAME " + UPPER + "Widget", "finding is a build log row");
+        CanonGateTest.contains(dir("stamp-name").resolve("FINAL_REPORT.md"), "`lint` FAIL, exit 1, 1 error(s)",
+                "finding counts as a lint error");
         CanonGateTest.restore();
         CanonGateTest.append(PLAIN, "// " + UPPER + "Legacy and " + UPPER + "Legacy again\n");
         CanonGateTest.expect(0, CanonGateTest.run(packet("stamp", PLAIN), "stamp-carried"), "a name the tree already has passes");
         CanonGateTest.contains(dir("stamp-carried").resolve(StampCheck.TABLE), "CARRIED\t" + PLAIN + "\t2\t" + UPPER + "Legacy",
                 "carried name listed");
         CanonGateTest.restore();
+    }
+
+    private static void baseForStages() throws Exception {
+        Map<String, String> p = packet("");
+        p.put("verify.lint", "test \"$CANON_BASE\" = \"$(git rev-parse HEAD)\"");
+        CanonGateTest.expect(0, CanonGateTest.run(p, "base-env"), "stages see the base commit");
     }
 
     private static void stampAtSeal() throws Exception {
@@ -104,6 +115,8 @@ final class ChecksTest {
                 "abstract method on an existing interface refused");
         CanonGateTest.contains(dir("ext-abstract").resolve("FINAL_REPORT.md"),
                 "EXTENSION_ABSTRACT_ADDED " + SHAPE + " Shape perimeter(int)", "abstract addition reported");
+        CanonGateTest.contains(dir("ext-abstract").resolve("BUILD_LOG.tsv"),
+                "lint\t" + SHAPE + "\t1\t-\terror\tEXTENSION_ABSTRACT_ADDED Shape perimeter(int)", "abstract addition is a build log row");
         edit(shape, "int area();", "int area();\n    default int perimeter(@Deprecated final int scale) { return scale; }\n"
                 + "    // int ghost();\n    String TEXT = \"int fake();\";\n    static int helper() { return 0; }");
         CanonGateTest.expect(0, CanonGateTest.run(packet("extension_points", SHAPE), "ext-default"), "default method allowed");
@@ -131,6 +144,8 @@ final class ChecksTest {
         CanonGateTest.expect(1, CanonGateTest.run(p, "refs-stale"), "workflow still names the retired class");
         CanonGateTest.contains(dir("refs-stale").resolve("FINAL_REPORT.md"), "TEXT_REF_STALE " + WORKFLOW + ":1 OldThing",
                 "stale reference reported with its line");
+        CanonGateTest.contains(dir("refs-stale").resolve("BUILD_LOG.tsv"),
+                "lint\t" + WORKFLOW + "\t1\t-\terror\tTEXT_REF_STALE OldThing", "stale reference is a build log row");
         CanonGateTest.write(WORKFLOW, "run: javac checks/NewThing.java # OldThingy and anOldThing are other words\n");
         p = packet("text_refs", PLAIN, WORKFLOW);
         p.put("checks.renamed", "OldThing,Gone");

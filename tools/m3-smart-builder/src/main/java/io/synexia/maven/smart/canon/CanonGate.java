@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * ({@link Checks}). Exit status 0 is a pass, 1 a
  * stage, scope or contract failure, 2 an invalid packet or invocation. Each stage command is written to
  * {@code logs/<n>-<stage>.sh} and run by {@code sh} (or the shell named by {@code CANON_SHELL}) in the repository
- * root, so quoting survives on every platform, with {@code CANON_RUN_DIR}, {@code CANON_ROOT},
+ * root, so quoting survives on every platform, with {@code CANON_RUN_DIR}, {@code CANON_ROOT}, {@code CANON_BASE},
  * {@code CANON_STAGE}, {@code CANON_MODE}, {@code CANON_WORKERS}, {@code CANON_SHARD_INDEX},
  * {@code CANON_SHARD_COUNT} and {@code CANON_SHARD_MANIFEST} set.
  */
@@ -185,6 +185,7 @@ public final class CanonGate {
         Map<String, String> env = builder.environment();
         env.put("CANON_RUN_DIR", slashes(runDir));
         env.put("CANON_ROOT", slashes(root));
+        env.put("CANON_BASE", state.base);
         env.put("CANON_STAGE", stage);
         env.put("CANON_MODE", packet.value("run.mode"));
         env.put("CANON_WORKERS", packet.value("run.workers"));
@@ -204,6 +205,7 @@ public final class CanonGate {
         if (!refused.isEmpty()) {
             exit = 1;
             refused.forEach(v -> log.println("canon-gate: " + v));
+            if (stage.equals("lint")) Ledger.append(runDir, logName, Checks.diagnostics(packet, runDir));
         }
         String result = exit == 0 ? "PASS" : "FAIL";
         state.stages.add(new RunState.StageRun(stage, result, exit, logName));
