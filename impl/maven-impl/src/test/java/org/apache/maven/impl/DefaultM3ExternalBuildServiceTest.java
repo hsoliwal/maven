@@ -18,11 +18,13 @@
  */
 package org.apache.maven.impl;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import org.apache.maven.api.services.M3ExternalBuildService;
+import org.apache.maven.api.services.M3ExternalBuildWire;
 import org.apache.maven.api.services.M3ExternalBuildService.Change;
 import org.apache.maven.api.services.M3ExternalBuildService.ChangeKind;
 import org.apache.maven.api.services.M3ExternalBuildService.Disposition;
@@ -162,6 +164,46 @@ final class DefaultM3ExternalBuildServiceTest {
         assertEquals("src/C0001.java", report.entry(0).relativePath());
         assertEquals("src/C1000.java", report.entry(999).relativePath());
         assertEquals(Disposition.HOST_DELTA_AVAILABLE, report.disposition());
+    }
+
+    @Test
+    void decodedHostWirePreservesNativeAssessmentAndNeverGrantsReuse() throws Exception {
+        Generation previous = new Generation("eclipse.m2e", "project", 4, A, A, A, A, true);
+        Generation current = new Generation("eclipse.m2e", "project", 5, A, A, A, A, true);
+        byte[] readyPacket = M3ExternalBuildWire.encode(new M3ExternalBuildWire.Envelope(
+                "eclipse.m2e",
+                "project",
+                "INCREMENTAL",
+                true,
+                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null))));
+        var available = service.assess(readyPacket, previous, current);
+        assertEquals(Disposition.HOST_DELTA_AVAILABLE, available.disposition());
+        assertEquals("src/A.java", available.entry(0).relativePath());
+        assertFalse(available.authorizesMavenGoalSkipping());
+
+        var cold = service.assess(readyPacket, null, current);
+        assertEquals(Disposition.MAVEN_RECONCILIATION, cold.disposition());
+        assertTrue(cold.reasons().contains(Reason.INITIAL_BASELINE_MISSING));
+
+        byte[] incompletePacket = M3ExternalBuildWire.encode(new M3ExternalBuildWire.Envelope(
+                "eclipse.m2e",
+                "project",
+                "AUTO",
+                false,
+                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null))));
+        var incomplete = service.assess(incompletePacket, previous, current);
+        assertEquals(Disposition.MAVEN_RECONCILIATION, incomplete.disposition());
+        assertTrue(incomplete.reasons().contains(Reason.INCOMPLETE_DELTA));
+        assertThrows(
+                IOException.class,
+                () -> service.assess("not an IDE delta".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        previous, current));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.assess(
+                        readyPacket,
+                        previous,
+                        new Generation("vscode.java", "project", 5, A, A, A, A, true)));
     }
 
     private static Generation generation(String provider, long generation, String model, boolean complete) {
