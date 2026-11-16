@@ -12,7 +12,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
   <name>M3 Original Analyzer XML Report Adapter</name>
-  <description>JDK-only Checkstyle, PMD and SpotBugs XML to original M3 analysis report v1.</description>
+  <description>JDK-only Checkstyle, PMD, SpotBugs and CPD XML to original M3 analysis report v1.</description>
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
