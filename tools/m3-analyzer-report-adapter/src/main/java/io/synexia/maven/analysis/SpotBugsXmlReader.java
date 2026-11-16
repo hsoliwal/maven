@@ -74,7 +74,9 @@ final class SpotBugsXmlReader {
                                 bug = new Bug(required(reader, "type"), priority(reader));
                             } else if ("Errors".equals(name)) {
                                 insideErrors = true;
-                                originalErrors |= nonzero(reader, "errors") || nonzero(reader, "missingClasses");
+                                boolean errorCount = nonzero(reader, "errors");
+                                boolean missingCount = nonzero(reader, "missingClasses");
+                                originalErrors |= errorCount || missingCount;
                             } else if (!metadata(name)) {
                                 throw new IOException("unsupported SpotBugs top-level section: " + name);
                             }
@@ -148,7 +150,7 @@ final class SpotBugsXmlReader {
         return switch (name) {
             case "Project", "BugPattern", "BugCode", "BugCategory", "FindBugsSummary",
                     "History", "UserPreferences", "ClassFeatures", "Profiler",
-                    "ProjectStats", "AppVersion", "AnalysisFeatureSetting", "Plugin" -> true;
+                    "ProjectStats", "AppVersion", "AnalysisFeatureSetting", "Plugin", "SummaryHTML" -> true;
             default -> false;
         };
     }
