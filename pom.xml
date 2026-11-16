@@ -873,6 +873,8 @@ under the License.
               <exclude>.jbang/**</exclude>
               <exclude>.claude/**</exclude>
               <exclude>.worktrees/**</exclude>
+              <!-- Immutable verification records; exact hashes and license provenance are in
+                   tools/m3-smart-builder/docs/VERIFICATION_DATA_LICENSES.md. -->
               <!-- Immutable M3 Smart Builder verification data, not distributable source.
                    Audit the exact proof set in tools/m3-smart-builder/RAT_LICENSE_AUDIT_20261116.md.
                    Do not exclude the Smart Builder source, docs, tests, or plugin POM. -->
@@ -926,6 +928,138 @@ under the License.
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
         <executions>
+          <execution>
+            <id>m3-preserve-verification-records</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>validate</phase>
+            <inherited>false</inherited>
+            <configuration>
+              <rules>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/10-toolchain.log</file>
+                  <checksum>0c270c13cd918052f36abfa1a624431b607767af6396fc1afe6ffbd645eecf64</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/11-lint.log</file>
+                  <checksum>adf42343ba42d4fef62f1c319a990019257fb81a26f46ad6529d383a27893606</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/12-compile-test-runtime.log</file>
+                  <checksum>f476b184c12e9aa58d83f5d467d217dc064fe232981092a40889b6b7255087e8</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/13-idempotence.log</file>
+                  <checksum>f476b184c12e9aa58d83f5d467d217dc064fe232981092a40889b6b7255087e8</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/14-replay.log</file>
+                  <checksum>f476b184c12e9aa58d83f5d467d217dc064fe232981092a40889b6b7255087e8</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/15-source-replay-before.tsv</file>
+                  <checksum>be3b97de1a61cc576f128f0a756074c23a836c592b929516a424551ce207b348</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/16-source-replay-result.log</file>
+                  <checksum>cfe61630b6e00b2ea7839c277df7f57b9c16cbddc15d80f0914878ddb2054fe3</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/CHANGE_EVENT_LOG.jsonl</file>
+                  <checksum>fbf2b561f43b8bc1fe67e86f4d8d41b71c666e5c700f851c44fe17f419ddbf49</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/DIAGNOSE_SOURCE_SHA256.tsv</file>
+                  <checksum>1857231cc309fe5b6e7dd9e8f0a339053f55c699e35ad35fc85751bcd580d747</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/DIAGNOSE_VERIFICATION.md</file>
+                  <checksum>8c648d6c65d2ae4957d1f0fbdcfd4f3ed166e2e29cc74d1524302487a7c36599</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/MCP_REPLY_CHANGE_EVENTS.tsv</file>
+                  <checksum>7412d70a815f1feea11754da7fce282e3bdfdbfa9d92d2be784eb7c3f97b35b1</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/MCP_REPLY_REPLAY.log</file>
+                  <checksum>f476b184c12e9aa58d83f5d467d217dc064fe232981092a40889b6b7255087e8</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/MCP_REPLY_RUNTIME.log</file>
+                  <checksum>f476b184c12e9aa58d83f5d467d217dc064fe232981092a40889b6b7255087e8</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/MCP_REPLY_SHA256_AFTER_REPLAY.tsv</file>
+                  <checksum>c8ff99651f24456b2fb9af3a17da2ab380745bf1429051f94cf3b8d1bda2ca2e</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/MCP_REPLY_SHA256_BEFORE_REPLAY.tsv</file>
+                  <checksum>c8ff99651f24456b2fb9af3a17da2ab380745bf1429051f94cf3b8d1bda2ca2e</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/PRE_CHANGE_SHA256.tsv</file>
+                  <checksum>48b3b59f3ef7e99b1f62b9c63eaa9c479bf02780d9ec9333e6130c104722f213</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+                <requireTextFileChecksum>
+                  <file>${project.basedir}/tools/m3-smart-builder/verification/VERIFICATION.md</file>
+                  <checksum>032d5e8ad3b294e24c2405e4d3207cb496f9d88a16cd34e4e58b5202b2bcb6cd</checksum>
+                  <type>sha256</type>
+                  <encoding>UTF-8</encoding>
+                  <normalizeLineSeparatorTo>UNIX</normalizeLineSeparatorTo>
+                </requireTextFileChecksum>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
           <execution>
             <id>ensure-no-guice-with-asm</id>
             <goals>

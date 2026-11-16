@@ -45,7 +45,9 @@ final class ToolchainSelectionApiTest {
         manager.active = Optional.of(active);
         manager.available = List.of(tool("jdk", Map.of("version", "21"), true));
 
-        assertSame(active, manager.selectToolchain(session, "jdk", Map.of("version", "21")).orElseThrow());
+        assertSame(
+                active,
+                manager.selectToolchain(session, "jdk", Map.of("version", "21")).orElseThrow());
         assertEquals(0, manager.searches);
         assertEquals(0, manager.writes);
     }
@@ -69,7 +71,8 @@ final class ToolchainSelectionApiTest {
     void absenceAndOptionalRequirementsNeverModifyBuildContext() {
         Fixture manager = new Fixture();
         Session session = mock(Session.class);
-        assertFalse(manager.selectToolchain(session, "jdk", Map.of("version", "25")).isPresent());
+        assertFalse(
+                manager.selectToolchain(session, "jdk", Map.of("version", "25")).isPresent());
         assertEquals(1, manager.searches);
 
         Toolchain fallback = tool("jdk", Map.of(), true);

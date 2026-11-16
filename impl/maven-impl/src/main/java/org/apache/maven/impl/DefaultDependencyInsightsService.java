@@ -75,7 +75,8 @@ public final class DefaultDependencyInsightsService implements DependencyInsight
         for (Node node : flat) {
             Artifact artifact = Objects.requireNonNull(node, "selected node").artifact();
             if (artifact != null) {
-                selected.add(new Selected(coordinate(artifact), artifact.version().toString(), artifact.snapshot()));
+                selected.add(
+                        new Selected(coordinate(artifact), artifact.version().toString(), artifact.snapshot()));
             }
         }
 
@@ -141,7 +142,9 @@ public final class DefaultDependencyInsightsService implements DependencyInsight
                 }
                 node.premanagedVersion()
                         .ifPresent(original -> managed.add(new ManagedVersion(
-                                coordinate(artifact), original, artifact.version().toString())));
+                                coordinate(artifact),
+                                original,
+                                artifact.version().toString())));
             }
 
             List<Node> children = Objects.requireNonNull(node.children(), "node.children");
@@ -161,8 +164,7 @@ public final class DefaultDependencyInsightsService implements DependencyInsight
     }
 
     private static Coordinate coordinate(Artifact artifact) {
-        return new Coordinate(
-                artifact.groupId(), artifact.artifactId(), artifact.extension(), artifact.classifier());
+        return new Coordinate(artifact.groupId(), artifact.artifactId(), artifact.extension(), artifact.classifier());
     }
 
     private static <T> List<T> unique(List<T> entries, Comparator<T> comparator) {

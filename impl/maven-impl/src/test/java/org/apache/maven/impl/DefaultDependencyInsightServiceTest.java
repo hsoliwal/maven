@@ -169,7 +169,8 @@ final class DefaultDependencyInsightServiceTest {
         assertFalse(missing.complete());
         DependencyResolverResult failed = result(node("root"), true);
         when(failed.getExceptions()).thenReturn(List.of(new IllegalStateException("failure")));
-        assertFalse(service.inspect(new DependencyInsightService.Request(failed, 8)).complete());
+        assertFalse(
+                service.inspect(new DependencyInsightService.Request(failed, 8)).complete());
         assertThrows(IllegalArgumentException.class, () -> new DependencyInsightService.Request(failed, 0));
         assertThrows(IllegalArgumentException.class, () -> new DependencyInsightService.Request(failed, 1_000_001));
     }

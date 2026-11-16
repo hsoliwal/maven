@@ -50,6 +50,7 @@ import org.apache.maven.api.services.ToolchainsBuilder;
 import org.apache.maven.api.services.ToolchainsBuilderRequest;
 import org.apache.maven.api.services.ToolchainsBuilderResult;
 import org.apache.maven.api.services.model.ModelProcessor;
+import org.apache.maven.api.services.model.ModelResolverException;
 import org.apache.maven.api.toolchain.PersistedToolchains;
 import org.apache.maven.cling.event.ExecutionEventLogger;
 import org.apache.maven.cling.invoker.CliUtils;
@@ -569,12 +570,19 @@ public class MavenInvoker extends LookupInvoker<MavenContext> {
             ExceptionHandler handler = new DefaultExceptionHandler();
             boolean hasDetailedHelp = false;
             List<MavenProject> failedProjects = new ArrayList<>();
+            List<ExceptionSummary> suggestionSummaries =
+                    M3BuildSuggestions.enabled(request.getUserProperties(), request.getSystemProperties())
+                            ? new ArrayList<>()
+                            : null;
 
             Set<String> hintedArtifacts = new HashSet<>();
             for (Throwable exception : result.getExceptions()) {
                 ExceptionSummary summary = handler.handleException(exception);
                 hasDetailedHelp |= ReferenceHelp.hasHelpText(summary.getReference());
                 logSummary(context, summary, "");
+                if (suggestionSummaries != null && suggestionSummaries.size() < M3BuildSuggestions.MAX_DIAGNOSTICS) {
+                    suggestionSummaries.add(summary);
+                }
 
                 if (exception instanceof LifecycleExecutionException lifecycleExecutionException) {
                     failedProjects.add(lifecycleExecutionException.getProject());
@@ -615,6 +623,12 @@ public class MavenInvoker extends LookupInvoker<MavenContext> {
                 }
             }
 
+            M3BuildSuggestions.afterBuild(
+                    request.getUserProperties(),
+                    request.getSystemProperties(),
+                    () -> suggestionSnapshot(result, suggestionSummaries),
+                    context.logger::info);
+
             if (context.options().failNever().orElse(false)) {
                 context.logger.info("Build failures were ignored.");
                 return 0;
@@ -622,8 +636,56 @@ public class MavenInvoker extends LookupInvoker<MavenContext> {
                 return 1;
             }
         } else {
+            M3BuildSuggestions.afterBuild(
+                    request.getUserProperties(),
+                    request.getSystemProperties(),
+                    () -> suggestionSnapshot(result, List.of()),
+                    context.logger::info);
             return 0;
         }
+    }
+
+    private static M3BuildSuggestions.BuildSnapshot suggestionSnapshot(
+            MavenExecutionResult result, List<ExceptionSummary> summaries) {
+        List<String> diagnostics = new ArrayList<>();
+        List<ExceptionSummary> pending = new ArrayList<>();
+        if (summaries != null) {
+            for (ExceptionSummary summary : summaries) {
+                M3BuildSuggestions.capture(diagnostics, summary.getMessage());
+                pending.add(summary);
+            }
+        }
+        Set<String> references = new HashSet<>();
+        for (int index = 0; index < pending.size(); index++) {
+            ExceptionSummary summary = pending.get(index);
+            String reference = summary.getReference();
+            // Maven 4 model resolution can retain the typed cause without a help reference.
+            if ((reference == null || reference.isEmpty())
+                    && summary.getException() instanceof ModelResolverException) {
+                reference = ModelResolverException.class.getSimpleName();
+            }
+            if (reference != null
+                    && !reference.isEmpty()
+                    && reference.length() <= M3BuildSuggestions.MAX_REFERENCE_CHARS) {
+                references.add(reference);
+            }
+            for (ExceptionSummary child : summary.getChildren()) {
+                if (pending.size() >= M3BuildSuggestions.MAX_REFERENCES) {
+                    break;
+                }
+                if (child != null) {
+                    pending.add(child);
+                }
+            }
+        }
+        return new M3BuildSuggestions.BuildSnapshot(
+                result.hasExceptions(),
+                result.getTopologicallySortedProjects() == null
+                        ? 0
+                        : result.getTopologicallySortedProjects().size(),
+                result.getExceptions().size(),
+                references,
+                diagnostics);
     }
 
     protected void logBuildResumeHint(MavenContext context, String resumeBuildHint) {
