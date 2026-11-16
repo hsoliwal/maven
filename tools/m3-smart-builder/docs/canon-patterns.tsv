@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Admitted pattern vocabulary for the canon gate (column 1 is the id used in ATOM_PATTERN.tsv).
 # Anything outside this list must be a typed residue, RESIDUE:<reason>; repeated residues are candidates for new rows.
 # id	family	meaning

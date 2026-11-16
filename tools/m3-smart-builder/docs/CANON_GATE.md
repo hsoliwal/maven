@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Canon gate
 
 The canon gate is the hard, executable form of the M3-SCALE v3.0 run contract (task packet, verify order, scope locks,
