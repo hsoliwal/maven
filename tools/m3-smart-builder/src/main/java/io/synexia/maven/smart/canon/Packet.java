@@ -38,7 +38,7 @@ final class Packet {
             "invariant_id", "run.mode", "run.profile", "run.kind", "run.workers", "run.shard_count", "run.shard_index",
             "targets.modules", "targets.files", "invariant_locks", "allowed_delta", "forbidden", "verify_order",
             "output_contract", "stop_conditions", "excluded_paths", "disabled_paths", "compute_resources", "baseline_run",
-            "base_ref", "pattern_catalog"),
+            "base_ref", "pattern_catalog", "atom.coverage"),
             ORDER.stream().map(stage -> "verify." + stage)).collect(Collectors.toUnmodifiableSet());
 
     final Path file;
@@ -47,6 +47,7 @@ final class Packet {
     final String identity;
     final boolean dryRun;
     final boolean inventory;
+    final boolean selectedAtomCoverage;
     final Path sourceDoc;
     final Set<String> patterns;
     final List<String> verify;
@@ -67,6 +68,11 @@ final class Packet {
         if (!"active".equals(values.get("task_packet"))) throw new Invalid("task_packet must be active");
         for (String key : REQUIRED) if (value(key).isEmpty()) throw new Invalid("missing " + key);
         dryRun = oneOf("run.mode", "dry-run", "apply").equals("dry-run");
+        selectedAtomCoverage = switch (value("atom.coverage")) {
+            case "", "changed" -> false;
+            case "selected" -> true;
+            default -> throw new Invalid("atom.coverage must be changed or selected");
+        };
         String profile = oneOf("run.profile", "fast", "full", "custom");
         String kind = values.getOrDefault("run.kind", "change");
         if (!kind.equals("change") && !kind.equals("inventory")) throw new Invalid("run.kind must be change or inventory");
