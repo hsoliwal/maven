@@ -147,7 +147,9 @@ public final class McpAdviser {
     private static List<String> command(Path moduleJar) {
         Path javaExe = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
-        return new ArrayList<>(List.of(javaExe.toString(), "--module-path", moduleJar.toString(),
+        // MCP stdio is UTF-8. A JVM writes a piped System.out in the native encoding unless told otherwise,
+        // so a reply with a character outside ASCII was refused as malformed on Windows.
+        return new ArrayList<>(List.of(javaExe.toString(), "-Dstdout.encoding=UTF-8", "--module-path", moduleJar.toString(),
                 "--module", "io.synexia.chromellm.standalone/io.synexia.chromellm.standalone.StandaloneMain",
                 "--mcp-stdio", "true"));
     }
