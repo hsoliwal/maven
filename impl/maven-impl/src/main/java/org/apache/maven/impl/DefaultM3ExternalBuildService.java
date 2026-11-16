@@ -95,7 +95,9 @@ public final class DefaultM3ExternalBuildService implements M3ExternalBuildServi
     }
 
     private static boolean buildDescriptor(String path) {
-        if (path.startsWith(".mvn/") || path.startsWith(".settings/")) {
+        if (path.startsWith(".mvn/") || path.contains("/.mvn/")
+                || path.startsWith(".settings/") || path.contains("/.settings/")
+                || path.startsWith("gradle/wrapper/") || path.contains("/gradle/wrapper/")) {
             return true;
         }
         int slash = path.lastIndexOf('/');
@@ -106,10 +108,18 @@ public final class DefaultM3ExternalBuildService implements M3ExternalBuildServi
                     "Makefile", "GNUmakefile", "build.xml", "package.json", "Cargo.toml", "Cargo.lock",
                     "go.mod", "go.sum", "pyproject.toml", "requirements.txt", "meson.build", "BUILD.bazel",
                     "WORKSPACE.bazel", "Package.swift", "CMakePresets.json", "vcpkg.json",
-                    "Directory.Build.props", "Directory.Build.targets" -> true;
+                    "Directory.Build.props", "Directory.Build.targets", ".factorypath", "libs.versions.toml",
+                    "gradle.lockfile", "global.json", "NuGet.Config", "packages.lock.json",
+                    "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb",
+                    "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "setup.py", "setup.cfg",
+                    "go.work", "go.work.sum", "rust-toolchain", "rust-toolchain.toml", "build.rs",
+                    "Package.resolved", "meson.options", "CMakeUserPresets.json", "conanfile.py", "conanfile.txt",
+                    "vcpkg-configuration.json", "MODULE.bazel", "MODULE.bazel.lock", ".bazelrc", ".bazelversion",
+                    "BUILD", "WORKSPACE", "ivy.xml", "ivysettings.xml", "Makefile.am", "configure.ac" -> true;
             default -> name.endsWith(".csproj") || name.endsWith(".vcxproj")
                     || name.endsWith(".sln") || name.endsWith(".slnx")
-                    || name.endsWith(".props") || name.endsWith(".targets");
+                    || name.endsWith(".props") || name.endsWith(".targets")
+                    || name.endsWith(".gradle") || name.endsWith(".gradle.kts");
         };
     }
 
