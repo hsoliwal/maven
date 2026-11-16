@@ -112,9 +112,9 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertFalse(report.complete());
         assertEquals(3, report.coverage().size());
         assertEquals(2, report.findings().size());
-        assertEquals(M3StaticAnalysisService.Status.COMPLETE, report.coverage().get(0).status());
-        assertEquals(M3StaticAnalysisService.Status.PARTIAL, report.coverage().get(1).status());
-        assertEquals(M3StaticAnalysisService.Status.MISSING, report.coverage().get(2).status());
+        assertEquals(M3StaticAnalysisService.Status.MISSING, report.coverage().get(0).status());
+        assertEquals(M3StaticAnalysisService.Status.COMPLETE, report.coverage().get(1).status());
+        assertEquals(M3StaticAnalysisService.Status.PARTIAL, report.coverage().get(2).status());
         assertEquals(checkstyle, report.findings().get(0).identity());
         assertThrows(UnsupportedOperationException.class, () -> report.findings().clear());
         assertThrows(UnsupportedOperationException.class, () -> report.coverage().clear());
