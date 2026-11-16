@@ -215,3 +215,59 @@ Maven reactor tests, Checkstyle/Spotless, the upstream API compatibility
 matrix and differential plugin behavior fixtures. Source transformation
 recipes and actual plugin producer adapters are separate migrations, not
 claimed as completed here.
+
+
+## Native build input fingerprint contract (2026-11-16)
+
+`M3BuildFingerprintService` is an opt-in deterministic metadata key for
+future Maven Build Cache Extension and smart-build adapters. It combines the
+original Mojo project, plugin, goal, execution and version with digest pins for
+effective configuration, toolchain, selected dependency graph, environment,
+and individual input facts. The caller supplies input byte SHA-256 and size
+from its existing M3FS/compiler/resource owner; this service **never rehashes
+files**, resolves dependencies, opens input paths, invokes a model or runs a
+Mojo. Canonical file paths use project-relative slash notation and typed
+SOURCE/RESOURCE/CONFIGURATION/GENERATED/TOOL/DEPENDENCY roles.
+
+```java
+M3BuildFingerprintService service =
+        session.getService(M3BuildFingerprintService.class);
+var inputs = List.of(
+        new M3BuildFingerprintService.Input(
+                "src/main/java/Example.java",
+                M3BuildFingerprintService.Kind.SOURCE,
+                originalSourceSha256,
+                originalSourceBytes));
+var context = new M3BuildFingerprintService.Context(
+        projectKey, pluginGa, pluginVersion, goal, execution,
+        effectiveConfigSha256, toolchainSha256, selectedGraphSha256,
+        relevantEnvironmentSha256);
+var fingerprint = service.fingerprint(new M3BuildFingerprintService.Request(
+        context, inputs));
+```
+
+The v1 representation is stable over input-order permutations: it sorts
+input path/role pairs, rejects duplicate pairs, encodes every field as a
+length-prefixed UTF-8 string, includes byte sizes and a versioned domain
+separator, and produces a lowercase SHA-256. It refuses invalid paths,
+digest formats, negative sizes, overflowing total sizes and inputs above
+262,144 entries; the result contains only the digest, item count and
+declared total bytes. No Java object graph is retained after the call.
+
+**Security boundary:** supplied digests and input enumeration are metadata,
+not proof that the producer included every relevant file, read the bytes it
+declared, tracked dynamic inputs, supplied the correct toolchain/configuration
+or preserved output reproducibility. There is intentionally no
+`cacheHit`, `restore`, `skipGoal`, or `admit` method. A verified
+`M3PluginEvidenceService` receipt authenticates the receipt's bytes, not
+its claims. The original build-cache extension and original Mojo must still
+perform independent input completeness, provenance, output and contract
+checks before considering execution reuse. Generated data and vendor
+runtime/model acquisition remain plugin-owned.
+
+Focused tests cover a fixed golden digest, permutation invariance, every
+key dimension, duplicate ambiguity, path injection and byte budget refusal,
+immutable requests and original Maven DI binding. Normal Maven reactor,
+Checkstyle, Spotless and donor-plugin differential validation are required
+before any merge. This is the fingerprint primitive, **not** completed
+build-cache plugin absorption.
