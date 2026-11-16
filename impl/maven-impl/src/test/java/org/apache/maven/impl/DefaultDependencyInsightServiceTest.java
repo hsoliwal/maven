@@ -26,10 +26,13 @@ import org.apache.maven.api.Node;
 import org.apache.maven.api.services.DependencyInsightService;
 import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
+import org.apache.maven.di.Injector;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -37,6 +40,19 @@ import static org.mockito.Mockito.when;
 
 final class DefaultDependencyInsightServiceTest {
     private final DefaultDependencyInsightService service = new DefaultDependencyInsightService();
+
+    @Test
+    void mavenInjectorResolvesNativeInsightService() {
+        Injector injector = Injector.create();
+        try {
+            injector.bindImplicit(DefaultDependencyInsightService.class);
+            var nativeService = injector.getInstance(DependencyInsightService.class);
+            assertInstanceOf(DefaultDependencyInsightService.class, nativeService);
+            assertSame(nativeService, injector.getInstance(DependencyInsightService.class));
+        } finally {
+            injector.dispose();
+        }
+    }
 
     @Test
     void nativeVerboseGraphYieldsFlatPathsConflictWinnerAndManagementEvidence() {
