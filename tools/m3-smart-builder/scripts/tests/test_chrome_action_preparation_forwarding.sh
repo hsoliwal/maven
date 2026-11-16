@@ -65,4 +65,24 @@ if has_name --preparation-report; then
   echo 'Legacy Action unexpectedly supplied a preparation report' >&2
   exit 1
 fi
+# Chrome-provider argument forwarding uses the same admission ordering.
+export HOOK_BACKEND=chrome
+export HOOK_MODULE="$tmp/chrome-provider.jar"
+export HOOK_CHROME="$tmp/chrome-executable"
+export HOOK_PROFILE="$tmp/chrome-profile"
+export HOOK_PREPARATION_REPORT=.reports/preparation.json
+export HOOK_PREPARATION_REQUIRED=true
+export HOOK_ATOM_PATTERN_MANIFEST=.reports/checkpoint.tsv
+export HOOK_REQUIRE_ATOM_PATTERN=true
+bash "$repo/.github/actions/chrome-ai/run.sh"
+mapfile -t captured < "$CAPTURE_PATH"
+has_pair --backend chrome
+has_pair --preparation-required true
+has_pair --preparation-report .reports/preparation.json
+has_pair --require-atom-pattern true
+has_pair --atom-pattern-manifest .reports/checkpoint.tsv
+has_pair --chrome-llm-jar "$HOOK_MODULE"
+has_pair --chrome-binary "$HOOK_CHROME"
+has_pair --chrome-profile "$HOOK_PROFILE"
+
 echo 'CHROME_ACTION_PREPARATION_FORWARDING_PASS'
