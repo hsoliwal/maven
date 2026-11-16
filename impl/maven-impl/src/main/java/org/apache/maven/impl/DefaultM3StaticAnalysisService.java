@@ -279,6 +279,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         private int[] lines = new int[8];
         private int[] columns = new int[8];
         private int count;
+        private final int[] severityCounts = new int[LEVELS.length];
         private Finding previous;
 
         void add(String row) throws IOException {
@@ -305,6 +306,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             severities[count] = (byte) fact.severity().ordinal();
             lines[count] = fact.line();
             columns[count] = fact.column();
+            severityCounts[fact.severity().ordinal()]++;
             count++;
         }
     }
@@ -318,6 +320,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         private final byte[] severities;
         private final int[] lines;
         private final int[] columns;
+        private final int[] severityCounts;
 
         Packed(M3PluginEvidenceService.Receipt receipt, Status status, Parsed parsed) {
             this.receipt = receipt;
@@ -328,6 +331,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             severities = Arrays.copyOf(parsed.severities, parsed.count);
             lines = Arrays.copyOf(parsed.lines, parsed.count);
             columns = Arrays.copyOf(parsed.columns, parsed.count);
+            severityCounts = parsed.severityCounts.clone();
         }
 
         @Override
@@ -343,6 +347,11 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         @Override
         public int size() {
             return rules.length;
+        }
+
+        @Override
+        public int count(Severity severity) {
+            return severityCounts[Objects.requireNonNull(severity, "severity").ordinal()];
         }
 
         @Override
