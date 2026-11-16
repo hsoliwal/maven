@@ -198,6 +198,9 @@ final class DefaultM3StaticAnalysisServiceTest {
                 new M3StaticAnalysisService.Finding(
                         "A.Rule", M3StaticAnalysisService.Severity.ERROR, "src/A.java", 1, 1, "a"));
         assertThrows(IllegalArgumentException.class, () -> service.compare(forged, original));
+    }
+
+    @Test
     void additiveDefaultSeverityCountWorksForExistingManifestImplementations() throws Exception {
         var evidence = new DefaultM3PluginEvidenceService();
         Session session = session();
