@@ -22,7 +22,7 @@ final class OriginalJsonStreams {
         factory.setStreamReadConstraints(StreamReadConstraints.builder()
                 .maxNestingDepth(48)
                 .maxStringLength(8_192)
-                .maxNameLength(512)
+                .maxNameLength(8_192)
                 .maxNumberLength(32)
                 .build());
         return factory;
