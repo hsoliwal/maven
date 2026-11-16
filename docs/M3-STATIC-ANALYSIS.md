@@ -185,3 +185,49 @@ scheduling, dependency resolution and build caches. Original analyzer
 plugins must still execute and remain the authority for their reported
 findings and suppression policies. Differences between Maven's receipt
 membership guarantees and Gradle's standalone digest check are explicit.
+
+## Incremental analyzer diagnostic comparison (2026-11-16)
+
+`M3StaticAnalysisService.compare(earlier, later)` is an additive **default
+interface method**, preserving source/binary compatibility with implementations
+that provide only `read` and `aggregate`. It performs an O(n) merge over
+the canonical sorted findings already held in authenticated, source-bound
+manifests. There is no second analyzer run, source parse, retained entry graph
+or new Maven plugin lifecycle binding. The result reports unchanged, newly
+introduced and resolved findings, plus a count of newly introduced ERRORs.
+
+Both reports must originate from the **same project, plugin group/artifact,
+plugin version, goal and execution**. The invocation SHA-256 context and
+generation may change as sources evolve. A change to the ruleset, source
+inventory, suppression policy, toolchain or classpath can still change report
+meaning; matching producer coordinates do **not** prove that those underlying
+conditions are equivalent. A rule/severity/message/position change is recorded
+as a resolved finding and a newly introduced finding, rather than automatically
+considered the same diagnostic.
+
+```java
+var before = analysis.read(session, earlierIdentity).orElseThrow();
+var after = analysis.read(session, laterIdentity).orElseThrow();
+var changes = analysis.compare(before, after);
+if (!changes.comparable()) {
+    // At least one producer run claims PARTIAL/FAILED/MISSING; do not report clean.
+} else {
+    int newErrors = changes.introducedErrors();
+}
+```
+
+Each comparison refuses different producers, out-of-order entries, excessive
+finding counts or invalid null data, and reports `comparable=false` with
+zeroed **non-authoritative** counts when either original run is not COMPLETE.
+Consumers must check the `comparable` flag; zeroed counts are not evidence
+of no regressions. The native Maven service remains the original receipt
+authenticator. The comparison itself makes no build-cache, compiler,
+OpenRewrite or release decision.
+
+The independent Gradle `m3ReviewAnalysis` task uses the same normalized
+two-pointer comparison in its Java 17 reader when a baseline report, digest,
+and both declared producer keys are explicitly configured. It must verify
+both report byte hashes. The original Maven receipt membership and producer
+integrity do not transfer across build systems merely because Gradle receives
+the digest. Both Gradle baseline comparison and gating on introduced ERRORs
+are **disabled by default**, and no original analyzer task is skipped.
