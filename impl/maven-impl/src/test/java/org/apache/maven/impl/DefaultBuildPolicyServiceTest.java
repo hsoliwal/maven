@@ -75,7 +75,8 @@ final class DefaultBuildPolicyServiceTest {
         assertFalse(report.accepted());
         assertEquals("requireMavenVersion", report.findings().get(0).rule());
         when(actual.compareTo(floor)).thenReturn(0);
-        assertTrue(evaluate(21, null, new BuildPolicyService.MavenVersion("4.2.0", ERROR)).accepted());
+        assertTrue(evaluate(21, null, new BuildPolicyService.MavenVersion("4.2.0", ERROR))
+                .accepted());
     }
 
     @Test
@@ -90,7 +91,8 @@ final class DefaultBuildPolicyServiceTest {
         assertEquals(WARN, report.findings().get(0).severity());
         when(range.contains(actual)).thenReturn(true);
         assertTrue(evaluate(21, null, new BuildPolicyService.MavenVersion("[4.0,5.0)", ERROR))
-                .findings().isEmpty());
+                .findings()
+                .isEmpty());
     }
 
     @Test
@@ -98,7 +100,8 @@ final class DefaultBuildPolicyServiceTest {
         var report = evaluate(17, null, new BuildPolicyService.JavaFeature(21, ERROR));
         assertFalse(report.accepted());
         assertEquals("runtime-jvm", report.findings().get(0).subject());
-        assertTrue(evaluate(21, null, new BuildPolicyService.JavaFeature(21, ERROR)).accepted());
+        assertTrue(evaluate(21, null, new BuildPolicyService.JavaFeature(21, ERROR))
+                .accepted());
     }
 
     @Test
@@ -121,7 +124,8 @@ final class DefaultBuildPolicyServiceTest {
         when(collected.getRoot()).thenReturn(mock(Node.class));
         when(collected.getRequest()).thenReturn(original);
         when(original.getRequestType()).thenReturn(DependencyResolverRequest.RequestType.COLLECT);
-        assertFalse(evaluate(21, collected, new BuildPolicyService.NoSnapshotDependencies(ERROR)).accepted());
+        assertFalse(evaluate(21, collected, new BuildPolicyService.NoSnapshotDependencies(ERROR))
+                .accepted());
     }
 
     @Test
@@ -139,7 +143,11 @@ final class DefaultBuildPolicyServiceTest {
                 .thenReturn(Map.of(zeta, Path.of("z.jar"), alpha, Path.of("a.jar"), beta, Path.of("b.jar")));
         var report = evaluate(21, resolved, new BuildPolicyService.NoSnapshotDependencies(WARN));
         assertTrue(report.accepted());
-        assertEquals(List.of("b", "z"), report.findings().stream().map(BuildPolicyService.Finding::subject).toList());
+        assertEquals(
+                List.of("b", "z"),
+                report.findings().stream()
+                        .map(BuildPolicyService.Finding::subject)
+                        .toList());
         assertEquals(2, report.findings().size());
     }
 
@@ -154,7 +162,8 @@ final class DefaultBuildPolicyServiceTest {
                 UnsupportedOperationException.class,
                 () -> request.rules().add(new BuildPolicyService.JavaFeature(21, ERROR)));
         var report = evaluate(21, null, new BuildPolicyService.JavaFeature(22, ERROR));
-        assertThrows(UnsupportedOperationException.class, () -> report.findings().clear());
+        assertThrows(
+                UnsupportedOperationException.class, () -> report.findings().clear());
     }
 
     private BuildPolicyService.Report evaluate(

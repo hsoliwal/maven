@@ -80,11 +80,7 @@ public interface DependencyInsightsService extends Service {
      * @param duplicate true when omitted and winner coordinates and versions match
      */
     record Omission(
-            Coordinate omitted,
-            String omittedVersion,
-            Coordinate winner,
-            String selectedVersion,
-            boolean duplicate) {
+            Coordinate omitted, String omittedVersion, Coordinate winner, String selectedVersion, boolean duplicate) {
         public Omission {
             Objects.requireNonNull(omitted, "omitted");
             Objects.requireNonNull(omittedVersion, "omittedVersion");
