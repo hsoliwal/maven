@@ -106,11 +106,15 @@ public final class DefaultDependencyInsightsService implements DependencyInsight
         int size = 1;
         work[0] = root;
         int edges = 0;
-        IdentityHashMap<Node, Boolean> visited = new IdentityHashMap<>();
+        IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
         while (size != 0) {
             Node node = Objects.requireNonNull(work[--size], "graph node");
             work[size] = null;
-            if (visited.put(node, Boolean.TRUE) != null) {
+            // DefaultNode.children() may construct new API wrappers for the
+            // same Resolver node. Track the original node identity where
+            // available, not the transient Java facade identity.
+            Object identity = node instanceof AbstractNode nativeNode ? nativeNode.getDependencyNode() : node;
+            if (visited.put(identity, Boolean.TRUE) != null) {
                 continue;
             }
             if (visited.size() > MAX_REFERENCES) {
