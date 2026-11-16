@@ -123,6 +123,42 @@ Publication uses the original session service. Consumption uses read(...).bytes(
 from PR #49, never find followed by reopening the receipt path. The registry's
 identity conflicts, capability masks, receipt count and byte limits are retained.
 
+
+## Optional typed resource inventory projection
+
+The original binary `m3.resources.operations.v1` receipt and the Maven
+`BuildInputsService` text format are **not interchangeable**. An explicitly enabled invocation
+can select `-Dm3.evidence.format=resource-io` to publish **one**
+`m3.resource-io.manifest.v1` TSV receipt in place of the default binary operation receipt.
+Without the selector, the original binary receipt and JSON capability report remain unchanged.
+When evidence is disabled, this selector is inert.
+
+```text
+<fork-mvn> -Dm3.evidence.enabled=true -Dm3.evidence.format=resource-io \
+  io.synexia:m3-plugin-evidence-maven-plugin:0.1.0-SNAPSHOT:resources
+```
+
+The adapter reuses the already validated `ResourceEvidence.Operation` objects. It never
+rescans/copies a file to prepare the projection. It deduplicates consistent input observations
+and orders input/output rows by project-relative path. Only physically observed outputs are
+represented: `ABSENT` outputs are omitted, even if the original delegate returned false.
+A false delegate result can still have an observed output and is retained as such in the
+text view; its original boolean is available only in default binary mode.
+
+The text schema is narrower than the binary operation schema. Unsupported paths, conflicting
+observations of the same input, malformed Unicode and publication/readback failures refuse
+the projection. The manifest is source-bound to the **same exact invocation identity**, but
+the registry intentionally permits only one schema/receipt per identity; **dual publishing
+both schemas in a single invocation is unsupported**.
+
+The projected inventory covers selected copy operations only, not directory metadata,
+unselected resources, deletions or the entire workspace. Its contents remain
+`complete=false` and `cacheEligible=false` in meaning; the text schema has no field that
+could authorize reuse. A consumer needs the optional `BuildInputsService` from
+[hsoliwal/maven PR #62](https://github.com/hsoliwal/maven/pull/62), which may not yet be
+on the installed fork. Do not confuse evidence receipt integrity with the integrity of the
+listed files or a proof that a build could be skipped.
+
 The bounded binary receipt schema m3.resources.operations.v1 uses explicit UTF-8
 length framing and fixed field order. Its decoder rejects wrong magic/version,
 oversized lengths/counts, malformed UTF-8, invalid hashes, duplicate destinations,
