@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -15,13 +16,20 @@ import java.util.TreeSet;
 /**
  * Atomization and patternization proof (coding-agent laws 3, 4 and 14). Atom: one row of {@code ATOM_PATTERN.tsv}.
  * Pattern: guard. The {@code atom_pattern} stage writes the table with the columns {@code path, sha256, atom,
- * pattern, role}: every row must match the file as it is now, every pattern must be admitted by the packet's
- * {@code pattern_catalog} or be a typed residue written {@code RESIDUE:<reason>} ({@code UNKNOWN} is never
- * admitted), and every changed file needs at least one row.
+ * pattern, role, exact_hash, logic_hash, structure_hash, sim_hash}. Every row must match the file as it is now;
+ * every pattern must be admitted by the packet's {@code pattern_catalog} or be a typed residue written
+ * {@code RESIDUE:<reason>} ({@code UNKNOWN} is never admitted); every changed file needs at least one row; and every
+ * atom of a Java source carries all four hash planes (64 hex digits for exact, logic and structure, 16 for the
+ * SimHash), while other files may write {@code -}. Atoms that share a plane value are listed in
+ * {@code ATOM_CLUSTERS.tsv} as proposals only.
  */
 final class AtomPattern {
     static final String TABLE = "ATOM_PATTERN.tsv";
-    static final String HEADER = "path\tsha256\tatom\tpattern\trole";
+    static final String CLUSTERS = "ATOM_CLUSTERS.tsv";
+    static final String HEADER = "path\tsha256\tatom\tpattern\trole\texact_hash\tlogic_hash\tstructure_hash\tsim_hash";
+    static final String SIMILAR = "These atoms may be similar. Please confirm via hash or diff.";
+    private static final String[] PLANES = {"EXACT", "LOGIC", "STRUCTURE", "SIMHASH"};
+    private static final String[] FORMATS = {"[0-9a-f]{64}", "[0-9a-f]{64}", "[0-9a-f]{64}", "[0-9a-f]{16}"};
 
     private AtomPattern() {
     }
@@ -37,29 +45,68 @@ final class AtomPattern {
             return "invalid " + TABLE;
         }
         Map<String, String> current = new TreeMap<>();
+        Map<String, List<String>> planes = new TreeMap<>();
         Set<String> covered = new TreeSet<>();
         int residue = 0;
+        int hashed = 0;
         for (int i = 1; i < lines.size(); i++) {
             String[] cell = lines.get(i).split("\t", -1);
-            if (cell.length != 5 || cell[0].isEmpty() || !cell[1].matches("[0-9a-f]{64}") || cell[2].isBlank()
-                    || cell[3].isBlank() || cell[4].isBlank()) {
+            if (cell.length != 9 || cell[0].isEmpty() || !cell[1].matches("[0-9a-f]{64}") || cell[2].isBlank()
+                    || cell[3].isBlank() || cell[4].isBlank() || !planesWellFormed(cell)) {
                 violations.add("ATOM_PATTERN_SCHEMA line " + (i + 1));
                 continue;
             }
             String now = current.containsKey(cell[0]) ? current.get(cell[0]) : hash(root, cell[0]);
             current.put(cell[0], now);
+            boolean complete = planeCount(cell) == PLANES.length;
             if (!cell[1].equals(now)) violations.add("ATOM_STALE " + cell[0] + " " + cell[2]);
             else if (cell[3].matches("(?i)UNKNOWN|RESIDUE:\\s*")) violations.add("PATTERN_UNKNOWN " + cell[0] + " " + cell[2]);
             else if (!cell[3].startsWith("RESIDUE:") && !admitted.contains(cell[3])) {
                 violations.add("PATTERN_NOT_ADMITTED " + cell[0] + " " + cell[2] + " " + cell[3]);
+            } else if (cell[0].endsWith(".java") && !complete) {
+                violations.add("ATOM_PLANES_MISSING " + cell[0] + " " + cell[2]);
             } else {
                 covered.add(cell[0]);
                 if (cell[3].startsWith("RESIDUE:")) residue++;
+                if (complete) hashed++;
+                for (int p = 0; p < PLANES.length; p++) {
+                    if (!cell[5 + p].equals("-")) {
+                        planes.computeIfAbsent(PLANES[p] + "\t" + cell[5 + p], k -> new ArrayList<>()).add(cell[0] + "\t" + cell[2]);
+                    }
+                }
             }
         }
         changed.stream().filter(p -> Files.isRegularFile(root.resolve(p)) && !covered.contains(p))
                 .forEach(p -> violations.add("ATOM_UNCOVERED " + p));
-        return (lines.size() - 1) + " atom row(s) over " + covered.size() + " file(s), " + residue + " typed residue";
+        int clusters = clusters(runDir, planes);
+        return (lines.size() - 1) + " atom row(s) over " + covered.size() + " file(s), " + hashed
+                + " with all hash planes, " + clusters + " plane cluster(s), " + residue + " typed residue";
+    }
+
+    private static boolean planesWellFormed(String[] cell) {
+        for (int p = 0; p < PLANES.length; p++) {
+            if (!cell[5 + p].equals("-") && !cell[5 + p].matches(FORMATS[p])) return false;
+        }
+        return true;
+    }
+
+    private static int planeCount(String[] cell) {
+        int present = 0;
+        for (int p = 0; p < PLANES.length; p++) if (!cell[5 + p].equals("-")) present++;
+        return present;
+    }
+
+    private static int clusters(Path runDir, Map<String, List<String>> planes) throws IOException {
+        StringBuilder out = new StringBuilder("plane\thash\tmembers\tpath\tatom\tnote\n");
+        int clusters = 0;
+        for (Map.Entry<String, List<String>> e : planes.entrySet()) {
+            if (e.getValue().size() < 2) continue;
+            clusters++;
+            e.getValue().forEach(member -> out.append(e.getKey()).append('\t').append(e.getValue().size()).append('\t')
+                    .append(member).append('\t').append(SIMILAR).append('\n'));
+        }
+        Ledger.write(runDir, CLUSTERS, out.toString());
+        return clusters;
     }
 
     private static String hash(Path root, String path) throws IOException {

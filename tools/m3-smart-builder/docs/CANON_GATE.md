@@ -45,23 +45,30 @@ Stage commands see `CANON_RUN_DIR`, `CANON_ROOT`, `CANON_STAGE`, `CANON_MODE`, `
 
 ## Atomization and patternization
 
-The `atom_pattern` stage must write `$CANON_RUN_DIR/ATOM_PATTERN.tsv` with the header `path sha256 atom pattern role`
-(tab-separated). Every row must hash-match the file as it is at the seal; every pattern must be admitted by
-`pattern_catalog` or be a typed residue written `RESIDUE:<reason>` (`UNKNOWN` is never admitted); and every file that
-differs from `base_ref` needs at least one row. A residue that keeps recurring is the candidate for a new catalog row.
+The `atom_pattern` stage must write `$CANON_RUN_DIR/ATOM_PATTERN.tsv`, tab-separated, with the header
+`path sha256 atom pattern role exact_hash logic_hash structure_hash sim_hash`.
+
+- Every row must hash-match the file as it is at the seal (`sha256`).
+- Every pattern must be admitted by `pattern_catalog` or be a typed residue written `RESIDUE:<reason>`; `UNKNOWN` is
+  never admitted. A residue that keeps recurring is the candidate for a new catalog row.
+- Every file that differs from `base_ref` needs at least one row.
+- Hash planes: `exact_hash`, `logic_hash` and `structure_hash` are 64 hex digits and `sim_hash` (SimHash-64) is 16.
+  Every atom of a `.java` file must carry all four; other files may write `-`.
+- Atoms that share a plane value are listed in `ATOM_CLUSTERS.tsv` as proposals ("These atoms may be similar. Please
+  confirm via hash or diff."); the gate never decides equivalence.
 
 ## Violations
 
 `STAGE_FAILED`, `HEAD_MOVED`, `DRY_RUN_MUTATION`, `OUT_OF_SCOPE`, `EXCLUDED_PATH`, `DISABLED_PATH`, `BUILD_SCRIPT_LOCKED`
 (a build script changes without being named in `targets.files`), `ATOM_PATTERN_SCHEMA`, `ATOM_STALE`, `PATTERN_UNKNOWN`,
-`PATTERN_NOT_ADMITTED`, `ATOM_UNCOVERED`, `NON_IDEMPOTENT`, `BASELINE_UNREADABLE`, `OUTPUT_CONTRACT_MISSING`.
+`PATTERN_NOT_ADMITTED`, `ATOM_PLANES_MISSING`, `ATOM_UNCOVERED`, `NON_IDEMPOTENT`, `BASELINE_UNREADABLE`, `OUTPUT_CONTRACT_MISSING`.
 
 ## Artifacts
 
 Always: `STATUS.tsv` (append-only stage ledger), `RUN_CONTEXT.tsv`, `PROVENANCE.tsv`, `VERIFY_CONTRACT.tsv` (stages,
 locks and the atom check), `OUTPUT_CONTRACT.tsv`, `FINAL_REPORT.md` (files changed, exact delta summary, exact
 verification executed, exact blockers/failures, artifact paths), `BUILD_LOG.tsv` (file, line, column, severity from every
-stage log), `PRE_HASH.tsv`/`POST_HASH.tsv`, `PRE_DIRTY.tsv`/`POST_DIRTY.tsv`, `SHARD_MANIFEST.txt` and `logs/`.
+stage log), `PRE_HASH.tsv`/`POST_HASH.tsv`, `PRE_DIRTY.tsv`/`POST_DIRTY.tsv`, `SHARD_MANIFEST.txt`, `ATOM_CLUSTERS.tsv` and `logs/`.
 Inventory runs add `INVENTORY.tsv`, `CLUSTERS_EXACT.tsv`, `CLUSTERS_NORMALIZED.tsv`, `ACTION_QUEUE.tsv` and
 `SUMMARY.tsv`; every action is proposal-only and carries "These files may be similar. Please confirm via hash or diff."
 

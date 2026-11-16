@@ -20,6 +20,7 @@ public final class CanonGateTest {
     private static Path base;
     private static Path repo;
     private static String lastLog = "";
+    private static String planeMode = "full";
     private static int runs;
     private static int checks;
 
@@ -187,6 +188,18 @@ public final class CanonGateTest {
         contains(base.resolve("runs/atom-uncovered/FINAL_REPORT.md"), "ATOM_UNCOVERED src/A.java", "uncovered file refused");
         expect(0, run(apply(atoms("RESIDUE:novel-io", "src/A.java")), "atom-residue"), "typed residue");
         contains(base.resolve("runs/atom-residue/PROVENANCE.tsv"), "1 typed residue", "residue counted");
+        planeMode = "none";
+        expect(1, run(apply(atoms("VALUE_OBJECT", "src/A.java")), "planes-missing"), "Java atom without hash planes");
+        contains(base.resolve("runs/planes-missing/FINAL_REPORT.md"), "ATOM_PLANES_MISSING src/A.java", "hash planes required");
+        planeMode = "bad";
+        expect(1, run(apply(atoms("VALUE_OBJECT", "src/A.java")), "planes-malformed"), "malformed hash plane");
+        contains(base.resolve("runs/planes-malformed/FINAL_REPORT.md"), "ATOM_PATTERN_SCHEMA line 2", "plane format checked");
+        planeMode = "twin";
+        expect(0, run(apply(atoms("VALUE_OBJECT", "src/A.java")), "planes-cluster"), "two atoms on one logic hash");
+        contains(base.resolve("runs/planes-cluster/ATOM_CLUSTERS.tsv"), "LOGIC\t", "logic-plane cluster listed");
+        contains(base.resolve("runs/planes-cluster/ATOM_CLUSTERS.tsv"), AtomPattern.SIMILAR, "cluster is a proposal");
+        contains(base.resolve("runs/planes-cluster/PROVENANCE.tsv"), "2 with all hash planes", "planes counted");
+        planeMode = "full";
         Map<String, String> p = apply("true");
         expect(1, run(p, "atom-missing"), "atom stage without table");
         contains(base.resolve("runs/atom-missing/FINAL_REPORT.md"), "OUTPUT_CONTRACT_MISSING ATOM_PATTERN.tsv", "missing table");
@@ -259,8 +272,16 @@ public final class CanonGateTest {
     private static String atoms(String pattern, String... paths) throws IOException {
         StringBuilder table = new StringBuilder(AtomPattern.HEADER + "\n");
         for (String path : paths) {
-            table.append(path).append('\t').append(Ledger.sha256(repo.resolve(path))).append("\tleaf-").append(path.hashCode())
-                    .append('\t').append(pattern).append("\tModel\n");
+            String file = Ledger.sha256(repo.resolve(path));
+            String logic = Ledger.sha256(("logic " + path).getBytes(StandardCharsets.UTF_8));
+            String planes = !path.endsWith(".java") || planeMode.equals("none") ? "-\t-\t-\t-"
+                    : file + "\t" + logic + "\t" + file + "\t" + (planeMode.equals("bad") ? "xyz" : file.substring(0, 16));
+            table.append(path).append('\t').append(file).append("\tleaf-").append(path.hashCode()).append('\t').append(pattern)
+                    .append("\tModel\t").append(planes).append('\n');
+            if (planeMode.equals("twin")) {
+                table.append(path).append('\t').append(file).append("\ttwin-").append(path.hashCode()).append('\t').append(pattern)
+                        .append("\tModel\t").append(planes).append('\n');
+            }
         }
         Path file = base.resolve("atoms/" + (runs++) + ".tsv");
         Files.createDirectories(file.getParent());
