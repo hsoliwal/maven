@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # M3 Smart Maven — real Maven runtime acceptance (v1)
 
 This document specifies an **additional** qualification gate for the already opt-in

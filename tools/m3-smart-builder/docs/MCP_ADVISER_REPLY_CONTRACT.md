@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # ChromeLLM MCP adviser — strict response validation
 
 The Maven Smart Builder invokes one explicitly configured ChromeLLM stdio process. Model

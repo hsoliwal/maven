@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Offline contract checks for Maven runtime qualification orchestration.
 
 These checks never pretend to be Maven: a real mvn install and goal execution
