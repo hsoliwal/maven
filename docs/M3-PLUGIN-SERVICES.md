@@ -271,3 +271,22 @@ immutable requests and original Maven DI binding. Normal Maven reactor,
 Checkstyle, Spotless and donor-plugin differential validation are required
 before any merge. This is the fingerprint primitive, **not** completed
 build-cache plugin absorption.
+
+
+## Native static-analysis evidence
+
+The experimental `M3StaticAnalysisService` is a source-bound, read-only
+Maven 4 API for normalized findings from original Checkstyle, PMD/CPD,
+SpotBugs, Error Prone, Semgrep and CodeQL analyzers. It authenticates the
+original report receipts through `M3PluginEvidenceService.ANALYSIS`, indexes
+typed findings in parallel arrays, and distinguishes complete, partial,
+failed and missing analyzer invocations. Original analyzer execution, plugin
+configuration, suppression rules, reporting and failure policy are untouched.
+
+Read [M3 static-analysis source custody and analyzer migration plan](M3-STATIC-ANALYSIS.md)
+for the exact v1 wire protocol, licensing constraints, producer ownership,
+compatibility gates and the limits of this first native API. The original
+CodeQL/OpenRewrite integration in `tools/m3-polyglot-maven-plugin` remains
+a separately qualified provider and does not require Maven Core to bundle
+either engine. This stage does not yet supply XML/SARIF-to-v1 adapters or
+automatic source changes.
