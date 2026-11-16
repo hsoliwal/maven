@@ -23,6 +23,7 @@ public final class AnalyzerXmlNormalizerContractTestMain {
             checkstyle(root);
             pmd(root);
             spotbugs(root);
+            cpd(root);
             refusal(root);
             cli(root);
             System.out.println("M3_ANALYZER_XML_ADAPTER_CONTRACT_PASS");
@@ -196,6 +197,119 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 AnalyzerXmlNormalizer.Status.COMPLETE,
                 "<BugCollection><BugInstance type=\"NP_NULL\" priority=\"1\"/>"
                         + "<BugInstance type=\"NP_NULL\" priority=\"1\"/></BugCollection>");
+    }
+
+    private static void cpd(Path root) throws Exception {
+        String modern = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <pmd-cpd xmlns="https://pmd-code.org/schema/cpd-report"
+                         version="1.0.0" pmdVersion="7.17.0">
+                  <file path="src/A.java" totalNumberOfTokens="200"/>
+                  <duplication lines="8" tokens="44">
+                    <file path="src/B.java" line="18" column="3" endline="25"
+                          endcolumn="4" begintoken="44" endtoken="87"/>
+                    <file path="src/A.java" line="2" column="1" endline="9"
+                          endcolumn="3" begintoken="12" endtoken="55"/>
+                    <codefragment><![CDATA[duplicate
+                      code fragment
+                    ]]></codefragment>
+                  </duplication>
+                </pmd-cpd>
+                """;
+        var report = convert(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE, modern);
+        String output = new String(report.bytes(), StandardCharsets.UTF_8);
+        check(report.count() == 2, "original CPD group has both occurrences");
+        check(output.contains("PMD.CPD.Duplication\tWARNING\tsrc/A.java\t2\t1\t"),
+                "first CPD occurrence preserves original file, line and column");
+        check(output.contains("PMD.CPD.Duplication\tWARNING\tsrc/B.java\t18\t3\t"),
+                "second CPD occurrence preserves original file, line and column");
+        check(output.indexOf("src/A.java") < output.indexOf("src/B.java"),
+                "CPD findings have canonical path order");
+        check(!output.contains("duplicate\n"), "source code fragments are never copied into findings");
+        String originalMessage = output.lines()
+                .filter(line -> line.startsWith("PMD.CPD.Duplication"))
+                .findFirst().orElseThrow().split("\t", -1)[5];
+        String decoded = new String(Base64.getUrlDecoder().decode(originalMessage), StandardCharsets.UTF_8);
+        check(decoded.contains("8 lines, 44 tokens; occurrence 1/2"),
+                "CPD group sizes and occurrence index retained");
+        String reordered = modern.replace(
+                """
+                    <file path="src/B.java" line="18" column="3" endline="25"
+                          endcolumn="4" begintoken="44" endtoken="87"/>
+                    <file path="src/A.java" line="2" column="1" endline="9"
+                          endcolumn="3" begintoken="12" endtoken="55"/>
+                """,
+                """
+                    <file path="src/A.java" line="2" column="1" endline="9"
+                          endcolumn="3" begintoken="12" endtoken="55"/>
+                    <file path="src/B.java" line="18" column="3" endline="25"
+                          endcolumn="4" begintoken="44" endtoken="87"/>
+                """);
+        var reorderedReport = convert(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE, reordered);
+        check(report.sha256().equals(reorderedReport.sha256()),
+                "original CPD occurrence-order permutations retain the same digest");
+
+        String legacy = """
+                <pmd-cpd><duplication lines="5" tokens="23">
+                  <file path="src/A.java" line="11"/>
+                  <file path="src/B.java" line="15"/>
+                  <codefragment><![CDATA[original fragment]]></codefragment>
+                </duplication></pmd-cpd>
+                """;
+        check(convert(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE, legacy).count() == 2,
+                "legacy unqualified CPD XML is supported without guessed columns");
+
+        String error = """
+                <pmd-cpd xmlns="https://pmd-code.org/schema/cpd-report">
+                  <error filename="src/Bad.java" msg="tokenizer failed"/>
+                </pmd-cpd>
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD, AnalyzerXmlNormalizer.Status.COMPLETE, error);
+        var partial = convert(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.PARTIAL, error);
+        check(partial.count() == 1, "recoverable original CPD processing failure retained");
+        check(new String(partial.bytes(), StandardCharsets.UTF_8)
+                .contains("PMD.CPD.AnalysisError\tERROR\t\t0\t0\t"),
+                "incomplete CPD analysis is not a clean report");
+
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE, modern.replace(
+                        "src/A.java", "../outside/A.java"));
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<pmd-cpd xmlns=\"https://untrusted.example/cpd\"/>");
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<pmd-cpd><duplication lines=\"4\" tokens=\"23\">"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<codefragment>x</codefragment></duplication></pmd-cpd>");
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<pmd-cpd><duplication lines=\"4\" tokens=\"23\">"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<file path=\"src/B.java\" line=\"2\"/></duplication></pmd-cpd>");
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<pmd-cpd><duplication lines=\"0\" tokens=\"23\">"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<file path=\"src/B.java\" line=\"2\"/>"
+                        + "<codefragment>x</codefragment></duplication></pmd-cpd>");
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<pmd-cpd><duplication lines=\"4\" tokens=\"23\">"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<codefragment>x</codefragment></duplication></pmd-cpd>");
+        refusal(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<!DOCTYPE pmd-cpd [<!ENTITY x SYSTEM \"file:///etc/passwd\">]>"
+                        + "<pmd-cpd><duplication lines=\"4\" tokens=\"23\">"
+                        + "<file path=\"src/A.java\" line=\"1\"/>"
+                        + "<file path=\"src/B.java\" line=\"2\"/>"
+                        + "<codefragment>&x;</codefragment></duplication></pmd-cpd>");
     }
 
     private static void refusal(Path root) throws Exception {
