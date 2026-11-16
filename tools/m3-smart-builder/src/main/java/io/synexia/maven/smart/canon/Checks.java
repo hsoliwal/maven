@@ -4,6 +4,7 @@ package io.synexia.maven.smart.canon;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * The built-in checks of the gate (coding-agent laws 9 and 10: a rule that was broken once becomes a mechanical
@@ -58,6 +60,36 @@ final class Checks {
             if (packet.checks.contains(id)) summaries.add(one(id, git, root, runDir, base, packet.renamed, violations));
         }
         return summaries.isEmpty() ? "none declared" : String.join("; ", summaries);
+    }
+
+    /**
+     * The failing rows of the packet's evidence tables in {@code dir} as {@code path:line: error: CODE detail}
+     * lines. Appended to the lint log, they become rows of {@code BUILD_LOG.tsv} and count as lint errors.
+     */
+    static String diagnostics(Packet packet, Path dir) throws IOException {
+        StringBuilder out = new StringBuilder();
+        if (packet.checks.contains("stamp")) {
+            rows(dir, StampCheck.TABLE).filter(cell -> cell[0].startsWith("NEW_")).forEach(cell -> line(out, cell[1],
+                    cell[2], StampCheck.PREFIX + cell[0] + " " + cell[3]));
+        }
+        if (packet.checks.contains("extension_points")) {
+            rows(dir, ExtensionPoints.TABLE).filter(cell -> cell[4].equals("ABSTRACT_ADDED")).forEach(cell -> line(out,
+                    cell[0], "1", ExtensionPoints.PREFIX + cell[4] + " " + cell[2] + " " + cell[3]));
+        }
+        if (packet.checks.contains(NEEDS_NAMES)) {
+            rows(dir, TextRefs.TABLE).forEach(cell -> line(out, cell[1], cell[2], TextRefs.PREFIX + "STALE " + cell[0]));
+        }
+        return out.toString();
+    }
+
+    private static Stream<String[]> rows(Path dir, String table) throws IOException {
+        return Files.readAllLines(dir.resolve(table), StandardCharsets.UTF_8).stream().skip(1)
+                .map(row -> row.split("\t", -1)).filter(cell -> cell.length >= 4);
+    }
+
+    private static void line(StringBuilder out, String path, String number, String message) {
+        out.append(path).append(':').append(number.equals("0") ? "1" : number).append(": error: ").append(message)
+                .append('\n');
     }
 
     /** The stand-alone form: {@code <id> <root> <base-ref> <out-dir> [<name>...]}. */
