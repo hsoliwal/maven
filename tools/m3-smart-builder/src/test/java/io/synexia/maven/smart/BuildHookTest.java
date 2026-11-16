@@ -79,6 +79,47 @@ public final class BuildHookTest {
         Files.writeString(project.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
                 + "<groupId>test</groupId><artifactId>hooks</artifactId><version>1</version></project>");
 
+
+        // Source-bound preparation and the independent four-stage checkpoint gate compose.
+        Path preparationFolder = Files.createDirectories(project.resolve(".reports"));
+        Path preparationReceipt = preparationFolder.resolve("preparation.json");
+        SourceInventory.Selected selectedSources = SourceInventory.inspectSelected(project, source);
+        Files.writeString(preparationReceipt, CanonicalPreparationEvidenceTestMain.report(selectedSources));
+        List<String> preparationArgs = new ArrayList<>(base);
+        preparationArgs.addAll(List.of("--source-root", "src",
+                "--preparation-required", "true", "--preparation-report", ".reports/preparation.json"));
+        require(run(preparationArgs, "--phase", "pre-build") == 0,
+                "source-bound preparation accepted with existing checkpoint mode disabled");
+        Map<String, Object> acceptedPreparation = report(project, "pre-build");
+        require("source-bound".equals(acceptedPreparation.get("preparationStatus")),
+                "preparation evidence is explicitly source-bound");
+        require("disabled".equals(acceptedPreparation.get("adviceStatus")),
+                "preparation does not implicitly enable AI");
+        require(run(preparationArgs, "--phase", "pre-build", "--require-atom-pattern", "true") == 2,
+                "independent four-stage checkpoint requirement remains enforced");
+        Map<String, Object> missingCheckpoint = report(project, "pre-build");
+        require("blocked-evidence".equals(missingCheckpoint.get("adviceStatus")),
+                "preparation alone cannot override missing checkpoint evidence");
+        Files.writeString(source.resolve("Example.java"),
+                "class Example { native void run(); } // intervening drift");
+        List<String> rejectedChrome = new ArrayList<>(preparationArgs);
+        rejectedChrome.addAll(List.of("--backend", "chrome",
+                "--chrome-llm-jar", "unavailable-agent.jar",
+                "--chrome-binary", "unavailable-chrome", "--chrome-profile", ".nonexistent-chrome-profile"));
+        require(run(rejectedChrome, "--phase", "pre-build") == 2,
+                "stale preparation refuses before any Chrome provider construction");
+        Map<String, Object> blockedPreparation = report(project, "pre-build");
+        require("blocked-preparation".equals(blockedPreparation.get("adviceStatus"))
+                && "CanonicalPreparationEvidenceRejected".equals(blockedPreparation.get("adviceErrorType")),
+                "preparation refusal cannot become a provider failure");
+        Files.writeString(source.resolve("Example.java"),
+                "class Example { native void run(); }");
+        require(run(preparationArgs, "--phase", "pre-build") == 0,
+                "unchanged source bytes restore source-bound preparation admission");
+        require(run(base, "--phase", "pre-build",
+                "--preparation-report", ".reports/preparation.json") == 2,
+                "preparation report alone cannot implicitly enable the gated mode");
+
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
             Path module = Path.of(fixture);
