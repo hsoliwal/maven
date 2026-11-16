@@ -60,6 +60,10 @@ final class AtomPattern {
                 violations.add("ATOM_PATTERN_SCHEMA line " + (i + 1));
                 continue;
             }
+            if (!ordinarySource(root, cell[0])) {
+                violations.add("ATOM_NONREGULAR_ROW " + cell[0] + " " + cell[2]);
+                continue;
+            }
             String now = current.containsKey(cell[0]) ? current.get(cell[0]) : hash(root, cell[0]);
             current.put(cell[0], now);
             boolean complete = planeCount(cell) == PLANES.length;
@@ -84,9 +88,7 @@ final class AtomPattern {
         // representation in this version of the nine-column table. Refuse it
         // rather than silently treating the absence as complete coverage.
         for (String path : changed) {
-            Path file = root.resolve(path).normalize();
-            if (!canonicalPath(path) || !file.startsWith(root)
-                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            if (!ordinarySource(root, path)) {
                 violations.add("ATOM_NONREGULAR_CHANGE " + path);
             } else if (!covered.contains(path)) {
                 violations.add("ATOM_UNCOVERED " + path);
@@ -107,6 +109,17 @@ final class AtomPattern {
             if (component.isEmpty() || component.equals(".") || component.equals("..")) return false;
         }
         return true;
+    }
+
+    /** Reject links at every component, not just a final symlinked file. */
+    private static boolean ordinarySource(Path root, String path) {
+        if (!canonicalPath(path) || Files.isSymbolicLink(root)) return false;
+        Path current = root;
+        for (String component : path.split("/")) {
+            current = current.resolve(component);
+            if (Files.isSymbolicLink(current)) return false;
+        }
+        return Files.isRegularFile(current, LinkOption.NOFOLLOW_LINKS);
     }
 
     private static boolean planesWellFormed(String[] cell) {
@@ -136,8 +149,6 @@ final class AtomPattern {
     }
 
     private static String hash(Path root, String path) throws IOException {
-        Path file = root.resolve(path).normalize();
-        return file.startsWith(root) && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                ? Ledger.sha256(file) : "-";
+        return ordinarySource(root, path) ? Ledger.sha256(root.resolve(path)) : "-";
     }
 }

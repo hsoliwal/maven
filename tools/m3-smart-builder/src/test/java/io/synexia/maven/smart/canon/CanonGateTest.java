@@ -229,6 +229,18 @@ public final class CanonGateTest {
         contains(base.resolve("runs/atom-path-alias/FINAL_REPORT.md"),
                 "ATOM_PATTERN_SCHEMA line 2", "noncanonical source path refused");
         restore();
+        Path external = Files.createTempDirectory("canon-parent-link");
+        Files.writeString(external.resolve("A.java"), "public final class A { }\n");
+        Files.createSymbolicLink(repo.resolve("src/dirLink"), external);
+        expect(1, run(apply(atoms("VALUE_OBJECT", "src/dirLink/A.java")), "atom-parent-symlink"),
+                "a Java file below an intermediate symlink cannot be admitted by its target digest");
+        contains(base.resolve("runs/atom-parent-symlink/FINAL_REPORT.md"),
+                "ATOM_NONREGULAR_ROW src/dirLink/A.java", "nonregular atom row denied");
+        contains(base.resolve("runs/atom-parent-symlink/FINAL_REPORT.md"),
+                "ATOM_NONREGULAR_CHANGE src/dirLink", "changed symlink directory denied");
+        restore();
+        Files.delete(external.resolve("A.java"));
+        Files.delete(external);
     }
 
     private static void inventory() throws Exception {
