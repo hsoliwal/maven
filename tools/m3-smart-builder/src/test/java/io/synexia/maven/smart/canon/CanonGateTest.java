@@ -35,6 +35,7 @@ public final class CanonGateTest {
         resume();
         diagnostics();
         atoms();
+        nonRegularAtomChanges();
         inventory();
         idempotence();
         System.out.println("CanonGateTest: " + checks + " checks passed");
@@ -203,6 +204,30 @@ public final class CanonGateTest {
         Map<String, String> p = apply("true");
         expect(1, run(p, "atom-missing"), "atom stage without table");
         contains(base.resolve("runs/atom-missing/FINAL_REPORT.md"), "OUTPUT_CONTRACT_MISSING ATOM_PATTERN.tsv", "missing table");
+        contains(base.resolve("runs/atom-missing/FINAL_REPORT.md"), "ATOM_PATTERN_MISSING ATOM_PATTERN.tsv",
+                "missing table explicitly refused by atom coverage guard");
+        restore();
+    }
+
+    private static void nonRegularAtomChanges() throws Exception {
+        Files.delete(repo.resolve("src/A.java"));
+        expect(1, run(apply(atoms("VALUE_OBJECT")), "atom-deleted-source"),
+                "deleting a source without a deletion-proof schema must refuse");
+        contains(base.resolve("runs/atom-deleted-source/FINAL_REPORT.md"),
+                "ATOM_NONREGULAR_CHANGE src/A.java", "deleted source not silently covered");
+        restore();
+
+        Files.createSymbolicLink(repo.resolve("src/Linked.java"), repo.resolve("src/A.java"));
+        expect(1, run(apply(atoms("VALUE_OBJECT", "src/Linked.java")), "atom-linked-source"),
+                "a changed symlink cannot count as a regular atom-bearing Java file");
+        contains(base.resolve("runs/atom-linked-source/FINAL_REPORT.md"),
+                "ATOM_NONREGULAR_CHANGE src/Linked.java", "symlink refused even with matching target digest");
+        restore();
+
+        expect(1, run(apply(atoms("VALUE_OBJECT", "src/./A.java")), "atom-path-alias"),
+                "noncanonical source alias must not be admitted as an atom row");
+        contains(base.resolve("runs/atom-path-alias/FINAL_REPORT.md"),
+                "ATOM_PATTERN_SCHEMA line 2", "noncanonical source path refused");
         restore();
     }
 
