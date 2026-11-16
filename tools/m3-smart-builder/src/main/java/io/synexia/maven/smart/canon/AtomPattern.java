@@ -5,6 +5,7 @@ package io.synexia.maven.smart.canon;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,10 @@ final class AtomPattern {
     static String check(Path root, Path runDir, Set<String> changed, Set<String> admitted, List<String> violations)
             throws IOException {
         Path table = runDir.resolve(TABLE);
-        if (!Files.isRegularFile(table)) return "no " + TABLE;
+        if (!Files.isRegularFile(table, LinkOption.NOFOLLOW_LINKS)) {
+            violations.add("ATOM_PATTERN_MISSING " + TABLE);
+            return "no " + TABLE;
+        }
         List<String> lines = Files.readAllLines(table, StandardCharsets.UTF_8);
         if (lines.isEmpty() || !lines.get(0).equals(HEADER)) {
             violations.add("ATOM_PATTERN_SCHEMA header must be " + HEADER.replace('\t', ','));
@@ -51,7 +55,7 @@ final class AtomPattern {
         int hashed = 0;
         for (int i = 1; i < lines.size(); i++) {
             String[] cell = lines.get(i).split("\t", -1);
-            if (cell.length != 9 || cell[0].isEmpty() || !cell[1].matches("[0-9a-f]{64}") || cell[2].isBlank()
+            if (cell.length != 9 || !canonicalPath(cell[0]) || !cell[1].matches("[0-9a-f]{64}") || cell[2].isBlank()
                     || cell[3].isBlank() || cell[4].isBlank() || !planesWellFormed(cell)) {
                 violations.add("ATOM_PATTERN_SCHEMA line " + (i + 1));
                 continue;
@@ -76,11 +80,33 @@ final class AtomPattern {
                 }
             }
         }
-        changed.stream().filter(p -> Files.isRegularFile(root.resolve(p)) && !covered.contains(p))
-                .forEach(p -> violations.add("ATOM_UNCOVERED " + p));
+        // A deleted source, symlink, gitlink or directory has no admissible atom
+        // representation in this version of the nine-column table. Refuse it
+        // rather than silently treating the absence as complete coverage.
+        for (String path : changed) {
+            Path file = root.resolve(path).normalize();
+            if (!canonicalPath(path) || !file.startsWith(root)
+                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                violations.add("ATOM_NONREGULAR_CHANGE " + path);
+            } else if (!covered.contains(path)) {
+                violations.add("ATOM_UNCOVERED " + path);
+            }
+        }
         int clusters = clusters(runDir, planes);
         return (lines.size() - 1) + " atom row(s) over " + covered.size() + " file(s), " + hashed
                 + " with all hash planes, " + clusters + " plane cluster(s), " + residue + " typed residue";
+    }
+
+    private static boolean canonicalPath(String value) {
+        if (value.isBlank() || value.length() > 4096 || value.startsWith("/")
+                || value.indexOf('\\') >= 0 || value.indexOf(':') >= 0
+                || value.chars().anyMatch(Character::isISOControl)) {
+            return false;
+        }
+        for (String component : value.split("/", -1)) {
+            if (component.isEmpty() || component.equals(".") || component.equals("..")) return false;
+        }
+        return true;
     }
 
     private static boolean planesWellFormed(String[] cell) {
@@ -111,6 +137,7 @@ final class AtomPattern {
 
     private static String hash(Path root, String path) throws IOException {
         Path file = root.resolve(path).normalize();
-        return file.startsWith(root) && Files.isRegularFile(file) ? Ledger.sha256(file) : "-";
+        return file.startsWith(root) && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                ? Ledger.sha256(file) : "-";
     }
 }
