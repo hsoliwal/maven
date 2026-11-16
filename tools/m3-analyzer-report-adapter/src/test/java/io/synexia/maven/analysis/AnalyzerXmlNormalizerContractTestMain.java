@@ -450,6 +450,20 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 """;
         refusal(root, AnalyzerXmlNormalizer.Format.SARIF,
                 AnalyzerXmlNormalizer.Status.COMPLETE, cyclicUriBase);
+        String unresolvedIndex = """
+                {"version":"2.1.0","runs":[{
+                  "tool":{"driver":{"name":"CodeQL"}},
+                  "artifacts":[{"description":{"text":"no physical URI"}}],
+                  "results":[{"ruleId":"rule","message":{"text":"source unknown"},
+                    "locations":[{"physicalLocation":{
+                      "artifactLocation":{"index":0}
+                    }}]
+                  }]
+                }]}
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, unresolvedIndex);
+
     }
 
     private static void refusal(Path root) throws Exception {
