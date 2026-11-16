@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Standalone Java 17 adapter for ORIGINAL Checkstyle/PMD XML report bytes.
+ * Standalone Java 17 adapter for ORIGINAL Checkstyle/PMD/SpotBugs XML bytes.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
