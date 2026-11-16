@@ -340,7 +340,7 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                         "message": { "text": "Untrusted\\nquery input" },
                         "locations": [{
                           "physicalLocation": {
-                            "artifactLocation": { "uri": "src/A.java", "uriBaseId": "%SRCROOT%" },
+                            "artifactLocation": { "uri": "src/A.java", "uriBaseId": "%%SRCROOT%%" },
                             "region": { "startLine": 22, "startColumn": 3 }
                           }
                         }]
@@ -360,8 +360,8 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                         "message": { "text": "Project-wide observation" }, "locations": [] },
                       { "kind": "pass" }
                     ],
-                    "artifacts": [{ "location": { "uri": "src/B.java", "uriBaseId": "%SRCROOT%" } }],
-                    "originalUriBaseIds": { "%SRCROOT%": { "uri": "%s" } },
+                    "artifacts": [{ "location": { "uri": "src/B.java", "uriBaseId": "%%SRCROOT%%" } }],
+                    "originalUriBaseIds": { "%%SRCROOT%%": { "uri": "%s" } },
                     "invocations": [{ "executionSuccessful": true }],
                     "tool": { "driver": { "name": "CodeQL" } }
                   }]
@@ -388,13 +388,13 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 {"version":"2.1.0","runs":[{
                   "tool":{"driver":{"name":"Semgrep"}},
                   "originalUriBaseIds":{
-                    "%PROJECT%":{"uri":"%s"},
-                    "%SRCROOT%":{"uri":"src/","uriBaseId":"%PROJECT%"}
+                    "%%PROJECT%%":{"uri":"%s"},
+                    "%%SRCROOT%%":{"uri":"src/","uriBaseId":"%%PROJECT%%"}
                   },
                   "results":[{"ruleId":"rules.strict","level":"warning",
                     "message":{"text":"Avoid this call"},
                     "locations":[{"physicalLocation":{
-                      "artifactLocation":{"uri":"Nested.java","uriBaseId":"%SRCROOT%"},
+                      "artifactLocation":{"uri":"Nested.java","uriBaseId":"%%SRCROOT%%"},
                       "region":{"startLine":1,"startColumn":1}
                     }}]
                   }]
