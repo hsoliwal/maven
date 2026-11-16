@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /** Tests the original native evidence membership, strict parser, and bounded report indexing. */
@@ -92,6 +93,8 @@ final class DefaultM3StaticAnalysisServiceTest {
         Files.writeString(file, "modified after authenticated snapshot");
         assertEquals(2, read.size(), "published read remains a stable parsed snapshot");
         assertThrows(IOException.class, () -> service.read(session, identity));
+        original.revoke(session, identity);
+        assertTrue(service.read(session, identity).isEmpty(), "revocation never deletes producer bytes");
     }
 
     @Test
@@ -142,7 +145,8 @@ final class DefaultM3StaticAnalysisServiceTest {
 
     @Test
     void duplicateOrExcessiveExpectedAnalyzersAreRejectedBeforeLookups() {
-        var service = new DefaultM3StaticAnalysisService(mock(M3PluginEvidenceService.class));
+        M3PluginEvidenceService evidence = mock(M3PluginEvidenceService.class);
+        var service = new DefaultM3StaticAnalysisService(evidence);
         Session session = mock(Session.class);
         var pmd = identity("maven-pmd-plugin", 1);
         assertThrows(IllegalArgumentException.class, () -> service.aggregate(session, List.of()));
@@ -150,6 +154,7 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.aggregate(
                 session, java.util.Collections.nCopies(M3StaticAnalysisService.MAX_PRODUCERS + 1, pmd)));
         assertThrows(NullPointerException.class, () -> service.aggregate(null, List.of(pmd)));
+        verifyNoInteractions(evidence);
     }
 
     @Test
@@ -183,6 +188,42 @@ final class DefaultM3StaticAnalysisServiceTest {
             var service = new DefaultM3StaticAnalysisService(provider);
             assertThrows(IOException.class, () -> service.read(session, id), "case " + index);
         }
+    }
+
+    @Test
+    void inputLocationValidationPreservesOnlyCanonicalPathsAndPositions() {
+        var level = M3StaticAnalysisService.Severity.ERROR;
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, "../outside", 1, 1, "bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, "C:/absolute", 1, 1, "bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, "a\\b", 1, 1, "bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, "", 1, 1, "bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, "A.java", 0, 1, "bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level,
+                        String.valueOf((char) 0xD800), 0, 0, "bad"));
+        assertEquals("", new M3StaticAnalysisService.Finding("Rule", level, "", 0, 0, "project")
+                .relativePath());
+    }
+
+    @Test
+    void malformedUtf8FromOriginalAuthenticatedReportIsRefused() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        var identity = identity("maven-pmd-plugin", 1);
+        byte[] prefix = HEADER.getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = java.util.Arrays.copyOf(prefix, prefix.length + 2);
+        bytes[prefix.length] = (byte) 0xc3;
+        bytes[prefix.length + 1] = (byte) 0x28;
+        Path file = directory.resolve("invalid-utf8.tsv");
+        Files.write(file, bytes);
+        provider.publish(session, new M3PluginEvidenceService.Receipt(identity, file,
+                M3StaticAnalysisService.SCHEMA, sha(bytes), M3StaticAnalysisService.CAPABILITIES));
+        assertThrows(IOException.class, () -> new DefaultM3StaticAnalysisService(provider).read(session, identity));
     }
 
     @Test
