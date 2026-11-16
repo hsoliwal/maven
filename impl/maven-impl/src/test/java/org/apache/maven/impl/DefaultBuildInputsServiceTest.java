@@ -9,9 +9,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 import org.apache.maven.api.Session;
+import org.apache.maven.api.SessionData;
 import org.apache.maven.api.services.BuildInputsService;
 import org.apache.maven.api.services.M3PluginEvidenceService;
 import org.apache.maven.di.Injector;
@@ -23,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -68,6 +73,27 @@ final class DefaultBuildInputsServiceTest {
         Files.writeString(f.file(), "modified after snapshot");
         assertEquals(3, manifest.size());
         assertThrows(IOException.class, () -> f.read());
+    }
+
+    @Test
+    void originalMavenEvidenceRegistryControlsMembershipAndRevocation() throws Exception {
+        String content = HEADER + "I\tsrc/main/resources/a.txt\t" + SHA + "\t1\n";
+        Path file = directory.resolve("actual-receipt.tsv");
+        Files.writeString(file, content);
+        var receipt = new M3PluginEvidenceService.Receipt(identity(), file, BuildInputsService.SCHEMA,
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))),
+                BuildInputsService.CAPABILITIES);
+        Session session = mock(Session.class);
+        when(session.getData()).thenReturn(new Memory());
+        var provider = new DefaultM3PluginEvidenceService();
+        var consumer = new DefaultBuildInputsService(provider);
+        assertFalse(consumer.read(session, identity()).isPresent());
+        provider.publish(session, receipt);
+        var received = consumer.read(session, identity()).orElseThrow();
+        assertEquals(1, received.size());
+        assertEquals(1, received.inputCount());
+        provider.revoke(session, identity());
+        assertTrue(consumer.read(session, identity()).isEmpty());
     }
 
     @Test
@@ -134,6 +160,40 @@ final class DefaultBuildInputsServiceTest {
     private static M3PluginEvidenceService.Identity identity() {
         return new M3PluginEvidenceService.Identity("project", "org.apache.maven.plugins:maven-resources-plugin",
                 "3.4.0", "resources", "default-resources", "b".repeat(64), 1);
+    }
+
+    private static final class Memory implements SessionData {
+        private final Map<Key<?>, Object> values = new ConcurrentHashMap<>();
+
+        @Override
+        public synchronized <T> void set(Key<T> key, T value) {
+            if (value == null) {
+                values.remove(key);
+            } else {
+                values.put(key, value);
+            }
+        }
+
+        @Override
+        public synchronized <T> boolean replace(Key<T> key, T previous, T next) {
+            if (values.get(key) != previous) {
+                return false;
+            }
+            set(key, next);
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T get(Key<T> key) {
+            return (T) values.get(key);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T computeIfAbsent(Key<T> key, Supplier<T> supply) {
+            return (T) values.computeIfAbsent(key, ignored -> supply.get());
+        }
     }
 
     private record Fixture(Path file, M3PluginEvidenceService.Receipt receipt, BuildInputsService service,
