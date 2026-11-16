@@ -231,3 +231,18 @@ both report byte hashes. The original Maven receipt membership and producer
 integrity do not transfer across build systems merely because Gradle receives
 the digest. Both Gradle baseline comparison and gating on introduced ERRORs
 are **disabled by default**, and no original analyzer task is skipped.
+## Constant-time native analyzer severity summaries
+
+The additive `Manifest.count(Severity)` default method preserves existing
+third-party and prior Maven implementations: its fallback delegates to the
+existing public `size()` and `entry()` methods without a new abstract
+contract. Native `DefaultM3StaticAnalysisService` overrides it with a
+precomputed three-counter array populated alongside its compact severity
+byte lane, making repeat summaries O(1), with no retained per-entry objects.
+Severity interpretation and source provenance remain the original analyzer's
+responsibility.
+
+The independently implemented Gradle `M3AnalysisV1` reader follows the
+same pattern, with a byte-array severity lane and parser-maintained error
+counter. This is an optimization of existing evidence indexing, **not**
+an automatic Maven/Gradle policy decision or a plugin-goal replacement.

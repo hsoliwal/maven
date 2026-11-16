@@ -89,6 +89,10 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertEquals("A.Rule", read.entry(0).ruleId());
         assertEquals("src/main/java/B.java", read.entry(1).relativePath());
         assertEquals(12, read.entry(1).line());
+        assertEquals(1, read.count(M3StaticAnalysisService.Severity.ERROR));
+        assertEquals(1, read.count(M3StaticAnalysisService.Severity.WARNING));
+        assertEquals(0, read.count(M3StaticAnalysisService.Severity.INFO));
+        assertThrows(NullPointerException.class, () -> read.count(null));
         assertThrows(IndexOutOfBoundsException.class, () -> read.entry(2));
 
         Files.writeString(file, "modified after authenticated snapshot");
@@ -194,6 +198,40 @@ final class DefaultM3StaticAnalysisServiceTest {
                 new M3StaticAnalysisService.Finding(
                         "A.Rule", M3StaticAnalysisService.Severity.ERROR, "src/A.java", 1, 1, "a"));
         assertThrows(IllegalArgumentException.class, () -> service.compare(forged, original));
+    void additiveDefaultSeverityCountWorksForExistingManifestImplementations() throws Exception {
+        var evidence = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        var identity = identity("maven-pmd-plugin", 444);
+        publish(evidence, session, identity, HEADER
+                + row("RuleA", "ERROR", "src/A.java", "1", "1", MESSAGE)
+                + row("RuleB", "WARNING", "src/B.java", "1", "1", MESSAGE));
+        var original = new DefaultM3StaticAnalysisService(evidence).read(session, identity).orElseThrow();
+        M3StaticAnalysisService.Manifest legacy = new M3StaticAnalysisService.Manifest() {
+            @Override
+            public M3PluginEvidenceService.Receipt receipt() {
+                return original.receipt();
+            }
+
+            @Override
+            public M3StaticAnalysisService.Status status() {
+                return original.status();
+            }
+
+            @Override
+            public int size() {
+                return original.size();
+            }
+
+            @Override
+            public M3StaticAnalysisService.Finding entry(int index) {
+                return original.entry(index);
+            }
+        };
+        assertEquals(1, legacy.count(M3StaticAnalysisService.Severity.ERROR));
+        assertEquals(1, legacy.count(M3StaticAnalysisService.Severity.WARNING));
+        assertEquals(0, legacy.count(M3StaticAnalysisService.Severity.INFO));
+        assertEquals(original.count(M3StaticAnalysisService.Severity.ERROR),
+                legacy.count(M3StaticAnalysisService.Severity.ERROR));
     }
 
     @Test

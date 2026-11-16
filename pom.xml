@@ -878,6 +878,9 @@ under the License.
               <!-- Immutable M3 Smart Builder verification data, not distributable source.
                    Audit the exact proof set in tools/m3-smart-builder/RAT_LICENSE_AUDIT_20261116.md.
                    Do not exclude the Smart Builder source, docs, tests, or plugin POM. -->
+              <!-- Comment-free Visual Studio task schema. License attribution is in the
+                   adjacent Apache-licensed README and project NOTICE. Exact single-file exception. -->
+              <exclude>tools/m3-ide-bridge/visualstudio/tasks.vs.json</exclude>
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>
               <exclude>tools/m3-smart-builder/verification/11-lint.log</exclude>
               <exclude>tools/m3-smart-builder/verification/12-compile-test-runtime.log</exclude>
