@@ -100,8 +100,7 @@ public interface M3BuildFingerprintService extends Service {
             project = name(project, "project");
             pluginGa = name(pluginGa, "pluginGa");
             int separator = pluginGa.indexOf(':');
-            if (separator < 1 || separator == pluginGa.length() - 1
-                    || pluginGa.indexOf(':', separator + 1) >= 0) {
+            if (separator < 1 || separator == pluginGa.length() - 1 || pluginGa.indexOf(':', separator + 1) >= 0) {
                 throw new IllegalArgumentException("pluginGa must identify group:artifact");
             }
             pluginVersion = name(pluginVersion, "pluginVersion");
