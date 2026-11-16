@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Native Maven IDE Assessment Goal
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-ide-bridge/maven-plugin/**'
+      - '.github/workflows/m3-ide-assess-goal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maven4-native-plugin:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            java: '17'
+          - os: ubuntu-24.04
+            java: '21'
+          - os: windows-2025
+            java: '21'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            tools/m3-ide-bridge/maven-plugin/pom.xml
+      - name: Bootstrap Maven 4 CLI for building the fork
+        run: |
+          mvn --errors --batch-mode --show-version \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper '-Dmaven=4.0.0-rc-7'
+      - name: Install original M3 Maven API and implementation
+        run: |
+          ./mvnw -B -ntp -pl impl/maven-impl -am install
+      - name: Build and test standalone Maven 4 IDE plugin
+        run: |
+          ./mvnw -B -ntp -f tools/m3-ide-bridge/maven-plugin/pom.xml verify
+      - name: Inspect the actual generated Maven plugin descriptor
+        run: |
+          jarfile=tools/m3-ide-bridge/maven-plugin/target/m3-ide-bridge-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s "$jarfile"
+          jar tf "$jarfile" | grep -F 'META-INF/maven/plugin.xml'
+          jar xf "$jarfile" META-INF/maven/plugin.xml
+          grep -F 'ide-assess' META-INF/maven/plugin.xml

@@ -137,8 +137,11 @@ public interface M3StaticAnalysisService extends Service {
      */
     record Comparison(boolean comparable, int unchanged, int introduced, int resolved, int introducedErrors) {
         public Comparison {
-            if (unchanged < 0 || introduced < 0 || resolved < 0
-                    || introducedErrors < 0 || introducedErrors > introduced
+            if (unchanged < 0
+                    || introduced < 0
+                    || resolved < 0
+                    || introducedErrors < 0
+                    || introducedErrors > introduced
                     || (!comparable && (unchanged != 0 || introduced != 0 || resolved != 0))) {
                 throw new IllegalArgumentException("invalid analysis comparison counts");
             }
