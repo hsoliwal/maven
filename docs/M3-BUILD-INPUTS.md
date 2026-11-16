@@ -52,6 +52,9 @@ if (manifest.isPresent()) {
 ```
 
 Missing evidence returns empty; malformed, stale, untrusted or changed receipt bytes fail.
+The parser also checks the exact snapshot identity, schema and required capability bits even if a custom
+provider returns an unexpected receipt; substituted snapshots fail closed.
+
 A successful decode authenticates **only the manifest**, not the listed files, completeness,
 producer semantics, coverage of generated outputs, or build-cache safety. Producer side
 verification of output ownership and changes remains a separate prerequisite.

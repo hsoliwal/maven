@@ -131,6 +131,40 @@ final class DefaultBuildInputsServiceTest {
     }
 
     @Test
+    void rejectsForeignSnapshotIdentitySchemaAndCapabilityEvenFromProvider() throws Exception {
+        Path file = directory.resolve("forged-resource.tsv");
+        Files.writeString(file, HEADER);
+        String digest =
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        var id = identity();
+        var foreign = new M3PluginEvidenceService.Identity(
+                id.project(),
+                id.pluginGa(),
+                id.version(),
+                id.goal(),
+                id.execution(),
+                id.contextSha256(),
+                id.generation() + 1);
+        var foreignReceipts = new M3PluginEvidenceService.Receipt[] {
+            new M3PluginEvidenceService.Receipt(
+                    foreign, file, BuildInputsService.SCHEMA, digest, BuildInputsService.CAPABILITIES),
+            new M3PluginEvidenceService.Receipt(
+                    id, file, "other.resource.schema", digest, BuildInputsService.CAPABILITIES),
+            new M3PluginEvidenceService.Receipt(
+                    id, file, BuildInputsService.SCHEMA, digest, M3PluginEvidenceService.INPUTS)
+        };
+        M3PluginEvidenceService provider = mock(M3PluginEvidenceService.class);
+        Session session = mock(Session.class);
+        var service = new DefaultBuildInputsService(provider);
+        for (var foreignReceipt : foreignReceipts) {
+            when(provider.read(
+                            eq(session), eq(id), eq(BuildInputsService.SCHEMA), eq(BuildInputsService.CAPABILITIES)))
+                    .thenReturn(Optional.of(foreignReceipt.snapshot()));
+            assertThrows(IOException.class, () -> service.read(session, id));
+        }
+    }
+
+    @Test
     void emptyManifestIsParseableButDoesNotClaimCoverage() throws Exception {
         var f = fixture(HEADER);
         var manifest = f.read().orElseThrow();

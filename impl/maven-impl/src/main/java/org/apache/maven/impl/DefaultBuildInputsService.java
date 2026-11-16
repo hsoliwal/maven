@@ -45,7 +45,13 @@ public final class DefaultBuildInputsService implements BuildInputsService {
             return Optional.empty();
         }
         M3PluginEvidenceService.Snapshot snapshot = found.orElseThrow();
-        return Optional.of(parse(snapshot.receipt(), snapshot.bytes()));
+        M3PluginEvidenceService.Receipt receipt = snapshot.receipt();
+        if (!receipt.identity().equals(identity)
+                || !SCHEMA.equals(receipt.schema())
+                || (receipt.capabilities() & CAPABILITIES) != CAPABILITIES) {
+            throw new IOException("resource inventory receipt does not match the requested source");
+        }
+        return Optional.of(parse(receipt, snapshot.bytes()));
     }
 
     private static Manifest parse(M3PluginEvidenceService.Receipt receipt, byte[] contents) throws IOException {
