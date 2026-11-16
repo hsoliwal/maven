@@ -9,6 +9,7 @@ usage() {
 Usage: sh m3-build.sh [quick|test|verify|full|it] [Maven arguments...]
        sh m3-build.sh resume <module> [Maven arguments...]
        sh m3-build.sh ai-check [Chrome AI agent arguments...]
+       sh m3-build.sh canon <packet.tsv> <run-dir>
 
 Default: verify. Maven options alone also use verify.
   quick   Package and compile tests, without running tests.
@@ -18,6 +19,10 @@ Default: verify. Maven options alone also use verify.
   it      Verify with Maven's existing run-its integration-test profile.
   resume  Verify starting at a reactor module, using Maven -rf.
   ai-check Run the installed Java Chrome AI agent explicitly; no Maven lifecycle.
+  canon   Run the hard canon gate: the packet's stages run in the fixed order
+          diff, atom_pattern, lint, compile, test, runtime; any packet, scope,
+          atomization, verification or output-contract violation fails.
+          See tools/m3-smart-builder/docs/CANON_GATE.md.
 
 Examples:
   sh m3-build.sh
@@ -28,7 +33,8 @@ Examples:
 M3_MAVEN selects one Maven executable; the default is mvn on PATH.
 Relative executable paths and Maven paths are resolved from this script's directory.
 For ai-check, M3_JAVA selects one Java 21 executable (default java on PATH),
-and M3_CHROME_AI_AGENT_JAR names the installed agent JAR. Agent arguments and
+and M3_CHROME_AI_AGENT_JAR names the installed agent JAR. For canon, M3_JAVA and
+M3_JAVAC select the Java 21 launcher and compiler (default java and javac on PATH). Agent arguments and
 paths resolve from this script's directory. The agent reads its token from
 CHROME_AI_API_TOKEN or the environment variable selected by --token-env.
 USAGE
@@ -37,7 +43,7 @@ USAGE
 mode=verify
 case "${1-}" in
   help|-h|--help) usage; exit 0 ;;
-  quick|test|verify|full|it|resume|ai-check) mode=$1; shift ;;
+  quick|test|verify|full|it|resume|ai-check|canon) mode=$1; shift ;;
   ''|-*) ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -60,6 +66,9 @@ case "$mode" in
     shift
     set -- verify -rf "$resume_from" "$@"
     ;;
+  canon)
+    [ $# -eq 2 ] || { echo 'canon requires <packet.tsv> <run-dir>.' >&2; exit 2; }
+    ;;
 esac
 
 build_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -76,6 +85,23 @@ if [ "$mode" = ai-check ]; then
     exit 127
   }
   exec "$java_executable" -jar "$agent_jar" "$@"
+fi
+if [ "$mode" = canon ]; then
+  java_executable=${M3_JAVA:-java}
+  javac_executable=${M3_JAVAC:-javac}
+  for tool in "$java_executable" "$javac_executable"; do
+    command -v "$tool" >/dev/null 2>&1 || {
+      echo "Java tool not found: $tool. Install Java 21 or set M3_JAVA and M3_JAVAC." >&2
+      exit 127
+    }
+  done
+  classes=$(mktemp -d)
+  trap 'rm -rf "$classes"' EXIT
+  "$javac_executable" -encoding UTF-8 -d "$classes" tools/m3-smart-builder/src/main/java/io/synexia/maven/smart/canon/*.java
+  set +e
+  "$java_executable" -cp "$classes" io.synexia.maven.smart.canon.CanonGate run "$1" "$2" "$build_root"
+  status=$?
+  exit "$status"
 fi
 maven_executable=${M3_MAVEN:-mvn}
 command -v "$maven_executable" >/dev/null 2>&1 || {

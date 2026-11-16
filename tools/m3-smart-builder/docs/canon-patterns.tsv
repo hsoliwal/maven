@@ -1,0 +1,36 @@
+# Admitted pattern vocabulary for the canon gate (column 1 is the id used in ATOM_PATTERN.tsv).
+# Anything outside this list must be a typed residue, RESIDUE:<reason>; repeated residues are candidates for new rows.
+# id	family	meaning
+VALUE_OBJECT	structural	immutable value whose identity is its content
+VALIDATOR	behavioural	accepts or refuses an input against a contract
+GUARD	behavioural	refuses a transition that would break an invariant
+GATEWAY	structural	sole owner of access to an external system
+ADAPTER	structural	converts one interface into another
+FACADE	structural	single entry over a subsystem
+PIPELINE	behavioural	fixed ordered stages over one input
+REDUCER	functional	folds many inputs into one verdict or value
+MAP	functional	one-to-one transform
+FILTER	functional	keeps the elements that satisfy a predicate
+GROUP_BY	functional	partitions elements by a key
+EXTRACTOR	functional	parses structured records out of text
+COMPARATOR	behavioural	decides equality or order of two values
+CONTENT_ADDRESS	structural	identifies data by its digest
+MEMENTO	behavioural	captured state that allows resume or rollback
+TEMPLATE	creational	renders output from a fixed form and data
+STRATEGY	behavioural	interchangeable algorithm behind one contract
+FACTORY	creational	creates instances behind one contract
+BUILDER	creational	assembles a value step by step
+COMMAND	behavioural	a request captured as a value
+OBSERVER	behavioural	notifies dependents of a change
+STATE	behavioural	behaviour selected by the current state
+COMPOSITE	structural	tree of uniform parts
+DECORATOR	structural	adds behaviour around a component
+PROXY	structural	stands in for another object
+ITERATOR	behavioural	sequential access without exposing the representation
+VISITOR	behavioural	one operation over a type hierarchy
+REGISTRY	structural	keyed lookup of owned instances
+CACHE	structural	bounded reuse of computed values
+INTERNER	structural	one canonical instance per equal value
+TEST_HARNESS	verification	discriminating checks for a contract
+SPECIFICATION	documentation	normative description of a contract
+BUILD_DESCRIPTOR	build	declarative build configuration
