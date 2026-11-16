@@ -6,6 +6,9 @@ package io.synexia.maven.analysis;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -104,6 +107,16 @@ public final class AnalyzerXmlNormalizer {
         Path root = Objects.requireNonNull(projectRoot, "projectRoot").toAbsolutePath().normalize();
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || xml.length > MAX_BYTES) {
             throw new IOException("original source root or XML size is invalid");
+        }
+        // Refuse malformed UTF-8 even if an XML provider might guess
+        // another character set from an untrusted declaration.
+        try {
+            StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(xml));
+        } catch (CharacterCodingException malformed) {
+            throw new IOException("original analyzer XML must be strict UTF-8", malformed);
         }
         List<Finding> facts = readXml(format, status, root, xml);
         facts.sort(ORDER);
