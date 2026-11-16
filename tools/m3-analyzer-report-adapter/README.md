@@ -10,6 +10,17 @@ original Checkstyle or PMD XML **after** the original analyzer has executed,
 and emits the exact M3-STATIC-ANALYSIS-V1 report consumed by Maven's native
 M3StaticAnalysisService and Gradle's opt-in quality bridge.
 
+## Test fixture and root Apache RAT scope
+
+The synthetic `src/test/resources/sarif/basic.sarif` is a JSON-only **test input**
+containing one illustrative CodeQL-formatted finding. It is not a CodeQL engine
+binary, analyzer source, executed output or distributable runtime resource.
+The root Maven reactor's Apache RAT configuration excludes **that exact
+fixture path only**, because JSON fixtures cannot contain a standard leading
+Apache header without changing the schema and parser tests. All Java sources,
+test methods, adapter documentation and plugin POM files remain covered by
+their normal license audit. The original SARIF fixture bytes are unchanged.
+
 ## Build and run
 
 ~~~sh
