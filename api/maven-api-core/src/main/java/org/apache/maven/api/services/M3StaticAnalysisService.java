@@ -241,8 +241,8 @@ public interface M3StaticAnalysisService extends Service {
         while (i < firstSize || j < secondSize) {
             Finding a = i < firstSize ? Objects.requireNonNull(earlier.entry(i), "earlier finding") : null;
             Finding b = j < secondSize ? Objects.requireNonNull(later.entry(j), "later finding") : null;
-            if (a != null && priorFirst != null && compareFinding(priorFirst, a) >= 0
-                    || b != null && priorSecond != null && compareFinding(priorSecond, b) >= 0) {
+            if ((a != null && priorFirst != null && compareFinding(priorFirst, a) >= 0)
+                    || (b != null && priorSecond != null && compareFinding(priorSecond, b) >= 0)) {
                 throw new IllegalArgumentException("analysis comparison requires canonical sorted findings");
             }
             if (a == null || b != null && compareFinding(a, b) > 0) {
