@@ -55,6 +55,11 @@ public final class DefaultM3ExternalBuildService implements M3ExternalBuildServi
         if (previous == null) {
             reasons.add(Reason.INITIAL_BASELINE_MISSING);
         } else {
+            // A previous incomplete event cannot anchor an incremental chain.
+            // Reuse the existing reason without expanding the public enum/API.
+            if (!previous.deltaComplete()) {
+                reasons.add(Reason.INCOMPLETE_DELTA);
+            }
             if (!previous.providerId().equals(current.providerId())
                     || !previous.projectId().equals(current.projectId())) {
                 reasons.add(Reason.FOREIGN_BASELINE);

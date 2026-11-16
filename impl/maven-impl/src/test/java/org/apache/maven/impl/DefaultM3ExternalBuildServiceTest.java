@@ -230,6 +230,23 @@ final class DefaultM3ExternalBuildServiceTest {
         assertFalse(ordinary.authorizesMavenGoalSkipping());
     }
 
+    @Test
+    void previousIncompleteGenerationCannotAnchorACompleteNewDelta() {
+        var current = generation("eclipse.m2e", 2, A, true);
+        var previous = generation("eclipse.m2e", 1, A, false);
+        var assessment = service.assess(previous, current,
+                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null)));
+        assertEquals(Disposition.MAVEN_RECONCILIATION, assessment.disposition());
+        assertTrue(assessment.reasons().contains(Reason.INCOMPLETE_DELTA));
+        assertFalse(assessment.authorizesMavenGoalSkipping());
+
+        // A contiguous, complete prior generation still exposes a host hint.
+        var complete = service.assess(generation("eclipse.m2e", 1, A, true), current,
+                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null)));
+        assertEquals(Disposition.HOST_DELTA_AVAILABLE, complete.disposition());
+        assertFalse(complete.authorizesMavenGoalSkipping());
+    }
+
     private static Generation generation(String provider, long generation, String model, boolean complete) {
         return new Generation(provider, "project", generation, model, A, A, A, complete);
     }
