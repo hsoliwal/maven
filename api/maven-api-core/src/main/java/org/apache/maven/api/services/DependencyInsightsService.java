@@ -37,7 +37,13 @@ import org.apache.maven.api.annotations.Nonnull;
 @Experimental
 public interface DependencyInsightsService extends Service {
 
-    /** Maven conflict identity, excluding the version of the artifact. */
+    /** Maven conflict identity, excluding the version of the artifact.
+ *
+ * @param groupId artifact group identifier
+ * @param artifactId artifact identifier
+ * @param extension artifact extension
+ * @param classifier artifact classifier, possibly empty
+ */
     record Coordinate(String groupId, String artifactId, String extension, String classifier) {
         public Coordinate {
             Objects.requireNonNull(groupId, "groupId");
@@ -47,7 +53,12 @@ public interface DependencyInsightsService extends Service {
         }
     }
 
-    /** Artifact selected by the original flattening/resolution process. */
+    /** Artifact selected by the original flattening/resolution process.
+ *
+ * @param coordinate artifact identity without version
+ * @param version selected version
+ * @param snapshot whether the selected version is a snapshot
+ */
     record Selected(Coordinate coordinate, String version, boolean snapshot) {
         public Selected {
             Objects.requireNonNull(coordinate, "coordinate");
@@ -59,7 +70,13 @@ public interface DependencyInsightsService extends Service {
      * Verbose graph evidence that a node was omitted in favor of another node.
      * {@code duplicate} only denotes identical coordinates and versions; other
      * cases are resolver selections, not automatically policy failures.
-     */
+ *
+ * @param omitted artifact omitted by the original resolver
+ * @param omittedVersion version of the omitted artifact
+ * @param winner artifact selected instead
+ * @param selectedVersion version of the selected winner
+ * @param duplicate whether coordinates and versions are identical
+ */
     record Omission(
             Coordinate omitted,
             String omittedVersion,
@@ -74,7 +91,12 @@ public interface DependencyInsightsService extends Service {
         }
     }
 
-    /** Original and effective versions when Maven reports version management. */
+    /** Original and effective versions when Maven reports version management.
+ *
+ * @param coordinate resolved artifact identity
+ * @param declaredVersion originally declared version
+ * @param selectedVersion effective selected version
+ */
     record ManagedVersion(Coordinate coordinate, String declaredVersion, String selectedVersion) {
         public ManagedVersion {
             Objects.requireNonNull(coordinate, "coordinate");
@@ -88,7 +110,15 @@ public interface DependencyInsightsService extends Service {
      * a root and no reported resolver errors; it neither authenticates artifact
      * bytes nor asserts conflict-freedom. The verbose flag controls whether
      * omitted/managed explanations can be considered available.
-     */
+ *
+ * @param selected original selected artifacts
+ * @param omissions omitted artifact explanations
+ * @param managedVersions managed version explanations
+ * @param graphNodes number of graph nodes observed
+ * @param resolutionErrors number of resolver errors reported
+ * @param verbose whether verbose graph evidence was available
+ * @param complete whether a root was present and no resolver error was reported
+ */
     record Report(
             List<Selected> selected,
             List<Omission> omissions,

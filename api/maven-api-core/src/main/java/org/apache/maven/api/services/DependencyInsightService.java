@@ -35,7 +35,11 @@ import org.apache.maven.api.annotations.Experimental;
  */
 @Experimental
 public interface DependencyInsightService extends Service {
-    /** Cap memory and traversal work when inspecting an external dependency graph. */
+    /** Cap memory and traversal work when inspecting an external dependency graph.
+ *
+ * @param result original resolver result to inspect
+ * @param maxNodes maximum number of graph nodes to capture
+ */
     record Request(DependencyResolverResult result, int maxNodes) {
         public Request {
             result = Objects.requireNonNull(result, "result");
