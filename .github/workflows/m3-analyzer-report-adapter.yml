@@ -34,7 +34,7 @@ jobs:
           root="$PWD/tools/m3-analyzer-report-adapter"
           test -s "$jarfile"
           jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/NormalizeCli.class'
-          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/internal/jackson/core/JsonFactory.class'
+          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/internal/jackson/JsonFactory.class'
           java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
             SARIF PARTIAL "$root" "$root/src/test/resources/sarif/basic.sarif" \
             "$root/target/standalone-sarif.tsv" "$root/target/standalone-sarif.sha256"
