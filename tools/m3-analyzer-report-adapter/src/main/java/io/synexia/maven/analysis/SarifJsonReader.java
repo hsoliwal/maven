@@ -18,7 +18,6 @@ import java.util.Set;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.core.StreamReadConstraints;
 
 import io.synexia.maven.analysis.AnalyzerXmlNormalizer.Finding;
 import io.synexia.maven.analysis.AnalyzerXmlNormalizer.Severity;
@@ -39,10 +38,7 @@ final class SarifJsonReader {
     private SarifJsonReader() {}
 
     static List<Finding> read(Path root, Status status, byte[] json) throws IOException {
-        JsonFactory factory = new JsonFactory();
-        factory.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-        factory.setStreamReadConstraints(StreamReadConstraints.builder()
-                .maxNestingDepth(48).maxStringLength(MAX_TEXT).maxNumberLength(32).build());
+        JsonFactory factory = OriginalJsonStreams.factory();
         List<Finding> output = new ArrayList<>();
         try (JsonParser parser = factory.createParser(json)) {
             expect(parser.nextToken(), JsonToken.START_OBJECT, "SARIF object");
