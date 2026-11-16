@@ -48,6 +48,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
     private static final String MAGIC = "M3-STATIC-ANALYSIS-V1";
     private static final String COLUMNS = "rule\tseverity\tpath\tline\tcolumn\tmessage64";
     private static final int MAX_LINE = 16_384;
+    private static final Severity[] LEVELS = Severity.values();
     private static final Comparator<M3PluginEvidenceService.Identity> IDENTITIES =
             Comparator.comparing(M3PluginEvidenceService.Identity::project)
                     .thenComparing(M3PluginEvidenceService.Identity::pluginGa)
@@ -102,15 +103,15 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             Objects.requireNonNull(identity, "expected identity");
         }
         Arrays.sort(identities, IDENTITIES);
+        for (int index = 1; index < identities.length; index++) {
+            if (identities[index - 1].equals(identities[index])) {
+                throw new IllegalArgumentException("duplicate expected analysis invocation");
+            }
+        }
         List<Coverage> coverage = new ArrayList<>(identities.length);
         List<SourcedFinding> findings = new ArrayList<>();
         boolean allComplete = true;
-        M3PluginEvidenceService.Identity previous = null;
         for (M3PluginEvidenceService.Identity identity : identities) {
-            if (identity.equals(previous)) {
-                throw new IllegalArgumentException("duplicate expected analysis invocation");
-            }
-            previous = identity;
             Optional<Manifest> selected = read(session, identity);
             Status status = selected.map(Manifest::status).orElse(Status.MISSING);
             coverage.add(new Coverage(identity, status));
@@ -310,7 +311,7 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
             Objects.checkIndex(index, rules.length);
             return new Finding(
                     rules[index],
-                    Severity.values()[severities[index]],
+                    LEVELS[severities[index]],
                     paths[index],
                     lines[index],
                     columns[index],
