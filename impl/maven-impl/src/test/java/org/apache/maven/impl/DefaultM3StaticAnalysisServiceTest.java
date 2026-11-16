@@ -145,6 +145,45 @@ final class DefaultM3StaticAnalysisServiceTest {
     }
 
     @Test
+    void atomizedAggregationRetainsOriginalSourceOrderingAcrossInputPermutations() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        Session session = session();
+        var checkstyle = identity("maven-checkstyle-plugin", 5);
+        var pmd = identity("maven-pmd-plugin", 4);
+        publish(provider, session, pmd,
+                HEADER + row("PMD.Rule", "ERROR", "src/B.java", "5", "1", MESSAGE));
+        publish(provider, session, checkstyle,
+                HEADER + row("Checkstyle.Rule", "WARNING", "src/A.java", "2", "3", MESSAGE));
+
+        var service = new DefaultM3StaticAnalysisService(provider);
+        var expected = service.aggregate(session, List.of(checkstyle, pmd));
+        var reversed = service.aggregate(session, List.of(pmd, checkstyle));
+        assertEquals(expected, reversed);
+        assertTrue(expected.complete());
+        assertEquals(checkstyle, expected.coverage().get(0).identity());
+        assertEquals(checkstyle, expected.findings().get(0).identity());
+        assertEquals(pmd, expected.findings().get(1).identity());
+    }
+
+    @Test
+    void canonicalRowFramingAtomRefusesOverlongUnterminatedAndEmptyHeader() throws Exception {
+        String[] invalid = {
+            "M3-STATIC-ANALYSIS-V1",
+            HEADER + "x".repeat(16_385) + "\n",
+            HEADER + row("Rule", "ERROR", "src/A.java", "1", "1", MESSAGE)
+                    + "extra-without-final-LF"
+        };
+        for (int index = 0; index < invalid.length; index++) {
+            var provider = new DefaultM3PluginEvidenceService();
+            Session session = session();
+            var identity = identity("maven-pmd-plugin", index + 100);
+            publish(provider, session, identity, invalid[index]);
+            assertThrows(IOException.class,
+                    () -> new DefaultM3StaticAnalysisService(provider).read(session, identity));
+        }
+    }
+
+    @Test
     void duplicateOrExcessiveExpectedAnalyzersAreRejectedBeforeLookups() {
         M3PluginEvidenceService evidence = mock(M3PluginEvidenceService.class);
         var service = new DefaultM3StaticAnalysisService(evidence);
