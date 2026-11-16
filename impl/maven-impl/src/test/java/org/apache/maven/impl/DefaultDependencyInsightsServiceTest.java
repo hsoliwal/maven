@@ -68,14 +68,14 @@ final class DefaultDependencyInsightsServiceTest {
         when(original.winner()).thenReturn(Optional.of(chosen));
         when(chosen.premanagedVersion()).thenReturn(Optional.of("1.5"));
 
-        DependencyInsightsService.Report report = new DefaultDependencyInsightsService()
-                .inspect(result(root, List.of(z, chosen), List.of(), true));
+        DependencyInsightsService.Report report =
+                new DefaultDependencyInsightsService().inspect(result(root, List.of(z, chosen), List.of(), true));
         assertTrue(report.complete());
         assertTrue(report.verbose());
         assertEquals(4, report.graphNodes());
-        assertEquals(List.of("a", "z"), report.selected().stream()
-                .map(s -> s.coordinate().artifactId())
-                .toList());
+        assertEquals(
+                List.of("a", "z"),
+                report.selected().stream().map(s -> s.coordinate().artifactId()).toList());
         assertEquals("2.0", report.selected().get(0).version());
         assertTrue(report.selected().get(1).snapshot());
         assertEquals(1, report.omissions().size());
@@ -85,8 +85,10 @@ final class DefaultDependencyInsightsServiceTest {
         assertEquals(1, report.managedVersions().size());
         assertEquals("1.5", report.managedVersions().get(0).declaredVersion());
         assertEquals("2.0", report.managedVersions().get(0).selectedVersion());
-        assertThrows(UnsupportedOperationException.class, () -> report.selected().clear());
-        assertThrows(UnsupportedOperationException.class, () -> report.omissions().clear());
+        assertThrows(
+                UnsupportedOperationException.class, () -> report.selected().clear());
+        assertThrows(
+                UnsupportedOperationException.class, () -> report.omissions().clear());
     }
 
     @Test
@@ -109,8 +111,8 @@ final class DefaultDependencyInsightsServiceTest {
         Node root = node(null, skipped, chosen, skipped);
         when(skipped.winner()).thenReturn(Optional.of(chosen));
         when(chosen.children()).thenReturn(List.of(root));
-        DependencyInsightsService.Report report = new DefaultDependencyInsightsService()
-                .inspect(result(root, List.of(chosen, chosen), List.of(), true));
+        DependencyInsightsService.Report report =
+                new DefaultDependencyInsightsService().inspect(result(root, List.of(chosen, chosen), List.of(), true));
         assertEquals(3, report.graphNodes());
         assertEquals(1, report.selected().size());
         assertEquals(1, report.omissions().size());
@@ -131,8 +133,8 @@ final class DefaultDependencyInsightsServiceTest {
         // DefaultNode.children() reconstructs facade objects on each access.
         // A facade-identity visited set would loop until its budget fails.
         Node root = new DefaultNode(owner, rootGraph, true);
-        DependencyInsightsService.Report report = new DefaultDependencyInsightsService()
-                .inspect(result(root, List.of(), List.of(), true));
+        DependencyInsightsService.Report report =
+                new DefaultDependencyInsightsService().inspect(result(root, List.of(), List.of(), true));
         assertEquals(2, report.graphNodes());
         assertTrue(report.complete());
     }

@@ -1,3 +1,19 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 // SPDX-License-Identifier: Apache-2.0
 package io.synexia.maven.smart;
 
@@ -110,8 +126,12 @@ final class TinyJson {
                     default -> throw new IllegalArgumentException("unknown escape");
                 }
             } else {
-                if(c < 32 || Character.isSurrogate(c)) throw new IllegalArgumentException("invalid JSON character");
-                b.append(c);
+                if(c < 32 || Character.isLowSurrogate(c)) throw new IllegalArgumentException("invalid JSON character");
+                if(Character.isHighSurrogate(c)) {
+                    if(pos >= src.length() || !Character.isLowSurrogate(src.charAt(pos)))
+                        throw new IllegalArgumentException("unpaired surrogate");
+                    b.append(c).append(src.charAt(pos++));
+                } else b.append(c);
             }
             if(b.length()>1_000_000) throw new IllegalArgumentException("JSON string too long");
         }

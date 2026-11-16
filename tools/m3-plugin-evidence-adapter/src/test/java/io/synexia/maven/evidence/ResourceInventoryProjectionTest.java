@@ -19,11 +19,25 @@
 package io.synexia.maven.evidence;
 
 import java.io.IOException;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 
+import org.apache.maven.api.Session;
+import org.apache.maven.api.SessionData;
+import org.apache.maven.api.services.BuildInputsService;
 import org.apache.maven.api.services.M3PluginEvidenceService.Identity;
+import org.apache.maven.api.services.M3PluginEvidenceService.Receipt;
+import org.apache.maven.impl.DefaultBuildInputsService;
+import org.apache.maven.impl.DefaultM3PluginEvidenceService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,6 +51,9 @@ class ResourceInventoryProjectionTest {
     private static final Identity ID = new Identity(
             "example:resources", "io.synexia:m3-plugin-evidence-maven-plugin",
             "0.1.0-SNAPSHOT", "resources", "default-resources", A, 1);
+
+    @TempDir
+    Path directory;
 
     @Test
     void sortedProjectionDeduplicatesSourcesAndOmitsAbsentOutputs() throws IOException {
@@ -73,6 +90,47 @@ class ResourceInventoryProjectionTest {
     }
 
     @Test
+    void originalMavenRegistryMakesTextProjectionReadableByBuildInputsService() throws Exception {
+        var actualOperation = operation("src/a.txt", "target/classes/a.txt", A, B, 3, 5, false);
+        var observed = new ResourceEvidence(ID, List.of(actualOperation));
+        byte[] payload = ResourceInventoryProjection.encode(observed);
+        Path inventoryFile = directory.resolve("inventory.tsv");
+        Files.write(inventoryFile, payload);
+        var receipt = new Receipt(
+                ID,
+                inventoryFile,
+                ResourceInventoryProjection.SCHEMA,
+                EvidenceFiles.sha256(payload),
+                ResourceEvidenceCodec.CAPABILITIES);
+        Session session = session();
+        var registry = new DefaultM3PluginEvidenceService();
+        var consumer = new DefaultBuildInputsService(registry);
+        assertTrue(consumer.read(session, ID).isEmpty());
+
+        registry.publish(session, receipt);
+        BuildInputsService.Manifest inventory = consumer.read(session, ID).orElseThrow();
+        assertEquals(2, inventory.size());
+        assertEquals(1, inventory.inputCount());
+        assertEquals(1, inventory.outputCount());
+        assertEquals("src/a.txt", inventory.entry(0).relativePath());
+        assertEquals("target/classes/a.txt", inventory.entry(1).relativePath());
+        assertEquals(5, inventory.entry(1).bytes());
+        assertArrayEquals(payload, registry.read(
+                        session, ID, ResourceInventoryProjection.SCHEMA, ResourceEvidenceCodec.CAPABILITIES)
+                .orElseThrow().bytes());
+
+        byte[] binary = ResourceEvidenceCodec.encode(observed);
+        Path binaryFile = directory.resolve("original-operations.bin");
+        Files.write(binaryFile, binary);
+        var competingReceipt = new Receipt(
+                ID, binaryFile, ResourceEvidenceCodec.SCHEMA,
+                EvidenceFiles.sha256(binary), ResourceEvidenceCodec.CAPABILITIES);
+        assertThrows(IOException.class, () -> registry.publish(session, competingReceipt));
+        registry.revoke(session, ID);
+        assertTrue(consumer.read(session, ID).isEmpty());
+    }
+
+    @Test
     void sourcePathsOutsideTheTextConsumerContractFailClosed() {
         for (String path : List.of("src/a:b.txt", "src/new\nline.txt", "src/name\tpart.txt",
                 "src/" + "a".repeat(1025), "src/" + (char) 0x7f + ".txt")) {
@@ -88,6 +146,49 @@ class ResourceInventoryProjectionTest {
         String inventory = new String(ResourceInventoryProjection.encode(
                 new ResourceEvidence(ID, List.of(changed))), StandardCharsets.UTF_8);
         assertTrue(inventory.contains("O\ttarget/data.txt\t" + B + "\t9\n"));
+    }
+
+    private static Session session() {
+        Memory memory = new Memory();
+        return (Session) Proxy.newProxyInstance(Session.class.getClassLoader(), new Class<?>[] {Session.class},
+                (proxy, method, args) -> {
+                    if ("getData".equals(method.getName()) && method.getParameterCount() == 0) {
+                        return memory;
+                    }
+                    throw new AssertionError("unexpected session fixture method: " + method.getName());
+                });
+    }
+
+    private static final class Memory implements SessionData {
+        private final Map<Key<?>, Object> values = new HashMap<>();
+
+        @Override
+        public synchronized <T> void set(Key<T> key, T value) {
+            if (value == null) {
+                values.remove(key);
+            } else {
+                values.put(key, value);
+            }
+        }
+
+        @Override
+        public synchronized <T> boolean replace(Key<T> key, T previous, T next) {
+            if (!Objects.equals(values.get(key), previous)) {
+                return false;
+            }
+            set(key, next);
+            return true;
+        }
+
+        @Override
+        public synchronized <T> T get(Key<T> key) {
+            return key.type().cast(values.get(key));
+        }
+
+        @Override
+        public synchronized <T> T computeIfAbsent(Key<T> key, Supplier<T> supply) {
+            return key.type().cast(values.computeIfAbsent(key, ignored -> supply.get()));
+        }
     }
 
     private static ResourceEvidence.Operation operation(String source, String output, String inHash, String outHash,

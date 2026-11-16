@@ -88,7 +88,9 @@ public final class DefaultBuildPolicyService implements BuildPolicyService {
 
     private static void checkSnapshots(
             DependencyResolverResult resolved, NoSnapshotDependencies rule, List<Finding> findings) {
-        if (resolved == null || !resolved.getExceptions().isEmpty() || resolved.getRoot() == null
+        if (resolved == null
+                || !resolved.getExceptions().isEmpty()
+                || resolved.getRoot() == null
                 || resolved.getRequest() == null
                 || resolved.getRequest().getRequestType() != DependencyResolverRequest.RequestType.RESOLVE) {
             findings.add(new Finding(

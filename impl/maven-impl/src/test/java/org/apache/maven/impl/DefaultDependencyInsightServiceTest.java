@@ -19,6 +19,7 @@
 package org.apache.maven.impl;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.apache.maven.api.Artifact;
@@ -27,6 +28,7 @@ import org.apache.maven.api.services.DependencyInsightService;
 import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.di.Injector;
+import org.eclipse.aether.graph.DependencyNode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -111,13 +115,62 @@ final class DefaultDependencyInsightServiceTest {
     }
 
     @Test
+    void recreatedNativeNodeFacadesStillDetectTheOriginalResolverCycle() {
+        InternalSession owner = mock(InternalSession.class);
+        DependencyNode resolverRoot = mock(DependencyNode.class);
+        DependencyNode resolverChild = mock(DependencyNode.class);
+        when(resolverRoot.getData()).thenReturn(Map.of());
+        when(resolverChild.getData()).thenReturn(Map.of());
+        when(resolverRoot.getChildren()).thenReturn(List.of(resolverChild));
+        when(resolverChild.getChildren()).thenReturn(List.of(resolverRoot));
+        when(owner.getNode(any(DependencyNode.class), eq(true)))
+                .thenAnswer(invocation -> new DefaultNode(owner, invocation.getArgument(0), true));
+
+        // Every child access constructs another Java facade for the same
+        // underlying graph node. This cycle must not appear as truncation.
+        Node root = new DefaultNode(owner, resolverRoot, true);
+        var snapshot = service.inspect(new DependencyInsightService.Request(result(root, true), 8));
+        assertEquals(2, snapshot.size());
+        assertEquals(1, snapshot.cyclesSkipped());
+        assertFalse(snapshot.complete());
+        assertEquals(List.of("<root>", "<root>"), snapshot.path(1));
+    }
+
+    @Test
+    void sharedNativeChildRetainsEachParentPathWithoutFalseCycle() {
+        InternalSession owner = mock(InternalSession.class);
+        DependencyNode rootNode = mock(DependencyNode.class);
+        DependencyNode left = mock(DependencyNode.class);
+        DependencyNode right = mock(DependencyNode.class);
+        DependencyNode shared = mock(DependencyNode.class);
+        for (DependencyNode node : List.of(rootNode, left, right, shared)) {
+            when(node.getData()).thenReturn(Map.of());
+        }
+        when(rootNode.getChildren()).thenReturn(List.of(left, right));
+        when(left.getChildren()).thenReturn(List.of(shared));
+        when(right.getChildren()).thenReturn(List.of(shared));
+        when(shared.getChildren()).thenReturn(List.of());
+        when(owner.getNode(any(DependencyNode.class), eq(true)))
+                .thenAnswer(invocation -> new DefaultNode(owner, invocation.getArgument(0), true));
+
+        var snapshot = service.inspect(new DependencyInsightService.Request(
+                result(new DefaultNode(owner, rootNode, true), true), 8));
+        assertTrue(snapshot.complete());
+        assertEquals(0, snapshot.cyclesSkipped());
+        assertEquals(5, snapshot.size());
+        assertEquals(1, snapshot.entry(2).parentIndex());
+        assertEquals(3, snapshot.entry(4).parentIndex());
+    }
+
+    @Test
     void missingRootOrResolverExceptionsCannotClaimCompleteness() {
         var missing = service.inspect(new DependencyInsightService.Request(result(null, false), 8));
         assertEquals(0, missing.size());
         assertFalse(missing.complete());
         DependencyResolverResult failed = result(node("root"), true);
         when(failed.getExceptions()).thenReturn(List.of(new IllegalStateException("failure")));
-        assertFalse(service.inspect(new DependencyInsightService.Request(failed, 8)).complete());
+        assertFalse(
+                service.inspect(new DependencyInsightService.Request(failed, 8)).complete());
         assertThrows(IllegalArgumentException.class, () -> new DependencyInsightService.Request(failed, 0));
         assertThrows(IllegalArgumentException.class, () -> new DependencyInsightService.Request(failed, 1_000_001));
     }

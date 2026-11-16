@@ -57,7 +57,7 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
         }
         Storage rows = new Storage(Math.min(16, request.maxNodes()));
         Deque<Frame> stack = new ArrayDeque<>();
-        IdentityHashMap<Node, Boolean> active = new IdentityHashMap<>();
+        IdentityHashMap<Object, Boolean> active = new IdentityHashMap<>();
         stack.push(new Frame(root, -1));
         int cycles = 0;
         boolean truncated = false;
@@ -66,15 +66,15 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
             if (frame.rowIndex < 0) {
                 frame.rowIndex = rows.add(frame.parentIndex, frame.node, request.maxNodes());
                 frame.children = Objects.requireNonNull(frame.node.children(), "node children");
-                active.put(frame.node, Boolean.TRUE);
+                active.put(frame.identity, Boolean.TRUE);
             }
             if (frame.nextChild == frame.children.size()) {
-                active.remove(frame.node);
+                active.remove(frame.identity);
                 stack.pop();
                 continue;
             }
             Node child = Objects.requireNonNull(frame.children.get(frame.nextChild++), "child");
-            if (active.containsKey(child)) {
+            if (active.containsKey(nodeIdentity(child))) {
                 cycles++;
                 continue;
             }
@@ -88,8 +88,20 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
         return new PackedSnapshot(rows, rows.count, !errors && !truncated && cycles == 0, verbose, cycles);
     }
 
+    /**
+     * Maven's native Node facade can be reconstructed for each child access.
+     * An active-path set keyed only by facade identity would miss cycles and
+     * incorrectly report truncation. Keep the provider's original node as
+     * the traversal identity; preserve the original identity for other Node
+     * implementations without introducing a new resolver.
+     */
+    private static Object nodeIdentity(Node node) {
+        return node instanceof AbstractNode nativeNode ? nativeNode.getDependencyNode() : node;
+    }
+
     private static final class Frame {
         private final Node node;
+        private final Object identity;
         private final int parentIndex;
         private List<Node> children;
         private int rowIndex = -1;
@@ -97,6 +109,7 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
 
         Frame(Node node, int parentIndex) {
             this.node = node;
+            this.identity = nodeIdentity(node);
             this.parentIndex = parentIndex;
         }
     }
@@ -138,7 +151,8 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
             coordinates[index] = key(node);
             Optional<Node> resolvedWinner = node.winner();
             omitted[index] = resolvedWinner.isPresent();
-            winner[index] = resolvedWinner.map(DefaultDependencyInsightService::key).orElse(null);
+            winner[index] =
+                    resolvedWinner.map(DefaultDependencyInsightService::key).orElse(null);
             premanagedVersion[index] = node.premanagedVersion().orElse(null);
             premanagedScope[index] = node.premanagedScope().orElse(null);
             originalScope[index] = node.originalScope().orElse(null);
