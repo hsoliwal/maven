@@ -27,6 +27,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -59,6 +60,10 @@ public class ResourcesEvidenceMojo extends ResourcesMojo {
     @Parameter(property = "m3.evidence.enabled", defaultValue = "false")
     private boolean enabled;
 
+    /** Selects one receipt format for an enabled invocation; operations are the default. */
+    @Parameter(property = "m3.evidence.format", defaultValue = "operations")
+    private String evidenceFormat;
+
     @Inject
     private MojoExecution mojoExecution;
 
@@ -73,6 +78,10 @@ public class ResourcesEvidenceMojo extends ResourcesMojo {
         if (!enabled) {
             super.doExecute();
             return;
+        }
+        if (!ResourceInventoryProjection.DEFAULT_FORMAT.equals(evidenceFormat)
+                && !ResourceInventoryProjection.FORMAT.equals(evidenceFormat)) {
+            throw new MojoException("resource evidence format must be operations or resource-io");
         }
 
         if (mavenResourcesFiltering == null
@@ -137,25 +146,48 @@ public class ResourcesEvidenceMojo extends ResourcesMojo {
                     invocation.execution(),
                     context,
                     generation);
-            byte[] envelope = ResourceEvidenceCodec.encode(new ResourceEvidence(identity, operations));
-            String envelopeSha256 = EvidenceFiles.sha256(envelope);
-            Path receiptFile = EvidenceFiles.publish(
-                    projectRoot, evidenceDirectory, "resources-" + envelopeSha256 + ".bin", envelope);
-            service.publish(
-                    session,
-                    new Receipt(
-                            identity,
-                            receiptFile,
-                            ResourceEvidenceCodec.SCHEMA,
-                            envelopeSha256,
-                            ResourceEvidenceCodec.CAPABILITIES));
-            byte[] report = CapabilityReport.read(session, service, identity);
-            Path reportFile = EvidenceFiles.publish(
-                    projectRoot,
-                    evidenceDirectory,
-                    "resources-" + EvidenceFiles.sha256(report) + ".json",
-                    report);
-            getLog().info("Resource operation evidence: " + reportFile);
+            ResourceEvidence observed = new ResourceEvidence(identity, operations);
+            if (ResourceInventoryProjection.FORMAT.equals(evidenceFormat)) {
+                byte[] inventory = ResourceInventoryProjection.encode(observed);
+                String inventorySha256 = EvidenceFiles.sha256(inventory);
+                Path inventoryFile = EvidenceFiles.publish(
+                        projectRoot, evidenceDirectory, "resources-" + inventorySha256 + ".tsv", inventory);
+                Receipt receipt = new Receipt(
+                        identity,
+                        inventoryFile,
+                        ResourceInventoryProjection.SCHEMA,
+                        inventorySha256,
+                        ResourceEvidenceCodec.CAPABILITIES);
+                service.publish(session, receipt);
+                M3PluginEvidenceService.Snapshot authenticated = service.read(
+                                session, identity, ResourceInventoryProjection.SCHEMA, ResourceEvidenceCodec.CAPABILITIES)
+                        .orElseThrow(() -> new IOException("resource inventory receipt missing after publication"));
+                if (!receipt.equals(authenticated.receipt())
+                        || !Arrays.equals(inventory, authenticated.bytes())) {
+                    throw new IOException("resource inventory publication readback mismatch");
+                }
+                getLog().info("Partial resource input/output evidence (not cache eligible): " + inventoryFile);
+            } else {
+                byte[] envelope = ResourceEvidenceCodec.encode(observed);
+                String envelopeSha256 = EvidenceFiles.sha256(envelope);
+                Path receiptFile = EvidenceFiles.publish(
+                        projectRoot, evidenceDirectory, "resources-" + envelopeSha256 + ".bin", envelope);
+                service.publish(
+                        session,
+                        new Receipt(
+                                identity,
+                                receiptFile,
+                                ResourceEvidenceCodec.SCHEMA,
+                                envelopeSha256,
+                                ResourceEvidenceCodec.CAPABILITIES));
+                byte[] report = CapabilityReport.read(session, service, identity);
+                Path reportFile = EvidenceFiles.publish(
+                        projectRoot,
+                        evidenceDirectory,
+                        "resources-" + EvidenceFiles.sha256(report) + ".json",
+                        report);
+                getLog().info("Resource operation evidence: " + reportFile);
+            }
         } catch (IOException | IllegalArgumentException exception) {
             throw new MojoException("resource evidence failed: " + exception.getMessage(), exception);
         }
