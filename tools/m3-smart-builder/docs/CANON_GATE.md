@@ -114,3 +114,8 @@ reading a linked target. This sidecar does not extend the atom-table schema or
 promote unsupported entries into verified atoms. Existing summary and product
 headers remain unchanged. The current inventory still materializes regular
 file bytes and normalization indexes and is **not** constant memory.
+The additive sidecar escapes a literal backslash and ISO control characters
+using four-digit `\\uXXXX` sequences in its `path` column. This keeps tabs,
+newlines and carriage returns from splitting TSV records while preserving the
+original path identity. This escaping rule does not change the original
+`INVENTORY.tsv` or permit unsafe paths to be read as ordinary sources.

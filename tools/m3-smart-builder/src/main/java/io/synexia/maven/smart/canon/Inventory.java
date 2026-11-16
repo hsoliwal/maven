@@ -40,7 +40,7 @@ final class Inventory {
             Path file = root.resolve(path);
             String status = disposition(root, path);
             if (!status.equals("INVENTORIED")) {
-                dispositions.append(path).append('\t').append(status).append("\t-\n");
+                dispositions.append(escapedPath(path)).append('\t').append(status).append("\t-\n");
                 continue;
             }
             byte[] data = Files.readAllBytes(file);
@@ -57,11 +57,27 @@ final class Inventory {
             exact.computeIfAbsent(strong, k -> new ArrayList<>()).add(path);
             normalized.computeIfAbsent(norm, k -> new ArrayList<>()).add(path);
             strongOf.put(path, strong);
-            dispositions.append(path).append("\tINVENTORIED\t").append(strong).append('\n');
+            dispositions.append(escapedPath(path)).append("\tINVENTORIED\t").append(strong).append('\n');
         }
         Ledger.write(runDir, "INVENTORY.tsv", rows.toString());
         Ledger.write(runDir, "INVENTORY_DISPOSITIONS.tsv", dispositions.toString());
         clusters(runDir, exact, normalized, strongOf, files.size(), bytes);
+    }
+
+    /** Escapes unsafe path-column characters without losing their identity in the TSV. */
+    private static String escapedPath(String path) {
+        StringBuilder out = new StringBuilder(path.length());
+        for (int i = 0; i < path.length(); i++) {
+            char ch = path.charAt(i);
+            if (ch == '\\' || Character.isISOControl(ch)) {
+                out.append('\\').append('u');
+                String hex = Integer.toHexString(ch);
+                out.append("0000", 0, 4 - hex.length()).append(hex);
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
     }
 
     /** Classifies every selected path without following repository symlinks. */
