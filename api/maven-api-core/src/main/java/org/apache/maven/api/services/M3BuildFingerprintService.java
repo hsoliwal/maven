@@ -157,6 +157,7 @@ public interface M3BuildFingerprintService extends Service {
         if (value.isBlank() || value.length() > 256 || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException(field);
         }
+        validateUtf16(value);
         return value;
     }
 
@@ -175,7 +176,22 @@ public interface M3BuildFingerprintService extends Service {
                 throw new IllegalArgumentException("noncanonical input segment");
             }
         }
+        validateUtf16(value);
         return value;
+    }
+
+    /** Refuse isolated UTF-16 surrogates that UTF-8 would replace ambiguously. */
+    private static void validateUtf16(String text) {
+        for (int index = 0; index < text.length(); index++) {
+            char value = text.charAt(index);
+            if (Character.isHighSurrogate(value)) {
+                if (++index >= text.length() || !Character.isLowSurrogate(text.charAt(index))) {
+                    throw new IllegalArgumentException("unpaired high surrogate");
+                }
+            } else if (Character.isLowSurrogate(value)) {
+                throw new IllegalArgumentException("unpaired low surrogate");
+            }
+        }
     }
 
     private static String sha(String digest) {
