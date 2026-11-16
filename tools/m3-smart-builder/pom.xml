@@ -34,6 +34,10 @@
       </execution>
       <execution><id>atom-pattern-evidence-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
         <configuration><mainClass>io.synexia.maven.smart.AtomPatternEvidenceTest</mainClass><classpathScope>test</classpathScope></configuration>
+      </execution>
+      <execution><id>canonical-preparation-evidence-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain</mainClass>
+          <classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>
