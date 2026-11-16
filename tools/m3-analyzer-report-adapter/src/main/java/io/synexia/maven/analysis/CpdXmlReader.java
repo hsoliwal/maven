@@ -93,7 +93,7 @@ final class CpdXmlReader {
                             if (status == Status.COMPLETE) {
                                 throw new IOException("original CPD processing error forbids COMPLETE");
                             }
-                            required(reader, "filename");
+                            AnalyzerXmlNormalizer.relative(root, required(reader, "filename"));
                             required(reader, "msg");
                         } else if (depth == 3 && group != null && "file".equals(name)) {
                             group.add(
