@@ -158,7 +158,7 @@ public final class AtomPatternEvidenceTest {
                 + (fixture.hasProvider() ? " (synthetic provider observed)" : " (provider disabled)"));
     }
 
-    private static void writeActionFixture(Path project, Path sourceRoot) throws Exception {
+    static void writeActionFixture(Path project, Path sourceRoot) throws Exception {
         Path base = project.toRealPath();
         Path source = base.resolve(sourceRoot).toRealPath();
         if (!source.startsWith(base)) throw new IllegalArgumentException("fixture source must be local");

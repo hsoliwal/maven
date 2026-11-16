@@ -875,6 +875,9 @@ under the License.
               <exclude>.worktrees/**</exclude>
               <!-- Immutable verification records; exact hashes and license provenance are in
                    tools/m3-smart-builder/docs/VERIFICATION_DATA_LICENSES.md. -->
+              <!-- Immutable M3 Smart Builder verification data, not distributable source.
+                   Audit the exact proof set in tools/m3-smart-builder/RAT_LICENSE_AUDIT_20261116.md.
+                   Do not exclude the Smart Builder source, docs, tests, or plugin POM. -->
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>
               <exclude>tools/m3-smart-builder/verification/11-lint.log</exclude>
               <exclude>tools/m3-smart-builder/verification/12-compile-test-runtime.log</exclude>

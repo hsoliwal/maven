@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// SPDX-License-Identifier: Apache-2.0
 package org.apache.maven.plugin;
 public class MojoExecutionException extends Exception {
     private static final long serialVersionUID = 1L;

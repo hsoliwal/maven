@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// SPDX-License-Identifier: Apache-2.0
 package org.apache.maven.plugin;
 public abstract class AbstractMojo {
     public abstract void execute() throws MojoExecutionException;

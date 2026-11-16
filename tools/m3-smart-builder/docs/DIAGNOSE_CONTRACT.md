@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # M3 Smart Builder diagnostics and safe output contract (v1)
 
 Status: experimental, opt-in. This specification precedes its implementation.

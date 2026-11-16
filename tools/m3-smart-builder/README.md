@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # M3 Smart Maven Builder — opt-in Java 21 Maven plugin
 
 Status: experimental. This project lives **outside the upstream Maven reactor** and does not change Maven's default lifecycle, POM APIs, dependency resolution or repository credentials.

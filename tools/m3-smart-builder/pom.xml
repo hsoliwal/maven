@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -50,6 +51,10 @@ limitations under the License.
       </execution>
       <execution><id>atom-pattern-evidence-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
         <configuration><mainClass>io.synexia.maven.smart.AtomPatternEvidenceTest</mainClass><classpathScope>test</classpathScope></configuration>
+      </execution>
+      <execution><id>canonical-preparation-evidence-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain</mainClass>
+          <classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>

@@ -229,3 +229,40 @@ Chrome's documented CPU path requires at least four cores and 16 GB RAM, with
 alone is insufficient evidence: the actual Prompt API invocation must succeed.
 References: https://developer.chrome.com/docs/ai/get-started and
 https://developer.chrome.com/docs/ai/prompt-api.
+
+## Optional canonical OpenRewrite preparation admission
+
+The Maven hook supports a second, independent source-bound admission mode
+alongside the existing `m3.atom-pattern.manifest.v1` four-stage/two-round
+checkpoint verifier. Neither protocol replaces or authenticates the other.
+
+A canonical private OpenRewrite runner first prepares bounded Java
+private-helper candidates and structural patterns and emits
+`synexia.smart-build.preparation.v1` outside the selected source root.
+The public hook does not execute that runner or accept a recipe from model output.
+
+The standalone hook accepts
+`--preparation-required true --preparation-report .reports/preparation.json`;
+its Maven goal accepts
+`-Dm3.smart.preparationRequired=true` and
+`-Dm3.smart.preparationReport=/work/project/.reports/preparation.json`.
+Set `--source-root src/main/java` (or `m3.smart.sourceRoot`) to the
+intended bounded input tree. For both independent checks, additionally set
+`--require-atom-pattern true --atom-pattern-manifest receipts/manifest.tsv`.
+Both source and report files must be inside the approved project, while
+the preparation report and hook output must remain outside selected source.
+
+When either requested report is missing, incomplete, stale, or refused, the hook
+exits 2 **before** any Chrome, CLI, or JNI adviser call. When the two reports
+are valid, only bounded facts reach the adviser; no raw source is forwarded.
+Maven's actual build outcome is preserved. Supplying a preparation report
+without explicitly requiring it is rejected. With the new options omitted,
+the old hook report contract and behavior remain unchanged.
+
+Preparation facts are explicitly `PRODUCER_REPORTED_NOT_REEXECUTED`.
+The hook validates identities and structural data, but does not authenticate
+OpenRewrite execution, prove safe private-method extraction, or authorize
+source mutation. The separate compiler, test, API/ABI/JNI, runtime, behavior,
+and trusted promotion checks remain mandatory. This is an opt-in Java 21
+Maven CLI/Mojo feature; other Action entrypoints do not yet forward these options.
+
