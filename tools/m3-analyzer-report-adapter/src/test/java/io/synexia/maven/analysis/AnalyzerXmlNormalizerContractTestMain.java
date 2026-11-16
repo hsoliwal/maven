@@ -433,6 +433,23 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 json.replace("\"version\": \"2.1.0\",", ""));
         refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
                 "{ \"version\": \"2.1.0\", \"runs\": [}");
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                "{\"version\":\"2.1.0\",\"version\":\"2.1.0\",\"runs\":[]}");
+        String cyclicUriBase = """
+                {"version":"2.1.0","runs":[{
+                  "tool":{"driver":{"name":"CodeQL"}},
+                  "originalUriBaseIds":{"A":{"uri":"src/","uriBaseId":"A"}},
+                  "results":[{"ruleId":"rule","level":"warning",
+                    "message":{"text":"original finding"},
+                    "locations":[{"physicalLocation":{
+                      "artifactLocation":{"uri":"Test.java","uriBaseId":"A"},
+                      "region":{"startLine":1}
+                    }}]
+                  }]
+                }]}
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, cyclicUriBase);
     }
 
     private static void refusal(Path root) throws Exception {
