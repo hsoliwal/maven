@@ -1,0 +1,24 @@
+{
+  "version": "1.166.0",
+  "results": [
+    {
+      "check_id": "java.demo-rule",
+      "path": "src/main/java/io/synexia/maven/analysis/NormalizeCli.java",
+      "start": { "line": 1, "col": 1 },
+      "end": { "line": 1, "col": 4 },
+      "extra": {
+        "message": "Original Semgrep reported a source finding",
+        "severity": "WARNING",
+        "metadata": {},
+        "fingerprint": "m3-demo/1",
+        "lines": "sensitive source content not copied to native evidence",
+        "is_ignored": false
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": [ "src/main/java/io/synexia/maven/analysis/NormalizeCli.java" ],
+    "skipped": []
+  }
+}
