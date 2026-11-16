@@ -266,3 +266,30 @@ source mutation. The separate compiler, test, API/ABI/JNI, runtime, behavior,
 and trusted promotion checks remain mandatory. This is an opt-in Java 21
 Maven CLI/Mojo feature; other Action entrypoints do not yet forward these options.
 
+
+### Reusable GitHub Action inputs for required preparation
+
+The composite Action now forwards `preparation-required` (default `'false'`)
+and `preparation-report` (default empty) to the same Java 21 build hook.
+Supply an actual canonical `synexia.smart-build.preparation.v1` report from
+an approved producer; the Action does not create, download or authenticate
+that report, and does not make Chrome AI a source-code author.
+
+```yaml
+- uses: ./.github/actions/chrome-ai
+  with:
+    phase: pre-build
+    backend: none
+    source-root: src/main/java
+    preparation-required: 'true'
+    preparation-report: .reports/preparation.json
+    require-atom-pattern: 'true'
+    atom-pattern-manifest: .reports/atom-pattern.tsv
+```
+
+The explicit preflight must be a required workflow step if it is to block
+the Maven build; `continue-on-error: true` is only appropriate for optional
+advice, not mandatory source preparation. The Action does not execute the
+canonical OpenRewrite recipes; it only validates source-bound producer reports
+and Maven's separate checkpoint manifest. Neither proves Java behavior
+or authorizes physical private-method extraction.
