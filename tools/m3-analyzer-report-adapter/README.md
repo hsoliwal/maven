@@ -196,3 +196,69 @@ The artifact remains separately versioned and the original PMD Maven/Gradle
 plugin remains authoritative for producing the XML and its execution
 status. Real PMD CPD CLI parity, Gradle TestKit and Maven 17/21 runtime
 qualifications remain distinct release gates.
+
+
+## SARIF 2.1.0 report import (CodeQL and other original SARIF producers)
+
+The explicit SARIF format accepts a strict, bounded **original SARIF 2.1.0**
+JSON report and projects selected result metadata into the unchanged M3
+STATIC-ANALYSIS-V1 format. It does not execute CodeQL, Semgrep, Error Prone,
+or any other analyzer; the original tool/rule pack, compilation database,
+query suite, suppressions and exit policy remain authoritative.
+
+The adapter uses Apache-2.0 Jackson Core 2.22.4 with strict duplicate-key
+detection, bounded nesting/string/number fields and a streaming JSON cursor.
+Jackson is relocated inside the standalone Maven converter JAR using
+Maven Shade; Gradle reuses that **same pinned JAR**. Jackson is not added to
+Maven Core or Gradle's task runtime, and no third-party analyzer engine is
+copied. License and NOTICE provenance: NOTICE-JACKSON.md.
+
+The original SARIF version must be exactly 2.1.0. For each run, the
+original tool.driver.name is retained as a prefix of the rule identifier,
+with the original result.ruleId following it. The rule/message/severity
+come from original results. Display mappings: SARIF error -> ERROR,
+warning -> WARNING, note/none -> INFO; the SARIF default when level is
+omitted is warning. A result with kind pass/notApplicable is not emitted
+as an issue. Other supported findings remain observational.
+
+The canonical finding uses the **first physical source location** with a
+resolvable artifactLocation.uri or artifactLocation.index. Supported
+location inputs include project-relative source URIs, approved file: URIs,
+run.artifacts indexes, and originalUriBaseIds chains (maximum eight levels).
+These are resolved lexically under the explicit project root; remote,
+outside-project, unsupported/cyclic source references and malformed
+positions are refused. Unlocated results remain project-wide (empty path,
+line and column zero), not guessed Java source paths. Other SARIF
+locations/code flows and source snippets remain in the original SARIF
+rather than being silently projected into duplicate M3 findings.
+
+Original message.text is preferred; message.markdown is used only as
+fallback. Text line breaks are normalized without storing source
+snippets/fixes. Invalid/missing rule and message data, duplicate
+normalized findings and unsupported field shapes fail closed.
+
+The original producer must explicitly attest COMPLETE. A SARIF invocation
+reporting executionSuccessful=false forbids COMPLETE, and PARTIAL/FAILED
+includes a project-wide SARIF.ToolExecutionError finding. Absence of
+failure metadata is **not** independent proof that an original scan finished.
+
+Example after the original CodeQL CLI has already written results.sarif:
+
+    java -cp target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar \
+      io.synexia.maven.analysis.NormalizeCli SARIF PARTIAL \
+      /source/project /source/project/target/results.sarif \
+      /source/project/target/m3-analysis.tsv \
+      /source/project/target/m3-analysis.sha256
+
+Maven's original explicit normalize-xml Mojo keeps its previous goal name
+for compatibility, but also accepts m3.analysis.format=SARIF. The Gradle
+quality bridge's existing m3NormalizeAnalyzerXml task accepts SARIF and
+provides the additive format-neutral originalReport property alias.
+
+**Scope limits:** this is not a full SARIF 2.1 validator. SARIF may encode
+logical-only locations, ruleIndex-only descriptors, external property
+references, multiple locations, explicit sourceRoot mappings, and
+message catalogs; unsupported forms are refused or retained only in the
+original source report, not claimed fully normalized. Actual original
+CodeQL/Semgrep SARIF golden fixtures, shaded artifact execution and
+Gradle TestKit/IDE qualification remain mandatory release gates.
