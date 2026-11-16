@@ -116,6 +116,39 @@ public final class BuildHookTest {
                 "class Example { native void run(); }");
         require(run(preparationArgs, "--phase", "pre-build") == 0,
                 "unchanged source bytes restore source-bound preparation admission");
+
+        // A positive dual-admission test must use both real parsers, not assume
+        // that a missing-checkpoint refusal proves the combined accepted path.
+        AtomPatternEvidenceTest.writeActionFixture(project, Path.of("src"));
+        List<String> bothEvidence = new ArrayList<>(preparationArgs);
+        bothEvidence.addAll(List.of("--require-atom-pattern", "true",
+                "--atom-pattern-manifest", "synthetic-checkpoints.tsv"));
+        require(run(bothEvidence, "--phase", "pre-build") == 0,
+                "valid independent preparation and checkpoint reports both admit");
+        Map<String, Object> bothAccepted = report(project, "pre-build");
+        require("source-bound".equals(bothAccepted.get("preparationStatus"))
+                && "structurally-validated".equals(bothAccepted.get("atomPatternStatus")),
+                "both checks report their separate source-binding outcomes");
+        require("disabled".equals(bothAccepted.get("adviceStatus")),
+                "dual admission does not automatically authorize a model");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> checkpointFacts = (Map<String, Object>) bothAccepted.get("atomPatternFacts");
+        require(Boolean.FALSE.equals(checkpointFacts.get("semanticProofAuthenticated")),
+                "both structural receipts remain unauthenticated semantic evidence");
+        String validManifest = Files.readString(project.resolve("synthetic-checkpoints.tsv"));
+        Files.writeString(project.resolve("synthetic-checkpoints.tsv"),
+                validManifest.replaceFirst("synthetic-checkpoints/source-0.tsv",
+                        "synthetic-checkpoints/missing.tsv"));
+        require(run(bothEvidence, "--phase", "pre-build") == 2,
+                "bad checkpoint blocks admission despite valid canonical preparation");
+        Map<String, Object> oneRejected = report(project, "pre-build");
+        require("blocked-evidence".equals(oneRejected.get("adviceStatus"))
+                && "source-bound".equals(oneRejected.get("preparationStatus")),
+                "the other preparation gate stays accepted when checkpoints fail");
+        Files.writeString(project.resolve("synthetic-checkpoints.tsv"), validManifest);
+        require(run(bothEvidence, "--phase", "pre-build") == 0,
+                "restoring the checkpoint returns to dual accepted admission");
+
         require(run(base, "--phase", "pre-build",
                 "--preparation-report", ".reports/preparation.json") == 2,
                 "preparation report alone cannot implicitly enable the gated mode");
