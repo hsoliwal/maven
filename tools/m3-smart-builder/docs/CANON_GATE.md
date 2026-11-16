@@ -100,3 +100,17 @@ Inventory runs add `INVENTORY.tsv`, `CLUSTERS_EXACT.tsv`, `CLUSTERS_NORMALIZED.t
 
 The same sources ship in M3JDK as `make/jdk/src/classes/build/tools/canongate`; the two copies differ only in their
 package line.
+
+### Complete selected-file inventory dispositions
+
+The optional inventory pass preserves the original seven-column `INVENTORY.tsv`
+and cluster/action files, and now emits additive `INVENTORY_DISPOSITIONS.tsv`
+(`path`, `status`, `sha256`). Exactly one disposition is emitted for every
+selected path. Ordinary files report `INVENTORIED` and their existing strong
+SHA-256. Missing files, directories, symbolic links (including symlinked
+parents), unsafe/noncanonical aliases and other nonregular entries report an
+explicit non-inventoried status with `-` instead of silently disappearing or
+reading a linked target. This sidecar does not extend the atom-table schema or
+promote unsupported entries into verified atoms. Existing summary and product
+headers remain unchanged. The current inventory still materializes regular
+file bytes and normalization indexes and is **not** constant memory.

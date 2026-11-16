@@ -5,6 +5,7 @@ package io.synexia.maven.smart.canon;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,13 +31,18 @@ final class Inventory {
 
     static void write(Path root, Path runDir, List<String> files) throws IOException {
         StringBuilder rows = new StringBuilder("path\tmodule\tsymbols\tmodified\tfast_crc32\tstrong_sha256\tbytes\n");
+        StringBuilder dispositions = new StringBuilder("path\tstatus\tsha256\n");
         Map<String, List<String>> exact = new TreeMap<>();
         Map<String, List<String>> normalized = new TreeMap<>();
         Map<String, String> strongOf = new TreeMap<>();
         long bytes = 0;
         for (String path : files) {
             Path file = root.resolve(path);
-            if (!Files.isRegularFile(file)) continue;
+            String status = disposition(root, path);
+            if (!status.equals("INVENTORIED")) {
+                dispositions.append(path).append('\t').append(status).append("\t-\n");
+                continue;
+            }
             byte[] data = Files.readAllBytes(file);
             bytes += data.length;
             String strong = Ledger.sha256(data);
@@ -51,9 +57,31 @@ final class Inventory {
             exact.computeIfAbsent(strong, k -> new ArrayList<>()).add(path);
             normalized.computeIfAbsent(norm, k -> new ArrayList<>()).add(path);
             strongOf.put(path, strong);
+            dispositions.append(path).append("\tINVENTORIED\t").append(strong).append('\n');
         }
         Ledger.write(runDir, "INVENTORY.tsv", rows.toString());
+        Ledger.write(runDir, "INVENTORY_DISPOSITIONS.tsv", dispositions.toString());
         clusters(runDir, exact, normalized, strongOf, files.size(), bytes);
+    }
+
+    /** Classifies every selected path without following repository symlinks. */
+    private static String disposition(Path root, String path) {
+        if (path.isBlank() || path.length() > 4096 || path.startsWith("/")
+                || path.indexOf('\\') >= 0 || path.indexOf(':') >= 0
+                || path.chars().anyMatch(Character::isISOControl)) {
+            return "UNSAFE_PATH";
+        }
+        if (Files.isSymbolicLink(root)) return "UNSUPPORTED_SYMLINK";
+        Path current = root;
+        for (String component : path.split("/", -1)) {
+            if (component.isEmpty() || component.equals(".") || component.equals("..")) return "UNSAFE_PATH";
+            current = current.resolve(component);
+            if (Files.isSymbolicLink(current)) return "UNSUPPORTED_SYMLINK";
+        }
+        if (!current.normalize().startsWith(root.normalize())) return "UNSAFE_PATH";
+        if (Files.isRegularFile(current, LinkOption.NOFOLLOW_LINKS)) return "INVENTORIED";
+        if (Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) return "UNSUPPORTED_DIRECTORY";
+        return Files.exists(current, LinkOption.NOFOLLOW_LINKS) ? "UNSUPPORTED_NONREGULAR" : "MISSING";
     }
 
     private static void clusters(Path runDir, Map<String, List<String>> exact, Map<String, List<String>> normalized,
