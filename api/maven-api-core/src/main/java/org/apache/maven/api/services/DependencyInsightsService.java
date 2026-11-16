@@ -40,10 +40,10 @@ public interface DependencyInsightsService extends Service {
     /**
      * Maven conflict identity, excluding the version of the artifact.
      *
-     * @param groupId artifact group identifier
-     * @param artifactId artifact identifier
-     * @param extension artifact extension
-     * @param classifier artifact classifier
+     * @param groupId Maven group identifier
+     * @param artifactId Maven artifact identifier
+     * @param extension artifact file extension
+     * @param classifier artifact classifier, or the empty string
      */
     record Coordinate(String groupId, String artifactId, String extension, String classifier) {
         public Coordinate {
@@ -57,9 +57,9 @@ public interface DependencyInsightsService extends Service {
     /**
      * Artifact selected by the original flattening/resolution process.
      *
-     * @param coordinate selected artifact identity
-     * @param version selected artifact version
-     * @param snapshot whether the selected artifact has a snapshot version
+     * @param coordinate selected artifact's conflict identity
+     * @param version resolved artifact version
+     * @param snapshot whether the artifact is a snapshot
      */
     record Selected(Coordinate coordinate, String version, boolean snapshot) {
         public Selected {
@@ -74,10 +74,10 @@ public interface DependencyInsightsService extends Service {
      * cases are resolver selections, not automatically policy failures.
      *
      * @param omitted identity of the omitted artifact
-     * @param omittedVersion version of the omitted artifact
-     * @param winner identity of the artifact selected by the resolver
-     * @param selectedVersion version selected by the resolver
-     * @param duplicate whether the omitted and selected coordinates and versions are identical
+     * @param omittedVersion version omitted by Maven Resolver
+     * @param winner identity of the selected winning artifact
+     * @param selectedVersion version chosen by Maven Resolver
+     * @param duplicate true when omitted and winner coordinates and versions match
      */
     record Omission(
             Coordinate omitted, String omittedVersion, Coordinate winner, String selectedVersion, boolean duplicate) {
@@ -92,9 +92,9 @@ public interface DependencyInsightsService extends Service {
     /**
      * Original and effective versions when Maven reports version management.
      *
-     * @param coordinate artifact whose version was managed
-     * @param declaredVersion originally declared artifact version
-     * @param selectedVersion effective artifact version
+     * @param coordinate managed artifact's conflict identity
+     * @param declaredVersion version declared before dependency management
+     * @param selectedVersion version selected after dependency management
      */
     record ManagedVersion(Coordinate coordinate, String declaredVersion, String selectedVersion) {
         public ManagedVersion {
@@ -110,13 +110,13 @@ public interface DependencyInsightsService extends Service {
      * bytes nor asserts conflict-freedom. The verbose flag controls whether
      * omitted/managed explanations can be considered available.
      *
-     * @param selected artifacts selected by the original resolution
-     * @param omissions omissions reported by the verbose graph
-     * @param managedVersions version management reported by the verbose graph
-     * @param graphNodes number of graph nodes observed
-     * @param resolutionErrors number of reported resolver errors
-     * @param verbose whether the original resolution requested verbose graph metadata
-     * @param complete whether a RESOLVE request had a root and no reported resolver errors
+     * @param selected selected artifacts from the flattened resolver result
+     * @param omissions verbose conflict and duplicate omission evidence
+     * @param managedVersions verbose dependency management version evidence
+     * @param graphNodes number of distinct graph nodes inspected
+     * @param resolutionErrors count of resolver-reported exceptions
+     * @param verbose whether the original resolution requested verbose metadata
+     * @param complete whether a RESOLVE request has a root and no reported errors
      */
     record Report(
             List<Selected> selected,

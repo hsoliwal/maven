@@ -38,8 +38,8 @@ public interface DependencyInsightService extends Service {
     /**
      * Cap memory and traversal work when inspecting an external dependency graph.
      *
-     * @param result original dependency resolution result to inspect
-     * @param maxNodes maximum number of graph nodes to capture
+     * @param result original Maven dependency resolver result
+     * @param maxNodes maximum number of graph nodes to inspect
      */
     record Request(DependencyResolverResult result, int maxNodes) {
         public Request {
