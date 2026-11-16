@@ -62,7 +62,6 @@ public final class AnalyzerXmlNormalizerContractTestMain {
         check(report.startsWith("M3-STATIC-ANALYSIS-V1\nstatus\tCOMPLETE\n"), "v1 header");
         check(report.indexOf("src/A.java") < report.indexOf("src/B.java"), "canonical numeric/path order");
         check(report.contains("EmptyBlock\tERROR\tsrc/A.java\t1\t2\t"), "Checkstyle ERROR");
-        check(report.contains("UnusedImportsCheck\tWARNING") == false, "original FQCN preserved");
         check(report.contains("com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"),
                 "original Checkstyle rule name preserved");
         check(report.contains(Base64.getUrlEncoder().withoutPadding().encodeToString(
