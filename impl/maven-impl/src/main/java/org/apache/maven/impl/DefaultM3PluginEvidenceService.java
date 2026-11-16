@@ -18,8 +18,12 @@
  */
 package org.apache.maven.impl;
 
+// SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+// SPDX-License-Identifier: Apache-2.0
+
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -108,6 +112,18 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
             size++;
         }
 
+        synchronized List<Identity> identities(String schema, int mask) {
+            Identity[] matching = new Identity[size];
+            int count = 0;
+            for (int index = 0; index < size; index++) {
+                Receipt receipt = receipts[index];
+                if (receipt.schema().equals(schema) && (receipt.capabilities() & mask) == mask) {
+                    matching[count++] = identities[index];
+                }
+            }
+            return List.of(Arrays.copyOf(matching, count));
+        }
+
         synchronized Optional<Receipt> find(Identity key, String schema, int mask) throws IOException {
             Receipt receipt = select(key, schema, mask);
             if (receipt == null) {
@@ -152,6 +168,17 @@ public final class DefaultM3PluginEvidenceService implements M3PluginEvidenceSer
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(receipt, "receipt");
         session.getData().computeIfAbsent(KEY, Store::new).publish(receipt);
+    }
+
+    @Override
+    public List<Identity> identities(Session session, String schema, int requiredCapabilities) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(schema, "schema");
+        if (schema.isBlank() || requiredCapabilities <= 0 || (requiredCapabilities & ~KNOWN_CAPABILITIES) != 0) {
+            throw new IllegalArgumentException("requiredCapabilities/schema");
+        }
+        Store existing = session.getData().get(KEY);
+        return existing == null ? List.of() : existing.identities(schema, requiredCapabilities);
     }
 
     @Override
