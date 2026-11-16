@@ -1,0 +1,16 @@
+{
+  "version": "1.166.0",
+  "results": [],
+  "errors": [
+    {
+      "code": 2,
+      "level": "error",
+      "type": "ParseError",
+      "message": "Original Semgrep could not parse a source file"
+    }
+  ],
+  "paths": {
+    "scanned": [],
+    "skipped": ["src/main/java/Unparsed.java"]
+  }
+}
