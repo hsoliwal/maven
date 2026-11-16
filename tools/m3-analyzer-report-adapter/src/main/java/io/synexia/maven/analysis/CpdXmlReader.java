@@ -247,7 +247,7 @@ final class CpdXmlReader {
                 Location location = locations[i];
                 String message = "Original CPD duplicate group " + group + ": " + lines
                         + " lines, " + tokens + " tokens; occurrence " + (i + 1) + "/" + count;
-                add(facts, new Finding(RULE, Severity.WARNING,
+                CpdXmlReader.add(facts, new Finding(RULE, Severity.WARNING,
                         location.path(), location.line(), location.column(), message));
             }
         }
