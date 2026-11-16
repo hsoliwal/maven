@@ -68,6 +68,40 @@ public interface ToolchainManager extends Service {
     }
 
     /**
+     * Selects a matching toolchain without changing the build context or
+     * replacing the Toolchains plugin. A previously selected toolchain wins
+     * only if it satisfies the requested constraints; otherwise the existing
+     * provider/manager order determines the first matching candidate.
+     *
+     * <p>Callers must still use the original build-context storage operation
+     * when their goal explicitly selects a toolchain. This read-only method
+     * does not discover or download a JDK and does not override a Mojo.</p>
+     *
+     * @param session active build session
+     * @param type requested toolchain type
+     * @param requirements optional matching requirements
+     * @return a matching toolchain, or empty if none is available
+     * @throws ToolchainManagerException if toolchain retrieval fails
+     */
+    @Nonnull
+    default Optional<Toolchain> selectToolchain(
+            @Nonnull Session session, @Nonnull String type, Map<String, String> requirements)
+            throws ToolchainManagerException {
+        java.util.Objects.requireNonNull(session, "session");
+        java.util.Objects.requireNonNull(type, "type");
+        Map<String, String> criteria = requirements == null ? Map.of() : Map.copyOf(requirements);
+        Optional<Toolchain> active = getToolchainFromBuildContext(session, type);
+        if (active.isPresent()
+                && type.equals(active.get().getType())
+                && active.get().matchesRequirements(criteria)) {
+            return active;
+        }
+        return getToolchains(session, type, criteria).stream()
+                .filter(candidate -> type.equals(candidate.getType()) && candidate.matchesRequirements(criteria))
+                .findFirst();
+    }
+
+    /**
      * Retrieves the currently active toolchain from the build context.
      *
      * @param session The Maven session context
