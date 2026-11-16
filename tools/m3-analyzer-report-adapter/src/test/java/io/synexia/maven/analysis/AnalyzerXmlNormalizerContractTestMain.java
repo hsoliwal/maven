@@ -538,6 +538,30 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 AnalyzerXmlNormalizer.Status.COMPLETE, original).sha256()),
                 "Semgrep native report digest is deterministic");
 
+        String[] semgrepLevels = {
+            "CRITICAL", "HIGH", "ERROR",
+            "MEDIUM", "WARNING",
+            "LOW", "INFO", "INVENTORY", "EXPERIMENT"
+        };
+        String[] nativeLevels = {
+            "ERROR", "ERROR", "ERROR",
+            "WARNING", "WARNING",
+            "INFO", "INFO", "INFO", "INFO"
+        };
+        for (int i = 0; i < semgrepLevels.length; i++) {
+            String typed = """
+                    {"results":[{"check_id":"demo.rule","path":"src/A.java",
+                      "start":{"line":1,"col":1},"end":{"line":1,"col":2},
+                      "extra":{"message":"original severity","severity":"%s",
+                        "metadata":{},"lines":"source not retained","fingerprint":"abc"}
+                    }],"errors":[],"paths":{"scanned":["src/A.java"],"skipped":[]}}
+                    """.formatted(semgrepLevels[i]);
+            String evidence = new String(convert(root, AnalyzerXmlNormalizer.Format.SEMGREP,
+                    AnalyzerXmlNormalizer.Status.COMPLETE, typed).bytes(), StandardCharsets.UTF_8);
+            check(evidence.contains("demo.rule\t" + nativeLevels[i] + "\tsrc/A.java\t1\t1\t"),
+                    "original Semgrep severity projection: " + semgrepLevels[i]);
+        }
+
         String failed = """
                 {"version":"1.166.0","results":[],"errors":[
                     {"code":2,"level":"error","type":"ParseError","message":"bad source"}
