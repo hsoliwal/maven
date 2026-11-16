@@ -95,3 +95,55 @@ suppression/error behavior, XML entity refusal, path traversal, duplicates,
 output SHA-256 and invalid inputs. Actual Maven lifecycle, external analyzer
 binaries, full cross-platform Gradle TestKit and license checks remain
 independent release gates.
+
+
+## SpotBugs original BugCollection XML
+
+The opt-in SPOTBUGS format consumes the original BugCollection report,
+not SpotBugs' alternative Maven xdoc XML layout. It uses the same checked
+Java 17 CLI, Maven normalize-xml goal, canonical M3 v1 report writer and
+SHA-256 sidecar as Checkstyle and PMD. For a separate Gradle build, set the
+existing m3NormalizeAnalyzerXml format property to SPOTBUGS; the original
+Maven converter JAR remains an explicitly SHA-256-pinned external provider.
+No SpotBugs engine, JVM bytecode analyzer or dependency is embedded in either
+build system.
+
+The adapter retains each original BugInstance type as its rule ID. It maps
+the original SpotBugs priority to the normalized display severities:
+priority 1 -> ERROR, priority 2 -> WARNING and priority 3/4 -> INFO.
+This is an **adapter presentation mapping**, not a replacement for the
+original SpotBugs filter threshold, detector severity, rank or build verdict.
+
+The original SourceLine sourcepath and start attributes are retained as a
+logical location. A primary=true annotation wins when provided; otherwise a
+direct BugInstance source annotation takes precedence over nested Class,
+Method and Field annotations. When no source path is present, the bug remains
+a **project-wide finding (empty path, line 0, column 0)**; the adapter never
+fabricates a class-name-derived path. The XML sourcepath may be relative to
+SpotBugs' source directory rather than the Maven/Gradle project root. Do not
+assume that it locates a real source file without the original source-root map.
+
+Existing ShortMessage/LongMessage text is bounded; LongMessage wins.
+Without either, a short message based on the original bug type is used.
+Existing user review annotations, including NOT_A_BUG, do not automatically
+disappear: their treatment belongs to the original SpotBugs plugin/filter
+and report settings. Analyzer Errors or missing-class evidence prohibits
+the caller from labeling the report COMPLETE; with PARTIAL/FAILED status it
+creates a project-wide processing-error finding. No original analyzer error
+is silently converted into a clean result.
+
+Strict streaming StAX parsing refuses DTD, entities, foreign namespaces,
+malformed priorities/error counters/source paths, nested or unknown bug
+collection sections, overlarge report depth/events/messages and duplicate
+canonical findings. SpotBugs report metadata, such as Project, BugPattern,
+BugCode, BugCategory, FindBugsSummary and History, is traversed without
+executing or interpreting the original analysis.
+
+The bounded SpotBugs parser is based on the upstream SpotBugs
+spotbugs/etc/bugcollection.xsd and published original sample
+spotbugs/src/sampleXml/analysisResultsWithFilterAndUserAnnotations.xml.
+Its source and rules remain upstream; no LGPL SpotBugs engine code has been
+copied. Hermetic fixtures exercise real BugCollection annotation shape,
+primary source selection, original priorities, missing location, processing
+errors, unsafe paths, DTD refusal and stable v1 bytes. Actual original
+SpotBugs version/runtime differential verification remains a release gate.
