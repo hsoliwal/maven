@@ -63,15 +63,15 @@ public final class AtomPatternEvidenceTest {
         fixture.reset();
 
         List<String> manifest = Files.readAllLines(fixture.manifest);
-        Files.write(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(2), manifest.get(2)));
+        lines(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(2), manifest.get(2)));
         fixture.refused("source-order-or-duplicate", true);
         fixture.reset();
         manifest = Files.readAllLines(fixture.manifest);
-        Files.write(fixture.manifest, manifest.subList(0, 3));
+        lines(fixture.manifest, manifest.subList(0, 3));
         fixture.refused("source-coverage", true);
         fixture.reset();
         manifest = Files.readAllLines(fixture.manifest);
-        Files.write(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(3), manifest.get(2)));
+        lines(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(3), manifest.get(2)));
         fixture.refused("source-order-or-duplicate", true);
         fixture.reset();
         Path unexpected = Files.writeString(fixture.source.resolve("Unexpected.java"), "class Unexpected {}\n");
@@ -106,7 +106,7 @@ public final class AtomPatternEvidenceTest {
         manifest = Files.readAllLines(fixture.manifest);
         String[] second = manifest.get(3).split("\t", -1);
         second[3] = fixture.relative(fixture.checkpoint("src/A.java"));
-        Files.write(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(2), String.join("\t", second)));
+        lines(fixture.manifest, List.of(manifest.get(0), manifest.get(1), manifest.get(2), String.join("\t", second)));
         fixture.refused("duplicate-checkpoint-path", true);
         fixture.reset();
         Files.writeString(fixture.manifest, Files.readString(fixture.manifest).replace("src/A.java", "../outside/A.java"));
@@ -316,5 +316,9 @@ public final class AtomPatternEvidenceTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> object(Object value) { return (Map<String, Object>) value; }
     private static String hash(String value) { return Hashes.sha256(value.getBytes(StandardCharsets.UTF_8)); }
+    /** Writes LF-terminated lines on every platform; the manifest contract refuses any other line ending. */
+    private static void lines(Path file, List<String> rows) throws java.io.IOException {
+        Files.writeString(file, String.join("\n", rows) + "\n", StandardCharsets.UTF_8);
+    }
     private static void require(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
 }
