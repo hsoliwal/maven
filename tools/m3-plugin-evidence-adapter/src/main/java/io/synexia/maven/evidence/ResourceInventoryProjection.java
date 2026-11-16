@@ -20,9 +20,9 @@ package io.synexia.maven.evidence;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Objects;
-import java.util.TreeMap;
 
 import org.apache.maven.api.services.M3PluginEvidenceService;
 
@@ -42,30 +42,39 @@ final class ResourceInventoryProjection {
 
     static byte[] encode(ResourceEvidence evidence) throws IOException {
         Objects.requireNonNull(evidence, "evidence");
-        Map<String, ResourceEvidence.Operation> inputs = new TreeMap<>();
-        Map<String, ResourceEvidence.Operation> outputs = new TreeMap<>();
-        for (ResourceEvidence.Operation operation : evidence.operations()) {
+        ResourceEvidence.Operation[] byInput =
+                evidence.operations().toArray(ResourceEvidence.Operation[]::new);
+        Arrays.sort(byInput, Comparator.comparing(ResourceEvidence.Operation::input));
+        StringBuilder out = new StringBuilder(MAGIC_AND_HEADER);
+        int inputs = 0;
+        ResourceEvidence.Operation previous = null;
+        for (ResourceEvidence.Operation operation : byInput) {
             requireManifestPath(operation.input());
             requireManifestPath(operation.output());
-            ResourceEvidence.Operation previous = inputs.putIfAbsent(operation.input(), operation);
-            if (previous != null && (!previous.inputSha256().equals(operation.inputSha256())
-                    || previous.inputBytes() != operation.inputBytes())) {
+            if (previous == null || !previous.input().equals(operation.input())) {
+                appendRow(out, 'I', operation.input(), operation.inputSha256(), operation.inputBytes());
+                inputs++;
+            } else if (!previous.inputSha256().equals(operation.inputSha256())
+                    || previous.inputBytes() != operation.inputBytes()) {
                 throw new IOException("conflicting observations for one resource input");
             }
-            if (!ResourceEvidence.ABSENT.equals(operation.outputSha256())
-                    && outputs.putIfAbsent(operation.output(), operation) != null) {
+            previous = operation;
+        }
+        Arrays.sort(byInput, Comparator.comparing(ResourceEvidence.Operation::output));
+        int outputs = 0;
+        String lastOutput = null;
+        for (ResourceEvidence.Operation operation : byInput) {
+            if (operation.output().equals(lastOutput)) {
                 throw new IOException("duplicate resource output observation");
             }
+            lastOutput = operation.output();
+            if (!ResourceEvidence.ABSENT.equals(operation.outputSha256())) {
+                appendRow(out, 'O', operation.output(), operation.outputSha256(), operation.outputBytes());
+                outputs++;
+            }
         }
-        if ((long) inputs.size() + outputs.size() > MAX_ROWS) {
+        if ((long) inputs + outputs > MAX_ROWS) {
             throw new IOException("resource inventory row budget exceeded");
-        }
-        StringBuilder out = new StringBuilder(MAGIC_AND_HEADER);
-        for (ResourceEvidence.Operation operation : inputs.values()) {
-            appendRow(out, 'I', operation.input(), operation.inputSha256(), operation.inputBytes());
-        }
-        for (ResourceEvidence.Operation operation : outputs.values()) {
-            appendRow(out, 'O', operation.output(), operation.outputSha256(), operation.outputBytes());
         }
         byte[] bytes = out.toString().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > M3PluginEvidenceService.MAX_RECEIPT_BYTES) {
