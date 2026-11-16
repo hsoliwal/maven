@@ -41,6 +41,7 @@ final class SarifJsonReader {
 
     static List<Finding> read(Path root, Status status, byte[] json) throws IOException {
         JsonFactory factory = new JsonFactory();
+        factory.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
         factory.setStreamReadConstraints(StreamReadConstraints.builder()
                 .maxNestingDepth(48).maxStringLength(MAX_TEXT).maxNumberLength(32).build());
         List<Finding> output = new ArrayList<>();
