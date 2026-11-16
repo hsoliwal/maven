@@ -24,6 +24,7 @@ public final class AnalyzerXmlNormalizerContractTestMain {
             pmd(root);
             spotbugs(root);
             cpd(root);
+            sarif(root);
             refusal(root);
             cli(root);
             System.out.println("M3_ANALYZER_XML_ADAPTER_CONTRACT_PASS");
@@ -325,6 +326,113 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                         + "<file path=\"src/A.java\" line=\"1\"/>"
                         + "<file path=\"src/B.java\" line=\"2\"/>"
                         + "<codefragment>&x;</codefragment></duplication></pmd-cpd>");
+    }
+
+    private static void sarif(Path root) throws Exception {
+        String json = """
+                {
+                  "version": "2.1.0",
+                  "runs": [{
+                    "results": [
+                      {
+                        "ruleId": "java/sql-injection",
+                        "level": "error",
+                        "message": { "text": "Untrusted\\nquery input" },
+                        "locations": [{
+                          "physicalLocation": {
+                            "artifactLocation": { "uri": "src/A.java", "uriBaseId": "%SRCROOT%" },
+                            "region": { "startLine": 22, "startColumn": 3 }
+                          }
+                        }]
+                      },
+                      {
+                        "ruleId": "java/path-traversal",
+                        "level": "warning",
+                        "message": { "markdown": "Unsafe access" },
+                        "locations": [{
+                          "physicalLocation": {
+                            "artifactLocation": { "index": 0 },
+                            "region": { "startLine": 7 }
+                          }
+                        }]
+                      },
+                      { "ruleId": "java/information", "level": "note",
+                        "message": { "text": "Project-wide observation" }, "locations": [] },
+                      { "kind": "pass" }
+                    ],
+                    "artifacts": [{ "location": { "uri": "src/B.java", "uriBaseId": "%SRCROOT%" } }],
+                    "originalUriBaseIds": { "%SRCROOT%": { "uri": "%s" } },
+                    "invocations": [{ "executionSuccessful": true }],
+                    "tool": { "driver": { "name": "CodeQL" } }
+                  }]
+                }
+                """.formatted(root.toUri().toASCIIString());
+        var report = convert(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, json);
+        String output = new String(report.bytes(), StandardCharsets.UTF_8);
+        check(report.count() == 3, "original SARIF findings and pass-kind exclusion");
+        check(output.contains("CodeQL.java/sql-injection\tERROR\tsrc/A.java\t22\t3\t"),
+                "CodeQL original rule and physical location retained");
+        check(output.contains("CodeQL.java/path-traversal\tWARNING\tsrc/B.java\t7\t0\t"),
+                "CodeQL original indexed artifact resolved after result field");
+        check(output.contains("CodeQL.java/information\tINFO\t\t0\t0\t"),
+                "SARIF without physical location retained as project-wide");
+        check(output.contains(Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("Untrusted query input".getBytes(StandardCharsets.UTF_8))),
+                "multiline original SARIF message normalized without inventing findings");
+        check(report.sha256().equals(convert(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, json).sha256()),
+                "SARIF normalization deterministic over original bytes");
+
+        String nested = """
+                {"version":"2.1.0","runs":[{
+                  "tool":{"driver":{"name":"Semgrep"}},
+                  "originalUriBaseIds":{
+                    "%PROJECT%":{"uri":"%s"},
+                    "%SRCROOT%":{"uri":"src/","uriBaseId":"%PROJECT%"}
+                  },
+                  "results":[{"ruleId":"rules.strict","level":"warning",
+                    "message":{"text":"Avoid this call"},
+                    "locations":[{"physicalLocation":{
+                      "artifactLocation":{"uri":"Nested.java","uriBaseId":"%SRCROOT%"},
+                      "region":{"startLine":1,"startColumn":1}
+                    }}]
+                  }]
+                }]}
+                """.formatted(root.toUri().toASCIIString());
+        String mapped = new String(convert(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, nested).bytes(), StandardCharsets.UTF_8);
+        check(mapped.contains("Semgrep.rules.strict\tWARNING\tsrc/Nested.java\t1\t1\t"),
+                "nested original SARIF URI bases resolve without source reads");
+
+        String failing = """
+                {"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL"}},
+                   "results":[],"invocations":[{"executionSuccessful":false}]}]}
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE, failing);
+        String partial = new String(convert(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.PARTIAL, failing).bytes(), StandardCharsets.UTF_8);
+        check(partial.contains("SARIF.ToolExecutionError\tERROR\t\t0\t0\t"),
+                "failed source invocation is not interpreted as zero violations");
+
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF,
+                AnalyzerXmlNormalizer.Status.COMPLETE, json.replace("\"2.1.0\"", "\"3.0.0\""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("\"%SRCROOT%\": { \"uri\":", "\"OTHER\": { \"uri\":"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("src/A.java", "../outside/A.java"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("src/A.java", "https://untrusted.invalid/source.java"));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("\"level\": \"error\"", "\"level\": \"fatal\""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("\"name\": \"CodeQL\"", "\"untrusted\": \"CodeQL\""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("\"ruleId\": \"java/sql-injection\",", ""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                json.replace("\"version\": \"2.1.0\",", ""));
+        refusal(root, AnalyzerXmlNormalizer.Format.SARIF, AnalyzerXmlNormalizer.Status.COMPLETE,
+                "{ \"version\": \"2.1.0\", \"runs\": [}");
     }
 
     private static void refusal(Path root) throws Exception {
