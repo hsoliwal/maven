@@ -315,7 +315,7 @@ public final class CanonGateTest {
             Files.createSymbolicLink(repo.resolve("src/DirLink"), external);
             Inventory.write(repo, out, List.of("src/A.java", "src/Linked.java",
                     "src/DirLink/Escaped.java", "src/Missing.java", "src",
-                    "src/../src/A.java"));
+                    "src/../src/A.java", "src/Tab\t.java", "src/Newline\n.java"));
             Path disposition = out.resolve("INVENTORY_DISPOSITIONS.tsv");
             contains(disposition, "src/A.java\tINVENTORIED\t", "regular file recorded");
             contains(disposition, "src/Linked.java\tUNSUPPORTED_SYMLINK\t-", "source symlink recorded");
@@ -324,6 +324,14 @@ public final class CanonGateTest {
             contains(disposition, "src/Missing.java\tMISSING\t-", "missing file recorded");
             contains(disposition, "src\tUNSUPPORTED_DIRECTORY\t-", "directory recorded");
             contains(disposition, "src/../src/A.java\tUNSAFE_PATH\t-", "aliased path rejected");
+            contains(disposition, "src/Tab" + '\\' + "u0009.java\tUNSAFE_PATH\t-",
+                    "tab is escaped before TSV serialization");
+            contains(disposition, "src/Newline" + '\\' + "u000a.java\tUNSAFE_PATH\t-",
+                    "newline is escaped before TSV serialization");
+            if (Files.readAllLines(disposition).size() != 9) {
+                throw new AssertionError("one disposition row per selected source path was not preserved");
+            }
+            checks++;
             String accepted = Files.readString(out.resolve("INVENTORY.tsv"));
             if (accepted.contains("Linked.java") || accepted.contains("Escaped.java")
                     || accepted.contains("Missing.java") || accepted.contains("../")) {
