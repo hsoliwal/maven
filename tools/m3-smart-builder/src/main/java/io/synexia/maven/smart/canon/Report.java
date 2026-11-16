@@ -58,6 +58,7 @@ final class Report {
         rows.put("post_hash_digest", postDigest);
         rows.put("idempotence", idempotence);
         rows.put("atoms", state.atoms);
+        if (!packet.checks.isEmpty()) rows.put("checks", state.checks);
         rows.put("java", Runtime.version().toString());
         return Ledger.keyValues(rows);
     }
@@ -87,6 +88,8 @@ final class Report {
                 verdict(violations, "OUT_OF_SCOPE ", "DRY_RUN_MUTATION ", "HEAD_MOVED "), "canon-gate scope check");
         row(out, "atoms", "ATOM_PATTERN", "every changed file atomized and patternized",
                 verdict(violations, "ATOM_", "PATTERN_"), AtomPattern.TABLE);
+        packet.checks.forEach(id -> row(out, "check", id, "no finding",
+                verdict(violations, Checks.PREFIXES.get(id)), "canon-gate built-in check"));
         return out.toString();
     }
 

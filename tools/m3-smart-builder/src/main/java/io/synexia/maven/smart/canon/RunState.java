@@ -19,6 +19,7 @@ final class RunState {
     String signature = "";
     String preDigest = "";
     String atoms = "not checked";
+    String checks = "not checked";
     Map<String, String> preDirty = new TreeMap<>();
     List<String> shard = new ArrayList<>();
     final Set<String> passed = new TreeSet<>();

@@ -27,7 +27,8 @@ import java.util.stream.Collectors;
  * extracts diagnostics from each stage log, and writes the mandatory run artifacts. There is no warning mode: every
  * violation fails the run, and the final report is rendered from recorded evidence only.
  *
- * <p>Usage: {@code check <packet.tsv>} or {@code run <packet.tsv> <run-dir> <root>}. Exit status 0 is a pass, 1 a
+ * <p>Usage: {@code check <packet.tsv>}, {@code run <packet.tsv> <run-dir> <root>}, or one built-in check on its own
+ * ({@link Checks}). Exit status 0 is a pass, 1 a
  * stage, scope or contract failure, 2 an invalid packet or invocation. Each stage command is written to
  * {@code logs/<n>-<stage>.sh} and run by {@code sh} (or the shell named by {@code CANON_SHELL}) in the repository
  * root, so quoting survives on every platform, with {@code CANON_RUN_DIR}, {@code CANON_ROOT},
@@ -72,7 +73,8 @@ public final class CanonGate {
             if (args.length == 4 && args[0].equals("run")) {
                 return new CanonGate(new Packet(Path.of(args[1])), Path.of(args[2]), Path.of(args[3]), log).run();
             }
-            log.println("usage: CanonGate check <packet.tsv> | run <packet.tsv> <run-dir> <root>");
+            if (args.length > 0 && Checks.PREFIXES.containsKey(args[0])) return Checks.execute(args, log);
+            log.println("usage: CanonGate check <packet.tsv> | run <packet.tsv> <run-dir> <root>" + Checks.USAGE);
             return 2;
         } catch (Packet.Invalid invalid) {
             log.println("canon-gate: PACKET_INVALID " + invalid.getMessage());
@@ -192,16 +194,16 @@ public final class CanonGate {
         Process process = builder.start();
         process.getOutputStream().close();
         int exit = process.waitFor();
+        // Reject missing or malformed atom evidence before lint, and a built-in check finding before compile.
+        // Seal validates both again after later stages to catch source drift.
+        List<String> refused = new ArrayList<>();
         if (exit == 0 && stage.equals("atom_pattern")) {
-            // Reject missing or malformed atom evidence before lint/compile/test.
-            // Seal validates it again after later stages to catch source drift.
-            List<String> evidenceFailures = new ArrayList<>();
-            AtomPattern.check(root, runDir, atomCoverage(state, git.delta(state.base)),
-                    packet.patterns, evidenceFailures);
-            if (!evidenceFailures.isEmpty()) {
-                exit = 1;
-                evidenceFailures.forEach(v -> log.println("canon-gate: " + v));
-            }
+            AtomPattern.check(root, runDir, atomCoverage(state, git.delta(state.base)), packet.patterns, refused);
+        }
+        if (exit == 0 && stage.equals("lint")) Checks.run(packet, git, root, runDir, state.base, refused);
+        if (!refused.isEmpty()) {
+            exit = 1;
+            refused.forEach(v -> log.println("canon-gate: " + v));
         }
         String result = exit == 0 ? "PASS" : "FAIL";
         state.stages.add(new RunState.StageRun(stage, result, exit, logName));
@@ -225,6 +227,7 @@ public final class CanonGate {
         Set<String> delta = git.delta(state.base);
         delta.forEach(p -> Scope.check(packet, p, violations));
         state.atoms = AtomPattern.check(root, runDir, atomCoverage(state, delta), packet.patterns, violations);
+        state.checks = Checks.run(packet, git, root, runDir, state.base, violations);
         Map<String, String> post = Ledger.hashes(root, state.shard);
         String postDigest = Ledger.digest(post);
         Ledger.write(runDir, "POST_HASH.tsv", Ledger.ledger(post));

@@ -3,16 +3,20 @@
 """leaf_packet.py <repo> <base-ref> <out-dir> --invariant <ID> --delta "<text>" --pattern <File.java>=<PATTERN>:<Role>...
                   [--classes <dir-or-jar>]... [--proof <Proof.java> --proof-main <class> [--proof-cp <jar>]...]
 
-LEAF_PACKET v1.2 (2026-11-16; v1.1 runs existing tests of the changed classes with --existing-test; v1.2 takes its
+LEAF_PACKET v1.4 (2026-11-16; v1.4 the stamp and extension point checks are the gate's built-in checks and the leetcodify rule is a ratchet against the base version of each changed file; v1.3 --plan-baseline: existing classes may not get worse; v1.1 runs existing tests of the changed classes with --existing-test; v1.2 takes its
 places from the environment). The recipe for "write the gate task packet of a leaf": it derives the canon gate packet
 from the Java files a working tree changes against <base-ref>, so no packet is written by hand. CPU only.
   targets     the changed Java files (sources under src/, tests under test/)
   atom_pattern  atomize the tree, write ATOM_PATTERN.tsv with the given pattern per file, refuse a changed class in the
-              atomization plan (method or class over the limits), run leetcodify and refuse a site in a changed file
-  lint        javac -Xlint:all -Werror -Xdoclint on the changed sources, then the stamp gate
+              atomization plan (method or class over the limits), run leetcodify on the changed files and on
+              their base versions and refuse a file with more sites than its base version (site_ratchet.py)
+  lint        javac -Xlint:all -Werror -Xdoclint on the changed sources; the packet lists the gate's built-in
+              checks stamp and extension_points, which the gate runs after this command
   compile     the changed sources, then the changed tests against them
   test        every changed test class on the JUnit console
   runtime     the proof program, when one is given (compiled against the leaf's classes and --proof-cp)
+--plan-baseline <ATOMIZE_PLAN.tsv> replaces the strict limit rule by a ratchet for a leaf that changes existing
+classes: no changed class may be worse in the plan than in that baseline (plan_ratchet.py).
 --classes adds compiled classes the leaf depends on (the rest of its module). --existing-test <path> names a test file
 that the leaf does not change but that exercises a changed class: it is compiled and run too (a JUnit class, or a
 program with a main method when the file has no @Test). It writes <out-dir>/packet.tsv and
@@ -40,6 +44,7 @@ invariant, delta = options("--invariant"), options("--delta")
 patterns, classes = options("--pattern"), options("--classes")
 proof, proof_main, proof_cp = options("--proof"), options("--proof-main"), options("--proof-cp")
 existing = [e.replace(os.sep, "/") for e in options("--existing-test")]
+baseline = options("--plan-baseline")
 if len(args) != 3 or not invariant or not delta or not patterns:
     print(__doc__)
     sys.exit(2)
@@ -52,6 +57,7 @@ M2 = os.path.expanduser("~").replace(os.sep, "/") + "/.m2/repository"
 JUNIT = os.environ.get("LEAF_JUNIT", M2 + "/org/junit/platform/junit-platform-console-standalone/1.11.4/"
                        "junit-platform-console-standalone-1.11.4.jar")
 RUN = "$CANON_RUN_DIR"
+LEET = "com.synexia.rewrite.mop.leetcodify.M3LeetCodifyRecipe"
 subprocess.run(["git", "-C", repo, "add", "-A", "-N"], check=True)
 changed = [l.split(TAB)[-1] for l in subprocess.run(["git", "-C", repo, "diff", "--name-status", "--no-renames", base],
                                                      capture_output=True, text=True, check=True).stdout.splitlines()
@@ -80,7 +86,6 @@ def is_junit(path):
 
 cp = ";".join(classes)
 names = "|".join(os.path.basename(p)[:-5] for p in changed)
-paths = "|".join(os.path.basename(p) for p in changed)
 src = " ".join(sources)
 quoted = lambda parts: '"' + ";".join(p for p in parts if p) + '"'
 stages = {
@@ -89,11 +94,18 @@ stages = {
         'bash %s/atomize.sh com.synexia.rewrite.M3AtomizeInventory "$CANON_ROOT" "%s/atomize"' % (K, RUN)
         + ' ; python -I %s/atoms.py "$CANON_ROOT" HEAD "%s/ATOM_PATTERN.tsv" "%s/atomize" %s/atom-map.tsv' % (CANON, RUN, RUN, out),
         'python -I %s/atom_static.py "%s/atomize" "%s/static"' % (K, RUN, RUN),
-        '! grep -E "(%s)" "%s/static/ATOMIZE_PLAN.tsv"' % (names, RUN),
-        'bash %s/atomize.sh com.synexia.rewrite.mop.leetcodify.M3LeetCodifyRecipe "$CANON_ROOT" "%s/leetcodify"' % (K, RUN),
-        '! cat "%s"/leetcodify/*LeetCodifySites.tsv 2>/dev/null | grep -E "(%s)"' % (RUN, paths)]),
+        ('python -I %s/plan_ratchet.py %s "%s/static/ATOMIZE_PLAN.tsv" %s' % (
+            K, baseline[0], RUN, " ".join(os.path.basename(p)[:-5] for p in sources)))
+        if baseline else '! grep -E "(%s)" "%s/static/ATOMIZE_PLAN.tsv"' % (names, RUN),
+        'for f in %s; do mkdir -p "%s/sites/head/$(dirname $f)" "%s/sites/base/$(dirname $f)" && cp "$f" "%s/sites/head/$f"'
+        ' && { git show "%s:$f" > "%s/sites/base/$f" 2>/dev/null || rm -f "%s/sites/base/$f"; }; done' % (
+            src, RUN, RUN, RUN, base, RUN, RUN),
+        'bash %s/atomize.sh %s "%s/sites/head" "%s/leetcodify"' % (K, LEET, RUN, RUN),
+        '{ [ -z "$(find "%s/sites/base" -name "*.java" | head -1)" ] || bash %s/atomize.sh %s "%s/sites/base" "%s/leetcodify-base"; }' % (
+            RUN, K, LEET, RUN, RUN),
+        'python -I %s/site_ratchet.py "%s/leetcodify-base" "%s/leetcodify"' % (K, RUN, RUN)]),
     "lint": J + 'javac" -encoding UTF-8 -Xlint:all -Werror -Xdoclint:all,-missing -proc:none -cp ' + quoted([cp])
-            + ' -d "%s/lint" %s && python -I %s/stamp_gate.py "$CANON_ROOT" HEAD "%s/STAMP_GATE.tsv"' % (RUN, src, K, RUN),
+            + ' -d "%s/lint" %s' % (RUN, src),
     "compile": J + 'javac" -encoding UTF-8 -nowarn -proc:none -cp ' + quoted([cp]) + ' -d "%s/classes" %s' % (RUN, src)
                + ("" if not tests else " && " + J + 'javac" -encoding UTF-8 -nowarn -proc:none -cp '
                   + quoted([RUN + "/classes", cp, JUNIT]) + " -sourcepath " + quoted(sorted({os.path.dirname(t) for t in tests}))
@@ -117,7 +129,7 @@ rows = [("task_packet", "active"), ("source_doc", CANON + "/M3Scale-v3.0.txt"), 
                             "EXCLUDED_PATHS:FORBIDDEN,BUILD_SCRIPTS:LOCKED"),
         ("allowed_delta", delta[0]), ("forbidden", "any other file; any product stamp in a name, label or path"),
         ("stop_conditions", "first failing stage"), ("pattern_catalog", CANON + "/canon-patterns.tsv"),
-        ("verify_order", "diff,atom_pattern,lint,compile,test,runtime"),
+        ("verify_order", "diff,atom_pattern,lint,compile,test,runtime"), ("checks", "stamp,extension_points"),
         ("output_contract", "STATUS.tsv,FINAL_REPORT.md,RUN_CONTEXT.tsv,PROVENANCE.tsv,VERIFY_CONTRACT.tsv,"
                             "OUTPUT_CONTRACT.tsv,ATOM_PATTERN.tsv")]
 rows += [("verify." + stage, command) for stage, command in stages.items()]

@@ -37,12 +37,12 @@ final class Inventory {
         Map<String, String> strongOf = new TreeMap<>();
         long bytes = 0;
         for (String path : files) {
-            Path file = root.resolve(path);
             String status = disposition(root, path);
             if (!status.equals("INVENTORIED")) {
                 dispositions.append(escapedPath(path)).append('\t').append(status).append("\t-\n");
                 continue;
             }
+            Path file = root.resolve(path);
             byte[] data = Files.readAllBytes(file);
             bytes += data.length;
             String strong = Ledger.sha256(data);

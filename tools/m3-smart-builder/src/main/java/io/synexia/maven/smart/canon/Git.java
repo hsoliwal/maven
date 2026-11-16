@@ -36,7 +36,47 @@ final class Git {
     /** Paths whose working-tree content differs from {@code base}, plus untracked files, sorted. */
     Set<String> delta(String base) throws IOException, InterruptedException {
         TreeSet<String> out = new TreeSet<>(Arrays.asList(run("diff", "--name-only", "--no-renames", "-z", base).split("\0")));
-        out.addAll(Arrays.asList(run("ls-files", "-z", "--others", "--exclude-standard").split("\0")));
+        out.addAll(untracked());
+        out.remove("");
+        return out;
+    }
+
+    /** Untracked files that no ignore rule covers, sorted. */
+    Set<String> untracked() throws IOException, InterruptedException {
+        return names(run("ls-files", "-z", "--others", "--exclude-standard"));
+    }
+
+    /** Every file path of the tree of {@code base}, sorted. */
+    TreeSet<String> tree(String base) throws IOException, InterruptedException {
+        return names(run("ls-tree", "-r", "--name-only", "-z", base));
+    }
+
+    /** Tracked files matching {@code pathspec} whose content changed since {@code base}; added, deleted and renamed files are not listed. */
+    Set<String> modified(String base, String pathspec) throws IOException, InterruptedException {
+        return names(run("diff", "--name-only", "--diff-filter=M", "--no-renames", "-z", base, "--", pathspec));
+    }
+
+    /** Content of {@code path} in the tree of {@code base}. */
+    String show(String base, String path) throws IOException, InterruptedException {
+        return run("show", base + ":" + path);
+    }
+
+    /** The patch from {@code base} to the working tree with no context lines and renames paired; untracked files are not in it. */
+    String patch(String base) throws IOException, InterruptedException {
+        return run("-c", "core.quotePath=false", "diff", "--unified=0", "--no-color", "-M", base);
+    }
+
+    /** Number of lines of tracked and untracked text files that contain {@code word} as a whole word. */
+    int lines(String word) throws IOException, InterruptedException {
+        Process process = start("grep", "--untracked", "-I", "-w", "-F", "-c", "-e", word);
+        String counted = new String(drain(process), StandardCharsets.UTF_8);
+        if (process.waitFor() > 1) throw new IOException("git grep failed for " + word);
+        return counted.lines().filter(row -> row.contains(":"))
+                .mapToInt(row -> Integer.parseInt(row.substring(row.lastIndexOf(':') + 1))).sum();
+    }
+
+    private static TreeSet<String> names(String zeroSeparated) {
+        TreeSet<String> out = new TreeSet<>(Arrays.asList(zeroSeparated.split("\0")));
         out.remove("");
         return out;
     }

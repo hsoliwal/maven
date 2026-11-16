@@ -30,6 +30,7 @@ comma-separated. Relative file paths resolve from the packet's directory; target
 | `run.profile` | `fast`, `full` (must include `test`) or `custom` |
 | `run.kind` | `change` (default) or `inventory` (dry-run only; adds the inventory artifacts) |
 | `atom.coverage` | `changed` (default): cover every changed/untracked file; `selected`: additionally require atom rows for all tracked files in the selected shard |
+| `checks`, `checks.renamed` | optional; `checks` lists [built-in checks](#built-in-checks) (`stamp`, `extension_points`, `text_refs`), `checks.renamed` lists the retired names and is given exactly when `text_refs` is listed |
 | `run.workers`, `run.shard_count`, `run.shard_index` | integers; more than one worker or shard requires `compute_resources` |
 | `targets.modules`, `targets.files` | at least one; `.` names the whole repository |
 | `invariant_locks` | must contain `PUBLIC_API:LOCKED,EXTERNAL_BEHAVIOR:LOCKED,DISABLED_PATHS:FORBIDDEN,EXCLUDED_PATHS:FORBIDDEN,BUILD_SCRIPTS:LOCKED` |
@@ -77,12 +78,39 @@ The `atom_pattern` stage must write `$CANON_RUN_DIR/ATOM_PATTERN.tsv`, tab-separ
 
 The Canon Gate consumes the table one row at a time instead of allocating a list of all input lines. Current-source hashes, covered paths and hash-plane clusters remain retained for deterministic reporting, so this is not a constant-memory claim for the whole operation.
 
+## Built-in checks
+
+Checks that are part of the gate itself: no interpreter, no second process, the same result on every platform. A
+packet turns them on with the key `checks`; a packet without the key behaves exactly as before. The gate runs them
+right after the `lint` command passes, so a finding fails `lint` and `compile` never starts, and again at the seal, so
+a later stage cannot introduce what `lint` refused and every finding is in `FINAL_REPORT.md` under its own code.
+
+| Check | Refuses | Violation codes | Evidence |
+| --- | --- | --- | --- |
+| `stamp` | a change that introduces a product stamp: a new path with a stamped segment the base does not have, or an added line with a stamped name that no other line of the tree contains. A stamped name the tree already has is listed as `CARRIED` and does not fail | `STAMP_NEW_PATH <path> <segment>`, `STAMP_NEW_NAME <path>:<line> <name>` | `STAMP_GATE.tsv` |
+| `extension_points` | a new abstract method on an interface or abstract class that exists on both sides of a modified Java file. Default methods and methods with a body are allowed and listed. New types, annotation types, concrete classes, static and private methods are not compared; comments and literals are blanked first | `EXTENSION_ABSTRACT_ADDED <path> <type> <signature>` | `EXTENSION_POINTS.tsv` |
+| `text_refs` | a workflow, make file, build descriptor, script or test list (tracked or untracked, at most 2 MiB) that still contains a name of `checks.renamed` as a whole word; the first such line of each file is reported. Java sources are left to the compiler | `TEXT_REF_STALE <path>:<line> <name>` | `TEXT_REFS.tsv` |
+
+`VERIFY_CONTRACT.tsv` has one `check` row per listed check and `PROVENANCE.tsv` a `checks` row with their summaries.
+Each check also runs on its own, outside a run:
+
+```sh
+java -cp <gate classes> io.synexia.maven.smart.canon.CanonGate stamp <root> <base-ref> <out-dir>
+java -cp <gate classes> io.synexia.maven.smart.canon.CanonGate extension_points <root> <base-ref> <out-dir>
+java -cp <gate classes> io.synexia.maven.smart.canon.CanonGate text_refs <root> <base-ref> <out-dir> <name>...
+```
+
+Exit status 0 no finding, 1 at least one finding (printed, and written to the evidence table in `<out-dir>`), 2 a
+wrong invocation or a git failure. The checks only read: git is asked for the base tree, the patch and line counts;
+the index is not touched and nothing is fetched.
+
 ## Violations
 
 `STAGE_FAILED`, `HEAD_MOVED`, `DRY_RUN_MUTATION`, `OUT_OF_SCOPE`, `EXCLUDED_PATH`, `DISABLED_PATH`, `BUILD_SCRIPT_LOCKED`
 (a build script changes without being named in `targets.files`), `ATOM_PATTERN_SCHEMA`, `ATOM_STALE`, `PATTERN_UNKNOWN`,
 `PATTERN_NOT_ADMITTED`, `ATOM_PLANES_MISSING`, `ATOM_UNCOVERED`, `ATOM_PATTERN_MISSING`, `ATOM_NONREGULAR_ROW`, `ATOM_NONREGULAR_CHANGE`,
-`NON_IDEMPOTENT`, `BASELINE_UNREADABLE`, `OUTPUT_CONTRACT_MISSING`.
+`NON_IDEMPOTENT`, `BASELINE_UNREADABLE`, `OUTPUT_CONTRACT_MISSING`, and from the built-in checks `STAMP_NEW_PATH`,
+`STAMP_NEW_NAME`, `EXTENSION_ABSTRACT_ADDED`, `TEXT_REF_STALE`.
 
 ## Artifacts
 
@@ -90,13 +118,14 @@ Always: `STATUS.tsv` (append-only stage ledger), `RUN_CONTEXT.tsv`, `PROVENANCE.
 locks and the atom check), `OUTPUT_CONTRACT.tsv`, `FINAL_REPORT.md` (files changed, exact delta summary, exact
 verification executed, exact blockers/failures, artifact paths), `BUILD_LOG.tsv` (file, line, column, severity from every
 stage log), `PRE_HASH.tsv`/`POST_HASH.tsv`, `PRE_DIRTY.tsv`/`POST_DIRTY.tsv`, `SHARD_MANIFEST.txt`, `ATOM_CLUSTERS.tsv` and `logs/`.
-Inventory runs add `INVENTORY.tsv`, `CLUSTERS_EXACT.tsv`, `CLUSTERS_NORMALIZED.tsv`, `ACTION_QUEUE.tsv` and
+Built-in checks add `STAMP_GATE.tsv`, `EXTENSION_POINTS.tsv` and `TEXT_REFS.tsv`. Inventory runs add `INVENTORY.tsv`, `CLUSTERS_EXACT.tsv`, `CLUSTERS_NORMALIZED.tsv`, `ACTION_QUEUE.tsv` and
 `SUMMARY.tsv`; every action is proposal-only and carries "These files may be similar. Please confirm via hash or diff."
 
 ## Not enforced by the gate
 
 `PUBLIC_API` and `EXTERNAL_BEHAVIOR` are delegated to the declared stages (for example an API-compatibility check in
-`lint` and the test suite); `VERIFY_CONTRACT.tsv` records that delegation. NUMA binding is not used.
+`lint` and the test suite); `VERIFY_CONTRACT.tsv` records that delegation. The built-in check `extension_points`
+covers one part of `PUBLIC_API`, additions to types others implement, when a packet lists it. NUMA binding is not used.
 
 The same sources ship in M3JDK as `make/jdk/src/classes/build/tools/canongate`; the two copies differ only in their
 package line.

@@ -2,6 +2,8 @@
 # Offline JDK 21 core regression; does not claim Maven plugin descriptor verification.
 set -eu
 cd "$(dirname "$0")/.."
+# Class path separator of the JDK in use: a Windows JDK under Git Bash wants ';'.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) sep=';' ;; *) sep=':' ;; esac
 mkdir -p target/jdk-only
 javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/Hashes.java \
@@ -26,11 +28,11 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
 mkdir -p target/canon-only
 javac -encoding UTF-8 -Xlint:all -Werror -d target/canon-only \
   src/main/java/io/synexia/maven/smart/canon/*.java \
-  src/test/java/io/synexia/maven/smart/canon/CanonGateTest.java
+  src/test/java/io/synexia/maven/smart/canon/*.java
 # Compile the Maven adapters against intentionally minimal API stubs.
 # This is NOT a real Maven descriptor or Maven runtime integration test.
 mkdir -p target/adapter-only
-javac -encoding UTF-8 -Xlint:all -Werror -cp target/jdk-only:target/canon-only -d target/adapter-only \
+javac -encoding UTF-8 -Xlint:all -Werror -cp "target/jdk-only${sep}target/canon-only" -d target/adapter-only \
   $(find scripts/adapter-stubs -name '*.java' -print | LC_ALL=C sort) \
   src/main/java/io/synexia/maven/smart/PlanMojo.java \
   src/main/java/io/synexia/maven/smart/ProvisionMojo.java \
@@ -49,7 +51,7 @@ java -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
 java -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
 java -cp target/canon-only io.synexia.maven.smart.canon.CanonGateTest
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
-java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only:target/adapter-only io.synexia.maven.smart.SmartBuilderAdapterTest
+java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp "target/jdk-only${sep}target/adapter-only" io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
