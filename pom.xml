@@ -881,9 +881,9 @@ under the License.
               <!-- Comment-free Visual Studio task schema. License attribution is in the
                    adjacent Apache-licensed README and project NOTICE. Exact single-file exception. -->
               <exclude>tools/m3-ide-bridge/visualstudio/tasks.vs.json</exclude>
-              <!-- Exact JSON-only synthetic SARIF test input. The analyzer adapter does not
-                   distribute or execute this fixture as source; its attribution and this
-                   bounded exclusion are documented in its Apache-licensed README. -->
+              <!-- Comment-free SARIF 2.1.0 test fixture of the analyzer report adapter (JSON has no comment
+                   syntax). License attribution is in the adjacent Apache-licensed sources and project NOTICE.
+                   Exact single-file exception. -->
               <exclude>tools/m3-analyzer-report-adapter/src/test/resources/sarif/basic.sarif</exclude>
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>
               <exclude>tools/m3-smart-builder/verification/11-lint.log</exclude>
