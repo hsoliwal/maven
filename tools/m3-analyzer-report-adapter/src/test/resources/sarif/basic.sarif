@@ -1,0 +1,38 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "java/demo-rule",
+          "kind": "fail",
+          "level": "warning",
+          "message": {
+            "text": "Original CodeQL demo warning"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/io/synexia/maven/analysis/NormalizeCli.java"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "invocations": [
+        { "executionSuccessful": true }
+      ]
+    }
+  ]
+}

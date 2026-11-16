@@ -349,3 +349,44 @@ SHA-256 pin, rather than maintaining a second CPD parser. No original
 plugin goal, Gradle task, class realm, build cache or source-mutating
 recipe is changed. Original CPD CLI output and source-completeness
 parity remain release tests rather than presumed proof.
+
+
+## Native SARIF 2.1.0 import across Maven and Gradle (2026-11-16)
+
+The standalone Maven original-report adapter adds SARIF 2.1.0 to its
+explicit format choices. It consumes existing CodeQL or other original
+SARIF analyzer reports **after the original tool ran**; it does not
+invoke CodeQL, read source files, download packs or alter Maven's
+lifecycle. The same built JAR is reused by Gradle's opt-in
+m3NormalizeAnalyzerXml task with format SARIF and an exact adapter JAR
+SHA-256 pin.
+
+The new bounded streaming reader uses isolated Apache-2.0 Jackson Core
+2.22.4, relocated into the converter JAR and documented separately
+under tools/m3-analyzer-report-adapter/NOTICE-JACKSON.md. No JSON
+library or SARIF engine is added to Maven Core or Gradle's native API.
+
+Original SARIF tool.driver.name/ruleId, supported result.kind, level,
+message.text (or markdown fallback), first physical source location,
+artifact indexes and originalUriBaseIds are normalized into the same
+versioned M3-STATIC-ANALYSIS-V1 array-backed evidence. Error/warning/
+note-or-none level is an explicit ERROR/WARNING/INFO presentation mapping.
+Result kinds pass/notApplicable are not presented as analyzer findings.
+Source snippets, file content, query packs, automated fixes, other
+secondary locations and complete SARIF execution graphs stay in the
+original report and are not copied into M3 finding messages.
+
+The original producer must attest successful execution and completeness.
+A SARIF invocation marked executionSuccessful=false prevents source
+status COMPLETE; if the producer declares PARTIAL/FAILED, the normalized
+report includes an explicit SARIF.ToolExecutionError finding. A valid
+original JSON tree, byte SHA-256 or status claim is not independent proof
+of a successful source scan. Unsupported URI schemes, cyclic URI bases,
+outside-project paths, malformed or ambiguous JSON, duplicate canonical
+findings and oversized inputs fail closed.
+
+This is intentionally a conservative SARIF subset, not a claim of complete
+SARIF 2.1 feature coverage. Original real CodeQL/Semgrep SARIF golden
+fixtures, relocated JAR verification, Maven plugin descriptor, Gradle
+TestKit and source/behavior differential qualification are required
+before release.

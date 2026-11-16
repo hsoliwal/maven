@@ -15,10 +15,10 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * Explicit CLI adapter for already-produced analyzer XML. Never executes
+ * Explicit CLI adapter for already-produced analyzer XML or SARIF. Never executes
  * Checkstyle/PMD, obtains rulesets, rewrites sources or changes Maven phases.
  *
- * <p>Six arguments: format status projectRoot original.xml output.tsv
+ * <p>Six arguments: format status projectRoot originalReport output.tsv
  * output.sha256. The producing plugin must attest status from the original
  * invocation; this CLI cannot establish it from XML alone.
  */
@@ -28,7 +28,7 @@ public final class NormalizeCli {
     public static void main(String[] args) throws Exception {
         if (args.length != 6) {
             throw new IllegalArgumentException(
-                    "usage: CHECKSTYLE|PMD|SPOTBUGS|CPD COMPLETE|PARTIAL|FAILED root input.xml output.tsv digest.sha256");
+                    "usage: CHECKSTYLE|PMD|SPOTBUGS|CPD|SARIF COMPLETE|PARTIAL|FAILED root input.report output.tsv digest.sha256");
         }
         AnalyzerXmlNormalizer.Format format = AnalyzerXmlNormalizer.Format.valueOf(args[0]);
         AnalyzerXmlNormalizer.Status status = AnalyzerXmlNormalizer.Status.valueOf(args[1]);
