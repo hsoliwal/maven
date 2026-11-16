@@ -175,7 +175,9 @@ public interface M3ExternalBuildService extends Service {
 
     private static String name(String value, String field, int limit) {
         Objects.requireNonNull(value, field);
-        if (value.isBlank() || value.length() > limit || !value.equals(value.trim())
+        if (value.isBlank()
+                || value.length() > limit
+                || !value.equals(value.trim())
                 || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("invalid " + field);
         }
@@ -199,8 +201,11 @@ public interface M3ExternalBuildService extends Service {
 
     private static String path(String value) {
         Objects.requireNonNull(value, "relativePath");
-        if (value.isEmpty() || value.length() > 2_048 || value.charAt(0) == '/'
-                || value.indexOf('\\') >= 0 || value.indexOf(':') >= 0
+        if (value.isEmpty()
+                || value.length() > 2_048
+                || value.charAt(0) == '/'
+                || value.indexOf('\\') >= 0
+                || value.indexOf(':') >= 0
                 || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("invalid host-relative path");
         }
