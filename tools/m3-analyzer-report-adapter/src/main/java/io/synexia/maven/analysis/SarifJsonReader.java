@@ -119,6 +119,9 @@ final class SarifJsonReader {
                         throw new IOException("SARIF artifact index is outside the original run");
                     }
                     ArtifactPath indexed = data.artifacts.get(location.index);
+                    if (indexed.uri == null) {
+                        throw new IOException("SARIF indexed artifact has no supported source URI");
+                    }
                     location = new ArtifactPath(indexed.uri, indexed.baseId, -1,
                             location.line, location.column);
                 }
