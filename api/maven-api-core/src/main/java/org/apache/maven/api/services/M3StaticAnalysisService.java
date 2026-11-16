@@ -79,7 +79,9 @@ public interface M3StaticAnalysisService extends Service {
             severity = Objects.requireNonNull(severity, "severity");
             relativePath = requirePath(relativePath);
             message = requireText(message, "message", 2_048);
-            if (line < 0 || column < 0 || (line == 0 && column != 0)
+            if (line < 0
+                    || column < 0
+                    || (line == 0 && column != 0)
                     || (relativePath.isEmpty() && (line != 0 || column != 0))) {
                 throw new IllegalArgumentException("invalid finding position");
             }
@@ -144,8 +146,8 @@ public interface M3StaticAnalysisService extends Service {
         public Report {
             coverage = List.copyOf(Objects.requireNonNull(coverage, "coverage"));
             findings = List.copyOf(Objects.requireNonNull(findings, "findings"));
-            boolean allComplete = !coverage.isEmpty()
-                    && coverage.stream().allMatch(row -> row.status() == Status.COMPLETE);
+            boolean allComplete =
+                    !coverage.isEmpty() && coverage.stream().allMatch(row -> row.status() == Status.COMPLETE);
             if (complete != allComplete) {
                 throw new IllegalArgumentException("inconsistent analysis completion claim");
             }
@@ -177,8 +179,7 @@ public interface M3StaticAnalysisService extends Service {
 
     private static String requireText(String value, String field, int limit) {
         Objects.requireNonNull(value, field);
-        if (value.isBlank() || value.length() > limit
-                || value.chars().anyMatch(Character::isISOControl)) {
+        if (value.isBlank() || value.length() > limit || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException(field);
         }
         checkUnicode(value);
@@ -190,8 +191,10 @@ public interface M3StaticAnalysisService extends Service {
         if (value.isEmpty()) {
             return value;
         }
-        if (value.length() > 2_048 || value.startsWith("/")
-                || value.indexOf(':') >= 0 || value.indexOf('\\') >= 0
+        if (value.length() > 2_048
+                || value.startsWith("/")
+                || value.indexOf(':') >= 0
+                || value.indexOf('\\') >= 0
                 || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("noncanonical analysis path");
         }
