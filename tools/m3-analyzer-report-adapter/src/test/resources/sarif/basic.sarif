@@ -1,4 +1,8 @@
 {
+  "properties": {
+    "license": "SPDX-License-Identifier: Apache-2.0",
+    "copyright": "SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project"
+  },
   "version": "2.1.0",
   "runs": [
     {
