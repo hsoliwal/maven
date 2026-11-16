@@ -121,13 +121,55 @@ public final class BuildHookTest {
                     profile, true, false, 1), "fixture timeout"));
             require(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 8,
                     "deadline must retire the waiting provider process");
-            start = System.nanoTime();
-            expectFailure(() -> McpAdviser.propose(new McpAdviser.ChromeConfig(module, executable,
-                    profile.resolve("blocked-writer"), true, false, 1), "x".repeat(262144)));
-            require(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 8,
-                    "deadline must retire a provider that stops reading a full input pipe");
+            checkBlockedWriter(module, executable, profile);
         }
         System.out.println("BUILD HOOK TESTS PASS: " + checks);
+    }
+
+    private static void checkBlockedWriter(Path module, Path executable, Path profile) throws Exception {
+        long start = System.nanoTime();
+        Path marker = Path.of(executable + ".blocked-writer");
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread caller = new Thread(() -> {
+            try {
+                // Maximum admitted UTF-8 input; JSON escaping also fills the provider's input pipe.
+                McpAdviser.propose(new McpAdviser.ChromeConfig(module, executable,
+                        profile.resolve("blocked-writer"), true, false, 1), "\"".repeat(65_536));
+            } catch (Throwable observed) { failure.set(observed); }
+        }, "build-hook-blocked-writer-probe");
+        caller.setDaemon(true);
+        boolean writerObserved = false;
+        caller.start();
+        try {
+            long observeUntil = start + java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+            while (caller.isAlive() && System.nanoTime() < observeUntil) {
+                if (Files.exists(marker)) {
+                    for (var entry : Thread.getAllStackTraces().entrySet()) {
+                        if (!entry.getKey().getName().equals("maven-native-advisory-mcp")) continue;
+                        for (StackTraceElement frame : entry.getValue()) {
+                            if (frame.getClassName().equals("java.io.FileOutputStream")
+                                    && frame.getMethodName().equals("writeBytes")) writerObserved = true;
+                        }
+                    }
+                }
+                if (writerObserved) break;
+                Thread.sleep(5);
+            }
+            caller.join(5_000);
+            require(Files.exists(marker), "blocked fixture must complete initialize before refusing input");
+            require(writerObserved, "provider worker must be observed writing, not only waiting for a response");
+            require(!caller.isAlive(), "deadline must finish the blocked caller");
+            require(failure.get() instanceof java.io.IOException
+                    && "MCP advisory deadline reached".equals(failure.get().getMessage()),
+                    "blocked writer must fail at the MCP deadline, not prompt admission");
+            long pid = Long.parseLong(Files.readString(marker));
+            require(ProcessHandle.of(pid).map(handle -> !handle.isAlive()).orElse(true),
+                    "blocked Chrome fixture process must be retired");
+            require(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 8,
+                    "deadline must retire a provider that stops reading a full input pipe");
+        } finally {
+            if (caller.isAlive()) { caller.interrupt(); caller.join(1_000); }
+        }
     }
 
     private static int run(List<String> base, String... extra) {
