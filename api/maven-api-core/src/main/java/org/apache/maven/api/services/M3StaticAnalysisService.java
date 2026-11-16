@@ -107,6 +107,26 @@ public interface M3StaticAnalysisService extends Service {
     }
 
     /**
+     * Read-only change counts between two complete reports from the same analyzer.
+     * A non-comparable result deliberately carries zero counts, not a clean-scan verdict.
+     *
+     * @param comparable whether both producer reports claim COMPLETE
+     * @param unchanged identical normalized findings present in both reports
+     * @param introduced findings present only in the later report
+     * @param resolved findings present only in the earlier report
+     * @param introducedErrors newly reported ERROR-severity findings
+     */
+    record Comparison(boolean comparable, int unchanged, int introduced, int resolved, int introducedErrors) {
+        public Comparison {
+            if (unchanged < 0 || introduced < 0 || resolved < 0
+                    || introducedErrors < 0 || introducedErrors > introduced
+                    || (!comparable && (unchanged != 0 || introduced != 0 || resolved != 0))) {
+                throw new IllegalArgumentException("invalid analysis comparison counts");
+            }
+        }
+    }
+
+    /**
      * The exact invocation expected from the build and its reporting status.
      *
      * @param identity original project/plugin/goal/context/generation identity
@@ -176,6 +196,105 @@ public interface M3StaticAnalysisService extends Service {
      * @throws IOException on malformed or modified published evidence
      */
     Report aggregate(Session session, List<M3PluginEvidenceService.Identity> expected) throws IOException;
+
+    /**
+     * Compare existing reports in canonical v1 finding order without re-running
+     * an analyzer, copying whole reports or retaining per-finding objects.
+     * Matching project/plugin/version/goal/execution is mandatory; a change
+     * in invocation context is allowed but does not prove comparable rules or
+     * source coverage. A report status other than COMPLETE is *not* zero findings.
+     *
+     * <p>This is observational change detection only, not an assertion of
+     * causality, a build-cache hit, a release gate or permission to skip a goal.
+     *
+     * @param earlier original baseline manifest
+     * @param later original updated manifest
+     * @return bounded change counts, or an explicit non-comparable result
+     * @throws IllegalArgumentException for different producers or unordered findings
+     */
+    default Comparison compare(Manifest earlier, Manifest later) {
+        Objects.requireNonNull(earlier, "earlier");
+        Objects.requireNonNull(later, "later");
+        M3PluginEvidenceService.Identity first =
+                Objects.requireNonNull(earlier.receipt(), "earlier receipt").identity();
+        M3PluginEvidenceService.Identity second =
+                Objects.requireNonNull(later.receipt(), "later receipt").identity();
+        if (!sameProducer(first, second)) {
+            throw new IllegalArgumentException("analysis reports originate from different producers");
+        }
+        if (earlier.status() != Status.COMPLETE || later.status() != Status.COMPLETE) {
+            return new Comparison(false, 0, 0, 0, 0);
+        }
+        int firstSize = earlier.size();
+        int secondSize = later.size();
+        if (firstSize < 0 || secondSize < 0 || firstSize > MAX_FINDINGS || secondSize > MAX_FINDINGS) {
+            throw new IllegalArgumentException("analysis comparison finding budget exceeded");
+        }
+        int i = 0;
+        int j = 0;
+        int retained = 0;
+        int added = 0;
+        int removed = 0;
+        int newErrors = 0;
+        Finding priorFirst = null;
+        Finding priorSecond = null;
+        while (i < firstSize || j < secondSize) {
+            Finding a = i < firstSize ? Objects.requireNonNull(earlier.entry(i), "earlier finding") : null;
+            Finding b = j < secondSize ? Objects.requireNonNull(later.entry(j), "later finding") : null;
+            if (a != null && priorFirst != null && compareFinding(priorFirst, a) >= 0
+                    || b != null && priorSecond != null && compareFinding(priorSecond, b) >= 0) {
+                throw new IllegalArgumentException("analysis comparison requires canonical sorted findings");
+            }
+            if (a == null || b != null && compareFinding(a, b) > 0) {
+                added++;
+                if (b.severity() == Severity.ERROR) {
+                    newErrors++;
+                }
+                priorSecond = b;
+                j++;
+            } else if (b == null || compareFinding(a, b) < 0) {
+                removed++;
+                priorFirst = a;
+                i++;
+            } else {
+                retained++;
+                priorFirst = a;
+                priorSecond = b;
+                i++;
+                j++;
+            }
+        }
+        return new Comparison(true, retained, added, removed, newErrors);
+    }
+
+    private static boolean sameProducer(
+            M3PluginEvidenceService.Identity first, M3PluginEvidenceService.Identity second) {
+        Objects.requireNonNull(first, "earlier identity");
+        Objects.requireNonNull(second, "later identity");
+        return first.project().equals(second.project())
+                && first.pluginGa().equals(second.pluginGa())
+                && first.version().equals(second.version())
+                && first.goal().equals(second.goal())
+                && first.execution().equals(second.execution());
+    }
+
+    /** The same value order used by the native v1 report parser. */
+    private static int compareFinding(Finding a, Finding b) {
+        int value = a.relativePath().compareTo(b.relativePath());
+        if (value == 0) {
+            value = Integer.compare(a.line(), b.line());
+        }
+        if (value == 0) {
+            value = Integer.compare(a.column(), b.column());
+        }
+        if (value == 0) {
+            value = a.ruleId().compareTo(b.ruleId());
+        }
+        if (value == 0) {
+            value = a.severity().compareTo(b.severity());
+        }
+        return value == 0 ? a.message().compareTo(b.message()) : value;
+    }
 
     private static String requireText(String value, String field, int limit) {
         Objects.requireNonNull(value, field);
