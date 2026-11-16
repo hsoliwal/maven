@@ -141,7 +141,8 @@ final class DefaultDependencyInsightServiceTest {
         when(node.premanagedScope()).thenReturn(Optional.empty());
         when(node.originalScope()).thenReturn(Optional.empty());
         if (key != null) {
-            when(node.artifact()).thenReturn(artifact(key));
+            Artifact selectedArtifact = artifact(key);
+            when(node.artifact()).thenReturn(selectedArtifact);
         }
         return node;
     }
