@@ -110,6 +110,10 @@ final class DefaultM3BuildFingerprintServiceTest {
         }
         assertThrows(IllegalArgumentException.class, () -> new Input("a", Kind.SOURCE, "invalid", 1));
         assertThrows(IllegalArgumentException.class, () -> new Input("a", Kind.SOURCE, ONE, -1));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Input(String.valueOf((char) 0xD800), Kind.SOURCE, ONE, 1));
+        assertThrows(IllegalArgumentException.class, () -> new Context(
+                String.valueOf((char) 0xDC00), "plugin", "1", "goal", "execution", A, B, C, D));
         assertThrows(IllegalArgumentException.class, () -> new Context(
                 "demo", "plugin", "1", "goal", "execution", "bad", B, C, D));
         assertThrows(IllegalArgumentException.class, () -> service.fingerprint(new Request(
