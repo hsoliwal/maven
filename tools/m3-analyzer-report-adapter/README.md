@@ -147,3 +147,52 @@ copied. Hermetic fixtures exercise real BugCollection annotation shape,
 primary source selection, original priorities, missing location, processing
 errors, unsafe paths, DTD refusal and stable v1 bytes. Actual original
 SpotBugs version/runtime differential verification remains a release gate.
+
+
+## Original PMD CPD duplication reports
+
+The explicit CPD format accepts **PMD's original pmd-cpd XML** produced
+by the CPD xml renderer (namespace
+https://pmd-code.org/schema/cpd-report) and the legacy unnamespaced
+xmlold renderer. It is a report **adapter**, not a tokenization,
+duplication-detection, file-scan or new language implementation.
+
+The upstream PMD 7.3+ report schema groups duplication occurrences as
+duplication elements with positive lines/tokens attributes and at
+least two nested file locations. The reader accepts all original
+occurrences, including repeated occurrences **within the same source file**,
+and emits one canonical M3 finding per reported occurrence. The original
+path/line/column information comes from CPD's file path and
+location attributes. Unknown optional columns remain zero, not fabricated.
+
+Every occurrence uses the additive rule PMD.CPD.Duplication and an
+explicit display severity **WARNING**. CPD itself has no native
+warning/error severity for duplication groups; WARNING is a UI mapping,
+**not** a change to CPD thresholds or original build-policy exit behavior.
+The bounded finding message contains the original positive line/token
+counts, an occurrence position within the sorted group, and a canonical
+SHA-256 group identity derived from sorted locations and those counts.
+The original codefragment contents are **never copied into the
+normalized report**, protecting source confidentiality and avoiding
+unnecessary duplicate text storage.
+
+Original PMD 7.3+ CPD error elements denote recoverable analysis failures.
+A caller must not request COMPLETE when errors exist; with PARTIAL or
+FAILED status the converter emits a project-wide ERROR finding
+PMD.CPD.AnalysisError. The original error messages remain in the CPD
+producer's own XML/log, and neither Maven nor Gradle hides them.
+
+The JDK-only, original-owner parser checks XML namespaces, positive and
+canonical numeric attributes, nested structure, bounded counts, duplicate
+locations, path traversal, strict UTF-8, DTD and external entity refusal.
+A CPD group without two distinct locations or the required codefragment
+is refused. Its bounded transient location array is sorted in place;
+the original source fragment is not retained.
+
+The original Maven CLI and optional normalize-xml Mojo accept CPD,
+and the separate Gradle quality bridge reuses the **same pinned adapter
+JAR** by selecting CPD on its existing m3NormalizeAnalyzerXml task.
+The artifact remains separately versioned and the original PMD Maven/Gradle
+plugin remains authoritative for producing the XML and its execution
+status. Real PMD CPD CLI parity, Gradle TestKit and Maven 17/21 runtime
+qualifications remain distinct release gates.

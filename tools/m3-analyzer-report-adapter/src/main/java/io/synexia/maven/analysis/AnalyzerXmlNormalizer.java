@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD, SPOTBUGS
+        CHECKSTYLE, PMD, SPOTBUGS, CPD
     }
 
     public enum Status {
@@ -143,6 +143,9 @@ public final class AnalyzerXmlNormalizer {
     private static List<Finding> readXml(Format format, Status status, Path root, byte[] xml) throws IOException {
         if (format == Format.SPOTBUGS) {
             return SpotBugsXmlReader.read(root, status, xml);
+        }
+        if (format == Format.CPD) {
+            return CpdXmlReader.read(root, status, xml);
         }
         final XMLInputFactory factory = secureXmlFactory();
         ArrayList<Finding> findings = new ArrayList<>();

@@ -28,7 +28,7 @@ public final class NormalizeCli {
     public static void main(String[] args) throws Exception {
         if (args.length != 6) {
             throw new IllegalArgumentException(
-                    "usage: CHECKSTYLE|PMD|SPOTBUGS COMPLETE|PARTIAL|FAILED root input.xml output.tsv digest.sha256");
+                    "usage: CHECKSTYLE|PMD|SPOTBUGS|CPD COMPLETE|PARTIAL|FAILED root input.xml output.tsv digest.sha256");
         }
         AnalyzerXmlNormalizer.Format format = AnalyzerXmlNormalizer.Format.valueOf(args[0]);
         AnalyzerXmlNormalizer.Status status = AnalyzerXmlNormalizer.Status.valueOf(args[1]);

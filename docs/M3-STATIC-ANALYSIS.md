@@ -322,3 +322,30 @@ This is a **report adapter**, not a production-equivalent SpotBugs engine
 integration or an admission proof for build caching, compilation skipping
 or OpenRewrite mutations. Full real original XML/provider differential
 fixtures and both Maven/Gradle runtime matrices remain separate gates.
+
+
+## PMD CPD original XML producer adapter (2026-11-16)
+
+The original Maven analyzer converter now accepts CPD XML in the same
+opt-in normalize-xml Mojo and standalone Java 17 CLI already used for
+Checkstyle, PMD and SpotBugs. The new CpdXmlReader is a source-bound
+format translator and does not embed PMD's duplicate tokenization
+engine or run original analyzers. PMD's xml and legacy xmlold CPD
+report formats are supported.
+
+Each original duplication group with positive lines/tokens and two or
+more file locations is expanded into one canonical M3 finding per
+reported occurrence. A stable group SHA-256 over original metadata
+and sorted occurrences links those observations without reproducing
+the original source code fragment. The adapter's WARNING severity is
+a display policy, not original CPD behavior or a build-failure verdict.
+Recoverable CPD XML errors prohibit source status COMPLETE; unlocated
+partial/failed execution gets an explicit project-wide ERROR finding.
+
+Both Maven M3StaticAnalysisService and Gradle M3AnalysisV1 receive the
+exact original v1 finding schema. The Gradle quality bridge delegates
+to the same reviewed Maven converter JAR with an explicit binary
+SHA-256 pin, rather than maintaining a second CPD parser. No original
+plugin goal, Gradle task, class realm, build cache or source-mutating
+recipe is changed. Original CPD CLI output and source-completeness
+parity remain release tests rather than presumed proof.

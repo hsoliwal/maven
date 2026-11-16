@@ -13,7 +13,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
 /**
- * Opt-in Maven adapter for existing Checkstyle, PMD or SpotBugs XML files. This goal
+ * Opt-in Maven adapter for existing Checkstyle, PMD, SpotBugs or CPD XML. This goal
  * does not execute an analyzer, bind itself to a lifecycle phase, validate
  * analyzer coverage, skip another Mojo or publish a Maven session receipt.
  */
