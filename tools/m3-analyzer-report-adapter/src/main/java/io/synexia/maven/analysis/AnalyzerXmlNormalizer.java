@@ -8,7 +8,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -355,14 +354,17 @@ public final class AnalyzerXmlNormalizer {
             }
             String path = root.relativize(absolute).toString().replace('\\', '/');
             return canonicalPath(path);
-        } catch (InvalidPathException | IllegalArgumentException badPath) {
+        } catch (IllegalArgumentException badPath) {
             throw new IOException("invalid original analyzer source path", badPath);
         }
     }
 
     private static String canonicalPath(String value) {
         Objects.requireNonNull(value, "path");
-        if (value.isEmpty() || value.length() > 2_048
+        if (value.isEmpty()) {
+            return value; // project-wide PMD execution/configuration error
+        }
+        if (value.length() > 2_048
                 || value.startsWith("/") || value.indexOf(':') >= 0
                 || value.indexOf('\\') >= 0 || value.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("noncanonical normalized path");
