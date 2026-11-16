@@ -262,3 +262,69 @@ message catalogs; unsupported forms are refused or retained only in the
 original source report, not claimed fully normalized. Actual original
 CodeQL/Semgrep SARIF golden fixtures, shaded artifact execution and
 Gradle TestKit/IDE qualification remain mandatory release gates.
+
+
+## Native Semgrep CLI JSON report import
+
+The explicit SEMGREP format accepts the output of an **already completed
+Semgrep CLI scan using JSON reporting**, as described in the original
+semgrep-interfaces/semgrep_output_v1.jsonschema specification. Original
+Semgrep binaries, rules, target discovery, timeout/exit policy, suppressions
+and licensing remain external. This converter does not invoke or copy
+Semgrep, download rule packs, rescan source, or apply a Semgrep autofix.
+
+The bounded stream reader is a distinct package-private SemgrepJsonReader,
+which shares the same defensive Jackson JSON-parser settings with SARIF
+through OriginalJsonStreams: strict duplicate-key checking, maximum
+nesting/field-name/string/number length and no JSON object graph. Jackson
+Core remains shaded inside this separately packaged adapter only, not
+inside Maven Core or the Gradle quality bridge.
+
+Each original result requires check_id, project-contained path, positive
+start/end line and col, and extra.message plus extra.severity. Its original
+rule ID and start location are kept in M3 STATIC-ANALYSIS-V1; the original
+end range remains in source JSON. Metadata, metavars, source snippet lines,
+candidate fixes, matching traces, engine implementation details and secret
+material are **not copied** into the normalized report.
+
+Semgrep's original severity vocabulary is deliberately displayed as:
+- ERROR, HIGH, CRITICAL: M3 ERROR
+- WARNING, MEDIUM: M3 WARNING
+- INFO, LOW, EXPERIMENT, INVENTORY: M3 INFO
+
+This is a UI projection, **not** a change to original Semgrep severity,
+scan exit status, --error policy, rule configuration or validation decision.
+Results explicitly marked extra.is_ignored=true are not reactivated as
+active findings; their original records remain in Semgrep's own JSON.
+
+The source JSON must contain distinct results, errors and paths fields.
+Any original non-empty errors array disallows producer status COMPLETE
+even if the tool classified an error as a warning, deliberately failing
+closed until original exit and error policies are qualified. When the
+producer declares PARTIAL or FAILED, a project-wide ERROR finding
+Semgrep.ScanError keeps scan incompleteness visible. Absence of errors in
+a well-formed JSON document is not independent proof that every target
+or rule was scanned.
+
+Example after running the original Semgrep command with explicitly local
+rules and writing target/semgrep-results.json:
+
+    java -cp target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar \
+      io.synexia.maven.analysis.NormalizeCli SEMGREP PARTIAL \
+      /source/project /source/project/target/semgrep-results.json \
+      /source/project/target/m3-analysis.tsv \
+      /source/project/target/m3-analysis.sha256
+
+The opt-in Maven normalize-xml Mojo still accepts the historical
+m3.analysis.xml property for source report paths; setting
+m3.analysis.format=SEMGREP accepts JSON bytes without changing the old
+plugin goal, descriptor or original Checkstyle/PMD/CPD/SpotBugs callers.
+The corresponding Gradle m3NormalizeAnalyzerXml task selects SEMGREP
+and passes the original JSON file through its format-neutral
+originalReport alias, reusing the **same installed, digest-pinned JAR**.
+
+No original Semgrep task, CodeQL query, compiler or OpenRewrite recipe
+runs automatically. The normalized SHA-256 proves bytes, not tool
+execution, target coverage or cache eligibility. The original Semgrep
+CLI JSON specification and original rule engine remain with the
+Semgrep project; only the external schema fields are used here.
