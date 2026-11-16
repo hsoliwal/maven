@@ -53,3 +53,11 @@ jobs:
           recorded=$(cat "$root/target/standalone-semgrep.sha256")
           actual=$(sha256sum "$root/target/standalone-semgrep.tsv" | cut -d ' ' -f 1)
           test "$recorded" = "$actual"
+          if java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
+            SEMGREP COMPLETE "$root" "$root/src/test/resources/semgrep/error.json" \
+            "$root/target/semgrep-invalid.tsv" "$root/target/semgrep-invalid.sha256"; then
+            echo "Original Semgrep scan errors were incorrectly accepted as COMPLETE" >&2
+            exit 1
+          fi
+          test ! -e "$root/target/semgrep-invalid.tsv"
+          test ! -e "$root/target/semgrep-invalid.sha256"
