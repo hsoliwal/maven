@@ -29,6 +29,7 @@ import org.apache.maven.api.di.Inject;
 import org.apache.maven.api.di.Named;
 import org.apache.maven.api.di.Singleton;
 import org.apache.maven.api.services.BuildPolicyService;
+import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.api.services.VersionParser;
 
@@ -87,12 +88,14 @@ public final class DefaultBuildPolicyService implements BuildPolicyService {
 
     private static void checkSnapshots(
             DependencyResolverResult resolved, NoSnapshotDependencies rule, List<Finding> findings) {
-        if (resolved == null || !resolved.getExceptions().isEmpty() || resolved.getRoot() == null) {
+        if (resolved == null || !resolved.getExceptions().isEmpty() || resolved.getRoot() == null
+                || resolved.getRequest() == null
+                || resolved.getRequest().getRequestType() != DependencyResolverRequest.RequestType.RESOLVE) {
             findings.add(new Finding(
                     "banSnapshotDependencies",
                     rule.severity(),
                     "dependency-resolution",
-                    "Snapshot policy not evaluated: complete dependency resolution is unavailable"));
+                    "Snapshot policy not evaluated: successful RESOLVE dependency result is unavailable"));
             return;
         }
         // Resolver supplies the selected dependency set; don't mistake an omitted

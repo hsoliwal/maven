@@ -28,6 +28,7 @@ import org.apache.maven.api.Session;
 import org.apache.maven.api.Version;
 import org.apache.maven.api.VersionRange;
 import org.apache.maven.api.services.BuildPolicyService;
+import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.api.services.VersionParser;
 import org.apache.maven.di.Injector;
@@ -113,6 +114,17 @@ final class DefaultBuildPolicyServiceTest {
     }
 
     @Test
+    void collectOnlyDependencyResultCannotSatisfyResolvedSnapshotCheck() {
+        DependencyResolverResult collected = mock(DependencyResolverResult.class);
+        DependencyResolverRequest original = mock(DependencyResolverRequest.class);
+        when(collected.getExceptions()).thenReturn(List.of());
+        when(collected.getRoot()).thenReturn(mock(Node.class));
+        when(collected.getRequest()).thenReturn(original);
+        when(original.getRequestType()).thenReturn(DependencyResolverRequest.RequestType.COLLECT);
+        assertFalse(evaluate(21, collected, new BuildPolicyService.NoSnapshotDependencies(ERROR)).accepted());
+    }
+
+    @Test
     void selectedSnapshotsAreOrderedAndWarningsRemainNonFatal() {
         Dependency alpha = dependency("a", false);
         Dependency zeta = dependency("z", true);
@@ -120,6 +132,9 @@ final class DefaultBuildPolicyServiceTest {
         DependencyResolverResult resolved = mock(DependencyResolverResult.class);
         when(resolved.getExceptions()).thenReturn(List.of());
         when(resolved.getRoot()).thenReturn(mock(Node.class));
+        DependencyResolverRequest original = mock(DependencyResolverRequest.class);
+        when(resolved.getRequest()).thenReturn(original);
+        when(original.getRequestType()).thenReturn(DependencyResolverRequest.RequestType.RESOLVE);
         when(resolved.getDependencies())
                 .thenReturn(Map.of(zeta, Path.of("z.jar"), alpha, Path.of("a.jar"), beta, Path.of("b.jar")));
         var report = evaluate(21, resolved, new BuildPolicyService.NoSnapshotDependencies(WARN));

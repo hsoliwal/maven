@@ -29,8 +29,9 @@ only when a caller explicitly requests them. An unbracketed Maven requirement
 is a minimum; a bracketed requirement uses the installed Maven version parser.
 `JavaFeature` checks the JVM executing Maven rather than the compiler toolchain.
 A dependency snapshot check consumes the original `DependencyResolverResult`
-selected dependency set. Missing resolution, resolver exceptions and a missing
-root yield an explicit incomplete finding, not a successful result. `WARN`
+selected dependency set. Missing resolution, resolver exceptions, a missing
+root or a non-`RESOLVE` request yield an explicit incomplete finding, not a
+successful result. `WARN`
 findings do not fail `Report#accepted()`.
 
 ## Compatibility boundaries
