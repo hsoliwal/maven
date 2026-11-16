@@ -99,6 +99,104 @@ final class DefaultM3StaticAnalysisServiceTest {
     }
 
     @Test
+    void comparesOnlyCompletedAnalyzerReportsWithLinearSortedMerge() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        var service = new DefaultM3StaticAnalysisService(provider);
+        Session session = session();
+        var baseline = identity("maven-checkstyle-plugin", 71);
+        var current = identity("maven-checkstyle-plugin", 72);
+        publish(provider, session, baseline, HEADER
+                + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
+                + row("C.Rule", "WARNING", "src/C.java", "2", "1", encoded("resolved"))
+                + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same")));
+        publish(provider, session, current, HEADER
+                + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
+                + row("B.Rule", "ERROR", "src/B.java", "2", "1", encoded("introduced"))
+                + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same"))
+                + row("E.Rule", "WARNING", "src/E.java", "4", "1", encoded("introduced")));
+        var before = service.read(session, baseline).orElseThrow();
+        var after = service.read(session, current).orElseThrow();
+        var comparison = service.compare(before, after);
+        assertTrue(comparison.comparable());
+        assertEquals(2, comparison.unchanged());
+        assertEquals(2, comparison.introduced());
+        assertEquals(1, comparison.resolved());
+        assertEquals(1, comparison.introducedErrors());
+
+        var reversed = service.compare(after, before);
+        assertEquals(2, reversed.unchanged());
+        assertEquals(1, reversed.introduced());
+        assertEquals(2, reversed.resolved());
+        assertEquals(0, reversed.introducedErrors());
+    }
+
+    @Test
+    void changesInMessageAreNewAndResolvedRatherThanAssumedIdentical() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        var service = new DefaultM3StaticAnalysisService(provider);
+        Session session = session();
+        var baseline = identity("maven-pmd-plugin", 73);
+        var current = identity("maven-pmd-plugin", 74);
+        publish(provider, session, baseline, HEADER
+                + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("old")));
+        publish(provider, session, current, HEADER
+                + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("new")));
+        var comparison = service.compare(
+                service.read(session, baseline).orElseThrow(),
+                service.read(session, current).orElseThrow());
+        assertEquals(0, comparison.unchanged());
+        assertEquals(1, comparison.introduced());
+        assertEquals(1, comparison.resolved());
+        assertEquals(0, comparison.introducedErrors());
+    }
+
+    @Test
+    void unrelatedAndIncompleteAnalyzersCannotBeCalledCleanComparisons() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        var service = new DefaultM3StaticAnalysisService(provider);
+        Session session = session();
+        var baseline = identity("maven-pmd-plugin", 75);
+        var partial = identity("maven-pmd-plugin", 76);
+        var other = identity("maven-checkstyle-plugin", 77);
+        publish(provider, session, baseline, HEADER);
+        publish(provider, session, partial, HEADER.replace("status\tCOMPLETE", "status\tPARTIAL"));
+        publish(provider, session, other, HEADER);
+        var old = service.read(session, baseline).orElseThrow();
+        var incomplete = service.compare(old, service.read(session, partial).orElseThrow());
+        assertFalse(incomplete.comparable());
+        assertEquals(0, incomplete.introduced());
+        assertEquals(0, incomplete.resolved());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.compare(old, service.read(session, other).orElseThrow()));
+        assertThrows(NullPointerException.class, () -> service.compare(null, old));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Comparison(false, 0, 1, 0, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Comparison(true, 0, 1, 0, 2));
+    }
+
+    @Test
+    void rejectsUnsortedThirdPartyManifestsInsteadOfFabricatingDeltaCounts() throws Exception {
+        var provider = new DefaultM3PluginEvidenceService();
+        var service = new DefaultM3StaticAnalysisService(provider);
+        Session session = session();
+        var identity = identity("maven-pmd-plugin", 78);
+        publish(provider, session, identity, HEADER);
+        var original = service.read(session, identity).orElseThrow();
+        M3StaticAnalysisService.Manifest forged = mock(M3StaticAnalysisService.Manifest.class);
+        when(forged.receipt()).thenReturn(original.receipt());
+        when(forged.status()).thenReturn(M3StaticAnalysisService.Status.COMPLETE);
+        when(forged.size()).thenReturn(2);
+        when(forged.entry(0)).thenReturn(
+                new M3StaticAnalysisService.Finding(
+                        "Z.Rule", M3StaticAnalysisService.Severity.ERROR, "src/Z.java", 1, 1, "z"));
+        when(forged.entry(1)).thenReturn(
+                new M3StaticAnalysisService.Finding(
+                        "A.Rule", M3StaticAnalysisService.Severity.ERROR, "src/A.java", 1, 1, "a"));
+        assertThrows(IllegalArgumentException.class, () -> service.compare(forged, original));
+    }
+
+    @Test
     void missingPartialAndFailedRunsNeverBecomeSuccessfulCoverage() throws Exception {
         var provider = new DefaultM3PluginEvidenceService();
         var service = new DefaultM3StaticAnalysisService(provider);
