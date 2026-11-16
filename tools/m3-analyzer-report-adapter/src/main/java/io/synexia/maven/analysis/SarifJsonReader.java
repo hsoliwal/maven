@@ -426,7 +426,7 @@ final class SarifJsonReader {
     }
 
     private static int nonnegative(JsonParser parser, String field) throws IOException {
-        if (!parser.currentToken().isIntegralNumber()) {
+        if (parser.currentToken() != JsonToken.VALUE_NUMBER_INT) {
             throw new IOException(field + " must be an integer");
         }
         int result = parser.getIntValue();
