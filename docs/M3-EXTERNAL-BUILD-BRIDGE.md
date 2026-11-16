@@ -80,6 +80,21 @@ References:
 - https://learn.microsoft.com/en-us/visualstudio/ide/customize-build-and-debug-tasks-in-visual-studio?view=vs-2022
 - https://learn.microsoft.com/en-us/cpp/ide/non-msbuild-projects
 
+### Ready-to-copy Visual Studio invocation templates
+
+Opt-in Windows Visual Studio Open Folder tasks and MSBuild .targets are provided at
+[`tools/m3-ide-bridge/visualstudio/`](../tools/m3-ide-bridge/visualstudio/README.md).
+The Open Folder template has explicit `M3 Maven: test` and `M3 Maven: verify`
+commands; the MSBuild template adds only `M3MavenVerify`, disabled until
+`M3MavenEnable=true` and that exact target are requested. Neither template
+intercepts ordinary Visual Studio builds or claims to supply incremental source
+fingerprints. Real Windows execution is a separate qualification gate.
+
+Eclipse m2e's separately proposed opt-in IResourceDelta capture lives in
+[hsoliwal/m2e-core PR #2](https://github.com/hsoliwal/m2e-core/pull/2).
+It reports source-owned deltas as advisory data; it does not provide a live
+Maven 4 provider or a compiled VSIX.
+
 ## Other adapters and ownership
 
 Namespaced provider IDs may include eclipse.jdt, visualstudio.msbuild,

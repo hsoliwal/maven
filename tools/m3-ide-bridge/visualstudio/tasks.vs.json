@@ -1,0 +1,23 @@
+{
+  "version": "0.2.1",
+  "tasks": [
+    {
+      "taskLabel": "M3 Maven: verify",
+      "appliesTo": "pom.xml",
+      "type": "launch",
+      "contextType": "custom",
+      "command": "mvn.cmd",
+      "args": ["-B", "-ntp", "verify"],
+      "launchOption": "None"
+    },
+    {
+      "taskLabel": "M3 Maven: test",
+      "appliesTo": "pom.xml",
+      "type": "launch",
+      "contextType": "custom",
+      "command": "mvn.cmd",
+      "args": ["-B", "-ntp", "test"],
+      "launchOption": "None"
+    }
+  ]
+}
