@@ -27,6 +27,12 @@ inputs:
   require-atom-pattern:
     description: Require complete current Java checkpoint coverage before inference
     default: 'false'
+  preparation-report:
+    description: Project-local, source-bound canonical OpenRewrite preparation JSON (producer supplied)
+    default: ''
+  preparation-required:
+    description: Require canonical atom candidate and structural pattern preparation before advice
+    default: 'false'
   backend:
     description: chrome for real inference, none for deterministic facts only
     default: chrome
@@ -71,6 +77,8 @@ runs:
         HOOK_SOURCE: ${{ inputs.source-root }}
         HOOK_ATOM_PATTERN_MANIFEST: ${{ inputs.atom-pattern-manifest }}
         HOOK_REQUIRE_ATOM_PATTERN: ${{ inputs.require-atom-pattern }}
+        HOOK_PREPARATION_REPORT: ${{ inputs.preparation-report }}
+        HOOK_PREPARATION_REQUIRED: ${{ inputs.preparation-required }}
         HOOK_BACKEND: ${{ inputs.backend }}
         HOOK_MODULE: ${{ inputs.chrome-llm-jar }}
         HOOK_CHROME: ${{ inputs.chrome-path }}
