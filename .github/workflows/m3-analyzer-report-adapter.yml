@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Original Analyzer Report Adapter
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-analyzer-report-adapter/**'
+      - '.github/workflows/m3-analyzer-report-adapter.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checkstyle-pmd-xml-converter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: tools/m3-analyzer-report-adapter/pom.xml
+      - name: Compile and run hermetic original XML contract tests
+        run: |
+          mvn -B -ntp -f tools/m3-analyzer-report-adapter/pom.xml verify
+      - name: Verify the original adapter CLI was packaged
+        run: |
+          test -s tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar
+          jar tf tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar \
+            | grep -F 'io/synexia/maven/analysis/NormalizeCli.class'

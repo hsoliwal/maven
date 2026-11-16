@@ -246,3 +246,40 @@ The independently implemented Gradle `M3AnalysisV1` reader follows the
 same pattern, with a byte-array severity lane and parser-maintained error
 counter. This is an optimization of existing evidence indexing, **not**
 an automatic Maven/Gradle policy decision or a plugin-goal replacement.
+
+
+## Original Checkstyle/PMD XML adapters (2026-11-16)
+
+The standalone tools/m3-analyzer-report-adapter module is the first
+producer-side format adapter for native analyzer evidence. It provides both
+a Java 17 NormalizeCli and an **explicit Maven normalize-xml Mojo goal**
+(no implicit lifecycle binding). The pure Java implementation handles already
+produced Checkstyle file/error XML and PMD 2.0 file/violation XML; their
+engines, rule configuration, suppression decisions and exit statuses remain
+with the original Checkstyle/PMD plugins.
+
+The converter maps canonical, in-project source paths and original finding
+fields to the same M3-STATIC-ANALYSIS-V1 row ordering and Base64URL message
+schema understood by M3StaticAnalysisService. The original producer must
+supply COMPLETE, PARTIAL or FAILED explicitly. PMD processing/configuration
+errors cannot be accepted as COMPLETE. DTD/entity expansion, invalid source
+paths, duplicate canonical findings and oversized inputs are refused.
+
+The converter does **not** automatically publish a
+M3PluginEvidenceService receipt: actual source-bound publication requires
+the original Maven Session, plugin goal, generation and full execution
+context. A checksum alone is not a producer certificate, a cache admission
+gate or permission to skip checks.
+
+The Gradle quality bridge's independent m3NormalizeAnalyzerXml task can
+invoke the very same built Java adapter JAR by direct argv with an explicit
+SHA-256 pin and status; it never loads Maven Core or reimplements the XML
+decoder. Its output remains the existing Gradle m3ReviewAnalysis input
+format. Both tasks are opt-in, and neither triggers original analyzers
+automatically.
+
+SpotBugs, CPD, Semgrep, CodeQL SARIF and additional XML dialect adapters
+remain separate, independently qualified donor work. Java 17/21 standalone
+tests, actual Checkstyle/PMD provider fixtures, Maven plugin descriptor,
+full reactor, Gradle TestKit and original behavior parity must pass before
+promoting the converter as release-qualified.
