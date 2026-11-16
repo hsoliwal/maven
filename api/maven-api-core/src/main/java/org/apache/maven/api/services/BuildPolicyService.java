@@ -50,7 +50,12 @@ public interface BuildPolicyService extends Service {
         Severity severity();
     }
 
-    /** Minimum or range requirement for the Maven runtime version. */
+    /**
+     * Minimum or range requirement for the Maven runtime version.
+     *
+     * @param requirement minimum version or Maven version range
+     * @param severity severity reported when the requirement is not met
+     */
     record MavenVersion(String requirement, Severity severity) implements Rule {
         public MavenVersion {
             Objects.requireNonNull(requirement, "requirement");
@@ -61,7 +66,12 @@ public interface BuildPolicyService extends Service {
         }
     }
 
-    /** Minimum Java feature version of the JVM executing Maven, e.g. 21. */
+    /**
+     * Minimum Java feature version of the JVM executing Maven, e.g. 21.
+     *
+     * @param minimum minimum Java feature version
+     * @param severity severity reported when the requirement is not met
+     */
     record JavaFeature(int minimum, Severity severity) implements Rule {
         public JavaFeature {
             if (minimum < 1) {
@@ -71,7 +81,11 @@ public interface BuildPolicyService extends Service {
         }
     }
 
-    /** Reject resolved, selected dependencies with snapshot versions. */
+    /**
+     * Reject resolved, selected dependencies with snapshot versions.
+     *
+     * @param severity severity reported for a selected snapshot dependency
+     */
     record NoSnapshotDependencies(Severity severity) implements Rule {
         public NoSnapshotDependencies {
             severity = Objects.requireNonNull(severity, "severity");
@@ -101,7 +115,14 @@ public interface BuildPolicyService extends Service {
         }
     }
 
-    /** A reproducible violation or a deliberately incomplete check. */
+    /**
+     * A reproducible violation or a deliberately incomplete check.
+     *
+     * @param rule identifier of the evaluated policy
+     * @param severity severity of this finding
+     * @param subject runtime or dependency examined by the policy
+     * @param message explanation of the finding
+     */
     record Finding(String rule, Severity severity, String subject, String message) {
         public Finding {
             rule = Objects.requireNonNull(rule, "rule");
@@ -111,7 +132,11 @@ public interface BuildPolicyService extends Service {
         }
     }
 
-    /** No findings means all requested checks were evaluated and passed. */
+    /**
+     * No findings means all requested checks were evaluated and passed.
+     *
+     * @param findings findings produced by the requested policy checks
+     */
     record Report(List<Finding> findings) {
         public Report {
             findings = List.copyOf(findings);

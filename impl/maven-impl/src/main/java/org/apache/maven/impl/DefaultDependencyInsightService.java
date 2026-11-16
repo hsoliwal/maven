@@ -138,7 +138,8 @@ public final class DefaultDependencyInsightService implements DependencyInsightS
             coordinates[index] = key(node);
             Optional<Node> resolvedWinner = node.winner();
             omitted[index] = resolvedWinner.isPresent();
-            winner[index] = resolvedWinner.map(DefaultDependencyInsightService::key).orElse(null);
+            winner[index] =
+                    resolvedWinner.map(DefaultDependencyInsightService::key).orElse(null);
             premanagedVersion[index] = node.premanagedVersion().orElse(null);
             premanagedScope[index] = node.premanagedScope().orElse(null);
             originalScope[index] = node.originalScope().orElse(null);
