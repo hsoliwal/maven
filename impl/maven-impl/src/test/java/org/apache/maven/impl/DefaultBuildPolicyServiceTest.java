@@ -30,12 +30,15 @@ import org.apache.maven.api.VersionRange;
 import org.apache.maven.api.services.BuildPolicyService;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.api.services.VersionParser;
+import org.apache.maven.di.Injector;
 import org.junit.jupiter.api.Test;
 
 import static org.apache.maven.api.services.BuildPolicyService.Severity.ERROR;
 import static org.apache.maven.api.services.BuildPolicyService.Severity.WARN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -45,6 +48,20 @@ final class DefaultBuildPolicyServiceTest {
     private final Session session = mock(Session.class);
     private final VersionParser parser = mock(VersionParser.class);
     private final DefaultBuildPolicyService service = new DefaultBuildPolicyService(parser);
+
+    @Test
+    void mavenInjectorResolvesNativePolicyService() {
+        Injector injector = Injector.create();
+        try {
+            injector.bindInstance(VersionParser.class, parser);
+            injector.bindImplicit(DefaultBuildPolicyService.class);
+            var nativeService = injector.getInstance(BuildPolicyService.class);
+            assertInstanceOf(DefaultBuildPolicyService.class, nativeService);
+            assertSame(nativeService, injector.getInstance(BuildPolicyService.class));
+        } finally {
+            injector.dispose();
+        }
+    }
 
     @Test
     void enforcerStyleBareMinimumUsesNativeMavenVersionComparison() {
