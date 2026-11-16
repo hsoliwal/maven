@@ -19,6 +19,7 @@
 package org.apache.maven.impl;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.apache.maven.api.Artifact;
@@ -27,6 +28,7 @@ import org.apache.maven.api.services.DependencyInsightService;
 import org.apache.maven.api.services.DependencyResolverRequest;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.di.Injector;
+import org.eclipse.aether.graph.DependencyNode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -108,6 +112,28 @@ final class DefaultDependencyInsightServiceTest {
         assertEquals(1, snapshot.cyclesSkipped());
         assertFalse(snapshot.complete());
         assertEquals(List.of("<root>", "child"), snapshot.path(1));
+    }
+
+    @Test
+    void recreatedNativeNodeFacadesStillDetectTheOriginalResolverCycle() {
+        InternalSession owner = mock(InternalSession.class);
+        DependencyNode resolverRoot = mock(DependencyNode.class);
+        DependencyNode resolverChild = mock(DependencyNode.class);
+        when(resolverRoot.getData()).thenReturn(Map.of());
+        when(resolverChild.getData()).thenReturn(Map.of());
+        when(resolverRoot.getChildren()).thenReturn(List.of(resolverChild));
+        when(resolverChild.getChildren()).thenReturn(List.of(resolverRoot));
+        when(owner.getNode(any(DependencyNode.class), eq(true)))
+                .thenAnswer(invocation -> new DefaultNode(owner, invocation.getArgument(0), true));
+
+        // Every child access constructs another Java facade for the same
+        // underlying graph node. This cycle must not appear as truncation.
+        Node root = new DefaultNode(owner, resolverRoot, true);
+        var snapshot = service.inspect(new DependencyInsightService.Request(result(root, true), 8));
+        assertEquals(2, snapshot.size());
+        assertEquals(1, snapshot.cyclesSkipped());
+        assertFalse(snapshot.complete());
+        assertEquals(List.of("<root>", "<root>"), snapshot.path(1));
     }
 
     @Test
