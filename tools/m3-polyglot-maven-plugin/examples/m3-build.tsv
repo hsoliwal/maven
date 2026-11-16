@@ -1,4 +1,5 @@
 M3-POLYGLOT-TASKS-V1
+# SPDX-License-Identifier: Apache-2.0
 # Replace tools, language modes, workspace-relative paths and recipe versions with installed providers.
 # This example is a reviewable PLAN. Do not run it without setting up the actual tools.
 task	all	-	.
