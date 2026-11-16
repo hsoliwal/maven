@@ -256,6 +256,27 @@ public final class AnalyzerXmlNormalizerContractTestMain {
                 AnalyzerXmlNormalizer.Status.COMPLETE, legacy).count() == 2,
                 "legacy unqualified CPD XML is supported without guessed columns");
 
+        String sameFile = """
+                <pmd-cpd><duplication lines="3" tokens="18">
+                  <file path="src/A.java" line="30"/>
+                  <file path="src/A.java" line="12"/>
+                  <file path="src/A.java" line="44"/>
+                  <codefragment><![CDATA[one original group]]></codefragment>
+                </duplication></pmd-cpd>
+                """;
+        var sameFileResult = convert(root, AnalyzerXmlNormalizer.Format.CPD,
+                AnalyzerXmlNormalizer.Status.COMPLETE, sameFile);
+        check(sameFileResult.count() == 3,
+                "CPD duplication locations within one file are not collapsed");
+        String sameFileV1 = new String(sameFileResult.bytes(), StandardCharsets.UTF_8);
+        check(sameFileV1.indexOf("src/A.java\t12\t0\t")
+                < sameFileV1.indexOf("src/A.java\t30\t0\t"),
+                "CPD same-file source lines retain canonical numeric ordering");
+        check(sameFileV1.indexOf("src/A.java\t30\t0\t")
+                < sameFileV1.indexOf("src/A.java\t44\t0\t"),
+                "third original CPD location is retained");
+
+
         String error = """
                 <pmd-cpd xmlns="https://pmd-code.org/schema/cpd-report">
                   <error filename="src/Bad.java" msg="tokenizer failed"/>
