@@ -104,6 +104,25 @@ public interface M3StaticAnalysisService extends Service {
 
         /** @return finding at the requested index, materialized on demand */
         Finding entry(int index);
+
+        /**
+         * Count original findings of a given severity. Default delegation
+         * preserves pre-existing Manifest implementations without changing
+         * any plugin, schema, report or binary contract.
+         *
+         * @param severity original analyzer severity to count
+         * @return number of findings with the requested severity
+         */
+        default int count(Severity severity) {
+            Objects.requireNonNull(severity, "severity");
+            int total = 0;
+            for (int index = 0; index < size(); index++) {
+                if (entry(index).severity() == severity) {
+                    total++;
+                }
+            }
+            return total;
+        }
     }
 
     /**
