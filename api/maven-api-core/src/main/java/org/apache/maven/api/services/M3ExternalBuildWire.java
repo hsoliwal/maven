@@ -9,11 +9,12 @@
  *
  *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.api.services;
 
@@ -94,14 +95,26 @@ public final class M3ExternalBuildWire {
         String project64 = Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(envelope.projectId().getBytes(StandardCharsets.UTF_8));
-        StringBuilder value = new StringBuilder(SCHEMA).append('\n')
-                .append(PREFIX_PROVIDER).append(envelope.providerId()).append('\n')
-                .append(PREFIX_PROJECT).append(project64).append('\n')
-                .append(PREFIX_KIND).append(envelope.buildKind()).append('\n')
-                .append(PREFIX_COMPLETE).append(envelope.deltaComplete()).append('\n');
+        StringBuilder value = new StringBuilder(SCHEMA)
+                .append('\n')
+                .append(PREFIX_PROVIDER)
+                .append(envelope.providerId())
+                .append('\n')
+                .append(PREFIX_PROJECT)
+                .append(project64)
+                .append('\n')
+                .append(PREFIX_KIND)
+                .append(envelope.buildKind())
+                .append('\n')
+                .append(PREFIX_COMPLETE)
+                .append(envelope.deltaComplete())
+                .append('\n');
         for (Change change : envelope.changes()) {
-            value.append(PREFIX_CHANGE).append(change.kind()).append('\t')
-                    .append(change.relativePath()).append('\n');
+            value.append(PREFIX_CHANGE)
+                    .append(change.kind())
+                    .append('\t')
+                    .append(change.relativePath())
+                    .append('\n');
         }
         byte[] bytes = value.toString().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > MAX_BYTES) {
@@ -118,7 +131,8 @@ public final class M3ExternalBuildWire {
         }
         final String content;
         try {
-            content = StandardCharsets.UTF_8.newDecoder()
+            content = StandardCharsets.UTF_8
+                    .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes))
@@ -146,7 +160,8 @@ public final class M3ExternalBuildWire {
             if (!Base64.getUrlEncoder().withoutPadding().encodeToString(raw).equals(encodedProject)) {
                 throw new IllegalArgumentException("noncanonical project identifier encoding");
             }
-            project = StandardCharsets.UTF_8.newDecoder()
+            project = StandardCharsets.UTF_8
+                    .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(raw))

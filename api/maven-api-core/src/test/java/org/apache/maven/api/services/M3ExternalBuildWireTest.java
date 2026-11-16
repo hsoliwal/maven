@@ -62,7 +62,9 @@ final class M3ExternalBuildWireTest {
         assertFalse(request.current().deltaComplete());
         assertEquals(1, request.changes().size());
         assertEquals(previous, request.previous());
-        assertFalse(M3ExternalBuildWire.bind(host, previous, generation(2, false)).current().deltaComplete());
+        assertFalse(M3ExternalBuildWire.bind(host, previous, generation(2, false))
+                .current()
+                .deltaComplete());
     }
 
     @Test
@@ -107,8 +109,7 @@ final class M3ExternalBuildWireTest {
                 new String(valid, StandardCharsets.UTF_8).replace("src/a.java", "../escape.java"),
                 new String(valid, StandardCharsets.UTF_8).replace("change\tADDED", "change\tUNKNOWN"),
                 new String(valid, StandardCharsets.UTF_8).replace("\n", "\r\n"))) {
-            assertThrows(
-                    IOException.class, () -> M3ExternalBuildWire.decode(invalid.getBytes(StandardCharsets.UTF_8)));
+            assertThrows(IOException.class, () -> M3ExternalBuildWire.decode(invalid.getBytes(StandardCharsets.UTF_8)));
         }
         assertThrows(IOException.class, () -> M3ExternalBuildWire.decode(new byte[] {(byte) 0xc3, 0x28}));
         assertThrows(IOException.class, () -> M3ExternalBuildWire.decode(new byte[0]));
