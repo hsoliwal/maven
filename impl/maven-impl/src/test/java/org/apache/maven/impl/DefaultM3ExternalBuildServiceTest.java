@@ -206,6 +206,30 @@ final class DefaultM3ExternalBuildServiceTest {
                         new Generation("vscode.java", "project", 5, A, A, A, A, true)));
     }
 
+    @Test
+    void ideConfigurationAndCrossLanguageLockfilesRequireReconciliation() {
+        var before = generation("eclipse.m2e", 4, A, true);
+        var current = generation("eclipse.m2e", 5, A, true);
+        for (String path : List.of("module/.mvn/extensions.xml", "module/.settings/org.eclipse.jdt.core.prefs",
+                ".factorypath", "gradle/libs.versions.toml", "gradle/wrapper/gradle-wrapper.properties",
+                "build.gradle.kts", "native/custom.gradle", "frontend/pnpm-lock.yaml", "frontend/bun.lockb",
+                "frontend/package-lock.json", "python/uv.lock", "python/poetry.lock", "python/setup.cfg",
+                "dotnet/global.json", "dotnet/NuGet.Config", "dotnet/packages.lock.json",
+                "native/CMakeUserPresets.json", "native/conanfile.py", "native/meson.options",
+                "rust/rust-toolchain.toml", "rust/build.rs", "go/go.work", "swift/Package.resolved",
+                "bazel/MODULE.bazel", "bazel/BUILD", "ant/ivy.xml")) {
+            var evaluation = service.assess(before, current,
+                    List.of(new Change(path, ChangeKind.MODIFIED, null)));
+            assertEquals(Disposition.MAVEN_RECONCILIATION, evaluation.disposition(), path);
+            assertTrue(evaluation.reasons().contains(Reason.BUILD_DESCRIPTOR_CHANGED));
+            assertFalse(evaluation.authorizesMavenGoalSkipping());
+        }
+        var ordinary = service.assess(before, current,
+                List.of(new Change("src/main/java/example/Example.java", ChangeKind.MODIFIED, null)));
+        assertEquals(Disposition.HOST_DELTA_AVAILABLE, ordinary.disposition());
+        assertFalse(ordinary.authorizesMavenGoalSkipping());
+    }
+
     private static Generation generation(String provider, long generation, String model, boolean complete) {
         return new Generation(provider, "project", generation, model, A, A, A, complete);
     }
