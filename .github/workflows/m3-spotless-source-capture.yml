@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Exact Maven API Spotless Capture
+
+on:
+  push:
+    branches:
+      - m3/format-api-core-ci-export-20261116
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture-native-formatter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Bootstrap the same Maven 4 wrapper as Java CI
+        run: |
+          mvn -B -ntp org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper '-Dmaven=4.0.0-rc-7'
+      - name: Apply the project's original formatting recipe without committing
+        run: ./mvnw -B -ntp -pl api/maven-api-core spotless:apply
+      - name: Emit exact changed source bytes for review
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+          changes = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", "api/maven-api-core"],
+              text=True).splitlines()
+          if not changes or len(changes) > 20:
+              raise SystemExit("Unexpected API format change count: " + repr(changes))
+          print("M3_FORMATTED_PATHS " + json.dumps(changes))
+          for name in changes:
+              if not name.endswith(".java"):
+                  raise SystemExit("Refusing non-Java formatter change: " + name)
+              content = pathlib.Path(name).read_text(encoding="utf-8")
+              print("M3_FORMATTED_JSON " +
+                    json.dumps({"path": name, "content": content}, ensure_ascii=False))
+          PY
