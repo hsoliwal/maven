@@ -17,12 +17,12 @@ import java.util.Map;
  * Needs {@code git} and {@code sh} on the path; uses a throw-away repository under the system temporary directory.
  */
 public final class CanonGateTest {
-    private static Path base;
-    private static Path repo;
+    static Path base;
+    static Path repo;
     private static String lastLog = "";
     private static String planeMode = "full";
     private static int runs;
-    private static int checks;
+    static int checks;
 
     public static void main(String[] args) throws Exception {
         base = Files.createTempDirectory("canon-gate-test");
@@ -41,6 +41,7 @@ public final class CanonGateTest {
         inventory();
         inventoryDispositions();
         idempotence();
+        ChecksTest.run();
         System.out.println("CanonGateTest: " + checks + " checks passed");
     }
 
@@ -386,7 +387,7 @@ public final class CanonGateTest {
         return p;
     }
 
-    private static Map<String, String> apply(String atomCommand) throws IOException {
+    static Map<String, String> apply(String atomCommand) throws IOException {
         Map<String, String> p = packet();
         p.put("run.mode", "apply");
         p.put("verify.atom_pattern", atomCommand);
@@ -394,7 +395,7 @@ public final class CanonGateTest {
     }
 
     /** Writes an atom table for the given files as they are now and returns the stage command that publishes it. */
-    private static String atoms(String pattern, String... paths) throws IOException {
+    static String atoms(String pattern, String... paths) throws IOException {
         StringBuilder table = new StringBuilder(AtomPattern.HEADER + "\n");
         for (String path : paths) {
             String file = Ledger.sha256(repo.resolve(path));
@@ -414,11 +415,11 @@ public final class CanonGateTest {
         return "cp '" + file.toString().replace('\\', '/') + "' \"$CANON_RUN_DIR/ATOM_PATTERN.tsv\"";
     }
 
-    private static int check(Map<String, String> packet) throws IOException {
+    static int check(Map<String, String> packet) throws IOException {
         return CanonGate.execute(new String[] {"check", save(packet, "check-" + (runs++)).toString()}, quiet());
     }
 
-    private static int run(Map<String, String> packet, String name) throws IOException {
+    static int run(Map<String, String> packet, String name) throws IOException {
         return runAt(packet, name, base.resolve("runs/" + name));
     }
 
@@ -441,46 +442,46 @@ public final class CanonGateTest {
         return file;
     }
 
-    private static PrintStream quiet() {
+    static PrintStream quiet() {
         return new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
     }
 
-    private static String commit(String message) {
+    static String commit(String message) {
         return "git -c user.name=canon -c user.email=canon@example.invalid -c commit.gpgsign=false commit -qm " + message;
     }
 
-    private static void restore() throws Exception {
+    static void restore() throws Exception {
         sh("git checkout -q -- . && git clean -fdq");
     }
 
-    private static void write(String path, String text) throws IOException {
+    static void write(String path, String text) throws IOException {
         Path file = repo.resolve(path);
         Files.createDirectories(file.getParent());
         Files.writeString(file, text, StandardCharsets.UTF_8);
     }
 
-    private static void append(String path, String text) throws IOException {
+    static void append(String path, String text) throws IOException {
         Files.writeString(repo.resolve(path), Files.readString(repo.resolve(path)) + text, StandardCharsets.UTF_8);
     }
 
-    private static void sh(String command) throws Exception {
+    static void sh(String command) throws Exception {
         Process process = new ProcessBuilder("sh", "-c", command).directory(repo.toFile()).redirectErrorStream(true).start();
         process.getOutputStream().close();
         String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (process.waitFor() != 0) throw new AssertionError("fixture command failed: " + command + "\n" + out);
     }
 
-    private static void expect(int expected, int actual, String what) {
+    static void expect(int expected, int actual, String what) {
         if (expected != actual) throw new AssertionError(what + ": expected status " + expected + ", got " + actual + "\n" + lastLog);
         checks++;
     }
 
-    private static void present(Path file, String what) {
+    static void present(Path file, String what) {
         if (!Files.isRegularFile(file)) throw new AssertionError(what + " missing: " + file);
         checks++;
     }
 
-    private static void contains(Path file, String text, String what) throws IOException {
+    static void contains(Path file, String text, String what) throws IOException {
         String body = Files.isRegularFile(file) ? Files.readString(file) : "<missing>";
         if (!body.contains(text)) throw new AssertionError(what + ": " + file + " lacks [" + text + "]\n" + body + "\n" + lastLog);
         checks++;

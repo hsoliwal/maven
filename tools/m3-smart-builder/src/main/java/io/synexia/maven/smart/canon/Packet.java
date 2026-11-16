@@ -19,7 +19,8 @@ import java.util.stream.Stream;
 /**
  * Task packet contract (M3-SCALE v3.0 section 4). Atom: one validated packet. Pattern: validator over a value
  * object. A packet is UTF-8 text of {@code key<TAB>value} lines; blank lines and {@code #} comments are ignored;
- * unknown keys, repeated keys, weakened baseline locks and out-of-order verification stages are refused.
+ * unknown keys, repeated keys, weakened baseline locks and out-of-order verification stages are refused. The
+ * optional key {@code checks} names built-in checks ({@link Checks}); {@code checks.renamed} lists retired names.
  */
 final class Packet {
     /** The fixed verification order; atomization and patternization come right after the diff. */
@@ -38,7 +39,7 @@ final class Packet {
             "invariant_id", "run.mode", "run.profile", "run.kind", "run.workers", "run.shard_count", "run.shard_index",
             "targets.modules", "targets.files", "invariant_locks", "allowed_delta", "forbidden", "verify_order",
             "output_contract", "stop_conditions", "excluded_paths", "disabled_paths", "compute_resources", "baseline_run",
-            "base_ref", "pattern_catalog", "atom.coverage"),
+            "base_ref", "pattern_catalog", "atom.coverage", "checks", "checks.renamed"),
             ORDER.stream().map(stage -> "verify." + stage)).collect(Collectors.toUnmodifiableSet());
 
     final Path file;
@@ -48,6 +49,8 @@ final class Packet {
     final boolean dryRun;
     final boolean inventory;
     final boolean selectedAtomCoverage;
+    final List<String> checks;
+    final List<String> renamed;
     final Path sourceDoc;
     final Set<String> patterns;
     final List<String> verify;
@@ -73,6 +76,10 @@ final class Packet {
             case "selected" -> true;
             default -> throw new Invalid("atom.coverage must be changed or selected");
         };
+        checks = list("checks");
+        renamed = list("checks.renamed");
+        String refused = Checks.refusal(checks, renamed);
+        if (!refused.isEmpty()) throw new Invalid(refused);
         String profile = oneOf("run.profile", "fast", "full", "custom");
         String kind = values.getOrDefault("run.kind", "change");
         if (!kind.equals("change") && !kind.equals("inventory")) throw new Invalid("run.kind must be change or inventory");
