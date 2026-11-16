@@ -37,6 +37,7 @@ public final class CanonGateTest {
         atoms();
         nonRegularAtomChanges();
         selectedCoverage();
+        streamingAtomTable();
         inventory();
         idempotence();
         System.out.println("CanonGateTest: " + checks + " checks passed");
@@ -272,6 +273,21 @@ public final class CanonGateTest {
             throw new AssertionError("lint ran after source atom coverage was refused");
         }
         checks++;
+        restore();
+    }
+
+    private static void streamingAtomTable() throws Exception {
+        append("src/A.java", "// streaming receipt test\n");
+        String command = atoms("VALUE_OBJECT", "src/A.java");
+        String[] fragments = command.split("'");
+        if (fragments.length < 2) throw new AssertionError("atom fixture command did not name source");
+        Path fixture = Path.of(fragments[1]);
+        String single = Files.readString(fixture);
+        String row = single.substring(single.indexOf('\n') + 1);
+        Files.writeString(fixture, AtomPattern.HEADER + "\n" + row.repeat(2048), StandardCharsets.UTF_8);
+        expect(0, run(apply(command), "atom-streaming-large"), "streaming repeated atom table");
+        contains(base.resolve("runs/atom-streaming-large/PROVENANCE.tsv"),
+                "2048 atom row(s)", "streamed table counted all rows");
         restore();
     }
 

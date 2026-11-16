@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.synexia.maven.smart.canon;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,21 +44,24 @@ final class AtomPattern {
             violations.add("ATOM_PATTERN_MISSING " + TABLE);
             return "no " + TABLE;
         }
-        List<String> lines = Files.readAllLines(table, StandardCharsets.UTF_8);
-        if (lines.isEmpty() || !lines.get(0).equals(HEADER)) {
-            violations.add("ATOM_PATTERN_SCHEMA header must be " + HEADER.replace('\t', ','));
-            return "invalid " + TABLE;
-        }
         Map<String, String> current = new TreeMap<>();
         Map<String, List<String>> planes = new TreeMap<>();
         Set<String> covered = new TreeSet<>();
         int residue = 0;
         int hashed = 0;
-        for (int i = 1; i < lines.size(); i++) {
-            String[] cell = lines.get(i).split("\t", -1);
+        int rows = 0;
+        try (BufferedReader reader = Files.newBufferedReader(table, StandardCharsets.UTF_8)) {
+            if (!HEADER.equals(reader.readLine())) {
+                violations.add("ATOM_PATTERN_SCHEMA header must be " + HEADER.replace('\t', ','));
+                return "invalid " + TABLE;
+            }
+            String line;
+            while ((line = reader.readLine()) != null) {
+                rows++;
+                String[] cell = line.split("\t", -1);
             if (cell.length != 9 || !canonicalPath(cell[0]) || !cell[1].matches("[0-9a-f]{64}") || cell[2].isBlank()
                     || cell[3].isBlank() || cell[4].isBlank() || !planesWellFormed(cell)) {
-                violations.add("ATOM_PATTERN_SCHEMA line " + (i + 1));
+                violations.add("ATOM_PATTERN_SCHEMA line " + (rows + 1));
                 continue;
             }
             if (!ordinarySource(root, cell[0])) {
@@ -83,6 +87,7 @@ final class AtomPattern {
                     }
                 }
             }
+            }
         }
         // A deleted source, symlink, gitlink or directory has no admissible atom
         // representation in this version of the nine-column table. Refuse it
@@ -95,7 +100,7 @@ final class AtomPattern {
             }
         }
         int clusters = clusters(runDir, planes);
-        return (lines.size() - 1) + " atom row(s) over " + covered.size() + " file(s), " + hashed
+        return rows + " atom row(s) over " + covered.size() + " file(s), " + hashed
                 + " with all hash planes, " + clusters + " plane cluster(s), " + residue + " typed residue";
     }
 
