@@ -27,3 +27,24 @@ arg	ql-review	codeql/java-queries
 arg	ql-review	.m3/codeql-java.sarif
 input	ql-review	.m3/codeql-java
 output	ql-review	.m3/codeql-java.sarif
+# Optional Java semantic-inventory example: check out M3 CodeQL query sources in m3-codeql/.
+# Declare ql-csv as a dependency of all if the inventory is required for the build.
+task	ql-inventory	@codeql	.
+dep	ql-inventory	ql-db
+arg	ql-inventory	query
+arg	ql-inventory	codeql
+arg	ql-inventory	.m3/codeql-java
+arg	ql-inventory	m3-codeql/ql/src/inventory/CallableInventory.ql
+arg	ql-inventory	.m3/callables.bqrs
+input	ql-inventory	.m3/codeql-java
+input	ql-inventory	m3-codeql/ql/src/inventory/CallableInventory.ql
+output	ql-inventory	.m3/callables.bqrs
+task	ql-csv	@codeql	.
+dep	ql-csv	ql-inventory
+arg	ql-csv	decode
+arg	ql-csv	codeql
+arg	ql-csv	.m3/callables.bqrs
+arg	ql-csv	csv
+arg	ql-csv	.m3/callables.csv
+input	ql-csv	.m3/callables.bqrs
+output	ql-csv	.m3/callables.csv
