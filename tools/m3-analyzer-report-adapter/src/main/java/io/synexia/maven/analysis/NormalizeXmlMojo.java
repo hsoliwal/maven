@@ -5,6 +5,7 @@
 package io.synexia.maven.analysis;
 
 import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -36,15 +37,21 @@ public final class NormalizeXmlMojo extends AbstractMojo {
     @Parameter(property = "m3.analysis.sha256", defaultValue = "${project.build.directory}/m3-analysis.sha256")
     private File digestSidecar;
 
+    private static Path absolute(Path root, File file) {
+        Path provided = file.toPath();
+        return (provided.isAbsolute() ? provided : root.resolve(provided)).normalize();
+    }
+
     @Override
     public void execute() throws MojoExecutionException {
         try {
             if (sourceXml == null || projectRoot == null || normalizedReport == null || digestSidecar == null) {
                 throw new IllegalArgumentException("original XML and project-local output locations required");
             }
+            Path root = projectRoot.toPath().toAbsolutePath().normalize();
             NormalizeCli.main(new String[] {
-                format, originalStatus, projectRoot.getAbsolutePath(), sourceXml.getAbsolutePath(),
-                normalizedReport.getAbsolutePath(), digestSidecar.getAbsolutePath()
+                format, originalStatus, root.toString(), absolute(root, sourceXml).toString(),
+                absolute(root, normalizedReport).toString(), absolute(root, digestSidecar).toString()
             });
             getLog().info("M3 original analyzer XML normalized with explicit status " + originalStatus);
         } catch (Exception invalid) {
