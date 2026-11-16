@@ -18,6 +18,9 @@
  */
 package org.apache.maven.api.services;
 
+// SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+// SPDX-License-Identifier: Apache-2.0
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
