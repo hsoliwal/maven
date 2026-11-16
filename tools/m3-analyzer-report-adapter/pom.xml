@@ -12,7 +12,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
   <name>M3 Original Analyzer Report Adapter</name>
-  <description>Opt-in original XML and SARIF to native M3 analysis evidence v1.</description>
+  <description>Opt-in original XML, SARIF and Semgrep JSON to native M3 analysis evidence v1.</description>
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

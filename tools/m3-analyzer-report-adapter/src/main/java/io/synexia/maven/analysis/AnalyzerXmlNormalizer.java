@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Java 17 adapter for original XML and SARIF 2.1.0 analyzer reports.
+ * Java 17 adapter for original XML, SARIF 2.1.0 and Semgrep CLI JSON.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF
+        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF, SEMGREP
     }
 
     public enum Status {
@@ -94,7 +94,7 @@ public final class AnalyzerXmlNormalizer {
     private AnalyzerXmlNormalizer() {}
 
     /**
-     * Normalize already produced XML or SARIF without opening source files.
+     * Normalize already produced XML or JSON without opening source files.
      * Input file paths must resolve within the caller-supplied original root.
      * The input is untrusted, so XML entities, unsupported structure and
      * oversized output fail closed instead of losing original findings.
@@ -118,9 +118,11 @@ public final class AnalyzerXmlNormalizer {
         } catch (CharacterCodingException malformed) {
             throw new IOException("original analyzer report must be strict UTF-8", malformed);
         }
-        List<Finding> facts = format == Format.SARIF
-                ? SarifJsonReader.read(root, status, xml)
-                : readXml(format, status, root, xml);
+        List<Finding> facts = switch (format) {
+            case SARIF -> SarifJsonReader.read(root, status, xml);
+            case SEMGREP -> SemgrepJsonReader.read(root, status, xml);
+            default -> readXml(format, status, root, xml);
+        };
         facts.sort(ORDER);
         StringBuilder result = new StringBuilder(HEADER);
         result.append("status\t").append(status).append('\n').append(COLUMNS);
