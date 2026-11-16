@@ -390,3 +390,38 @@ SARIF 2.1 feature coverage. Original real CodeQL/Semgrep SARIF golden
 fixtures, relocated JAR verification, Maven plugin descriptor, Gradle
 TestKit and source/behavior differential qualification are required
 before release.
+
+
+## Native Semgrep CLI JSON adapter (2026-11-16)
+
+The original standalone Maven analyzer converter adds SEMGREP as an
+**opt-in source-report format**, alongside Checkstyle, PMD, SpotBugs,
+CPD and SARIF. It consumes existing Semgrep CLI JSON after the original
+tool runs, and preserves only original check_id, project-root-relative
+path, start line/column, severity and message in canonical
+M3-STATIC-ANALYSIS-V1 evidence. Code snippets, suggested fixes,
+metavariables, traces and all other original data remain in the
+original JSON and are never used for automatic code changes.
+
+The new SemgrepJsonReader shares one bounded strict Jackson parser
+factory with SarifJsonReader through OriginalJsonStreams. The Jackson
+classes are relocated in the **standalone converter artifact only**;
+no Semgrep engine, LGPL code, Java parser, JSON tree or Gradle runtime
+dependency is absorbed into Maven Core.
+
+Original Semgrep severities are projected solely for display:
+CRITICAL/HIGH/ERROR -> ERROR, MEDIUM/WARNING -> WARNING, and
+LOW/INFO/EXPERIMENT/INVENTORY -> INFO. Explicitly ignored matches
+remain ignored rather than being reinstated as active findings.
+Nonempty errors arrays forbid declaring COMPLETE; PARTIAL/FAILED
+retains project-wide scan-error evidence. These rules are
+conservative and do not replace Semgrep's original suppression,
+targeting, exit-code and strict-mode policies.
+
+Gradle's original m3SemgrepScan task may produce the JSON. A user
+explicitly configures the already merged m3NormalizeAnalyzerXml
+with format SEMGREP, originalReport and a **SHA-256-pinned converter
+JAR**. Neither applying that plugin nor inspecting a report re-runs
+Semgrep. Independent original analyzer result/coverage attestation,
+JDK17/21 shaded-JAR gates, Gradle TestKit and real Semgrep scanner
+parity must pass before promoting to release-qualified status.
