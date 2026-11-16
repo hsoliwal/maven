@@ -1,0 +1,29 @@
+M3-POLYGLOT-TASKS-V1
+# Replace tools, language modes, workspace-relative paths and recipe versions with installed providers.
+# This example is a reviewable PLAN. Do not run it without setting up the actual tools.
+task	all	-	.
+dep	all	ql-review
+dep	all	rewrite-check
+task	rewrite-check	@rewrite	.
+arg	rewrite-check	check
+arg	rewrite-check	mvn
+arg	rewrite-check	pom.xml
+arg	rewrite-check	6.61.0-SNAPSHOT
+arg	rewrite-check	org.openrewrite.java.format.AutoFormat
+input	rewrite-check	pom.xml
+task	ql-db	@codeql	.
+arg	ql-db	create
+arg	ql-db	codeql
+arg	ql-db	java-kotlin
+arg	ql-db	.m3/codeql-java
+arg	ql-db	none
+output	ql-db	.m3/codeql-java
+task	ql-review	@codeql	.
+dep	ql-review	ql-db
+arg	ql-review	analyze
+arg	ql-review	codeql
+arg	ql-review	.m3/codeql-java
+arg	ql-review	codeql/java-queries
+arg	ql-review	.m3/codeql-java.sarif
+input	ql-review	.m3/codeql-java
+output	ql-review	.m3/codeql-java.sarif
