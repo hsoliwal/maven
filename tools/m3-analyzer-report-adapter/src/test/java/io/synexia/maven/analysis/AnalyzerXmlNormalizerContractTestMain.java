@@ -22,6 +22,7 @@ public final class AnalyzerXmlNormalizerContractTestMain {
         try {
             checkstyle(root);
             pmd(root);
+            spotbugs(root);
             refusal(root);
             cli(root);
             System.out.println("M3_ANALYZER_XML_ADAPTER_CONTRACT_PASS");
@@ -109,6 +110,92 @@ public final class AnalyzerXmlNormalizerContractTestMain {
         check(out.contains("status\tPARTIAL"), "original PMD status preserved");
         check(out.contains("PMD.ConfigError\tERROR\t\t0\t0"), "PMD project-wide config finding");
         check(out.contains("PMD.ProcessingError\tERROR\t\t0\t0"), "PMD project-wide parse finding");
+    }
+
+    private static void spotbugs(Path root) throws Exception {
+        String original = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <BugCollection version="4.9.0">
+                  <Project projectName="example">
+                    <Jar>target/classes</Jar>
+                    <SrcDir>src/main/java</SrcDir>
+                  </Project>
+                  <BugInstance type="NP_NULL_ON_SOME_PATH" priority="1" abbrev="NP" category="CORRECTNESS">
+                    <ShortMessage>Possible null value</ShortMessage>
+                    <LongMessage>Possible null dereference on the selected path</LongMessage>
+                    <Class classname="example.A">
+                      <SourceLine sourcepath="src/main/java/example/A.java" start="4" end="35"/>
+                    </Class>
+                    <Method classname="example.A" name="go" signature="()V" isStatic="false">
+                      <SourceLine sourcepath="src/main/java/example/A.java" start="12"/>
+                    </Method>
+                    <SourceLine sourcepath="src/main/java/example/A.java" start="18" primary="true"/>
+                  </BugInstance>
+                  <BugInstance type="RV_RETURN_VALUE_IGNORED" priority="2" abbrev="RV" category="BAD_PRACTICE">
+                    <UserAnnotation designation="MOSTLY_HARMLESS" user="reviewer" timestamp="1"/>
+                    <Class classname="example.B">
+                      <SourceLine sourcepath="src/main/java/example/B.java" start="22"/>
+                    </Class>
+                  </BugInstance>
+                  <BugInstance type="DLS_DEAD_LOCAL_STORE" priority="3" abbrev="DLS" category="STYLE"/>
+                  <Errors errors="0" missingClasses="0"/>
+                </BugCollection>
+                """;
+        var report = convert(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE, original);
+        String text = new String(report.bytes(), StandardCharsets.UTF_8);
+        check(report.count() == 3, "original SpotBugs bug count retained");
+        check(text.contains("NP_NULL_ON_SOME_PATH\tERROR\tsrc/main/java/example/A.java\t18\t0\t"),
+                "primary SpotBugs source line selected without guessing");
+        check(text.contains("RV_RETURN_VALUE_IGNORED\tWARNING\tsrc/main/java/example/B.java\t22\t0\t"),
+                "review-annotated original warnings remain present");
+        check(text.contains("DLS_DEAD_LOCAL_STORE\tINFO\t\t0\t0\t"),
+                "unlocated bug remains an explicit project-wide finding");
+        check(text.contains(Base64.getUrlEncoder().withoutPadding().encodeToString(
+                "Possible null dereference on the selected path".getBytes(StandardCharsets.UTF_8))),
+                "original LongMessage preserved");
+        check(text.indexOf("DLS_DEAD_LOCAL_STORE") < text.indexOf("NP_NULL_ON_SOME_PATH"),
+                "canonical v1 path ordering retained");
+        var repeated = convert(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE, original);
+        check(report.sha256().equals(repeated.sha256()), "SpotBugs report fingerprint is deterministic");
+
+        String withErrors = """
+                <BugCollection version="4.9.0">
+                  <Errors errors="1" missingClasses="1"><MissingClass>example.ThirdParty</MissingClass></Errors>
+                </BugCollection>
+                """;
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE, withErrors);
+        var partial = convert(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.PARTIAL, withErrors);
+        check(partial.count() == 1, "missing-class SpotBugs summary cannot disappear");
+        check(new String(partial.bytes(), StandardCharsets.UTF_8)
+                .contains("SpotBugs.AnalysisError\tERROR\t\t0\t0\t"), "project-wide analysis error retained");
+
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<BugCollection><BugInstance type=\"NP_NULL\" priority=\"5\"/></BugCollection>");
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<BugCollection><BugInstance type=\"NP_NULL\"/></BugCollection>");
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<BugCollection><BugInstance type=\"NP_NULL\" priority=\"1\">"
+                        + "<SourceLine sourcepath=\"../outside/A.java\" start=\"2\"/>"
+                        + "</BugInstance></BugCollection>");
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<!DOCTYPE BugCollection [<!ENTITY leak SYSTEM \"file:///etc/passwd\">]>"
+                        + "<BugCollection><BugInstance type=\"NP_NULL\" priority=\"1\">"
+                        + "<LongMessage>&leak;</LongMessage></BugInstance></BugCollection>");
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<BugCollection><UnknownV2/></BugCollection>");
+        refusal(root, AnalyzerXmlNormalizer.Format.SPOTBUGS,
+                AnalyzerXmlNormalizer.Status.COMPLETE,
+                "<BugCollection><BugInstance type=\"NP_NULL\" priority=\"1\"/>"
+                        + "<BugInstance type=\"NP_NULL\" priority=\"1\"/></BugCollection>");
     }
 
     private static void refusal(Path root) throws Exception {

@@ -283,3 +283,42 @@ remain separate, independently qualified donor work. Java 17/21 standalone
 tests, actual Checkstyle/PMD provider fixtures, Maven plugin descriptor,
 full reactor, Gradle TestKit and original behavior parity must pass before
 promoting the converter as release-qualified.
+
+
+## Original SpotBugs BugCollection evidence donor (2026-11-16)
+
+The original standalone Maven analyzer XML adapter now also accepts
+SPOTBUGS via the **same** Java 17 converter, opt-in Maven normalize-xml
+goal, v1 report format, SHA-256 sidecar and source-bound publication model.
+No SpotBugs bytecode engine, scanner or LGPL runtime is incorporated into
+Maven Core. The Gradle quality bridge delegates to the same SHA-256-pinned
+converter JAR by selecting the SPOTBUGS format.
+
+The source is the upstream SpotBugs BugCollection XML representation,
+including BugInstance type/priority, nested Class/Method/Field and direct
+SourceLine annotations, optional ShortMessage/LongMessage, and original
+Errors/missing-class indicators. The original type is the rule ID; priority
+1/2/3-4 maps to ERROR/WARNING/INFO **only as explicit adapter UI severity**.
+It never overrides original SpotBugs ranks, filters, plugin failure policies
+or source/bytecode analysis decisions.
+
+SourceLine sourcepath is retained as a logical reported path. It may be
+relative to a SpotBugs-selected source root rather than the Maven module
+root, so correct physical source attachment is **not** inferred without
+the original compiler/source-root inventory. Unknown SourceLine positions
+become project-wide findings rather than guessed class-derived paths.
+User review annotations are not silently interpreted as suppression;
+the original producing tool remains authoritative for filtered findings.
+
+Original analysis or missing-class errors forbid producer status COMPLETE;
+partial/failed reports instead retain an explicit project-wide error
+finding. Secure StAX parsing, bounded depth/events/rows, original XML
+namespace validation, canonical paths and strict DTD/entity refusal are
+preserved. The independent Java contract suite covers representative
+upstream BugCollection annotations, primary source selection, priorities,
+unlocated findings, original messages, unsafe XML and error states.
+
+This is a **report adapter**, not a production-equivalent SpotBugs engine
+integration or an admission proof for build caching, compilation skipping
+or OpenRewrite mutations. Full real original XML/provider differential
+fixtures and both Maven/Gradle runtime matrices remain separate gates.

@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Standalone Java 17 adapter for ORIGINAL Checkstyle/PMD XML report bytes.
+ * Standalone Java 17 adapter for ORIGINAL Checkstyle/PMD/SpotBugs XML bytes.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD
+        CHECKSTYLE, PMD, SPOTBUGS
     }
 
     public enum Status {
@@ -141,16 +141,10 @@ public final class AnalyzerXmlNormalizer {
     }
 
     private static List<Finding> readXml(Format format, Status status, Path root, byte[] xml) throws IOException {
-        final XMLInputFactory factory = XMLInputFactory.newFactory();
-        try {
-            factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-            factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
-            factory.setXMLResolver((publicId, systemId, base, namespace) -> {
-                throw new XMLStreamException("external XML resources refused");
-            });
-        } catch (IllegalArgumentException unsupported) {
-            throw new IOException("secure XML parser properties unavailable", unsupported);
+        if (format == Format.SPOTBUGS) {
+            return SpotBugsXmlReader.read(root, status, xml);
         }
+        final XMLInputFactory factory = secureXmlFactory();
         ArrayList<Finding> findings = new ArrayList<>();
         try (ByteArrayInputStream input = new ByteArrayInputStream(xml)) {
             XMLStreamReader reader = factory.createXMLStreamReader(input, "UTF-8");
@@ -241,6 +235,21 @@ public final class AnalyzerXmlNormalizer {
         return findings;
     }
 
+    /** Shared untrusted XML parser configuration, never a second analyzer. */
+    static XMLInputFactory secureXmlFactory() throws IOException {
+        XMLInputFactory factory = XMLInputFactory.newFactory();
+        try {
+            factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+            factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+            factory.setXMLResolver((publicId, systemId, base, namespace) -> {
+                throw new XMLStreamException("external XML resources refused");
+            });
+        } catch (IllegalArgumentException unsupported) {
+            throw new IOException("secure XML parser properties unavailable", unsupported);
+        }
+        return factory;
+    }
+
     private static Finding checkstyleFinding(XMLStreamReader xml, String file) throws IOException {
         String rule = requiredAttribute(xml, "source");
         String message = requiredAttribute(xml, "message");
@@ -307,7 +316,7 @@ public final class AnalyzerXmlNormalizer {
         }
     }
 
-    private static String normalizedMessage(String value) {
+    static String normalizedMessage(String value) {
         return value.replaceAll("[\\p{Cntrl}\\s]+", " ").trim();
     }
 
@@ -354,7 +363,7 @@ public final class AnalyzerXmlNormalizer {
         }
     }
 
-    private static String relative(Path root, String raw) throws IOException {
+    static String relative(Path root, String raw) throws IOException {
         try {
             if (raw.isBlank() || raw.length() > 8192
                     || raw.chars().anyMatch(Character::isISOControl)) {
