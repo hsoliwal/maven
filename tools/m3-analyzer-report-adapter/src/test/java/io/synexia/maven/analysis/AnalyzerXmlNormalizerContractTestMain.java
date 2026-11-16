@@ -233,19 +233,13 @@ public final class AnalyzerXmlNormalizerContractTestMain {
         String decoded = new String(Base64.getUrlDecoder().decode(originalMessage), StandardCharsets.UTF_8);
         check(decoded.contains("8 lines, 44 tokens; occurrence 1/2"),
                 "CPD group sizes and occurrence index retained");
-        String reordered = modern.replace(
-                """
-                    <file path="src/B.java" line="18" column="3" endline="25"
-                          endcolumn="4" begintoken="44" endtoken="87"/>
-                    <file path="src/A.java" line="2" column="1" endline="9"
-                          endcolumn="3" begintoken="12" endtoken="55"/>
-                """,
-                """
-                    <file path="src/A.java" line="2" column="1" endline="9"
-                          endcolumn="3" begintoken="12" endtoken="55"/>
-                    <file path="src/B.java" line="18" column="3" endline="25"
-                          endcolumn="4" begintoken="44" endtoken="87"/>
-                """);
+        int first = modern.indexOf("<file path=\"src/B.java\"");
+        int second = modern.indexOf("<file path=\"src/A.java\" line=\"2\"");
+        int fragment = modern.indexOf("<codefragment", second);
+        check(first >= 0 && second > first && fragment > second, "original XML group boundaries");
+        String reordered = modern.substring(0, first) + modern.substring(second, fragment)
+                + modern.substring(first, second) + modern.substring(fragment);
+        check(!modern.equals(reordered), "the fixture must genuinely reverse CPD occurrence order");
         var reorderedReport = convert(root, AnalyzerXmlNormalizer.Format.CPD,
                 AnalyzerXmlNormalizer.Status.COMPLETE, reordered);
         check(report.sha256().equals(reorderedReport.sha256()),
