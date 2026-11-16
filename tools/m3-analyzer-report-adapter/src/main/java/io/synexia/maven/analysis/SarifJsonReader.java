@@ -199,7 +199,8 @@ final class SarifJsonReader {
                 }
             }
             if (!("fail".equals(result.kind) || "pass".equals(result.kind)
-                    || "notApplicable".equals(result.kind))) {
+                    || "notApplicable".equals(result.kind) || "review".equals(result.kind)
+                    || "open".equals(result.kind) || "informational".equals(result.kind))) {
                 throw new IOException("unsupported SARIF result kind");
             }
             data.results.add(result);
@@ -214,9 +215,9 @@ final class SarifJsonReader {
             String field = name(parser);
             parser.nextToken();
             if ("text".equals(field)) {
-                text = string(parser, "SARIF result text");
+                text = messageText(parser, "SARIF result text");
             } else if ("markdown".equals(field)) {
-                markdown = string(parser, "SARIF result markdown");
+                markdown = messageText(parser, "SARIF result markdown");
             } else {
                 parser.skipChildren();
             }
@@ -434,6 +435,15 @@ final class SarifJsonReader {
             throw new IOException(field + " must not be negative");
         }
         return result;
+    }
+
+    private static String messageText(JsonParser parser, String field) throws IOException {
+        expect(parser.currentToken(), JsonToken.VALUE_STRING, field);
+        String value = parser.getText();
+        if (value.length() > MAX_TEXT) {
+            throw new IOException("oversized original " + field);
+        }
+        return value;
     }
 
     private static String string(JsonParser parser, String field) throws IOException {
