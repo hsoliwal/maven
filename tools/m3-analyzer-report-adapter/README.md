@@ -20,6 +20,25 @@ java -cp tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.
   /source/project/target/analysis.tsv /source/project/target/analysis.sha256
 ~~~
 
+The same artifact additionally exposes a normal Maven 3-compatible,
+**explicit-only** goal named m3-analysis:normalize-xml. It has no default
+lifecycle binding and delegates to the identical checked CLI implementation.
+Install the standalone module first and invoke the goal on the actual project:
+
+~~~sh
+mvn -f tools/m3-analyzer-report-adapter/pom.xml install
+mvn io.synexia:m3-analyzer-report-adapter:0.1.0-SNAPSHOT:normalize-xml \
+  -Dm3.analysis.xml=target/checkstyle-result.xml \
+  -Dm3.analysis.format=CHECKSTYLE \
+  -Dm3.analysis.originalStatus=PARTIAL
+~~~
+
+The goal defaults to a project-local target/m3-analysis.tsv and
+target/m3-analysis.sha256. It requires the original XML to exist and target
+to be an existing output directory; it does not execute any Checkstyle or PMD
+goal. The actual source owner may explicitly set COMPLETE only after the
+original analyzer has reported successful and complete execution.
+
 Exactly six arguments: format (CHECKSTYLE or PMD), **producer-attested**
 status (COMPLETE, PARTIAL or FAILED), project root, original XML input,
 normalized output, SHA-256 sidecar output. Parent output directories must
