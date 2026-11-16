@@ -153,8 +153,8 @@ final class DefaultDependencyInsightServiceTest {
         when(owner.getNode(any(DependencyNode.class), eq(true)))
                 .thenAnswer(invocation -> new DefaultNode(owner, invocation.getArgument(0), true));
 
-        var snapshot = service.inspect(new DependencyInsightService.Request(
-                result(new DefaultNode(owner, rootNode, true), true), 8));
+        var snapshot = service.inspect(
+                new DependencyInsightService.Request(result(new DefaultNode(owner, rootNode, true), true), 8));
         assertTrue(snapshot.complete());
         assertEquals(0, snapshot.cyclesSkipped());
         assertEquals(5, snapshot.size());
@@ -193,7 +193,8 @@ final class DefaultDependencyInsightServiceTest {
         when(node.premanagedScope()).thenReturn(Optional.empty());
         when(node.originalScope()).thenReturn(Optional.empty());
         if (key != null) {
-            when(node.artifact()).thenReturn(artifact(key));
+            Artifact selectedArtifact = artifact(key);
+            when(node.artifact()).thenReturn(selectedArtifact);
         }
         return node;
     }
