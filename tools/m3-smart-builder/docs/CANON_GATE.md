@@ -75,6 +75,8 @@ The `atom_pattern` stage must write `$CANON_RUN_DIR/ATOM_PATTERN.tsv`, tab-separ
 - Atoms that share a plane value are listed in `ATOM_CLUSTERS.tsv` as proposals ("These atoms may be similar. Please
   confirm via hash or diff."); the gate never decides equivalence.
 
+The Canon Gate consumes the table one row at a time instead of allocating a list of all input lines. Current-source hashes, covered paths and hash-plane clusters remain retained for deterministic reporting, so this is not a constant-memory claim for the whole operation.
+
 ## Violations
 
 `STAGE_FAILED`, `HEAD_MOVED`, `DRY_RUN_MUTATION`, `OUT_OF_SCOPE`, `EXCLUDED_PATH`, `DISABLED_PATH`, `BUILD_SCRIPT_LOCKED`
