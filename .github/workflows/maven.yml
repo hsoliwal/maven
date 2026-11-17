@@ -106,7 +106,7 @@ jobs:
 
       - name: Build Maven distributions
         shell: bash
-        run: ./mvnw verify -e -B -V
+        run: ./mvnw verify -Pplugins -e -B -V
 
       - name: List contents of target directory
         shell: bash
@@ -225,7 +225,7 @@ jobs:
 
       - name: Build with downloaded Maven
         shell: bash
-        run: mvn verify -Papache-release -Dgpg.skip=true -e -B -V
+        run: mvn verify -Papache-release,plugins -Dgpg.skip=true -e -B -V
 
       - name: Build site with downloaded Maven
         # one OS covers the site; every JDK still builds it, since Javadoc changes with the JDK

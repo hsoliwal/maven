@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.apache.maven</groupId>
+    <artifactId>maven</artifactId>
+    <version>4.2.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>maven-inline-plugins</artifactId>
+  <packaging>pom</packaging>
+
+  <name>Maven Inline Plugins</name>
+  <description>Aggregates the plugin repositories imported with full history under plugins/. Built only with
+    -Pplugins. Each imported reactor keeps its upstream parent and build; this POM only lists them.</description>
+
+  <!-- Batch 1: the default-lifecycle plugins. The version of each is the fork reactor version. -->
+  <modules>
+    <module>maven-clean-plugin</module>
+    <module>maven-resources-plugin</module>
+    <module>maven-compiler-plugin</module>
+    <module>maven-jar-plugin</module>
+    <module>maven-install-plugin</module>
+    <module>maven-deploy-plugin</module>
+    <module>maven-surefire</module>
+  </modules>
+
+  <properties>
+    <!-- Inline atomizer: wired off. The atomizer javac plugin is added to compiler runs under plugins/ when its
+         lane lands; until then nothing reads this property. -->
+    <inline.atomizer>false</inline.atomizer>
+  </properties>
+</project>

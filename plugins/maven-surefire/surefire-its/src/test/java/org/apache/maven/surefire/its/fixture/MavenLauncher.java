@@ -1,0 +1,400 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.surefire.its.fixture;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Properties;
+
+import org.apache.maven.shared.utils.io.FileUtils;
+
+import static java.util.Collections.singletonMap;
+import static java.util.Collections.unmodifiableList;
+
+/**
+ * Encapsulate all needed features to start a maven run
+ * <br>
+ *
+ * @author Kristian Rosenvold
+ */
+public final class MavenLauncher {
+    private final List<String> cliOptions = new ArrayList<>();
+
+    private final List<String> goals = new ArrayList<>();
+
+    private final Map<String, String> envVars = new HashMap<>();
+
+    private final Properties props = new Properties();
+
+    private File unpackedAt;
+
+    private Verifier verifier;
+
+    private OutputValidator validator;
+
+    private final Class<?> testCaseBeingRun;
+
+    private final String resourceName;
+
+    private final String suffix;
+
+    private final String[] cli;
+
+    private boolean expectFailure;
+
+    private boolean forkJvm;
+
+    MavenLauncher(Class<?> testClass, String resourceName, String suffix, String[] cli) {
+        this.testCaseBeingRun = testClass;
+        this.resourceName = resourceName;
+        this.suffix = suffix != null ? suffix : "";
+        this.cli = cli == null ? null : cli.clone();
+        // by default use embedded mode
+        this.forkJvm = false;
+        resetGoals();
+        resetCliOptions();
+    }
+
+    public MavenLauncher(Class<?> testClass, String resourceName, String suffix) {
+        this(testClass, resourceName, suffix, null);
+    }
+
+    public File getUnpackedAt() {
+        return ensureUnpacked();
+    }
+
+    private File ensureUnpacked() {
+        if (unpackedAt == null) {
+            unpackedAt = simpleExtractResources(testCaseBeingRun, resourceName);
+        }
+        return unpackedAt;
+    }
+
+    public void moveUnpackTo(File dest) throws IOException {
+        FileUtils.deleteDirectory(dest);
+        //noinspection ResultOfMethodCallIgnored
+        boolean moved = getUnpackedAt().renameTo(dest);
+        if (!moved) {
+            String fileEncoding = System.getProperty("file.encoding");
+            String os = System.getProperty("os.name");
+            String version = System.getProperty("os.version");
+            String arch = System.getProperty("os.arch");
+            throw new IOException("Could not move " + getUnpackedAt() + " to " + dest + " (file.encoding="
+                    + fileEncoding + ", " + os + " " + version + " " + arch + ").");
+        }
+        unpackedAt = dest;
+    }
+
+    private void resetGoals() {
+        goals.clear();
+    }
+
+    private void addCliOption(String cliOption) {
+        cliOptions.add(cliOption);
+    }
+
+    private StackTraceElement findTopElemenent(StackTraceElement[] stackTrace, Class<?> testClassToLookFor) {
+        StackTraceElement bestmatch = null;
+        for (StackTraceElement stackTraceElement : stackTrace) {
+            if (stackTraceElement.getClassName().equals(testClassToLookFor.getName())) {
+                bestmatch = stackTraceElement;
+            }
+        }
+        return bestmatch;
+    }
+
+    private static StackTraceElement[] getStackTraceElements() {
+        try {
+            throw new RuntimeException();
+        } catch (RuntimeException e) {
+            return e.getStackTrace();
+        }
+    }
+
+    public void reset() {
+        resetGoals();
+        resetCliOptions();
+        verifier = null;
+        validator = null;
+    }
+
+    private void resetCliOptions() {
+        cliOptions.clear();
+    }
+
+    public MavenLauncher getSubProjectLauncher(String subProject) {
+        MavenLauncher mavenLauncher =
+                new MavenLauncher(testCaseBeingRun, resourceName + File.separator + subProject, suffix, cli);
+        mavenLauncher.unpackedAt = new File(ensureUnpacked(), subProject);
+        return mavenLauncher;
+    }
+
+    public OutputValidator getSubProjectValidator(String subProject) throws VerificationException {
+        String subProjectBasedir = getValidator().getSubFile(subProject).getAbsolutePath();
+        Verifier subProjectVerifier = createVerifier(subProjectBasedir, null);
+        return new OutputValidator(subProjectVerifier);
+    }
+
+    public MavenLauncher addEnvVar(String key, String value) {
+        envVars.put(key, value);
+        return this;
+    }
+
+    public MavenLauncher verifyFileNotPresent(String subFile) throws VerificationException {
+        getVerifier().verifyFileNotPresent(getValidator().getSubFile(subFile).getAbsolutePath());
+        return this;
+    }
+
+    public MavenLauncher showErrorStackTraces() {
+        addCliOption("-e");
+        return this;
+    }
+
+    public MavenLauncher debugLogging() {
+        addCliOption("-X");
+        return this;
+    }
+
+    public MavenLauncher failNever() {
+        addCliOption("-fn");
+        return this;
+    }
+
+    public MavenLauncher offline() {
+        addCliOption("-o");
+        return this;
+    }
+
+    public MavenLauncher skipClean() {
+        writeGoal("-Dclean.skip=true" /* for maven-clean-plugin < 3.0 */);
+        writeGoal("-Dmaven.clean.skip=true" /* for maven-clean-plugin 3.0+ */);
+        return this;
+    }
+
+    public MavenLauncher addGoal(String goal) {
+        writeGoal(goal);
+        return this;
+    }
+
+    public FailsafeOutputValidator executeVerify() {
+        return new FailsafeOutputValidator(executeGoal("verify"));
+    }
+
+    public OutputValidator executeTest() {
+        return executeGoal("test");
+    }
+
+    List<String> getGoals() {
+        return unmodifiableList(goals);
+    }
+
+    private void writeGoal(String newGoal) {
+        if (newGoal != null && newGoal.startsWith("-D")) {
+            String sysPropKey = newGoal.contains("=") ? newGoal.substring(0, newGoal.indexOf('=')) : newGoal;
+
+            String sysPropStarter = sysPropKey + "=";
+
+            for (ListIterator<String> it = goals.listIterator(); it.hasNext(); ) {
+                String goal = it.next();
+                if (goal.equals(sysPropKey) || goal.startsWith(sysPropStarter)) {
+                    System.out.printf(
+                            "[WARNING] System property already exists '%s'. Overriding to '%s'.%n", goal, newGoal);
+                    it.set(newGoal);
+                    return;
+                }
+            }
+        }
+        goals.add(newGoal);
+    }
+
+    private OutputValidator executeGoal(String goal) {
+        OutputValidator verify;
+        try {
+            verify = execute(goal);
+        } catch (SurefireVerifierException exc) {
+            if (expectFailure) {
+                return getValidator();
+            } else {
+                throw exc;
+            }
+        }
+        if (expectFailure) {
+            throw new RuntimeException("Expecting build failure, have got none!");
+        }
+        return verify;
+    }
+
+    public MavenLauncher withFailure() {
+        expectFailure = true;
+        return this;
+    }
+
+    public OutputValidator execute(String goal) {
+        addGoal(goal);
+        return executeCurrentGoals();
+    }
+
+    public OutputValidator executeCurrentGoals() {
+        try {
+            props.put("maven.build.cache.enabled", "false");
+            getVerifier().addCliArguments(cliOptions.toArray(new String[0]));
+            getVerifier().addCliArguments(goals.toArray(new String[] {}));
+            getVerifier().setSystemProperties(props);
+            getVerifier().setEnvironmentVariables(envVars);
+            if (envVars.isEmpty()) {
+                getVerifier().setForkJvm(forkJvm);
+            } else {
+                getVerifier().setForkJvm(true);
+            }
+            getVerifier().execute();
+            return getValidator();
+        } catch (VerificationException e) {
+            throw new SurefireVerifierException(e.getLocalizedMessage(), e);
+        }
+    }
+
+    public MavenLauncher activateProfile(String profile) {
+        return addGoal("-P" + profile);
+    }
+
+    public MavenLauncher sysProp(String key, String value) {
+        return sysProp(singletonMap(key, value));
+    }
+
+    public MavenLauncher sysProp(Map<String, String> properties) {
+        props.putAll(properties);
+        return this;
+    }
+
+    public MavenLauncher sysProp(String key, boolean value) {
+        return sysProp(singletonMap(key, Boolean.toString(value)));
+    }
+
+    public MavenLauncher sysProp(String key, int value) {
+        return sysProp(singletonMap(key, Integer.toString(value)));
+    }
+
+    public MavenLauncher sysProp(String key, double value) {
+        return sysProp(singletonMap(key, Double.toString(value)));
+    }
+
+    public MavenLauncher showExceptionMessages() {
+        addCliOption("-e");
+        return this;
+    }
+
+    public MavenLauncher deleteReportsDir() {
+        try {
+            FileUtils.deleteDirectory(getValidator().getSubFile("reports"));
+        } catch (IOException e) {
+            throw new SurefireVerifierException(e);
+        }
+        return this;
+    }
+
+    public OutputValidator getValidator() {
+        if (validator == null) {
+            validator = new OutputValidator(getVerifier());
+        }
+        return validator;
+    }
+
+    public void setForkJvm(boolean forkJvm) {
+        this.forkJvm = forkJvm;
+    }
+
+    public String getLocalRepository() {
+        return getVerifier().getLocalRepository();
+    }
+
+    public void setAutoclean(boolean autoclean) {
+        getVerifier().setAutoclean(autoclean);
+    }
+
+    public void setLogFileName(String logFileName) {
+        getVerifier().setLogFileName(logFileName);
+    }
+
+    private Verifier getVerifier() {
+        if (verifier == null) {
+            try {
+                String unpackedPath = ensureUnpacked().getAbsolutePath();
+                verifier = createVerifier(unpackedPath, cli);
+            } catch (VerificationException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return verifier;
+    }
+
+    private File simpleExtractResources(Class<?> cl, String resourcePath) {
+        if (!resourcePath.startsWith("/")) {
+            resourcePath = "/" + resourcePath;
+        }
+        File tempDir = getUnpackDir();
+        File testDir = new File(tempDir, resourcePath);
+        try {
+            File parentPom = new File(tempDir.getParentFile(), "pom.xml");
+            if (!parentPom.exists()) {
+                URL resource = cl.getResource("/pom.xml");
+                FileUtils.copyURLToFile(resource, parentPom);
+            }
+
+            FileUtils.deleteDirectory(testDir);
+            File file = ResourceExtractor.extractResourceToDestination(cl, resourcePath, tempDir, true);
+            return file.getCanonicalFile();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private File getUnpackDir() {
+        String tempDirPath = System.getProperty("maven.test.tmpdir", System.getProperty("java.io.tmpdir"));
+        return new File(tempDirPath, testCaseBeingRun.getSimpleName() + "_" + getTestMethodName() + suffix);
+    }
+
+    public File getArtifactPath(String gid, String aid, String version, String ext) {
+        return new File(verifier.getArtifactPath(gid, aid, version, ext));
+    }
+
+    String getTestMethodName() {
+        // dirty. Im sure we can use junit4 rules to attach testname to thread instead
+        StackTraceElement[] stackTrace = getStackTraceElements();
+        StackTraceElement topInTestClass;
+        topInTestClass = findTopElemenent(stackTrace, testCaseBeingRun);
+        if (topInTestClass == null) {
+            // Look in superclass...
+            topInTestClass = findTopElemenent(stackTrace, testCaseBeingRun.getSuperclass());
+        }
+        if (topInTestClass != null) {
+            return topInTestClass.getMethodName();
+        }
+        throw new IllegalStateException("Cannot find " + testCaseBeingRun.getName() + "in stacktrace");
+    }
+
+    private static Verifier createVerifier(String basedir, String[] defaultCliOptions) throws VerificationException {
+        return defaultCliOptions == null ? new Verifier(basedir) : new Verifier(basedir, defaultCliOptions);
+    }
+}
