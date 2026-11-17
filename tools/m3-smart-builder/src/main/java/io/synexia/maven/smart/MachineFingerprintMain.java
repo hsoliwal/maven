@@ -10,10 +10,15 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TreeScanner;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -31,13 +36,15 @@ import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
 /** JDK 21 AST fingerprints with optional compiler attribution and bounded may-flow; never behavior proof. */
 public final class MachineFingerprintMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
-            "--preparation-report", "--atom-pattern-manifest", "--workers", "--attribute-types", "--analyze-flow");
+            "--preparation-report", "--atom-pattern-manifest", "--workers", "--attribute-types", "--analyze-flow",
+            "--module-db");
     private static final int MAX_ATOMS = 4096;
 
     private MachineFingerprintMain() { }
@@ -73,7 +80,9 @@ public final class MachineFingerprintMain {
             boolean analyzeFlow = Boolean.parseBoolean(flowFlag);
             if (analyzeFlow && !attributed)
                 throw new IOException("CFG analysis requires compiler attribution");
-            List<String> lines = produce(source, before, workers);
+            ModuleFingerprintDatabase database = ModuleFingerprintDatabase.open(
+                    base, source, options.getOrDefault("--module-db", "auto"));
+            List<String> lines = produce(source, before, workers, database);
             if (lines.size() > MAX_ATOMS) throw new IOException("fingerprint row budget exceeded");
             if (attributed) lines = CompilerAttribution.augment(base, source, before, lines, analyzeFlow);
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, prepFile))
@@ -86,6 +95,13 @@ public final class MachineFingerprintMain {
             SafeBuildOutput.write(destination, "machine-evidence.tsv", tsv.toString());
             MachineEvidence.Summary accepted = MachineEvidence.inspect(base, source, destination.resolve("machine-evidence.tsv"));
             if (accepted.atoms() != lines.size()) throw new IOException("AST fingerprint output did not revalidate");
+            // Publish only a complete generation whose source and canonical evidence remain current.
+            if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, prepFile))
+                    || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
+                    || !before.equals(SourceInventory.inspectSelected(base, source)))
+                throw new IOException("source or canonical evidence changed before database commit");
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("fingerprint database commit interrupted");
+            database.commit();
             String receipt = "{\"schema\":\"m3.smart.machine-fingerprint-producer.v1\","
                     + "\"status\":" + TinyJson.quote(analyzeFlow ? "may-flow-analyzed"
                             : attributed ? "statically-attributed" : "syntax-only")
@@ -96,6 +112,7 @@ public final class MachineFingerprintMain {
                     + ",\"atomPatternFacts\":" + atom.json()
                     + ",\"fingerprints\":" + accepted.json()
                     + ",\"workers\":" + workers
+                    + ",\"moduleDatabase\":" + database.json()
                     + ",\"typeAttributionExecuted\":" + attributed
                     + ",\"mayFlowAnalysisExecuted\":" + analyzeFlow
                     + ",\"completeCompilerCfgProven\":false"
@@ -112,21 +129,34 @@ public final class MachineFingerprintMain {
         }
     }
 
-    private static List<String> produce(Path source, SourceInventory.Selected inventory, int workers)
+    private static List<String> produce(Path source, SourceInventory.Selected inventory, int workers,
+                                        ModuleFingerprintDatabase database)
             throws IOException, InterruptedException {
         var pool = Executors.newFixedThreadPool(workers);
         try {
             List<Future<List<String>>> tasks = new ArrayList<>();
-            for (SourceInventory.FileFact file : inventory.files())
-                tasks.add(pool.submit(() -> fingerprintFile(source.resolve(file.path()), file)));
+            List<List<String>> cached = new ArrayList<>();
+            for (SourceInventory.FileFact file : inventory.files()) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException("fingerprint computation interrupted");
+                var found = database.find(file);
+                cached.add(found.orElse(null));
+                tasks.add(found.isPresent() ? null
+                        : pool.submit(() -> fingerprintFile(source.resolve(file.path()), file)));
+            }
             List<String> all = new ArrayList<>();
-            for (Future<List<String>> task : tasks) {
-                try { all.addAll(task.get()); }
-                catch (ExecutionException failed) {
-                    if (failed.getCause() instanceof IOException io) throw io;
-                    throw new IOException("JDK AST fingerprinting refused", failed.getCause());
+            for (int index = 0; index < inventory.files().size(); index++) {
+                List<String> rows = cached.get(index);
+                if (rows == null) {
+                    try { rows = tasks.get(index).get(); }
+                    catch (ExecutionException failed) {
+                        if (failed.getCause() instanceof IOException io) throw io;
+                        throw new IOException("JDK AST fingerprinting refused", failed.getCause());
+                    }
                 }
+                all.addAll(rows);
                 if (all.size() > MAX_ATOMS) throw new IOException("fingerprint row budget exceeded");
+                // One serial writer stages only current files; workers never mutate the database.
+                database.stage(inventory.files().get(index), rows);
             }
             return List.copyOf(all);
         } finally {
@@ -135,6 +165,32 @@ public final class MachineFingerprintMain {
     }
 
     private static List<String> fingerprintFile(Path path, SourceInventory.FileFact source) throws IOException {
+        List<String> rows = fingerprintSnapshot(snapshotFile(path, source), source);
+        if (!source.sha256().equals(Hashes.sha256(path)))
+            throw new IOException("Java source changed while compiling AST inventory");
+        return rows;
+    }
+
+    /** Bind the compiler input to the bytes whose identity will be persisted. */
+    private static JavaFileObject snapshotFile(Path path, SourceInventory.FileFact source) throws IOException {
+        if (source.bytes() < 0 || source.bytes() > 1_048_576)
+            throw new IOException("Java source snapshot byte budget");
+        byte[] bytes;
+        try (InputStream input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+            bytes = input.readNBytes(1_048_577);
+        }
+        if (bytes.length != source.bytes() || !source.sha256().equals(Hashes.sha256(bytes)))
+            throw new IOException("Java source changed before AST snapshot");
+        String text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
+        return new SimpleJavaFileObject(path.toUri(), JavaFileObject.Kind.SOURCE) {
+            @Override public CharSequence getCharContent(boolean ignoreEncodingErrors) { return text; }
+            @Override public InputStream openInputStream() { return new ByteArrayInputStream(bytes); }
+        };
+    }
+
+    private static List<String> fingerprintSnapshot(JavaFileObject snapshot, SourceInventory.FileFact source)
+            throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) throw new IOException("JDK compiler AST API unavailable");
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
@@ -142,14 +198,12 @@ public final class MachineFingerprintMain {
         try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, Locale.ROOT,
                 StandardCharsets.UTF_8)) {
             var task = (JavacTask) compiler.getTask(null, files, diagnostics, List.of("-proc:none", "-source", "21"),
-                    null, files.getJavaFileObjectsFromPaths(List.of(path)));
+                    null, List.of(snapshot));
             for (CompilationUnitTree unit : task.parse())
                 atoms.addAll(MachineAtomInventory.collect(unit, source.path()));
         }
         if (diagnostics.getDiagnostics().stream().anyMatch(d -> d.getKind() == Diagnostic.Kind.ERROR)
                 || atoms.isEmpty()) throw new IOException("Java syntax cannot be fingerprinted");
-        if (!source.sha256().equals(Hashes.sha256(path)))
-            throw new IOException("Java source changed while compiling AST inventory");
         List<String> rows = new ArrayList<>();
         for (int i = 0; i < atoms.size(); i++) {
             Fingerprint fp = Fingerprint.of(atoms.get(i).tree());
