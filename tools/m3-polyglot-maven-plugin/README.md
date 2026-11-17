@@ -219,6 +219,7 @@ not a license waiver or a guarantee of security/semantic equivalence.
 ## Qualification
 
 `verify.sh` compiles the pure Java engine with `--release 17 -Xlint:all -Werror`
-and runs two standalone main-based test suites. This is not Maven plugin-descriptor
+and runs four standalone contract suites (graph, providers, Mavenizer and CLI).
+This is not Maven plugin-descriptor
 qualification, real CodeQL extraction, real OpenRewrite application, or full
 Maven reactor verification. Those need independent CI execution.
