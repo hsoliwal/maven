@@ -34,10 +34,10 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
-/** JDK 21 AST fingerprint producer with optional isolated javac attribution; never behavior proof. */
+/** JDK 21 AST fingerprints with optional compiler attribution and bounded may-flow; never behavior proof. */
 public final class MachineFingerprintMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
-            "--preparation-report", "--atom-pattern-manifest", "--workers", "--attribute-types");
+            "--preparation-report", "--atom-pattern-manifest", "--workers", "--attribute-types", "--analyze-flow");
     private static final int MAX_ATOMS = 4096;
 
     private MachineFingerprintMain() { }
@@ -67,21 +67,28 @@ public final class MachineFingerprintMain {
             if (!Set.of("true", "false").contains(attributeFlag))
                 throw new IOException("compiler attribution must be explicitly true or false");
             boolean attributed = Boolean.parseBoolean(attributeFlag);
+            String flowFlag = options.getOrDefault("--analyze-flow", "false");
+            if (!Set.of("true", "false").contains(flowFlag))
+                throw new IOException("CFG analysis must be explicitly true or false");
+            boolean analyzeFlow = Boolean.parseBoolean(flowFlag);
+            if (analyzeFlow && !attributed)
+                throw new IOException("CFG analysis requires compiler attribution");
             List<String> lines = produce(source, before, workers);
             if (lines.size() > MAX_ATOMS) throw new IOException("fingerprint row budget exceeded");
-            if (attributed) lines = CompilerAttribution.augment(base, source, before, lines);
+            if (attributed) lines = CompilerAttribution.augment(base, source, before, lines, analyzeFlow);
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, prepFile))
                     || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
                     || !before.equals(SourceInventory.inspectSelected(base, source)))
                 throw new IOException("source or canonical evidence changed during AST fingerprinting");
-            StringBuilder tsv = new StringBuilder(attributed ? MachineEvidence.ATTRIBUTED_HEADER
-                    : MachineEvidence.EXTENDED_HEADER).append('\n');
+            StringBuilder tsv = new StringBuilder(analyzeFlow ? MachineEvidence.FLOW_HEADER
+                    : attributed ? MachineEvidence.ATTRIBUTED_HEADER : MachineEvidence.EXTENDED_HEADER).append('\n');
             for (String line : lines) tsv.append(line).append('\n');
             SafeBuildOutput.write(destination, "machine-evidence.tsv", tsv.toString());
             MachineEvidence.Summary accepted = MachineEvidence.inspect(base, source, destination.resolve("machine-evidence.tsv"));
             if (accepted.atoms() != lines.size()) throw new IOException("AST fingerprint output did not revalidate");
             String receipt = "{\"schema\":\"m3.smart.machine-fingerprint-producer.v1\","
-                    + "\"status\":" + TinyJson.quote(attributed ? "statically-attributed" : "syntax-only")
+                    + "\"status\":" + TinyJson.quote(analyzeFlow ? "may-flow-analyzed"
+                            : attributed ? "statically-attributed" : "syntax-only")
                     + ",\"implementation\":" + TinyJson.quote(attributed ? "JDK21_JAVAC_AST_ANALYZE" : "JDK21_JAVAC_AST")
                     + ","
                     + "\"sourceDigest\":" + TinyJson.quote(before.summary().digest())
@@ -90,6 +97,8 @@ public final class MachineFingerprintMain {
                     + ",\"fingerprints\":" + accepted.json()
                     + ",\"workers\":" + workers
                     + ",\"typeAttributionExecuted\":" + attributed
+                    + ",\"mayFlowAnalysisExecuted\":" + analyzeFlow
+                    + ",\"completeCompilerCfgProven\":false"
                     + ",\"dynamicDispatchProven\":false,\"physicalAtomizationExecuted\":false,"
                     + "\"semanticProofAuthenticated\":false,\"promotionAuthority\":false}\n";
             SafeBuildOutput.write(destination, "machine-fingerprints.json", receipt);

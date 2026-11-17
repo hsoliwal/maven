@@ -35,11 +35,14 @@ final class CompilerAttribution {
     private static final int MAX_FILES = 256;
     private static final int MAX_BYTES = 8_388_608;
     private static final int MAX_CALLS_PER_ATOM = 4096;
+    private static final int MAX_TOTAL_CFG_NODES = 16_384;
+    private static final int MAX_TOTAL_CFG_EDGES = 65_536;
+    private static final int MAX_TOTAL_CFG_LINKS = 131_072;
 
     private CompilerAttribution() { }
 
     static List<String> augment(Path project, Path sourceRoot, SourceInventory.Selected inventory,
-                                List<String> syntaxRows) throws IOException {
+                                List<String> syntaxRows, boolean analyzeFlow) throws IOException {
         if (inventory.files().size() > MAX_FILES || inventory.summary().bytes() > MAX_BYTES)
             throw new IOException("compiler attribution source budget exceeded");
         if (Runtime.version().feature() < 21) throw new IOException("JDK 21 compiler required");
@@ -57,6 +60,7 @@ final class CompilerAttribution {
             if (original.putIfAbsent(key, fields[6]) != null) throw new IOException("duplicated syntax atom");
         }
         Map<String, String> attributed = new TreeMap<>();
+        int totalNodes = 0, totalEdges = 0, totalLinks = 0;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, Locale.ROOT,
                 StandardCharsets.UTF_8)) {
@@ -105,6 +109,16 @@ final class CompilerAttribution {
                     String row = calls.resolved() + "\t" + calls.unresolved()
                             + "\t" + Hashes.sha256(type.getBytes(StandardCharsets.UTF_8))
                             + "\t" + calls.sha256();
+                    if (analyzeFlow) {
+                        MachineFlowAnalysis.Facts flow = MachineFlowAnalysis.inspect(trees, path);
+                        totalNodes += flow.nodes();
+                        totalEdges += flow.edges();
+                        totalLinks += flow.links();
+                        if (totalNodes > MAX_TOTAL_CFG_NODES || totalEdges > MAX_TOTAL_CFG_EDGES
+                                || totalLinks > MAX_TOTAL_CFG_LINKS)
+                            throw new IOException("total compiler flow evidence budget exceeded");
+                        row += "\t" + flow.columns();
+                    }
                     if (attributed.putIfAbsent(key, row) != null)
                         throw new IOException("duplicated compiler atom");
                 }

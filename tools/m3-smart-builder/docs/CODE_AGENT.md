@@ -58,7 +58,9 @@ lowercase hex masks with strictly checked, versioned bit assignments. The
 seven-column form remains accepted without inventing missing analysis.
 For explicitly compiler-attributed work, four further columns are appended:
 `resolved_call_sites<TAB>unresolved_call_sites<TAB>attributed_type_sha256<TAB>call_targets_sha256`.
-The seven-, nine- and thirteen-column ledgers are all independently validated;
+With `-Dm3.smart.analyzeFlow=true`, eight more columns are appended:
+`cfg_nodes<TAB>cfg_edges<TAB>cfg_sha256<TAB>local_read_sites<TAB>local_write_sites<TAB>reaching_def_links<TAB>def_use_sha256<TAB>flow_incomplete_mask`.
+The seven-, nine-, thirteen- and twenty-one-column ledgers are independently validated;
 no consumer invents absent compiler facts.
 
 Paths are relative to `sourceRoot`, `source_sha256` binds each row to the current
@@ -72,6 +74,11 @@ into the model request, nomination and verification replay. Patternization
 adds **at most 24 deterministic atom pairs**, ranked by exact normalized logic,
 then exact structure, then SimHash distance ≤3. Each pair carries source paths,
 atom IDs, distance, syntactic-contract-match status and `REVIEW_ONLY` authority.
+When both atoms have the opt-in 21-column ledger, it also carries
+`mayFlowCompared`, `mayFlowFingerprintMatches`,
+`localDefUseFingerprintMatches`, and a union of incomplete masks. Flow matches
+sort ahead of flow mismatches within an equal similarity/contract group; no
+flow is explicitly marked as unavailable, never silently as a match.
 The total candidate-pair count and truncation flag remain visible, so a prompt
 cannot misrepresent the bounded sample as a complete search result. These are
 similarity candidates, never equivalence or permission to refactor.
@@ -117,6 +124,24 @@ symbols*, not a complete call graph: virtual dispatch, reflection, class
 loading, JNI effects, aliasing and runtime behavior remain unproven. On JDK 21
 the pass selects source level 21; on newer JDKs it uses `--release 21` to
 avoid targeting newer platform APIs.
+
+For a more precise *advisory* pass, set both `-Dm3.smart.attributeTypes=true`
+and `-Dm3.smart.analyzeFlow=true`. The latter is rejected without compiler
+attribution. This constructs a bounded, deterministic statement-level
+**may-flow graph** for sequential blocks, if/else, for/while/do-while,
+enhanced for, return/throw, break/continue, and synchronized entry. It uses
+compiler-resolved local/parameter symbols to iterate a may-reaching-definition
+fixed point, recording only counts and digests. A per-atom four-digit
+`flow_incomplete_mask` explicitly flags unmodelled exceptional, switch/try,
+nested, expression-short-circuit, monitor, heap, unbound and control paths.
+The limits are 256 nodes, 1024 edges and 8192 links per atom, and 16384 nodes,
+65536 edges and 131072 links across the selected source root; over-budget
+work refuses and invalidates its output. The result is **not** javac's full
+flow graph, not SSA, not a verified alias/effect model and not proof of
+semantic equivalence. `flowFacts.cfgIsComplete` and
+`flowFacts.reachingDefinitionsAreProof` are always false. The default goal
+and legacy evidence schemas remain unchanged. A reviewed OpenRewrite property
+recipe is available in `recipes/enable-machine-flow.yml` for opting in.
 
 The producer inventories every selected Java file, uses the compiler AST
 instead of text regex to isolate method, lambda and initializer candidates,

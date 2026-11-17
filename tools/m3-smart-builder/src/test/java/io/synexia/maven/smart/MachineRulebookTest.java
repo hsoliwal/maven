@@ -13,7 +13,7 @@ public final class MachineRulebookTest {
 
     public static void main(String[] args) throws Exception {
         MachineRulebook.Policy rules = MachineRulebook.load();
-        require(rules.rules().size() == 23, "18 mandatory M3 laws and five reviewed static-analysis laws present");
+        require(rules.rules().size() == 24, "18 mandatory M3 laws and six reviewed static-analysis laws present");
         require(rules.sha256().matches("[0-9a-f]{64}"), "policy has a strong content digest");
         Map<?, ?> object = object(TinyJson.parse(rules.json()));
         require("m3.machine.rules.v1".equals(object.get("schema")), "policy is machine readable");
@@ -35,6 +35,9 @@ public final class MachineRulebookTest {
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("compiler-bindings")
                         && rule.authority().equals("PRODUCER_REPORTED")),
                 "resolved compiler symbols do not assert runtime dispatch or effects");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("cfg-defuse")
+                        && rule.authority().equals("PRODUCER_REPORTED")),
+                "local may-flow definitions are bounded cues, not full CFG proof");
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("match-priority")
                         && rule.authority().equals("REVIEW_ONLY")),
                 "similarity ranking is a bounded model hint");

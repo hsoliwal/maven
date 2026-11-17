@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Syntax-only fingerprints: source-bound AST cues, deterministic fan-in, and no equivalence authority. */
+/** Source-bound AST, compiler and may-flow facts; deterministic fan-in, never equivalence authority. */
 public final class MachineFingerprintTest {
     private static int checks;
     private MachineFingerprintTest() { }
@@ -181,6 +181,112 @@ public final class MachineFingerprintTest {
                     attributed.base.resolve("target/m3-smart/machine-evidence.tsv"));
         } catch (java.io.IOException expected) { rejectedCalls = true; }
         require(rejectedCalls, "out-of-budget compiler call counts fail closed");
+        Fixture flow = fixture("class Example { int f(int n) { int x=0; "
+                + "if(n>0) { x=n; } else { x=1; } "
+                + "while(x<10) { x++; } return x; } }\n", "Example.java", false);
+        require(flow.run(1, false, true) == 2
+                && "refused".equals(flow.receipt().get("status")),
+                "flow facts refuse without compiler type attribution");
+        require(flow.run(1, true, true) == 0
+                && flow.tsv().startsWith(MachineEvidence.FLOW_HEADER + "\n"),
+                "compiler-symbol flow analysis extends attributed rows additively");
+        Map<?, ?> flowSummary = object(TinyJson.parse(MachineEvidence.inspect(flow.base, flow.source,
+                flow.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        Map<?, ?> flowFacts = object(flowSummary.get("flowFacts"));
+        require(Boolean.TRUE.equals(flowFacts.get("available"))
+                && number(flowFacts.get("cfgNodes")) >= 8
+                && number(flowFacts.get("cfgEdges")) >= 9,
+                "branch and loop graph contains more than syntax-only bit cues");
+        require(number(flowFacts.get("localReadSites")) >= 4
+                && number(flowFacts.get("localWriteSites")) >= 4
+                && number(flowFacts.get("mayReachingDefinitionLinks")) >= 4,
+                "compiler-resolved local parameters and assignments reach branch/loop reads");
+        require(Boolean.FALSE.equals(flowFacts.get("cfgIsComplete"))
+                && Boolean.FALSE.equals(flowFacts.get("reachingDefinitionsAreProof"))
+                && Boolean.FALSE.equals(flow.receipt().get("completeCompilerCfgProven"))
+                && "may-flow-analyzed".equals(flow.receipt().get("status")),
+                "may-flow CFG is never represented as compiler semantic equivalence");
+        String flowFirst = flow.tsv();
+        require(flow.run(4, true, true) == 0 && flowFirst.equals(flow.tsv()),
+                "flow hashes and reaching-definition links are worker-order independent");
+        Files.writeString(flow.base.resolve("recipes.tsv"), RecipeCatalog.HEADER
+                + "\niteration-loop\tITERATION\tFILE\tcom.synexia.rewrite.IterationLoop\t" + "a".repeat(64) + "\n");
+        require(CodeAgentMain.run(new String[] {"--project-dir", flow.base.toString(),
+                "--build-dir", "target", "--source-root", "src",
+                "--preparation-report", "receipts/preparation.json",
+                "--atom-pattern-manifest", "synthetic-checkpoints.tsv", "--recipe-catalog", "recipes.tsv",
+                "--machine-evidence", "target/m3-smart/machine-evidence.tsv",
+                "--require-machine-evidence", "true"},
+                new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream())) == 0,
+                "the existing strict coding agent accepts fresh compiler-flow evidence");
+        Map<?, ?> flowAgent = object(TinyJson.parse(Files.readString(
+                flow.base.resolve("target/m3-smart/code-agent.json"))));
+        require(Boolean.TRUE.equals(object(object(flowAgent.get("machineEvidenceFacts"))
+                .get("flowFacts")).get("available")),
+                "flow analysis is bound to the model's source-and-policy receipt");
+        Fixture diamond = fixture("class Example { int f(int n) { int x; "
+                + "if(n>0) { x=1; } else { x=2; } return x; } }\n", "Example.java", false);
+        require(diamond.run(1, true, true) == 0,
+                "diamond branch has compiler-resolved local symbols");
+        Map<?, ?> diamondFacts = object(object(TinyJson.parse(MachineEvidence.inspect(diamond.base,
+                diamond.source, diamond.base.resolve("target/m3-smart/machine-evidence.tsv")).json()))
+                .get("flowFacts"));
+        require(number(diamondFacts.get("mayReachingDefinitionLinks")) == 3,
+                "branch join carries two possible writes to x plus one parameter read");
+        Fixture loopBack = fixture("class Example { int f(int n) { int x=0; "
+                + "while(x<n) { x++; } return x; } }\n", "Example.java", false);
+        require(loopBack.run(1, true, true) == 0,
+                "loop backedge reaches its own local increment");
+        Map<?, ?> loopFacts = object(object(TinyJson.parse(MachineEvidence.inspect(loopBack.base,
+                loopBack.source, loopBack.base.resolve("target/m3-smart/machine-evidence.tsv")).json()))
+                .get("flowFacts"));
+        require(number(loopFacts.get("mayReachingDefinitionLinks")) == 7,
+                "fixed point retains both initial and loop-carried definitions of x");
+        Fixture flowPatterns = fixture("class Example { int first(int n) { return n+1; } "
+                + "int second(int n) { return n+1; } }\n", "Example.java", false);
+        require(flowPatterns.run(2, true, true) == 0,
+                "repeated Java methods can be ranked with opt-in CFG and local-access facts");
+        Map<?, ?> flowPairs = object(TinyJson.parse(MachineEvidence.inspect(flowPatterns.base,
+                flowPatterns.source, flowPatterns.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        Map<?, ?> matchingFlow = object(list(flowPairs.get("patternCandidates")).getFirst());
+        require(Boolean.TRUE.equals(matchingFlow.get("mayFlowCompared"))
+                && Boolean.TRUE.equals(matchingFlow.get("mayFlowFingerprintMatches"))
+                && Boolean.TRUE.equals(matchingFlow.get("localDefUseFingerprintMatches"))
+                && Boolean.FALSE.equals(matchingFlow.get("contractSignatureMatches"))
+                && "REVIEW_ONLY".equals(matchingFlow.get("authority")),
+                "matching advisory flow fingerprints do not override different public signatures");
+        Fixture partial = fixture("class Example { int f(int n) { try { return n+1; } "
+                + "finally { System.out.println(n); } } }\n", "Example.java", false);
+        require(partial.run(2, true, true) == 0, "supported compiler input with finally still emits advisory flow");
+        Map<?, ?> partialFacts = object(object(TinyJson.parse(MachineEvidence.inspect(partial.base,
+                partial.source, partial.base.resolve("target/m3-smart/machine-evidence.tsv")).json()))
+                .get("flowFacts"));
+        require(number(partialFacts.get("incompleteAtoms")) > 0,
+                "finally/exception effects remain explicitly unmodelled typed residue");
+        String[] forgedFlowRows = flow.tsv().split("\n", -1);
+        String[] forgedFlow = forgedFlowRows[1].split("\t", -1);
+        forgedFlow[20] = "ffff";
+        forgedFlowRows[1] = String.join("\t", forgedFlow);
+        Files.writeString(flow.base.resolve("target/m3-smart/machine-evidence.tsv"),
+                String.join("\n", forgedFlowRows));
+        boolean rejectedFlow = false;
+        try {
+            MachineEvidence.inspect(flow.base, flow.source,
+                    flow.base.resolve("target/m3-smart/machine-evidence.tsv"));
+        } catch (java.io.IOException expected) { rejectedFlow = true; }
+        require(rejectedFlow, "reserved unproven flow-mask bits refuse ledger admission");
+        forgedFlowRows = flowFirst.split("\n", -1);
+        forgedFlow = forgedFlowRows[1].split("\t", -1);
+        forgedFlow[13] = "999";
+        forgedFlowRows[1] = String.join("\t", forgedFlow);
+        Files.writeString(flow.base.resolve("target/m3-smart/machine-evidence.tsv"),
+                String.join("\n", forgedFlowRows));
+        boolean rejectedBudget = false;
+        try {
+            MachineEvidence.inspect(flow.base, flow.source,
+                    flow.base.resolve("target/m3-smart/machine-evidence.tsv"));
+        } catch (java.io.IOException expected) { rejectedBudget = true; }
+        require(rejectedBudget, "fabricated excessive graph sizes refuse evidence admission");
         Fixture unresolved = fixture("class Example { MissingType f(MissingType x) { return x; } }\n",
                 "Example.java", false);
         require(unresolved.run(1) == 0 && unresolved.run(1, true) == 2
@@ -260,12 +366,16 @@ public final class MachineFingerprintTest {
             return run(workers, false);
         }
         int run(int workers, boolean attributeTypes) {
+            return run(workers, attributeTypes, false);
+        }
+        int run(int workers, boolean attributeTypes, boolean analyzeFlow) {
             List<String> args = new ArrayList<>(List.of("--project-dir", base.toString(),
                     "--build-dir", "target", "--source-root", "src",
                     "--preparation-report", "receipts/preparation.json",
                     "--atom-pattern-manifest", "synthetic-checkpoints.tsv",
                     "--workers", Integer.toString(workers),
-                    "--attribute-types", Boolean.toString(attributeTypes)));
+                    "--attribute-types", Boolean.toString(attributeTypes),
+                    "--analyze-flow", Boolean.toString(analyzeFlow)));
             return MachineFingerprintMain.run(args.toArray(String[]::new),
                     new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream()));
         }
