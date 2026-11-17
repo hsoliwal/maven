@@ -336,9 +336,8 @@ final class ModuleStateDb implements AutoCloseable {
         Path relative = root.relativize(path);
         // The M3 module-state namespace is never its own build input.
         // External providers must keep their store under .m3/module-state-<id>.
-        if (relative.startsWith(".m3")
-                && path.startsWith(root.resolve(".m3"))
-                && path.getFileName().toString().startsWith("module-state-")) return;
+        if (relative.getNameCount() >= 2 && ".m3".equals(relative.getName(0).toString())
+                && relative.getName(1).toString().startsWith("module-state-")) return;
         if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
                 || path.equals(root.resolve(".m3/module-state.lock"))
                 || path.equals(root.resolve(".m3/module-state.sqlite"))
