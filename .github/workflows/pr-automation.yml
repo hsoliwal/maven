@@ -24,4 +24,10 @@ on:
 jobs:
   pr-automation:
     name: PR Automation
+    # Grants exactly what the nested jobs of pr-automation.yml@v5 request (a reusable workflow can only reduce them):
+    #   pr: pull-requests: read
+    #   milestone, milestone-rm, labels, assignees: issues: write, pull-requests: write
+    permissions:
+      issues: write
+      pull-requests: write
     uses: apache/maven-gh-actions-shared/.github/workflows/pr-automation.yml@v5
