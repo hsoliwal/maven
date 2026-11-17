@@ -179,7 +179,14 @@ public final class M3PortableDbContractTestMain {
         properties.storeToXML(xml, phase);
         loaded.clear();
         loaded.loadFromXML(new ByteArrayInputStream(xml.toByteArray()));
-        check(loaded.equals(properties), "Properties.storeToXML/loadFromXML preserves every entry " + phase);
+        // XML 1.0 parsers normalize CR LF to LF, so a CR-bearing value (line.separator on Windows)
+        // never round-trips through storeToXML, lease or not. Every name and every other value must.
+        boolean xmlPreserved = loaded.stringPropertyNames().equals(properties.stringPropertyNames());
+        for (String name : properties.stringPropertyNames()) {
+            String value = properties.getProperty(name);
+            xmlPreserved &= value.indexOf(0x0D) >= 0 || value.equals(loaded.getProperty(name));
+        }
+        check(xmlPreserved, "Properties.storeToXML/loadFromXML preserves every entry " + phase);
         StringWriter listed = new StringWriter();
         properties.list(new PrintWriter(listed));
         check(!listed.toString().isEmpty(), "Properties.list remains compatible " + phase);
