@@ -17,6 +17,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskRunner.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/InputStamps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdbcModuleStateStorage.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/Mavenizer.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \
