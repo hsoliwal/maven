@@ -1,0 +1,299 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+ * SPDX-License-Identifier: Apache-2.0
+ */
+package io.synexia.maven.polyglot;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+/**
+ * Mavenizer: turns a folder built by other tools into Maven projects. Each project folder gets a pom.xml
+ * (packaging pom, its sub-projects as modules) and an m3-build.tsv that maps the native tools' commands to
+ * targets named like Maven phases, which the polyglot lifecycle runs in those phases. Existing files are never
+ * overwritten; a folder that already has a pom.xml is a Maven project and is only listed as a module.
+ */
+public final class Mavenizer {
+    static final int MAX_DEPTH = 4;
+    static final Set<String> SKIP = Set.of(".git", ".hg", ".svn", ".m3", ".gradle", ".idea", ".vscode",
+            "node_modules", "target", "build", "dist", "out", "bin", "obj", "vendor", "venv", ".venv", "__pycache__");
+    static final List<String> PHASES = List.of("validate", "compile", "test", "package");
+    private static final Pattern SCRIPTS = Pattern.compile("\"scripts\"\\s*:\\s*\\{([^}]*)\\}", Pattern.DOTALL);
+
+    /** One native command bound to a phase. */
+    public record Step(String phase, String name, String tool, List<String> args) {
+        public Step {
+            args = List.copyOf(args);
+        }
+    }
+
+    /** A project folder: its detected tools and steps, its direct sub-projects, and whether it already is Maven. */
+    public record Project(Path dir, List<String> tools, List<Step> steps, List<Path> modules, boolean maven) { }
+
+    private Mavenizer() { }
+
+    /** Writes (or, without write, plans) the files of every converted project; returns one line per decision. */
+    public static List<String> mavenize(Path root, String groupId, String version, boolean write) throws IOException {
+        Path base = root.toAbsolutePath().normalize();
+        List<Project> projects = scan(base);
+        List<String> lines = new ArrayList<>();
+        if (projects.isEmpty()) {
+            lines.add("NOTHING " + base + " (no build tool found)");
+            return lines;
+        }
+        for (Project project : projects) {
+            String folder = relative(base, project.dir());
+            if (project.maven()) {
+                lines.add("MAVEN " + folder + " (already a Maven project)");
+                continue;
+            }
+            List<String> modules = new ArrayList<>();
+            for (Path module : project.modules()) modules.add(relative(project.dir(), module));
+            String pom = pom(groupId, artifactId(project.dir()), version, project.tools(), modules);
+            emit(base, project.dir().resolve("pom.xml"), pom, write, lines);
+            if (mavenized(project.dir())) {
+                String kept = read(project.dir(), "pom.xml");
+                for (String module : modules) {
+                    if (!kept.contains("<module>" + xml(module) + "</module>")) {
+                        lines.add("MISSING-MODULE " + module + " in " + relative(base, project.dir().resolve("pom.xml"))
+                                + " (the pom is kept; add the module by hand)");
+                    }
+                }
+            }
+            if (!project.steps().isEmpty()) emit(base, project.dir().resolve("m3-build.tsv"), manifest(project.steps()), write, lines);
+        }
+        return lines;
+    }
+
+    private static void emit(Path base, Path file, String content, boolean write, List<String> lines) throws IOException {
+        String name = relative(base, file);
+        if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            lines.add("KEEP " + name + " (exists)");
+        } else if (!write) {
+            lines.add("PLAN " + name);
+        } else {
+            Files.writeString(file, content, StandardCharsets.UTF_8);
+            lines.add("WRITE " + name);
+        }
+    }
+
+    /** Project folders, parents before children; the root is a project whenever anything below it is one. */
+    static List<Project> scan(Path root) throws IOException {
+        List<Project> found = new ArrayList<>();
+        visit(root, 0, true, found);
+        return found;
+    }
+
+    private static boolean visit(Path dir, int depth, boolean root, List<Project> found) throws IOException {
+        if (has(dir, "pom.xml") && !mavenized(dir)) {
+            found.add(new Project(dir, List.of("maven"), List.of(), List.of(), true));
+            return true;
+        }
+        int slot = found.size();
+        List<Path> modules = new ArrayList<>();
+        if (depth < MAX_DEPTH) {
+            for (Path child : children(dir)) {
+                if (visit(child, depth + 1, false, found)) modules.add(child);
+            }
+        }
+        List<Step> steps = steps(dir);
+        if (steps.isEmpty() && modules.isEmpty()) return false;
+        List<String> tools = new ArrayList<>();
+        for (Step step : steps) {
+            String tool = step.name().substring(0, step.name().indexOf('-'));
+            if (!tools.contains(tool)) tools.add(tool);
+        }
+        if (tools.isEmpty()) tools.add("aggregator");
+        found.add(slot, new Project(dir, List.copyOf(tools), List.copyOf(steps), List.copyOf(modules), false));
+        return true;
+    }
+
+    private static List<Path> children(Path dir) throws IOException {
+        List<Path> result = new ArrayList<>();
+        try (Stream<Path> list = Files.list(dir)) {
+            list.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .filter(path -> !SKIP.contains(path.getFileName().toString()) && !path.getFileName().toString().startsWith("."))
+                    .sorted().forEach(result::add);
+        }
+        return result;
+    }
+
+    /** The native steps of one folder, by the build descriptors it holds. */
+    static List<Step> steps(Path dir) throws IOException {
+        List<Step> steps = new ArrayList<>();
+        gradle(dir, steps);
+        node(dir, steps);
+        if (has(dir, "Cargo.toml")) {
+            add(steps, "compile", "cargo", "build");
+            add(steps, "test", "cargo", "test");
+            add(steps, "package", "cargo", "build", "--release");
+        }
+        if (has(dir, "go.mod")) {
+            add(steps, "compile", "go", "build", "./...");
+            add(steps, "test", "go", "test", "./...");
+        }
+        make(dir, steps);
+        cmake(dir, steps);
+        if (has(dir, "meson.build")) {
+            add(steps, "validate", "meson", "setup", "build/meson");
+            add(steps, "compile", "meson", "compile", "-C", "build/meson");
+            add(steps, "test", "meson", "test", "-C", "build/meson");
+        }
+        python(dir, steps);
+        if (any(dir, ".sln") || any(dir, ".slnx") || any(dir, ".csproj")) {
+            add(steps, "compile", "dotnet", "build");
+            add(steps, "test", "dotnet", "test");
+        }
+        if (has(dir, "MODULE.bazel") || has(dir, "WORKSPACE") || has(dir, "WORKSPACE.bazel")) {
+            add(steps, "compile", "bazel", "build", "//...");
+            add(steps, "test", "bazel", "test", "//...");
+        }
+        if (has(dir, "Package.swift")) {
+            add(steps, "compile", "swift", "build");
+            add(steps, "test", "swift", "test");
+        }
+        if (has(dir, "build.xml")) {
+            add(steps, "compile", "ant");
+            if (read(dir, "build.xml").matches("(?s).*<target[^>]*name\\s*=\\s*\"test\".*")) add(steps, "test", "ant", "test");
+        }
+        return steps;
+    }
+
+    private static void gradle(Path dir, List<Step> steps) {
+        if (!has(dir, "settings.gradle") && !has(dir, "settings.gradle.kts") && !has(dir, "build.gradle")
+                && !has(dir, "build.gradle.kts")) return;
+        String tool = has(dir, "gradlew") || has(dir, "gradlew.bat") ? "gradlew" : "gradle";
+        steps.add(new Step("compile", "gradle-compile", tool, List.of("assemble")));
+        steps.add(new Step("test", "gradle-test", tool, List.of("test")));
+    }
+
+    private static void node(Path dir, List<Step> steps) throws IOException {
+        if (!has(dir, "package.json")) return;
+        String tool = has(dir, "pnpm-lock.yaml") ? "pnpm" : has(dir, "yarn.lock") ? "yarn"
+                : has(dir, "bun.lock") || has(dir, "bun.lockb") ? "bun" : "npm";
+        add(steps, "validate", tool, "npm".equals(tool) && has(dir, "package-lock.json") ? "ci" : "install");
+        Matcher scripts = SCRIPTS.matcher(read(dir, "package.json"));
+        String block = scripts.find() ? scripts.group(1) : "";
+        if (block.matches("(?s).*\"build\"\\s*:.*")) add(steps, "compile", tool, "run", "build");
+        // The script value is a JSON string: escaped quotes (\") belong to it.
+        Matcher test = Pattern.compile("\"test\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(block);
+        if (test.find() && !test.group(1).contains("no test specified")) add(steps, "test", tool, "test");
+    }
+
+    private static void make(Path dir, List<Step> steps) throws IOException {
+        String file = has(dir, "GNUmakefile") ? "GNUmakefile" : has(dir, "Makefile") ? "Makefile" : null;
+        if (file == null) return;
+        add(steps, "compile", "make");
+        if (read(dir, file).matches("(?s)(.*\\n)?test\\s*:.*")) add(steps, "test", "make", "test");
+    }
+
+    private static void cmake(Path dir, List<Step> steps) throws IOException {
+        if (!has(dir, "CMakeLists.txt")) return;
+        add(steps, "validate", "cmake", "-S", ".", "-B", "build/cmake");
+        add(steps, "compile", "cmake", "--build", "build/cmake");
+        String text = read(dir, "CMakeLists.txt");
+        if (text.contains("enable_testing") || text.contains("add_test")) add(steps, "test", "ctest", "--test-dir", "build/cmake");
+    }
+
+    private static void python(Path dir, List<Step> steps) throws IOException {
+        if (!has(dir, "pyproject.toml") && !has(dir, "setup.py") && !has(dir, "setup.cfg")) return;
+        add(steps, "compile", "python", "-m", "compileall", "-q", "-x", "(node_modules|venv|build|target)", ".");
+        boolean pytest = has(dir, "pytest.ini") || has(dir, "pyproject.toml") && read(dir, "pyproject.toml").contains("[tool.pytest");
+        if (pytest) {
+            add(steps, "test", "python", "-m", "pytest");
+        } else if (Files.isDirectory(dir.resolve("tests"), LinkOption.NOFOLLOW_LINKS)) {
+            add(steps, "test", "python", "-m", "unittest", "discover", "-s", "tests", "-t", ".");
+        }
+    }
+
+    /** Adds the step named tool-phase (a second step of the same tool and phase gets -2, -3, ...). */
+    private static void add(List<Step> steps, String phase, String tool, String... args) {
+        String base = tool + "-" + phase;
+        String name = base;
+        for (int n = 2; taken(steps, name); n++) name = base + "-" + n;
+        steps.add(new Step(phase, name, tool, List.of(args)));
+    }
+
+    private static boolean taken(List<Step> steps, String name) {
+        return steps.stream().anyMatch(step -> step.name().equals(name));
+    }
+
+    /** The m3-build.tsv text: one task per step and one aggregation target per phase that has steps. */
+    static String manifest(List<Step> steps) {
+        StringBuilder text = new StringBuilder(TaskManifest.MAGIC).append('\n');
+        for (Step step : steps) {
+            text.append("task\t").append(step.name()).append('\t').append(step.tool()).append("\t.\n");
+            for (String arg : step.args()) text.append("arg\t").append(step.name()).append('\t').append(arg).append('\n');
+        }
+        for (String phase : PHASES) {
+            List<Step> bound = steps.stream().filter(step -> step.phase().equals(phase)).toList();
+            if (bound.isEmpty()) continue;
+            text.append("task\t").append(phase).append("\t-\t.\n");
+            for (Step step : bound) text.append("dep\t").append(phase).append('\t').append(step.name()).append('\n');
+        }
+        return text.toString();
+    }
+
+    /** An aggregator pom for a mavenized folder. */
+    static String pom(String groupId, String artifactId, String version, List<String> tools, List<String> modules) {
+        StringBuilder text = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                .append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n")
+                .append("  <modelVersion>4.0.0</modelVersion>\n")
+                .append("  <groupId>").append(xml(groupId)).append("</groupId>\n")
+                .append("  <artifactId>").append(xml(artifactId)).append("</artifactId>\n")
+                .append("  <version>").append(xml(version)).append("</version>\n")
+                .append("  <packaging>pom</packaging>\n")
+                .append("  <name>").append(xml(artifactId + " (mavenized: " + String.join(", ", tools) + ")")).append("</name>\n");
+        if (!modules.isEmpty()) {
+            text.append("  <modules>\n");
+            for (String module : modules) text.append("    <module>").append(xml(module)).append("</module>\n");
+            text.append("  </modules>\n");
+        }
+        return text.append("</project>\n").toString();
+    }
+
+    static String artifactId(Path dir) {
+        Path name = dir.getFileName();
+        String id = name == null ? "" : name.toString().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
+        return id.isEmpty() ? "project" : id;
+    }
+
+    private static String relative(Path base, Path path) {
+        String value = base.relativize(path).toString().replace('\\', '/');
+        return value.isEmpty() ? "." : value;
+    }
+
+    /** A pom.xml this tool wrote: its name carries the "(mavenized: ...)" mark; a hand-written pom has none. */
+    static boolean mavenized(Path dir) throws IOException {
+        return has(dir, "pom.xml") && read(dir, "pom.xml").matches("(?s).*<name>[^<]*\\(mavenized: [^<]*\\)</name>.*");
+    }
+
+    private static boolean has(Path dir, String name) {
+        return Files.isRegularFile(dir.resolve(name), LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private static boolean any(Path dir, String suffix) throws IOException {
+        try (Stream<Path> list = Files.list(dir)) {
+            return list.anyMatch(path -> path.getFileName().toString().endsWith(suffix)
+                    && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
+        }
+    }
+
+    /** Descriptor text; bytes that are not UTF-8 become replacement characters instead of failing the scan. */
+    private static String read(Path dir, String name) throws IOException {
+        return new String(Files.readAllBytes(dir.resolve(name)), StandardCharsets.UTF_8);
+    }
+
+    private static String xml(String value) {
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+}
