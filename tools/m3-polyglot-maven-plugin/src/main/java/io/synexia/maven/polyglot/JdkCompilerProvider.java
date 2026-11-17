@@ -32,6 +32,11 @@ public final class JdkCompilerProvider implements M3ToolProvider {
     }
 
     @Override
+    public M3AstStatus astStatus(M3ToolCapability capability, String language) {
+        return M3AstStatus.COMPILER;
+    }
+
+    @Override
     public List<String> command(M3ToolCapability capability, String language,
             TaskManifest.Task task, Path workspace) throws IOException {
         if (capability != M3ToolCapability.COMPILER || !"java".equals(language)) {

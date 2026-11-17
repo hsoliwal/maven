@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -42,6 +43,72 @@ public final class M3ToolProviders {
     }
 
     public static List<String> command(TaskManifest.Task task, Path workspace) throws IOException {
+        return command(task, workspace, discover());
+    }
+
+    /** The argv plus the provider-declared run contract: success exit codes, stdout file, effect, reports. */
+    public record Planned(List<String> argv, Set<Integer> successExitCodes, Optional<String> stdout,
+            M3ToolEffect effect, List<M3Report> reports) {
+        public Planned {
+            argv = List.copyOf(argv);
+            successExitCodes = Set.copyOf(successExitCodes);
+            reports = List.copyOf(reports);
+        }
+    }
+
+    /** Plans one provider task; a WRITES_SOURCES task is refused unless source mutation is approved. */
+    public static Planned plan(TaskManifest.Task task, Path workspace, boolean approveSourceMutation)
+            throws IOException {
+        return plan(task, workspace, approveSourceMutation, discover());
+    }
+
+    static Planned plan(TaskManifest.Task task, Path workspace, boolean approveSourceMutation,
+            Map<String, M3ToolProvider> registry) throws IOException {
+        List<String> argv = command(task, workspace, registry);
+        String[] fields = task.tool().split(":", -1);
+        M3ToolCapability capability = M3ToolCapability.parse(fields[2]);
+        try {
+            return contract(registry.get(fields[1]), capability, fields[3], task, argv, approveSourceMutation);
+        } catch (RuntimeException error) {
+            throw new IOException("M3 provider contract planning failed: " + fields[1], error);
+        }
+    }
+
+    private static Planned contract(M3ToolProvider provider, M3ToolCapability capability, String language,
+            TaskManifest.Task task, List<String> argv, boolean approved) throws IOException {
+        M3ToolEffect effect = Objects.requireNonNull(provider.effect(capability, language, task), "effect");
+        if (effect == M3ToolEffect.WRITES_SOURCES && !approved) {
+            throw new IOException("M3 " + capability.slug() + " writes sources and needs explicit approval: " + task.name());
+        }
+        Set<Integer> codes = exitCodes(provider.successExitCodes(capability, language, task));
+        Optional<String> stdout = Objects.requireNonNull(provider.stdoutOutput(capability, language, task), "stdout");
+        if (stdout.isPresent() && !task.outputs().contains(stdout.get())) {
+            throw new IOException("M3 provider stdout file is not a declared output: " + stdout.get());
+        }
+        return new Planned(argv, codes, stdout, effect, reports(provider, capability, language, task));
+    }
+
+    private static Set<Integer> exitCodes(Set<Integer> codes) throws IOException {
+        if (codes == null || !codes.contains(0) || codes.size() > 8
+                || codes.stream().anyMatch(code -> code == null || code < 0 || code > 255)) {
+            throw new IOException("M3 provider success exit codes must include 0 and stay within 0..255");
+        }
+        return codes;
+    }
+
+    private static List<M3Report> reports(M3ToolProvider provider, M3ToolCapability capability, String language,
+            TaskManifest.Task task) throws IOException {
+        List<M3Report> reports = Objects.requireNonNull(provider.reports(capability, language, task), "reports");
+        for (M3Report report : reports) {
+            if (report == null || !task.outputs().contains(report.path())) {
+                throw new IOException("M3 provider report is not a declared output: " + report);
+            }
+        }
+        return reports;
+    }
+
+    static List<String> command(TaskManifest.Task task, Path workspace, Map<String, M3ToolProvider> registry)
+            throws IOException {
         Objects.requireNonNull(task, "task");
         Objects.requireNonNull(workspace, "workspace");
         String[] fields = task.tool().split(":", -1);
@@ -51,7 +118,7 @@ public final class M3ToolProviders {
         String id = checkId(fields[1]);
         M3ToolCapability capability = M3ToolCapability.parse(fields[2]);
         String language = checkLanguage(fields[3]);
-        M3ToolProvider provider = discover().get(id);
+        M3ToolProvider provider = registry.get(id);
         if (provider == null) {
             throw new IOException("M3 provider is not installed: " + id);
         }
@@ -91,10 +158,14 @@ public final class M3ToolProviders {
     }
 
     private static Map<String, M3ToolProvider> discover() throws IOException {
+        return registry(ServiceLoader.load(M3ToolProvider.class, M3ToolProviders.class.getClassLoader()));
+    }
+
+    /** Validated, sorted registry; package-private so contract tests can supply providers directly. */
+    static Map<String, M3ToolProvider> registry(Iterable<M3ToolProvider> providers) throws IOException {
         var selected = new TreeMap<String, M3ToolProvider>();
         try {
-            for (M3ToolProvider provider : ServiceLoader.load(M3ToolProvider.class,
-                    M3ToolProviders.class.getClassLoader())) {
+            for (M3ToolProvider provider : providers) {
                 if (provider == null || provider.apiVersion() != M3ToolProvider.API_VERSION) {
                     throw new IOException("M3 provider SPI version mismatch");
                 }

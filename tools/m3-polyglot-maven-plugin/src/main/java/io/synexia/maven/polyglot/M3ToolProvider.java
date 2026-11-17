@@ -7,6 +7,7 @@ package io.synexia.maven.polyglot;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -44,4 +45,30 @@ public interface M3ToolProvider {
      */
     List<String> command(M3ToolCapability capability, String language,
             TaskManifest.Task task, Path workspace) throws IOException;
+
+    /** Whether the task writes sources; WRITES_SOURCES needs separate caller approval. */
+    default M3ToolEffect effect(M3ToolCapability capability, String language, TaskManifest.Task task)
+            throws IOException {
+        return M3ToolEffect.READS_SOURCES;
+    }
+
+    /** Exit codes meaning success (must contain 0), e.g. {0, 1} for a differ reporting differences. */
+    default Set<Integer> successExitCodes(M3ToolCapability capability, String language, TaskManifest.Task task) {
+        return Set.of(0);
+    }
+
+    /** A declared output that receives the tool's standard output, for tools that only print reports. */
+    default Optional<String> stdoutOutput(M3ToolCapability capability, String language, TaskManifest.Task task) {
+        return Optional.empty();
+    }
+
+    /** Declared outputs that hold findings, diffs, plans or test results, with their formats. */
+    default List<M3Report> reports(M3ToolCapability capability, String language, TaskManifest.Task task) {
+        return List.of();
+    }
+
+    /** One-AST status; undeclared providers are assumed to parse on their own. */
+    default M3AstStatus astStatus(M3ToolCapability capability, String language) {
+        return M3AstStatus.SEPARATE_PARSE;
+    }
 }

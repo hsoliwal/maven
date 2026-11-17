@@ -1,0 +1,6 @@
+# Licensed to the Apache Software Foundation (ASF) under the Apache License, Version 2.0.
+org.apache.maven.plugins.polyglot.adapters.ClusteringProvider
+org.apache.maven.plugins.polyglot.adapters.CodePatchProvider
+org.apache.maven.plugins.polyglot.adapters.GitTextDifferProvider
+org.apache.maven.plugins.polyglot.adapters.JavacPluginHostProvider
+org.apache.maven.plugins.polyglot.adapters.LspLinterProvider

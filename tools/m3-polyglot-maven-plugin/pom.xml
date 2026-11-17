@@ -235,6 +235,28 @@
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
+          <execution>
+            <id>m3-tool-kinds-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.M3ToolKindsContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- Registers its git probe through src/test/resources-kinds, so the v1 inventory suite keeps 2 providers. -->
+            <id>m3-tool-kinds-runner-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.M3ToolKindsRunnerContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+              <additionalClasspathElements>
+                <additionalClasspathElement>${project.basedir}/src/test/resources-kinds</additionalClasspathElement>
+              </additionalClasspathElements>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
     </plugins>

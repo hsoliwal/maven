@@ -12,7 +12,16 @@ public enum M3ToolCapability {
     INTERPRETER("interpreter"),
     TRANSPILER("transpiler"),
     ATOMIZER("atomizer"),
-    PATTERNIZER("patternizer");
+    PATTERNIZER("patternizer"),
+    // Additive v1 kinds: consumers must ignore slugs they do not know.
+    LINTER("linter"),
+    STATIC_ANALYZER("static-analyzer"),
+    FORMATTER("formatter"),
+    DIFFER("differ"),
+    PATCHER("patcher"),
+    REFACTORER("refactorer"),
+    TEST_RUNNER("test-runner"),
+    NORMALIZER("normalizer");
 
     private final String slug;
 

@@ -178,8 +178,10 @@ public final class TaskRunner {
                     + " inputs=" + task.inputs().size() + " outputs=" + task.outputs().size());
             List<String> qualityCommand = QualityTaskCommands.supported(task.tool())
                     ? QualityTaskCommands.command(task, root, dryRun || allowRewriteApply) : null;
-            List<String> m3Command = task.tool().startsWith("@m3")
-                    ? M3ToolProviders.command(task, root) : null;
+            // Source-writing provider modes stay refused outside a dry run until an approval flag exists.
+            M3ToolProviders.Planned m3 = task.tool().startsWith("@m3")
+                    ? M3ToolProviders.plan(task, root, dryRun) : null;
+            List<String> m3Command = m3 == null ? null : m3.argv();
             if (dryRun) {
                 performed.add(task.name());
                 continue;
@@ -208,6 +210,9 @@ public final class TaskRunner {
             List<String> command = qualityCommand != null ? qualityCommand
                     : m3Command != null ? m3Command : ordinaryCommand(task, directory);
             ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).inheritIO();
+            if (m3 != null && m3.stdout().isPresent()) {
+                builder.redirectOutput(checked(root, m3.stdout().get()).toFile());
+            }
             Map<String, String> environment = Map.copyOf(builder.environment());
             boolean candidate = (incremental || cache != null) && qualityCommand == null && m3Command == null
                     && !task.inputs().isEmpty() && !task.outputs().isEmpty() && InputStamps.separate(task)
@@ -241,7 +246,7 @@ public final class TaskRunner {
                 invalidateDependents(plan, task.name(), store);
             }
             boolean restored = cacheStamp != null && cache.restore(task, root, cacheStamp);
-            if (!restored) execute(task, builder, timeout);
+            if (!restored) execute(task, builder, timeout, m3);
             for (String output : task.outputs()) {
                 if (!Files.exists(checked(root, output), LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
@@ -366,8 +371,8 @@ public final class TaskRunner {
         store.invalidate(invalid.stream().map(TaskRunner::stateKey).toList());
     }
 
-    private static void execute(TaskManifest.Task task, ProcessBuilder builder, Duration timeout)
-            throws IOException, InterruptedException {
+    private static void execute(TaskManifest.Task task, ProcessBuilder builder, Duration timeout,
+            M3ToolProviders.Planned m3) throws IOException, InterruptedException {
         final Process process;
         try {
             process = builder.start();
@@ -386,7 +391,7 @@ public final class TaskRunner {
             stop(process);
             throw new IOException("polyglot target timed out: " + task.name());
         }
-        if (process.exitValue() != 0) {
+        if (!succeeded(m3, process.exitValue())) {
             throw new IOException("polyglot tool failed: " + task.name() + " (exit " + process.exitValue() + ")");
         }
     }
@@ -429,6 +434,11 @@ public final class TaskRunner {
             }
         }
         return tool;
+    }
+
+    /** Exit 0 succeeds; a provider may declare more success codes (a differ's 1 = differences found). */
+    private static boolean succeeded(M3ToolProviders.Planned m3, int exit) {
+        return m3 == null ? exit == 0 : m3.successExitCodes().contains(exit);
     }
 
     /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */

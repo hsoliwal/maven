@@ -68,7 +68,13 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/NugetPackages.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/DotnetReportsContractTestMain.java
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/DotnetReportsContractTestMain.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolEffect.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3AstStatus.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ReportFormat.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3Report.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolKindsContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolKindsRunnerContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
@@ -94,3 +100,10 @@ java ${M3_POLYGLOT_ECJ_JAR:+-Dm3.polyglot.ecj.jar="$M3_POLYGLOT_ECJ_JAR"} \
   -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.DotnetReportsContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3ToolKindsContractTestMain
+if command -v git >/dev/null 2>&1; then
+  java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources-kinds" \
+    io.synexia.maven.polyglot.M3ToolKindsRunnerContractTestMain
+else
+  echo "NOT RUN: M3 tool-kind runner cases (git not on PATH)"
+fi

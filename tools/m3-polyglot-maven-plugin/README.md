@@ -427,6 +427,18 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
 | `patternizer` | Structural, logic and pattern-evidence argv | SPI only; provider required |
+| `linter` | Lint argv; findings in declared report outputs | SPI only; provider required |
+| `static-analyzer` | Analysis argv, preferably on the compiler's AST (javac plug-ins) | SPI only; provider required |
+| `formatter` | Formatting argv; diff mode only until a patcher applies it | SPI only; provider required |
+| `differ` | Text or structural difference argv | SPI only; provider required |
+| `patcher` | Patch plan/verify argv; apply/rollback declare a source-writing effect | SPI only; provider required |
+| `refactorer` | Refactoring preview argv (diffs, not writes) | SPI only; provider required |
+| `test-runner` | Test argv; results in declared report outputs | SPI only; provider required |
+| `normalizer` | Report conversion argv (SARIF, M3-STATIC-ANALYSIS-V1) | SPI only; provider required |
+
+The kinds from `linter` on are additive v1 constants: the five original
+constants keep their order and slugs, `API_VERSION` stays 1, and consumers of
+the provider listing must ignore slugs they do not know.
 
 The manifest `task` tool value is `@m3:<provider-id>:<capability>:<language>`.
 All names are lowercase, validated and unambiguous. The registry fails closed on
@@ -568,6 +580,25 @@ Limits: each folder with a project file is its own Maven project, so a solution 
 below it build and test the same projects more than once. Projects on Microsoft.Testing.Platform need
 `--report-trx` instead of `--logger trx`. `--locked-mode` is added only when the folder itself holds
 `packages.lock.json`.
+
+### Run contract of a provider task (default methods, v1)
+
+A provider may declare more about a task than its argv; every method has a
+default, so providers compiled against the first v1 interface link unchanged:
+
+| Method | Default | Checked by the registry (`M3ToolProviders.plan`) |
+| --- | --- | --- |
+| `effect` | `READS_SOURCES` | `WRITES_SOURCES` is refused unless source mutation is approved; the runner approves only in a dry run (`plan`) until an approval flag exists |
+| `successExitCodes` | `{0}` | must contain 0, at most 8 codes within 0..255 (a differ's 1 = differences found) |
+| `stdoutOutput` | none | must be a declared output; the runner redirects the tool's standard output into it |
+| `reports` | none | each report path must be a declared output; formats are `M3ReportFormat` slugs (SARIF 2.1.0, M3-STATIC-ANALYSIS-V1, build-events lines, ATOM_HASHES.tsv, COMPARE.tsv, PLAN.tsv, RECEIPT.tsv, unified diff, JUnit XML) |
+| `astStatus` | `SEPARATE_PARSE` | informational: `COMPILER`, `COMPILER_PLUGIN`, `COMPILER_FRONT_END`, `SEPARATE_PARSE`, `LANGUAGE_SERVER`, `BYTECODE`, `NO_AST` for the one-AST rule |
+
+Findings stay files: a provider names the outputs holding findings, diffs,
+plans or test results, and conversion between report formats is its own task.
+Providers for these kinds (git and clustering differs, the code-patch patcher,
+a javac plug-in host and an LSP linter) live in the opt-in
+`tools/maven-polyglot-tool-adapters` jar; nothing tool-specific is built in.
 
 ## Strict manifest v1
 
