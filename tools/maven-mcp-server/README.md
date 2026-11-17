@@ -111,8 +111,14 @@ only start `mvn.cmd` through cmd.exe, so every client value must also be inert t
 names and values, and test selections are matched against narrow character sets with no white space, quotes or
 `% ! ^ & | < > ( ) $ ; \``, may not start with `-` (so a client cannot add options of its own), and are limited in
 length and count. Paths the server adds are checked for the characters cmd.exe expands. The properties the server
-sets itself (`maven.agent*`, `maven.events.*`, `style.color`, ...) and `maven.ext.class.path` are refused. A refused
-call starts no Maven process and creates no run directory.
+sets itself (`maven.agent*`, `maven.events.*`, `style.color`, ...) and `maven.ext.class.path` are refused, and so
+are the properties that redirect which configuration Maven reads or where it connects: the local repository
+(`maven.repo.*`), settings and toolchains (`maven.settings*`, `maven.user.*`, `maven.installation.*`,
+`maven.project.*`, `settings.*`, `org.apache.maven.*`: the equivalents of `-s`, `-gs` and `-t`), `maven.config`,
+`maven.mainClass`, `maven.boot*`, the resolver (`maven.resolver.*`, `aether.*`), `classworlds.*`, JVM and network
+properties (`user.*` such as `user.home`, `java.*`, `javax.*` such as a trust store, `jdk.*`, `sun.*`, `http.*`,
+`https.*`, `ftp.*`, `socksProxy*`) and the build hook's switches (`chromellm.*`, `m3.smart.*`, which name programs
+it starts). A refused call starts no Maven process and creates no run directory.
 
 When the launcher is a `.cmd` script (`mvn.cmd`, `mvnw.cmd`), cmd.exe also splits the script's parameters at `=`
 and `,`, and `mvn.cmd` scans those pieces for `-f`/`--file` to find the project's `.mvn/jvm.config` and
@@ -177,10 +183,16 @@ error answer never interleaves with an SDK message.
 `build` and `test` run whatever phases and plugin goals the client names, with the client's properties, in the
 project the server was started for. That is arbitrary process execution with the server's user rights: a plugin goal
 such as `exec:exec` runs any program, `clean` deletes the build output, `deploy` publishes. The character checks
-above keep a client from adding Maven options or changing which configuration Maven reads; they do not limit what
-the named goals do. Start the server only for projects and clients you trust, let the MCP client ask before each
-`build` and `test` call (they are marked destructive), and run it in a container or a throwaway checkout when the
-client is not supervised.
+above keep a client from adding Maven options of its own, and the refused properties keep it from pointing Maven at
+other settings, toolchains, a local repository, a trust store or a proxy by a property; neither limits what the named
+goals do (a goal may itself read any file the server's user can read). Start the server only for projects and
+clients you trust, let the MCP client ask before each `build` and `test` call (they are marked destructive), and run
+it in a container or a throwaway checkout when the client is not supervised.
+
+Every string in an answer, at any depth, and every error message pass the build-events extension's credential
+redaction (`Redact.secrets`, shaded into the jar, the same code that cleans the agent files): `user:password@` of a
+URL becomes `***@`, also in the raw `[ERROR]` lines of the Maven log that `build`, `explain_failure`,
+`effective_pom`, `dependency_tree` and `describe_goal` return, and a capped line is redacted before it is cut.
 
 ## Client configuration
 

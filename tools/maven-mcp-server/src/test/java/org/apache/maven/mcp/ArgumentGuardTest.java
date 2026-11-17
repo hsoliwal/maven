@@ -74,6 +74,17 @@ public final class ArgumentGuardTest {
         checks.that("too long goal", refusedArgument(() -> ArgumentGuard.goals(List.of("a".repeat(201)))));
         checks.that("21 goals", refusedArgument(() -> ArgumentGuard.goals(java.util.Collections.nCopies(21, "a"))));
         checks.that("server path with %", refusedState(() -> ArgumentGuard.path(Path.of("a%PATH%b"))));
+        List.of("maven.repo.local", "maven.repo.local.tail", "maven.settings", "maven.user.settings",
+                "maven.installation.settings", "maven.user.toolchains", "maven.installation.toolchains",
+                "maven.project.settings", "settings.security", "org.apache.maven.user-settings",
+                "org.apache.maven.global-settings", "org.apache.maven.global-toolchains", "user.home", "user.dir",
+                "java.home", "javax.net.ssl.trustStore", "jdk.http.auth.tunneling.disabledSchemes", "aether.connector.x",
+                "maven.resolver.transport", "https.proxyHost", "http.nonProxyHosts", "chromellm.advice",
+                "m3.smart.llamaBin", "maven.config", "maven.mainClass").forEach(key -> checks.that(
+                "configuration-redirecting property " + key, refusedArgument(() -> ArgumentGuard.properties(Map.of(key,
+                "x"), false))));
+        checks.that("ordinary properties still pass", ArgumentGuard.properties(Map.of("skipTests", "true",
+                "maven.compiler.release", "17", "repositoryLayout", "x"), false).size() == 3);
     }
 
     /** Every character a shell treats specially is refused in each kind of value. */

@@ -28,10 +28,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import org.apache.maven.agent.events.Redact;
 
 /**
  * Compact JSON for tool results: one shared Jackson mapper, no indentation, bounded strings, and bounded arrays that
- * say how many items were left out.
+ * say how many items were left out. Every string a client receives passes the build events extension's credential
+ * redaction ({@link Redact#secrets}, shaded into the jar: one owner for both), and a capped string is redacted before
+ * it is cut, so no {@code user:password@} of a URL reaches a client, from a log line or any other text.
  */
 final class CompactJson {
 
@@ -53,12 +56,31 @@ final class CompactJson {
         return MAPPER.createArrayNode();
     }
 
-    /** Cuts {@code text} to {@code max} characters and marks the cut with "...". */
+    /** {@code text} without credentials, cut to {@code max} characters with the cut marked by "...". */
     static String cap(String text, int max) {
-        if (text == null || text.length() <= max) {
-            return text;
+        if (text == null) {
+            return null;
         }
-        return text.substring(0, max) + "...";
+        String clean = Redact.secrets(text);
+        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
+    /** A copy of {@code node} with every string value, at any depth, passed through {@link Redact#secrets}. */
+    static JsonNode redacted(JsonNode node) {
+        if (node.isTextual()) {
+            return MAPPER.getNodeFactory().textNode(Redact.secrets(node.asText()));
+        }
+        if (node.isArray()) {
+            ArrayNode copy = array();
+            node.forEach(item -> copy.add(redacted(item)));
+            return copy;
+        }
+        if (node.isObject()) {
+            ObjectNode copy = object();
+            node.properties().forEach(field -> copy.set(field.getKey(), redacted(field.getValue())));
+            return copy;
+        }
+        return node;
     }
 
     /** Puts at most {@code max} items under {@code name}, and the count left out under {@code <name>Omitted}. */
@@ -85,7 +107,7 @@ final class CompactJson {
     }
 
     static CallToolResult result(JsonNode body) {
-        return CallToolResult.builder().addTextContent(text(body)).isError(false).build();
+        return CallToolResult.builder().addTextContent(text(redacted(body))).isError(false).build();
     }
 
     static CallToolResult error(String message) {
