@@ -24,11 +24,14 @@ public enum LstStatus {
     PENDING("pending"),
     /** Tree built and it prints the exact source. */
     OK("ok"),
-    /** Tree built but it does not print the exact source; recipes must not use it. */
+    /**
+     * Tree built but it does not print the exact source, or holds a string chain javac folded that the bridge could not
+     * give back (the detail says so); recipes must not use it.
+     */
     PRINT_MISMATCH("print-mismatch"),
     /** The compilation reported errors, so no tree is kept. */
     COMPILE_ERRORS("skipped: compile errors"),
-    /** The file is in a Maven generated-sources root. */
+    /** The file lies under the build directory, where generated sources are; rewrite-maven-plugin skips them too. */
     GENERATED("skipped: generated source"),
     /** {@code module-info.java}: OpenRewrite has no tree for it, and its {@code JavaParser.accept} excludes it. */
     MODULE_INFO("skipped: module-info has no OpenRewrite tree"),

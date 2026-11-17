@@ -28,6 +28,7 @@ import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +59,14 @@ final class Javac {
         XPLUGIN
     }
 
+    /** The plugin options of one compile, after the plugin name and separated by spaces as javac passes them. */
+    interface PluginArgs {
+        /** {@code census=<census> root=<src>}, the README's configuration. */
+        PluginArgs DEFAULT = (census, src) -> "census=" + census + " root=" + src;
+
+        String of(Path census, Path src);
+    }
+
     /**
      * What one compile produced.
      *
@@ -66,13 +75,15 @@ final class Javac {
      * @param classes class file path to SHA-256
      * @param collector the plugin's collector in {@link Mode#DIRECT}
      * @param census the census text in {@link Mode#XPLUGIN}
+     * @param output what javac wrote to its output writer (not diagnostics)
      */
     record Compilation(
             boolean success,
             List<String> diagnostics,
             Map<String, String> classes,
             Optional<LstCollector> collector,
-            String census) {}
+            String census,
+            String output) {}
 
     static final Path WORK = Path.of(System.getProperty("recipes.workDir", "target/lst-tests"));
 
@@ -80,46 +91,74 @@ final class Javac {
 
     /** Compiles a fixture under {@code WORK/<group>/<fixture>}; sources are written once per directory. */
     static Compilation compile(String group, Fixture fixture, Mode mode, String... options) throws IOException {
+        return compile(group, fixture, mode, PluginArgs.DEFAULT, options);
+    }
+
+    /** As {@link #compile(String, Fixture, Mode, String...)} with the given plugin options. */
+    static Compilation compile(String group, Fixture fixture, Mode mode, PluginArgs pluginArgs, String... options)
+            throws IOException {
         Path dir = WORK.resolve(group).resolve(fixture.name()).toAbsolutePath();
-        Path src = fixture.write(dir);
         String label = mode.name().toLowerCase(Locale.ROOT) + "-"
                 + String.join("", options).replaceAll("\\W", "");
         Path classes = dir.resolve("classes-" + label);
         Path census = dir.resolve("census-" + label + ".tsv");
-        Files.deleteIfExists(census);
+        deleteCensus(census);
         emptyDirectory(classes);
+        Path src = fixture.write(dir);
+        String pluginOptions = pluginArgs.of(census, src);
+        List<String> args = arguments(fixture, dir, classes, options);
+        args.addAll(mode == Mode.XPLUGIN ? xplugin(pluginOptions) : List.of());
+        Optional<String> direct = mode == Mode.DIRECT ? Optional.of(pluginOptions) : Optional.empty();
+        return run(new Run(src, fixture, args, direct, classes, census));
+    }
+
+    /** One prepared compile: the fixture's sources, javac's arguments and where its outputs go. */
+    private record Run(
+            Path src, Fixture fixture, List<String> args, Optional<String> direct, Path classes, Path census) {
+        List<Path> sources() {
+            return fixture.files().keySet().stream().map(src::resolve).toList();
+        }
+
+        String censusText() throws IOException {
+            return Files.isRegularFile(census) ? Files.readString(census, StandardCharsets.UTF_8) : "";
+        }
+    }
+
+    private static List<String> xplugin(String pluginOptions) throws IOException {
+        return List.of("-processorpath", pluginPath(), "-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+    }
+
+    private static List<String> arguments(Fixture fixture, Path dir, Path classes, String... options)
+            throws IOException {
         Files.createDirectories(dir.resolve("empty"));
         List<String> args = new ArrayList<>(List.of(
                 "-d", classes.toString(), "-classpath", dir.resolve("empty").toString()));
         args.addAll(fixture.options());
         args.addAll(List.of(options));
-        if (mode == Mode.XPLUGIN) {
-            args.addAll(List.of(
-                    "-processorpath",
-                    pluginPath(),
-                    "-Xplugin:" + MavenRecipesPlugin.NAME + " census=" + census + " root=" + src));
-        }
-        return run(src, fixture, args, mode, classes, census);
+        return args;
     }
 
-    private static Compilation run(Path src, Fixture fixture, List<String> args, Mode mode, Path classes, Path census)
-            throws IOException {
+    private static void deleteCensus(Path census) throws IOException {
+        if (Files.isDirectory(census)) {
+            emptyDirectory(census);
+        }
+        Files.deleteIfExists(census);
+    }
+
+    private static Compilation run(Run run) throws IOException {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try (StandardJavaFileManager files =
-                javac.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
-            List<Path> sources =
-                    fixture.files().keySet().stream().map(src::resolve).toList();
-            JavacTask task = (JavacTask) javac.getTask(
-                    new StringWriter(), files, diagnostics, args, null, files.getJavaFileObjectsFromPaths(sources));
-            if (mode == Mode.DIRECT) {
-                new MavenRecipesPlugin().init(task, "root=" + src);
-            }
+        StringWriter output = new StringWriter();
+        Charset charset = run.fixture().managerCharset().orElse(null);
+        try (StandardJavaFileManager files = javac.getStandardFileManager(diagnostics, Locale.ROOT, charset)) {
+            Iterable<? extends JavaFileObject> sources = files.getJavaFileObjectsFromPaths(run.sources());
+            JavacTask task = (JavacTask) javac.getTask(output, files, diagnostics, run.args(), null, sources);
+            run.direct().ifPresent(options -> new MavenRecipesPlugin().init(task, options.split("\\s+")));
             Optional<LstCollector> collector = LstCollector.of(task);
             boolean success = task.call();
-            String censusText = Files.exists(census) ? Files.readString(census, StandardCharsets.UTF_8) : "";
+            List<String> described = describe(diagnostics.getDiagnostics(), run.src());
             return new Compilation(
-                    success, describe(diagnostics.getDiagnostics(), src), hashes(classes), collector, censusText);
+                    success, described, hashes(run.classes()), collector, run.censusText(), output.toString());
         }
     }
 

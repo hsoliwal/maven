@@ -90,6 +90,7 @@ final class FileState {
     void built(LstResult converted, String event) {
         result = Optional.of(converted);
         status = converted.printEqual() ? LstStatus.OK : LstStatus.PRINT_MISMATCH;
+        detail = converted.detail().isEmpty() ? "" : ": " + converted.detail();
         builtAt = event;
         unit = Optional.empty();
     }

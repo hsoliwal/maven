@@ -53,6 +53,10 @@ final class TypeTrail {
         if (tree instanceof MethodCall call) {
             line.append(" method=").append(call.getMethodType());
         }
+        return describeDeclaration(tree, line);
+    }
+
+    private static String describeDeclaration(J tree, StringBuilder line) {
         if (tree instanceof J.MethodDeclaration declaration) {
             line.append(" method=").append(declaration.getMethodType());
         }

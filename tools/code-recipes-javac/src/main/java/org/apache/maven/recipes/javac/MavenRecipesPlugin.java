@@ -22,21 +22,22 @@ import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.Options;
 
 /**
  * The javac plugin {@code -Xplugin:MavenRecipes}: builds the OpenRewrite tree of every compiled source file from the
  * trees of the running compile, so no recipe runner parses the sources a second time.
  *
- * <p>Options, separated by spaces after the name: {@code census=<file>} writes {@link LstCensus#HEADER LST_CENSUS.tsv}
- * when the compilation finishes; {@code root=<dir>} is the directory tree source paths are made relative to (default:
- * the working directory). javac splits plugin options on spaces, so neither path may contain one.
+ * <p>Options, separated by spaces after the name ({@link PluginOptions}): {@code census=<file>} writes
+ * {@link LstCensus#HEADER LST_CENSUS.tsv} when the compilation finishes; {@code root=<dir>} is the directory tree source
+ * paths are made relative to (default: the working directory); {@code buildDir=<dir>} is the build directory, whose
+ * sources get no tree (default: {@code <root>/target}).
  *
- * <p>The plugin changes one compiler option: {@code allowStringFolding=false}, without which javac's parser folds
- * {@code "a" + "b"} into one literal and the tree no longer matches the source text. Constant expressions are still
- * folded during attribution, so the generated class files stay the same (the tests compare them byte for byte). javac
- * itself turns on comment retention and end positions as soon as a task listener is registered
- * ({@code JavaCompiler.parse}, JDK 21), which is why the plugin needs no other compiler change.
+ * <p>The plugin changes no compiler option and no compiler field. javac itself turns on comment retention and end
+ * positions as soon as a task listener is registered ({@code JavaCompiler.parse}, JDK 21). javac keeps its default
+ * string folding; {@link FoldedStrings} gives each folded chain back its {@code +} nodes.
+ *
+ * <p>The plugin never fails a compile: a bad option, a census that cannot be written or any failure of its own is one
+ * {@link Notices notice} line, and the compile goes on without trees or census.
  */
 public final class MavenRecipesPlugin implements Plugin {
     /** The plugin name given to {@code -Xplugin:}. */
@@ -49,11 +50,15 @@ public final class MavenRecipesPlugin implements Plugin {
 
     @Override
     public void init(JavacTask task, String... args) {
-        Context context = ((BasicJavacTask) task).getContext();
-        PluginOptions options = PluginOptions.parse(args);
-        Options.instance(context).put("allowStringFolding", "false");
-        LstCollector collector = new LstCollector(context, options);
-        context.put(LstCollector.class, collector);
-        task.addTaskListener(collector);
+        try {
+            Context context = ((BasicJavacTask) task).getContext();
+            LstCollector collector = new LstCollector(context, PluginOptions.parse(args));
+            context.put(LstCollector.class, collector);
+            task.addTaskListener(collector);
+        } catch (IllegalArgumentException e) {
+            Notices.print(task, "options not understood, no trees and no census for this compile: " + e.getMessage());
+        } catch (RuntimeException | LinkageError e) {
+            Notices.print(task, "not started, no trees and no census for this compile: " + Notices.describe(e));
+        }
     }
 }

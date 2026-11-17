@@ -97,7 +97,7 @@ class CompilerTreeLstTest {
     }
 
     @Test
-    void filesInGeneratedSourceRootsAreSkipped() throws IOException {
+    void filesUnderTheBuildDirectoryAreSkippedAsRewriteMavenPluginSkipsTheirRoots() throws IOException {
         Map<String, CensusRow> rows = rows(Javac.compile("bridge", Fixtures.generated(), Javac.Mode.DIRECT, BYFILE));
         assertEquals(
                 LstStatus.GENERATED.label(),
@@ -106,36 +106,57 @@ class CompilerTreeLstTest {
     }
 
     @Test
+    void aBuildDirectoryOptionDecidesWhatIsGeneratedNotADirectoryName() throws IOException {
+        Map<String, CensusRow> ancestor =
+                rows(Javac.compile("bridge", EdgeFixtures.generatedSourcesAncestor(), Javac.Mode.DIRECT, BYFILE));
+        assertEquals(LstStatus.OK.label(), ancestor.get("p/A.java").status());
+        Fixture generated = Fixtures.generated().named("generated-build-dir-option");
+        Javac.PluginArgs elsewhere = (census, src) -> "root=" + src + " buildDir=" + src.resolve("demo");
+        Map<String, CensusRow> rows = rows(Javac.compile("bridge", generated, Javac.Mode.DIRECT, elsewhere, BYFILE));
+        assertEquals(LstStatus.GENERATED.label(), rows.get("demo/User.java").status());
+        assertEquals(
+                LstStatus.OK.label(),
+                rows.get("target/generated-sources/annotations/demo/Gen.java").status());
+    }
+
+    @Test
     void theStaticEntryPointConvertsAUnitOfAnyRunningTaskWithoutThePlugin() throws IOException {
         Path src = Fixtures.compiling()
                 .get(0)
                 .write(Javac.WORK.resolve("entry-point").toAbsolutePath());
         Path file = src.resolve("demo/Plain.java");
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        List<J.CompilationUnit> converted = new ArrayList<>();
-        try (StandardJavaFileManager files = javac.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) javac.getTask(
-                    null,
-                    files,
-                    null,
-                    List.of("-proc:none", "-d", src.resolveSibling("classes").toString()),
-                    null,
-                    files.getJavaFileObjects(file));
-            task.addTaskListener(new TaskListener() {
-                @Override
-                public void finished(TaskEvent event) {
-                    if (event.getKind() == TaskEvent.Kind.ANALYZE) {
-                        converted.add(convert(task, event, src));
-                    }
-                }
-            });
-            assertTrue(task.call());
-        }
+        List<J.CompilationUnit> converted = compileWithOwnListener(src, file);
         assertEquals(1, converted.size());
         assertEquals(
                 Files.readString(file, StandardCharsets.UTF_8), converted.get(0).printAll());
         assertEquals(
                 "demo/Plain.java", converted.get(0).getSourcePath().toString().replace('\\', '/'));
+    }
+
+    /** Compiles one file with a listener of its own, not the plugin's, that converts at every ANALYZE event. */
+    private static List<J.CompilationUnit> compileWithOwnListener(Path src, Path file) throws IOException {
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        List<J.CompilationUnit> converted = new ArrayList<>();
+        try (StandardJavaFileManager files = javac.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
+            List<String> options =
+                    List.of("-proc:none", "-d", src.resolveSibling("classes").toString());
+            JavacTask task =
+                    (JavacTask) javac.getTask(null, files, null, options, null, files.getJavaFileObjects(file));
+            task.addTaskListener(convertingAtAnalyze(task, src, converted));
+            assertTrue(task.call());
+        }
+        return converted;
+    }
+
+    private static TaskListener convertingAtAnalyze(JavacTask task, Path src, List<J.CompilationUnit> converted) {
+        return new TaskListener() {
+            @Override
+            public void finished(TaskEvent event) {
+                if (event.getKind() == TaskEvent.Kind.ANALYZE) {
+                    converted.add(convert(task, event, src));
+                }
+            }
+        };
     }
 
     private static J.CompilationUnit convert(JavacTask task, TaskEvent event, Path src) {

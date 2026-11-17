@@ -26,5 +26,6 @@ import org.openrewrite.java.tree.J;
  * @param lst the OpenRewrite tree
  * @param printEqual whether the tree prints the exact text javac parsed and, for a file on disk, its exact bytes
  * @param calls how many method calls, constructor calls and method references carry a method type
+ * @param detail why the tree is not usable although it was built, or empty
  */
-public record LstResult(J.CompilationUnit lst, boolean printEqual, MethodCalls calls) {}
+public record LstResult(J.CompilationUnit lst, boolean printEqual, MethodCalls calls, String detail) {}

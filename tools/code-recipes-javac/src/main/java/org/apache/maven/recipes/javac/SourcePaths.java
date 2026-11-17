@@ -25,9 +25,6 @@ import java.util.Optional;
 
 /** Source paths of javac file objects, as the census and the trees name them. */
 final class SourcePaths {
-    private static final String GENERATED_SOURCES = "/generated-sources/";
-    private static final String GENERATED_TEST_SOURCES = "/generated-test-sources/";
-
     private SourcePaths() {}
 
     /** The file on disk behind a file object; empty for in-memory sources. */
@@ -49,9 +46,12 @@ final class SourcePaths {
         return relative(file, root).toString().replace('\\', '/');
     }
 
-    /** Whether the file lies in a Maven generated-sources root, which rewrite-maven-plugin skips as well. */
-    static boolean isGenerated(JavaFileObject file) {
-        String uri = file.toUri().getPath();
-        return uri != null && (uri.contains(GENERATED_SOURCES) || uri.contains(GENERATED_TEST_SOURCES));
+    /**
+     * Whether the file lies under a directory, such as the build directory: rewrite-maven-plugin skips every source
+     * root under the project's build directory ({@code MavenMojoProjectParser.filterGeneratedSourceRoots}), which holds
+     * the generated sources of annotation processors and code generators.
+     */
+    static boolean isUnder(JavaFileObject file, Path dir) {
+        return ofFile(file).map(path -> path.toAbsolutePath().startsWith(dir)).orElse(false);
     }
 }

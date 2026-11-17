@@ -20,12 +20,14 @@ package org.apache.maven.recipes.javac;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * One compile of the tests: source files with their exact bytes, extra javac options, and where the cases come from.
@@ -34,19 +36,35 @@ import java.util.Map;
  * @param origin where the cases come from (own, or the rewrite-java-tck test they are copied from)
  * @param files relative path to exact file bytes, in the order javac gets them
  * @param options extra javac options
+ * @param managerCharset the charset given to {@code getStandardFileManager} for in-process compiles, as
+ *     maven-compiler-plugin does; empty gives none, so javac reads {@code -encoding} from the options
  */
-record Fixture(String name, String origin, Map<String, byte[]> files, List<String> options) {
+record Fixture(
+        String name, String origin, Map<String, byte[]> files, List<String> options, Optional<Charset> managerCharset) {
     /** A fixture of UTF-8 text files without extra options. */
     static Fixture of(String name, String origin, String... pathsAndTexts) {
         Map<String, byte[]> files = new LinkedHashMap<>();
         java.util.stream.IntStream.range(0, pathsAndTexts.length / 2)
                 .forEach(i ->
                         files.put(pathsAndTexts[2 * i], pathsAndTexts[2 * i + 1].getBytes(StandardCharsets.UTF_8)));
-        return new Fixture(name, origin, files, List.of());
+        return of(name, origin, files);
+    }
+
+    /** A fixture of the given file bytes without extra options, read as UTF-8. */
+    static Fixture of(String name, String origin, Map<String, byte[]> files) {
+        return new Fixture(name, origin, files, List.of(), Optional.of(StandardCharsets.UTF_8));
     }
 
     Fixture withOptions(String... extra) {
-        return new Fixture(name, origin, files, List.of(extra));
+        return new Fixture(name, origin, files, List.of(extra), managerCharset);
+    }
+
+    Fixture withManagerCharset(Optional<Charset> charset) {
+        return new Fixture(name, origin, files, options, charset);
+    }
+
+    Fixture named(String newName) {
+        return new Fixture(newName, origin, files, options, managerCharset);
     }
 
     /** Writes the sources under {@code dir/src} and returns that directory. */

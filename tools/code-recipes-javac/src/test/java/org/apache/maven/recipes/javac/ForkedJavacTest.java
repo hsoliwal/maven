@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 class ForkedJavacTest {
     private static final long TIMEOUT_SECONDS = 120;
 
-    private record Forked(int exit, String output, Map<String, String> classes, String census) {}
+    record Forked(int exit, String output, Map<String, String> classes, String census) {}
 
     @TestFactory
     Stream<DynamicTest> forkedJavacWithThePluginMatchesForkedJavacWithoutAndTheInProcessCensus() {
@@ -53,11 +53,11 @@ class ForkedJavacTest {
                 .map(fixture -> dynamicTest(fixture.name(), () -> assertForked(fixture)));
     }
 
-    private static void assertForked(Fixture fixture) throws IOException, InterruptedException {
+    static void assertForked(Fixture fixture) throws IOException, InterruptedException {
         Path dir = Javac.WORK.resolve("forked").resolve(fixture.name()).toAbsolutePath();
         Path src = fixture.write(dir);
-        Forked plain = fork(fixture, dir, src, false);
-        Forked with = fork(fixture, dir, src, true);
+        Forked plain = fork(fixture, dir, src, false, Javac.PluginArgs.DEFAULT);
+        Forked with = fork(fixture, dir, src, true, Javac.PluginArgs.DEFAULT);
         assertEquals(plain.exit(), with.exit());
         assertEquals(plain.output(), with.output());
         assertEquals(plain.classes(), with.classes());
@@ -65,13 +65,27 @@ class ForkedJavacTest {
         assertEquals(LstCensus.tsv(inProcess.collector().orElseThrow().census()), with.census());
     }
 
-    private static Forked fork(Fixture fixture, Path dir, Path src, boolean plugin)
+    /** Forks javac on the fixture, with the plugin and the given options or without it. */
+    static Forked fork(Fixture fixture, Path dir, Path src, boolean plugin, Javac.PluginArgs pluginArgs)
             throws IOException, InterruptedException {
         String label = plugin ? "plugin" : "plain";
         Path classes = dir.resolve("forked-classes-" + label);
         Javac.emptyDirectory(classes);
         Path census = dir.resolve("forked-census.tsv");
-        Files.deleteIfExists(census);
+        if (Files.isRegularFile(census)) {
+            Files.delete(census);
+        }
+        List<String> command = command(fixture, dir, classes);
+        if (plugin) {
+            command.addAll(List.of("-processorpath", Javac.pluginPath()));
+            command.add("-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginArgs.of(census, src));
+        }
+        fixture.files().keySet().forEach(path -> command.add(src.resolve(path).toString()));
+        return run(command, dir, classes, census);
+    }
+
+    /** javac with the jdk.compiler exports, the output directory, the policy and the fixture's options. */
+    private static List<String> command(Fixture fixture, Path dir, Path classes) throws IOException {
         Files.createDirectories(dir.resolve("empty"));
         List<String> command = new ArrayList<>(List.of(javac().toString()));
         Arrays.stream(System.getProperty("recipes.javacExports", "").trim().split("\\s+"))
@@ -81,12 +95,7 @@ class ForkedJavacTest {
                 "-d", classes.toString(), "-classpath", dir.resolve("empty").toString()));
         command.add(CompilerTreeLstTest.BYFILE);
         command.addAll(fixture.options());
-        if (plugin) {
-            command.addAll(List.of("-processorpath", Javac.pluginPath()));
-            command.add("-Xplugin:" + MavenRecipesPlugin.NAME + " census=" + census + " root=" + src);
-        }
-        fixture.files().keySet().forEach(path -> command.add(src.resolve(path).toString()));
-        return run(command, dir, classes, census);
+        return command;
     }
 
     private static Forked run(List<String> command, Path dir, Path classes, Path census)
@@ -97,7 +106,7 @@ class ForkedJavacTest {
                 .start();
         byte[] output = process.getInputStream().readAllBytes();
         assertTrue(process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS), "javac timed out");
-        String censusText = Files.exists(census) ? Files.readString(census, StandardCharsets.UTF_8) : "";
+        String censusText = Files.isRegularFile(census) ? Files.readString(census, StandardCharsets.UTF_8) : "";
         return new Forked(
                 process.exitValue(), new String(output, StandardCharsets.UTF_8), Javac.hashes(classes), censusText);
     }

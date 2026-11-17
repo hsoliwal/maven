@@ -28,24 +28,53 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginOptionsTest {
+    private static final Path SPACED =
+            Path.of("dir with spaces", "census file.tsv").toAbsolutePath();
+
+    /** Splits like javac's {@code Arguments}: the {@code -Xplugin:} value on runs of whitespace. */
+    private static PluginOptions parse(String value) {
+        return PluginOptions.parse(value.split("\\s+"));
+    }
+
     @Test
-    void withoutArgumentsThereIsNoCensusAndTheRootIsTheWorkingDirectory() {
+    void withoutArgumentsThereIsNoCensusTheRootIsTheWorkingDirectoryAndTheBuildDirectoryItsTarget() {
         PluginOptions options = PluginOptions.parse();
         assertEquals(Optional.empty(), options.census());
         assertEquals(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize(), options.root());
+        assertEquals(options.root().resolve("target"), options.buildDir());
     }
 
     @Test
-    void censusAndRootAreRead() {
-        PluginOptions options = PluginOptions.parse("census=target/recipes/LST_CENSUS.tsv", "root=src/main/java");
+    void censusRootAndBuildDirAreRead() {
+        PluginOptions options =
+                PluginOptions.parse("census=target/recipes/LST_CENSUS.tsv", "root=src/main/java", "buildDir=out");
         assertEquals(Optional.of(Path.of("target/recipes/LST_CENSUS.tsv")), options.census());
         assertTrue(options.root().isAbsolute());
         assertTrue(options.root().endsWith(Path.of("src", "main", "java")));
+        assertEquals(Path.of("out").toAbsolutePath().normalize(), options.buildDir());
     }
 
     @Test
-    void anUnknownKeyOrAMissingValueFailsInsteadOfDroppingTheCensus() {
+    void aPathThatJavacSplitAtItsSpacesIsJoinedBack() {
+        PluginOptions options = parse("census=" + SPACED + " root=" + SPACED.getParent());
+        assertEquals(Optional.of(SPACED), options.census());
+        assertEquals(SPACED.getParent(), options.root());
+    }
+
+    @Test
+    void quotedValuesAndFileUrisAreRead() {
+        assertEquals(Optional.of(SPACED), parse("census=\"" + SPACED + "\"").census());
+        assertEquals(Optional.of(SPACED), parse("census='" + SPACED + "'").census());
+        assertEquals(Optional.of(SPACED), parse("census=" + SPACED.toUri()).census());
+        assertEquals(
+                SPACED.getParent(), parse("root=" + SPACED.getParent().toUri()).root());
+    }
+
+    @Test
+    void anUnknownKeyAMissingValueOrAnEmptyPathIsRejectedWithItsReason() {
         assertThrows(IllegalArgumentException.class, () -> PluginOptions.parse("cencus=x.tsv"));
         assertThrows(IllegalArgumentException.class, () -> PluginOptions.parse("census"));
+        assertThrows(IllegalArgumentException.class, () -> PluginOptions.parse("census="));
+        assertThrows(IllegalArgumentException.class, () -> PluginOptions.parse("census=\"\""));
     }
 }

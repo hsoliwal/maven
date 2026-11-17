@@ -22,7 +22,6 @@ import javax.tools.JavaFileObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +34,6 @@ import com.sun.source.util.JavacTask;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
 import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.Options;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.FileAttributes;
 import org.openrewrite.internal.EncodingDetectingInputStream;
@@ -52,12 +50,17 @@ import org.openrewrite.java.tree.Space;
  * parsed, and the tree, end positions, doc comments and symbols are javac's.
  *
  * <p>The conversion is OpenRewrite's own {@link ReloadableJava21ParserVisitor} (rewrite-java-21, Apache-2.0), the
- * class rewrite's {@code Java21Parser} runs after its private javac; here it runs on the build's javac instead. One
- * instance holds one {@link JavaTypeCache} and serves one compilation.
+ * class rewrite's {@code Java21Parser} runs after its private javac; here it runs on the build's javac instead, and
+ * {@link FoldedStrings} then splits the string chains javac's parser folded. One instance holds one
+ * {@link JavaTypeCache} and serves one compilation. The tree's charset is the one javac decoded the file with
+ * ({@link CompileCharset}).
  */
 public final class CompilerTreeLst {
+    private static final String STRING = "java.lang.String";
+
     private final Context context;
-    private final JavaTypeFactory typeFactory = new DefaultJavaTypeFactory(new JavaTypeCache());
+    private final JavaTypeCache typeCache = new JavaTypeCache();
+    private final JavaTypeFactory typeFactory = new DefaultJavaTypeFactory(typeCache);
     private final ExecutionContext executionContext;
 
     /**
@@ -99,10 +102,19 @@ public final class CompilerTreeLst {
         JavaFileObject file = unit.getSourceFile();
         String text = file.getCharContent(true).toString();
         Optional<Path> path = SourcePaths.ofFile(file);
+        FoldedStrings.Result unfolded = FoldedStrings.unfold(
+                visit(unit, text, SourcePaths.relative(file, root), path), Optional.ofNullable(typeCache.get(STRING)));
         // J.CompilationUnit.withCharset is declared to return SourceFile
-        J.CompilationUnit lst = (J.CompilationUnit)
-                visit(unit, text, SourcePaths.relative(file, root), path).withCharset(compileCharset());
-        return new LstResult(lst, printsSource(lst, text, path), MethodCalls.count(lst));
+        J.CompilationUnit lst = (J.CompilationUnit) unfolded.lst().withCharset(CompileCharset.of(context));
+        boolean printEqual = unfolded.unsplit() == 0 && printsSource(lst, text, path);
+        return new LstResult(lst, printEqual, MethodCalls.count(lst), detail(unfolded.unsplit()));
+    }
+
+    private static String detail(int unsplit) {
+        return unsplit == 0
+                ? ""
+                : unsplit + " string chain(s) folded by javac left as one literal (longer than "
+                        + FoldedStrings.MAX_LITERALS + " literals, escaped surrogates, or unreadable)";
     }
 
     private J.CompilationUnit visit(JCCompilationUnit unit, String text, Path sourcePath, Optional<Path> path) {
@@ -113,11 +125,6 @@ public final class CompilerTreeLst {
         ReloadableJava21ParserVisitor visitor = new ReloadableJava21ParserVisitor(
                 sourcePath, attributes, source, List.of(), typeFactory, executionContext, context);
         return (J.CompilationUnit) visitor.scan(unit, Space.EMPTY);
-    }
-
-    private Charset compileCharset() {
-        String encoding = Options.instance(context).get("-encoding");
-        return encoding == null ? Charset.defaultCharset() : Charset.forName(encoding);
     }
 
     private static boolean printsSource(J.CompilationUnit lst, String text, Optional<Path> path) throws IOException {

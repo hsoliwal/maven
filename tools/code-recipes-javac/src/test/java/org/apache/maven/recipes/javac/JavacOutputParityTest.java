@@ -61,7 +61,13 @@ class JavacOutputParityTest {
                                 Fixtures.module(),
                                 Fixtures.generated(),
                                 Fixtures.crossFileSuperclass(),
-                                Fixtures.rewrite8890CommentDefect()),
+                                Fixtures.rewrite8890CommentDefect(),
+                                FoldingFixtures.surrogates(),
+                                EdgeFixtures.spaced(),
+                                EdgeFixtures.generatedSourcesAncestor()),
+                        FoldingFixtures.stress(),
+                        EdgeFixtures.encodings(),
+                        EdgeFixtures.rewrite8890Defects(),
                         Fixtures.failing())
                 .flatMap(List::stream);
     }
@@ -69,9 +75,10 @@ class JavacOutputParityTest {
     private static void assertUnchanged(Fixture fixture, Javac.Mode mode) throws IOException {
         Javac.Compilation plain = Javac.compile("javac-parity", fixture, Javac.Mode.NONE, CompilerTreeLstTest.BYFILE);
         Javac.Compilation with = Javac.compile("javac-parity", fixture, mode, CompilerTreeLstTest.BYFILE);
-        assertEquals(plain.success(), with.success());
+        assertEquals(plain.success(), with.success(), with::output);
         assertEquals(plain.diagnostics(), with.diagnostics());
         assertEquals(plain.classes(), with.classes());
+        assertEquals(plain.output(), with.output());
         boolean failing = Fixtures.failing().stream().anyMatch(f -> f.name().equals(fixture.name()));
         assertEquals(!failing, plain.success(), () -> String.join("\n", plain.diagnostics()));
     }

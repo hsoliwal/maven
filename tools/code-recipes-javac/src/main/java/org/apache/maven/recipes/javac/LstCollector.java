@@ -19,7 +19,6 @@
 package org.apache.maven.recipes.javac;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -49,7 +48,8 @@ import org.openrewrite.InMemoryExecutionContext;
  * drops every tree when the compile had errors and writes the census.
  *
  * <p>It never reports a diagnostic and never calls {@code JavaCompiler.errorCount()}, which with {@code -Werror}
- * would itself log an error; it reads {@link Log#nerrors}.
+ * would itself log an error; it reads {@link Log#nerrors}. It never throws into javac: a failure of its own stops it
+ * for the rest of the compile with one {@link Notices notice}, and a census that cannot be written is a notice too.
  */
 public final class LstCollector implements TaskListener {
     private static final String AT_ANALYZE = "ANALYZE";
@@ -61,6 +61,7 @@ public final class LstCollector implements TaskListener {
     private final CompilerTreeLst bridge;
     private final Map<String, FileState> files = new TreeMap<>();
     private final Map<CompilationUnitTree, FileState> byUnit = new IdentityHashMap<>();
+    private boolean stopped;
 
     LstCollector(Context context, PluginOptions options) {
         this.context = context;
@@ -97,12 +98,27 @@ public final class LstCollector implements TaskListener {
 
     @Override
     public void finished(TaskEvent event) {
-        switch (event.getKind()) {
-            case PARSE -> parsed((JCCompilationUnit) event.getCompilationUnit());
-            case ANALYZE -> analyzed(event);
-            case COMPILATION -> compilationFinished();
-            default -> {}
+        if (stopped) {
+            return;
         }
+        try {
+            switch (event.getKind()) {
+                case PARSE -> parsed((JCCompilationUnit) event.getCompilationUnit());
+                case ANALYZE -> analyzed(event);
+                case COMPILATION -> compilationFinished();
+                default -> {}
+            }
+        } catch (RuntimeException | LinkageError | StackOverflowError e) {
+            stop(e);
+        }
+    }
+
+    /** Drops every tree and the census for the rest of the compile, after a failure of the plugin's own. */
+    private void stop(Throwable problem) {
+        stopped = true;
+        files.clear();
+        byUnit.clear();
+        Notices.print(context, "stopped, no trees and no census for this compile: " + Notices.describe(problem));
     }
 
     private void parsed(JCCompilationUnit unit) {
@@ -123,7 +139,7 @@ public final class LstCollector implements TaskListener {
         byUnit.remove(unit);
         if (hasErrors()) {
             state.skip(LstStatus.COMPILE_ERRORS);
-        } else if (SourcePaths.isGenerated(unit.getSourceFile())) {
+        } else if (SourcePaths.isUnder(unit.getSourceFile(), options.buildDir())) {
             state.skip(LstStatus.GENERATED);
         } else if (unit.getModuleDecl() != null) {
             state.skip(LstStatus.MODULE_INFO);
@@ -184,8 +200,8 @@ public final class LstCollector implements TaskListener {
     private void writeCensus(Path path) {
         try {
             LstCensus.write(path, census());
-        } catch (IOException e) {
-            throw new UncheckedIOException(MavenRecipesPlugin.NAME + ": cannot write the census " + path, e);
+        } catch (IOException | RuntimeException e) {
+            Notices.print(context, "census not written to " + path + ": " + Notices.describe(e));
         }
     }
 }

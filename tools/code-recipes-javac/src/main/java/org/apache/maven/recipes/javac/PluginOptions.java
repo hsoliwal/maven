@@ -18,47 +18,107 @@
  */
 package org.apache.maven.recipes.javac;
 
+import java.net.URI;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 /**
  * The options of {@code -Xplugin:MavenRecipes}.
  *
+ * <p>javac splits the text after the plugin name on runs of whitespace and passes the pieces, without reading quotes
+ * ({@code Arguments.getPluginOpts}, JDK 21). A piece that does not start with a known {@code key=} therefore continues
+ * the value before it and is joined back with one space, so a path with single spaces arrives whole. A value may be
+ * quoted ({@code "..."} or {@code '...'}) or a {@code file:} URI; the URI form also carries runs of spaces or tabs.
+ *
  * @param census where {@code LST_CENSUS.tsv} is written when the compilation finishes, if anywhere
  * @param root the directory source paths are made relative to
+ * @param buildDir the build directory: sources under it are generated and get no tree, as rewrite-maven-plugin skips
+ *     every source root under the project's build directory
  */
-public record PluginOptions(Optional<Path> census, Path root) {
+public record PluginOptions(Optional<Path> census, Path root, Path buildDir) {
     private static final String CENSUS = "census";
     private static final String ROOT = "root";
+    private static final String BUILD_DIR = "buildDir";
+    private static final Pattern KEY =
+            Pattern.compile("^(" + CENSUS + "|" + ROOT + "|" + BUILD_DIR + ")=.*", Pattern.DOTALL);
+    private static final String DEFAULT_BUILD_DIR = "target";
 
     /**
-     * Reads {@code key=value} arguments; an unknown key or an argument without {@code =} fails, so a typo does not
-     * silently drop the census.
+     * Reads {@code key=value} arguments.
      *
      * @param args the arguments javac passes to {@code Plugin.init}
      * @return the options
+     * @throws IllegalArgumentException for an unknown key, an argument without {@code =}, an empty value or a value
+     *     that is no path, so a typo does not silently drop the census; the plugin turns it into a notice
      */
     public static PluginOptions parse(String... args) {
-        Map<String, String> values = Arrays.stream(args)
-                .filter(arg -> !arg.isBlank())
-                .map(PluginOptions::split)
-                .collect(Collectors.toMap(pair -> pair[0], pair -> pair[1], (first, second) -> second));
-        Path root = Path.of(values.getOrDefault(ROOT, System.getProperty("user.dir")))
-                .toAbsolutePath()
-                .normalize();
-        return new PluginOptions(Optional.ofNullable(values.get(CENSUS)).map(Path::of), root);
+        Map<String, String> values = values(joined(args));
+        Path root = path(ROOT, values.getOrDefault(ROOT, System.getProperty("user.dir")));
+        Path buildDir = Optional.ofNullable(values.get(BUILD_DIR))
+                .map(value -> path(BUILD_DIR, value))
+                .orElse(root.resolve(DEFAULT_BUILD_DIR));
+        return new PluginOptions(
+                Optional.ofNullable(values.get(CENSUS)).map(PluginOptions::censusPath), root, buildDir);
     }
 
-    private static String[] split(String arg) {
-        int equals = arg.indexOf('=');
-        String key = equals < 0 ? arg : arg.substring(0, equals);
-        if (equals < 0 || !(CENSUS.equals(key) || ROOT.equals(key))) {
-            throw new IllegalArgumentException(
-                    MavenRecipesPlugin.NAME + ": unknown option '" + arg + "' (expected census=<file> or root=<dir>)");
+    /** The arguments with every piece that starts no option appended to the one before it. */
+    private static List<String> joined(String... args) {
+        List<String> options = new ArrayList<>();
+        Arrays.stream(args).filter(arg -> !arg.isBlank()).forEach(arg -> {
+            if (KEY.matcher(arg).matches() || options.isEmpty()) {
+                options.add(arg);
+            } else {
+                options.set(options.size() - 1, options.get(options.size() - 1) + " " + arg);
+            }
+        });
+        return options;
+    }
+
+    private static Map<String, String> values(List<String> options) {
+        Map<String, String> values = new LinkedHashMap<>();
+        options.forEach(option -> {
+            if (!KEY.matcher(option).matches()) {
+                throw new IllegalArgumentException("unknown option '" + option + "' (expected " + CENSUS + "=<file>, "
+                        + ROOT + "=<dir> or " + BUILD_DIR + "=<dir>)");
+            }
+            int equals = option.indexOf('=');
+            values.put(option.substring(0, equals), unquoted(option.substring(equals + 1)));
+        });
+        return values;
+    }
+
+    private static String unquoted(String value) {
+        boolean quoted = value.length() >= 2
+                && (value.charAt(0) == '"' || value.charAt(0) == '\'')
+                && value.charAt(value.length() - 1) == value.charAt(0);
+        return quoted ? value.substring(1, value.length() - 1) : value;
+    }
+
+    private static Path censusPath(String value) {
+        return value.startsWith("file:") ? path(CENSUS, value) : Path.of(nonEmpty(CENSUS, value));
+    }
+
+    /** An absolute, normalized path from a path or a {@code file:} URI. */
+    private static Path path(String key, String value) {
+        try {
+            Path path = value.startsWith("file:") ? Path.of(URI.create(value)) : Path.of(nonEmpty(key, value));
+            return path.toAbsolutePath().normalize();
+        } catch (IllegalArgumentException | FileSystemNotFoundException e) {
+            throw new IllegalArgumentException(key + "='" + value + "' is no path: " + e.getMessage(), e);
         }
-        return new String[] {key, arg.substring(equals + 1)};
+    }
+
+    private static String nonEmpty(String key, String value) {
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(key + "= needs a path");
+        }
+        return value;
     }
 }
