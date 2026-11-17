@@ -46,6 +46,10 @@ public final class CodeAgentTest {
                 "--atom-pattern-manifest", "synthetic-checkpoints.tsv",
                 "--recipe-catalog", "approved-recipes.tsv"));
 
+        refused(plus(options, "--require-machine-evidence", "true"), project,
+                "strict atom-pattern policy refuses a missing machine fingerprint ledger");
+        refused(plus(options, "--require-machine-evidence", "invalid"), project,
+                "strict atom-pattern option must be a literal boolean");
         require(run(options) == 0, "deterministic catalog examination without a model");
         Map<?, ?> report = result(project);
         require("awaiting-review".equals(report.get("status")), "no AI doesn't invent a choice");

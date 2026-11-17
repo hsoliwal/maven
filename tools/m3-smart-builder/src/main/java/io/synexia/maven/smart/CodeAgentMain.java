@@ -17,7 +17,8 @@ import java.util.Set;
 /** Source-bound ChromeLLM recipe nomination, never recipe execution or semantic proof. */
 public final class CodeAgentMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
-            "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence", "--candidate-file",
+            "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence",
+            "--require-machine-evidence", "--candidate-file",
             "--backend", "--chrome-llm-jar", "--chrome-binary", "--chrome-profile", "--headless",
             "--allow-download", "--llama-bin", "--jni-lib", "--model", "--timeout-seconds",
             "--bridge-url", "--bridge-token-file");
@@ -41,6 +42,11 @@ public final class CodeAgentMain {
             if (destination.resolve("m3-smart").startsWith(source))
                 throw new IOException("report must stay outside selected sources");
             directory = SafeBuildOutput.directory(base, destination);
+            // Strict mode is an explicit, backward-compatible admission gate. The
+            // producer ledger is source-bound but is not semantic or contract proof.
+            if (bool(options, "--require-machine-evidence", false)
+                    && !options.containsKey("--machine-evidence"))
+                throw new IOException("machine fingerprint evidence required by policy");
 
             // Evidence is revalidated against current bytes before any model can start.
             String preparation = CanonicalPreparationEvidence.inspect(base, source,

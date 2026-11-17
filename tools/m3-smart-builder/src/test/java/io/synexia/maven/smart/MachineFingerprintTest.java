@@ -52,15 +52,29 @@ public final class MachineFingerprintTest {
         List<String> nomination = List.of("--project-dir", original.base.toString(), "--build-dir", "target",
                 "--source-root", "src", "--preparation-report", "receipts/preparation.json",
                 "--atom-pattern-manifest", "synthetic-checkpoints.tsv", "--recipe-catalog", "recipes.tsv",
-                "--machine-evidence", "target/m3-smart/machine-evidence.tsv");
+                "--machine-evidence", "target/m3-smart/machine-evidence.tsv",
+                "--require-machine-evidence", "true");
         require(CodeAgentMain.run(nomination.toArray(String[]::new),
                 new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream())) == 0,
-                "real JDK AST fingerprint ledger feeds the existing machine-oriented Maven coding agent");
+                "strict coding agent admits a freshly generated, source-bound Java 21 AST ledger");
         Map<?, ?> nominationReport = object(TinyJson.parse(Files.readString(
                 original.base.resolve("target/m3-smart/code-agent.json"))));
         require(checked.inputSha256().equals(object(nominationReport.get("machineEvidenceFacts")).get("inputSha256"))
                         && MachineRulebook.load().sha256().equals(nominationReport.get("machineRulebookSha256")),
                 "generated AST facts and law packet are bound into the model candidate evidence");
+        List<String> missingLedger = new ArrayList<>(nomination);
+        int ledgerOption = missingLedger.indexOf("--machine-evidence");
+        missingLedger.remove(ledgerOption + 1);
+        missingLedger.remove(ledgerOption);
+        require(CodeAgentMain.run(missingLedger.toArray(String[]::new),
+                new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream())) == 2,
+                "strict nomination refuses to proceed when the machine ledger is omitted");
+        require("refused".equals(object(TinyJson.parse(Files.readString(
+                original.base.resolve("target/m3-smart/code-agent.json")))).get("status")),
+                "refusal replaces any previous successful nomination receipt");
+        require(CodeAgentMain.run(nomination.toArray(String[]::new),
+                new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream())) == 0,
+                "reinstating the unchanged ledger deterministically recovers the strict nomination");
 
         Fixture patterns = fixture("class Example { int first(int n) { return n + 1; } "
                 + "int second(int n) { return n + 1; } int third(int n) { return n + 1; } }\n",
