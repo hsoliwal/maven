@@ -19,11 +19,14 @@
 package org.apache.maven.plugins.clustering.lsp;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
 
@@ -43,8 +46,8 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
  *   <li>pylsp in a virtual environment ({@code <home>/Scripts/pylsp.exe} or {@code <home>/bin/pylsp});</li>
  *   <li>the LemMinX uber jar ({@code org.eclipse.lemminx-*-uber.jar}, run with this JVM's java) or a native
  *       {@code lemminx} binary;</li>
- *   <li>a server jar run with this JVM's java: groovy-language-server's {@code groovy-language-server*-all.jar}, the
- *       Che4z COBOL Language Support {@code server.jar};</li>
+ *   <li>a server jar run with this JVM's java: groovy-language-server's {@code groovy-language-server*-all.jar} (the
+ *       newest by version number), the Che4z COBOL Language Support {@code server.jar};</li>
  *   <li>a launcher with its arguments ({@code phpactor language-server}, {@code elp server}): a native executable in
  *       {@code <home>/bin}, {@code <home>} or on the PATH, and on Windows else a {@code .cmd} or {@code .bat} launcher
  *       there, run with {@code cmd.exe /c};</li>
@@ -55,6 +58,9 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
 final class ServerDetection {
     private static final Pattern LEMMINX_JAR = Pattern.compile("org\\.eclipse\\.lemminx.*uber\\.jar");
     private static final Pattern GROOVY_JAR = Pattern.compile("groovy-language-server.*-all\\.jar");
+    /** The empty boundaries between a run of digits and other text. */
+    private static final Pattern DIGIT_RUN_EDGE = Pattern.compile("(?<=\\d)(?=\\D)|(?<=\\D)(?=\\d)");
+    private static final Pattern DIGITS = Pattern.compile("\\d+");
     private static final List<String> WINDOWS_LAUNCHERS = List.of(".cmd", ".bat");
     private static final String STDIO = "--stdio";
 
@@ -124,13 +130,29 @@ final class ServerDetection {
         return executable(lookup, homes, "lemminx");
     }
 
-    /** groovy-language-server: its all-in-one jar in a home directory (run with this JVM), else its launcher. */
+    /** groovy-language-server: its newest all-in-one jar in a home directory (run with this JVM), else its launcher. */
     static List<String> groovy(Lookup lookup, List<Path> homes) throws Unresolved {
         Optional<Path> jar = homes.stream().flatMap(h -> Stream.of(h, h.resolve("build").resolve("libs"), h.resolve("lib")))
                 .flatMap(ServerDetection::files).filter(f -> GROOVY_JAR.matcher(f.getFileName().toString()).matches())
-                .sorted().reduce((a, b) -> b);
+                .max(Comparator.comparing(f -> f.getFileName().toString(), ServerDetection::compareVersions));
         if (jar.isPresent()) return List.of(lookup.runningJava().toString(), "-jar", jar.get().toString());
         return launcher(lookup, homes, "groovy-language-server", List.of());
+    }
+
+    /**
+     * File names in version order: runs of digits compare as numbers, so {@code 0.10} comes after {@code 0.9}; the
+     * text between them compares as text; names equal so far compare as text.
+     */
+    static int compareVersions(String a, String b) {
+        String[] x = DIGIT_RUN_EDGE.split(a);
+        String[] y = DIGIT_RUN_EDGE.split(b);
+        return IntStream.range(0, Math.min(x.length, y.length)).map(i -> comparePart(x[i], y[i])).filter(c -> c != 0)
+                .findFirst().orElseGet(() -> a.compareTo(b));
+    }
+
+    private static int comparePart(String a, String b) {
+        boolean numbers = DIGITS.matcher(a).matches() && DIGITS.matcher(b).matches();
+        return numbers ? new BigInteger(a).compareTo(new BigInteger(b)) : a.compareTo(b);
     }
 
     /** kotlin-language-server (the launcher in the distribution's {@code bin}), else JetBrains' kotlin-lsp. */

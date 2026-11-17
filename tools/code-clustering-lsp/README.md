@@ -106,7 +106,7 @@ No `compile_commands.json` is needed for document symbols.
 
 | | |
 |---|---|
-| Profile | `wtp` (aliases `xml`, `html`, `css`, `json`, `web`) |
+| Profile | `wtp` (aliases `xml`, `html`, `css`, `json`, `web`, `lemminx`). Every alias selects the whole profile: `lemminx` (LemMinX, EPL-2.0) also starts the HTML, CSS and JSON servers when they are found |
 | Servers | LemMinX (id `wtp.xml`: `xml xsd xsl`); the vscode-langservers-extracted HTML, CSS and JSON servers (ids `wtp.html`: `html htm`; `wtp.css`: `css scss less`; `wtp.json`: `json jsonc`) |
 | Install | The LemMinX uber jar `org.eclipse.lemminx-<version>-uber.jar` from repo.eclipse.org (lemminx-releases), or a native `lemminx` binary; `npm install --prefix <dir> vscode-langservers-extracted` |
 | Found by | LemMinX: the uber jar in `clustering.lsp.wtp.xml.home` / `WTP_XML_HOME` (run with the Java that runs Maven), else `lemminx` on the PATH. The others: an npm prefix in `clustering.lsp.wtp.<language>.home`, else `clustering.lsp.wtp.home` / `WTP_HOME` (run with `node` from the PATH), else `vscode-<language>-language-server` on the PATH (on Windows, the script next to its `.cmd` launcher, run with `node`) |
@@ -179,7 +179,7 @@ requests wait up to 120 s by default. Its `File` and `Namespace` symbols are not
 | Profile | `groovy` (alias `groovy-eclipse`); server id `groovy`; extensions `groovy gvy gy gsh` |
 | Server | groovy-language-server (Apache-2.0) |
 | Install | Build it (`./gradlew build` gives `build/libs/groovy-language-server-all.jar`), or install it with Mason, which adds a `groovy-language-server` launcher |
-| Found by | the newest `groovy-language-server*-all.jar` in `clustering.lsp.groovy.home` / `GROOVY_HOME`, its `build/libs` or its `lib` (run with the Java that runs Maven), else the `groovy-language-server` launcher (see [Launchers](#launchers)) |
+| Found by | the newest `groovy-language-server*-all.jar` (by version number: `0.10` after `0.9`) in `clustering.lsp.groovy.home` / `GROOVY_HOME`, its `build/libs` or its `lib` (run with the Java that runs Maven), else the `groovy-language-server` launcher (see [Launchers](#launchers)) |
 | Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src/main/groovy -Dclustering.lsp.profiles=groovy -Dclustering.lsp.groovy.home=/opt/groovy-language-server` |
 
 Requests wait up to 120 s by default: the server starts a JVM and scans the class path.
@@ -400,7 +400,8 @@ before `GOBIN`, `GOBIN` before `GOPATH`, any `GOPATH` entry, `~/go/bin`), typesc
 the launcher on the PATH), csharp-ls (a `--tool-path` home, `~/.dotnet/tools`, `DOTNET_CLI_HOME`) and sourcekit-lsp
 (a toolchain home before the PATH); the aliases `ts`, `js`, `javascript` and `cs`; and the languageIds of the new
 extensions, in profiles and in explicit entries. For the Groovy, Kotlin, PHP, COBOL and Erlang profiles it checks
-the aliases and languageIds, the newest groovy-language-server jar in a home before the PATH, the Che4z
+the aliases and languageIds, the newest groovy-language-server jar in a home before the PATH (`0.10` after `0.9.1`
+and `0.9`), the Che4z
 `server.jar` of an unpacked VSIX, kotlin-language-server before kotlin-lsp (whatever the PATH order), a `.bat`
 launcher run with `cmd.exe /c` on Windows and never elsewhere, phpactor with `language-server` before intelephense
 from an npm prefix, and `elp server` before erlang_ls.
