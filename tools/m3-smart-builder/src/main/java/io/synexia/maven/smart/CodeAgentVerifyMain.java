@@ -106,6 +106,15 @@ public final class CodeAgentVerifyMain {
                     "-Drewrite.failOnInvalidActiveRecipes=true", REWRITE_PLUGIN + "dryRun"),
                     "dry-run.log", timeout);
             if (!initial.equals(snapshot(stage))) throw new IOException("dry run changed staged project inputs");
+            Path patch = stage.resolve("target/rewrite/rewrite.patch");
+            String patchHash = null;
+            long patchBytes = 0;
+            if (Files.exists(patch, LinkOption.NOFOLLOW_LINKS)) {
+                patchBytes = Files.size(patch);
+                if (!Files.isRegularFile(patch, LinkOption.NOFOLLOW_LINKS) || patchBytes > 16_777_216L)
+                    throw new IOException("invalid OpenRewrite preview patch");
+                patchHash = Hashes.sha256(patch);
+            }
             attempted = true;
             List<String> recipeArgs = List.of("-Drewrite.activeRecipes=" + entry.recipe(),
                     "-Drewrite.recipeArtifactCoordinates=" + coordinate,
@@ -123,6 +132,8 @@ public final class CodeAgentVerifyMain {
             int changes = 0;
             for (SourceInventory.FileFact file : stageBefore.files())
                 if (!file.sha256().equals(afterHashes.get(file.path()))) changes++;
+            if (changes > 0 && (patchHash == null || patchBytes == 0))
+                throw new IOException("OpenRewrite dry-run preview missing for applied Java changes");
             runMaven(stage, runner, repository, List.of("verify"), "verify.log", timeout);
             if (!rewritten.equals(snapshot(stage))) throw new IOException("verification modified staged inputs");
             runMaven(stage, runner, repository, recipeArgs, "fixed-point.log", timeout);
@@ -145,6 +156,7 @@ public final class CodeAgentVerifyMain {
                     + ",\"beforeSourceDigest\":" + TinyJson.quote(stageBefore.summary().digest())
                     + ",\"afterSourceDigest\":" + TinyJson.quote(stageAfter.summary().digest())
                     + ",\"changedJavaFiles\":" + changes
+                    + ",\"dryRunPatchSha256\":" + (patchHash == null ? "null" : TinyJson.quote(patchHash))
                     + ",\"recipeExecutionAttempted\":true,\"mavenVerifyPassed\":true,\"fixedPointPassed\":true,"
                     + "\"sourceMutationAuthority\":false,\"semanticProofAuthenticated\":false,"
                     + "\"verificationAuthenticated\":false,\"promoted\":false}\n";

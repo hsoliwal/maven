@@ -72,7 +72,7 @@ public final class CodeAgentVerifyTest {
         String fake = "#!/bin/sh\nset -eu\nmkdir -p target/m3-code-agent\n"
                 + "printf '%s\\n' \"$*\" >> target/m3-code-agent/calls\n"
                 + "case \"$*\" in\n"
-                + "  *:dryRun) exit 0 ;;\n"
+                + "  *:dryRun) mkdir -p target/rewrite; printf 'synthetic patch\\n' > target/rewrite/rewrite.patch; exit 0 ;;\n"
                 + "  *:run) if [ ! -f target/m3-code-agent/applied ]; then\n"
                 + "    printf '//synthetic recipe edit\\n' >> src/Example.java\n"
                 + "    : > target/m3-code-agent/applied\n"
@@ -118,6 +118,8 @@ public final class CodeAgentVerifyTest {
                         && Boolean.TRUE.equals(verified.get("mavenVerifyPassed")), "Maven verify and repeat applied");
         require(Boolean.FALSE.equals(verified.get("semanticProofAuthenticated"))
                         && Boolean.FALSE.equals(verified.get("promoted")), "offline runner cannot prove behavior or promote");
+        require(verified.get("dryRunPatchSha256") instanceof String,
+                "staged OpenRewrite dry run emits a content-addressed preview patch");
         require(initial.equals(Files.readString(file)), "original Java source remains unchanged");
         Path stage = project.resolve((String) verified.get("stageRelativePath"));
         require(Files.readString(stage.resolve("src/Example.java")).contains("synthetic recipe edit"),
@@ -128,9 +130,12 @@ public final class CodeAgentVerifyTest {
                         && calls.contains("-Drewrite.recipeArtifactCoordinates=com.synexia:recipes:1.0.0")
                         && calls.contains("-o -B -ntp") && calls.contains(" verify"),
                 "only pinned offline Rewrite and Maven verification goals were invoked");
-        Files.writeString(runner, fake.replace("*:dryRun) exit 0 ;;",
+        Files.writeString(runner, fake.replace("*:dryRun) mkdir -p target/rewrite; printf 'synthetic patch\\n' > target/rewrite/rewrite.patch; exit 0 ;;",
                 "*:dryRun) printf '//unexpected dry run mutation\\n' >> src/Example.java; exit 0 ;;"));
         refused(command, project, "a dry-run source mutation fails closed");
+        Files.writeString(runner, fake.replace("*:dryRun) mkdir -p target/rewrite; printf 'synthetic patch\\n' > target/rewrite/rewrite.patch; exit 0 ;;",
+                "*:dryRun) exit 0 ;;"));
+        refused(command, project, "a source-changing run requires its independent dry-run preview patch");
         Files.writeString(runner, fake.replace("*' verify') exit 0 ;;", "*' verify') exit 17 ;;"));
         refused(command, project, "Maven verification failure cannot promote a recipe");
         require(Boolean.TRUE.equals(verification(project).get("recipeExecutionAttempted")),

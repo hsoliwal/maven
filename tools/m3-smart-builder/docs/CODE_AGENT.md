@@ -157,11 +157,16 @@ The goal makes a bounded, symlink-free project copy inside
 `target/m3-smart/code-agent-stage-*`, omitting `.git` and previous `target`
 trees. It then executes, in order:
 
-1. `rewrite:dryRun`; reject any project input changes during dry run.
+1. `rewrite:dryRun`; reject any project input changes during dry run, and hash
+   the OpenRewrite preview at `target/rewrite/rewrite.patch` when present.
 2. `rewrite:run`; require Java-only in-scope edits, with no file additions or removals.
 3. `mvn -o verify`; require successful Maven verification and unchanged staged inputs.
 4. `rewrite:run` again; require a byte-identical fixed point.
 5. Revalidate original source/preparation/atom/optional machine receipts and the catalogue.
+
+If Java sources changed but the expected nonempty OpenRewrite dry-run patch was
+not produced, verification fails. Its SHA-256 is recorded for independent
+diff review before any canon promotion.
 
 It writes a fixed `target/m3-smart/code-agent-verify.json` receipt with stage
 path, input/output source digests, changed Java file count, run status and
