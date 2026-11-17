@@ -443,9 +443,11 @@ public final class M3ResourcesExecutionListener extends AbstractEventSpy impleme
         }
         Path path = base.resolve(value).toAbsolutePath();
         // Inspect lexical ancestors before normalization can erase a link/.. pair.
-        rejectLinks(path);
+        boolean everyAncestorExists = rejectLinks(path);
         Path normalized = path.normalize();
-        if (!path.equals(normalized) && !Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+        // Windows resolves "missing\..\x" lexically, so Files.exists(path) can be true for a missing ancestor;
+        // the element-by-element walk is the platform-independent answer.
+        if (!path.equals(normalized) && !everyAncestorExists) {
             throw new IOException("noncanonical missing resource path");
         }
         return normalized;
@@ -464,7 +466,8 @@ public final class M3ResourcesExecutionListener extends AbstractEventSpy impleme
         }
     }
 
-    private static void rejectLinks(Path path) throws IOException {
+    /** Rejects a symbolic link on the lexical path; returns whether every element of the lexical path exists. */
+    private static boolean rejectLinks(Path path) throws IOException {
         Path current = path.getRoot();
         for (Path element : path) {
             current = current.resolve(element);
@@ -475,9 +478,10 @@ public final class M3ResourcesExecutionListener extends AbstractEventSpy impleme
                     throw new IOException("resource observations do not follow symbolic links");
                 }
             } catch (NoSuchFileException missing) {
-                return;
+                return false;
             }
         }
+        return true;
     }
 
     private static List<FileState> observe(List<ResourceRoot> resources, Path output) throws IOException {
