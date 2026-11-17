@@ -20,6 +20,7 @@ package org.apache.maven.plugin.version.internal;
 
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import java.io.IOException;
@@ -80,14 +81,21 @@ public class DefaultPluginVersionResolver implements PluginVersionResolver {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final RepositorySystem repositorySystem;
     private final MetadataReader metadataReader;
-    private final MavenPluginManager pluginManager;
+    /**
+     * Looked up when a candidate version is checked, not when this resolver is created:
+     * {@code DefaultMavenPluginManager} needs a {@link PluginVersionResolver} itself, and a constructor cycle between
+     * the two made Guice fail ({@code CanNotProxyClass}) whenever the plugin manager was created first, as core
+     * extensions such as Tycho 4.0.x do.
+     */
+    private final Provider<MavenPluginManager> pluginManager;
+
     private final VersionScheme versionScheme;
 
     @Inject
     public DefaultPluginVersionResolver(
             RepositorySystem repositorySystem,
             MetadataReader metadataReader,
-            MavenPluginManager pluginManager,
+            Provider<MavenPluginManager> pluginManager,
             VersionScheme versionScheme) {
         this.repositorySystem = repositorySystem;
         this.metadataReader = metadataReader;
@@ -345,8 +353,9 @@ public class DefaultPluginVersionResolver implements PluginVersionResolver {
         PluginDescriptor pluginDescriptor;
 
         try {
-            pluginDescriptor = pluginManager.getPluginDescriptor(
-                    plugin, request.getRepositories(), request.getRepositorySession());
+            pluginDescriptor = pluginManager
+                    .get()
+                    .getPluginDescriptor(plugin, request.getRepositories(), request.getRepositorySession());
         } catch (PluginResolutionException e) {
             logger.debug("Ignoring unresolvable plugin version {}", version, e);
             return false;
@@ -356,7 +365,7 @@ public class DefaultPluginVersionResolver implements PluginVersionResolver {
         }
 
         try {
-            pluginManager.checkPrerequisites(pluginDescriptor);
+            pluginManager.get().checkPrerequisites(pluginDescriptor);
         } catch (PluginIncompatibleException e) {
             if (logger.isDebugEnabled()) {
                 logger.warn("Ignoring incompatible plugin version {}:", version, e);
