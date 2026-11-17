@@ -699,6 +699,22 @@ under the License.
       <build>
         <plugins>
           <plugin>
+            <!-- LICENSE.vm lists the third-party jars of repository/ with separate license terms and copies their
+                 license texts to target/licenses/repository, which boot-repository.xml ships in repository/. -->
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-remote-resources-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>process-resource-bundles</id>
+                <configuration>
+                  <properties>
+                    <bootRepository>true</bootRepository>
+                  </properties>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-assembly-plugin</artifactId>
             <executions>
