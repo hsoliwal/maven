@@ -151,6 +151,13 @@ public final class M3ToolProvidersContractTestMain {
                 ignored -> {});
         require(Files.isRegularFile(root.resolve("classes/Hello.class")), "provider run cannot be stamp-skipped");
         passed++;
+        Path generated = root.resolve("classes/Hello.class");
+        java.nio.file.attribute.FileTime oldTime = java.nio.file.attribute.FileTime.fromMillis(1);
+        Files.setLastModifiedTime(generated, oldTime);
+        TaskRunner.run(plan, root, "compile", false, Duration.ofSeconds(60), false, true, ignored -> {});
+        require(!oldTime.equals(Files.getLastModifiedTime(generated)),
+                "provider executes again even with unchanged inputs and present outputs");
+        passed++;
     }
 
     private static TaskManifest.Task task(String name, String tool, List<String> inputs, List<String> outputs) {
