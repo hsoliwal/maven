@@ -102,9 +102,12 @@ public final class TaskRunner {
             throw new IOException("polyglot workspace is not a directory: " + root);
         }
         List<TaskManifest.Task> tasks = plan.order(target);
-        ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
-                ? ModuleStateDb.open(root, stateBackend) : null;
-        List<String> performed = new ArrayList<>(tasks.size());
+        try (M3ModuleDbRunLock moduleLock = incremental && !dryRun && !"legacy".equals(stateBackend)
+                ? M3ModuleDbRunLock.acquire(root) : null) {
+            if (moduleLock != null) log.accept("M3DB module execution lock acquired");
+            ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
+                    ? ModuleStateDb.open(root, stateBackend) : null;
+            List<String> performed = new ArrayList<>(tasks.size());
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
                     + " prerequisites=" + task.prerequisites().size()
@@ -159,6 +162,9 @@ public final class TaskRunner {
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.directory(directory.toFile());
             processBuilder.inheritIO();
+            // Revoke the old task and all consumers before tool effects begin.
+            // Stale successful records cannot survive a failed or interrupted invocation.
+            if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
             final Process process;
             try {
                 process = processBuilder.start();
@@ -187,12 +193,27 @@ public final class TaskRunner {
                 }
             }
             if (stamp != null) {
-                if (moduleState == null) InputStamps.record(task, root, stamp);
-                else moduleState.record(task, stamp);
+                if (moduleState == null) {
+                    InputStamps.record(task, root, stamp);
+                } else {
+                    try {
+                        String after = moduleState.stamp(task);
+                        if (stamp.equals(after)) {
+                            moduleState.record(task, stamp);
+                        } else {
+                            log.accept("UNCACHED " + task.name() + " (module inputs changed during execution)");
+                        }
+                    } catch (IOException unstable) {
+                        // A successful original tool is not reclassified as failure by optional cache recording.
+                        // Its old success was already durably revoked before starting the process.
+                        log.accept("UNCACHED " + task.name() + " (module state publication unavailable)");
+                    }
+                }
             }
             performed.add(task.name());
         }
         return List.copyOf(performed);
+        }
     }
 
     /**
