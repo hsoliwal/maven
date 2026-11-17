@@ -98,6 +98,17 @@ public final class AtomBuilder {
     }
 
     /**
+     * A node whose LOGIC token the caller made already, as {@link #node}, {@link #literal} or {@link #name} (for a name
+     * the atom does not declare) would: {@code kind}, or {@code kind:text}. Lets a walk reuse one token in every atom
+     * that holds the node.
+     */
+    AtomBuilder token(String nodeKind, String logicToken) {
+        structure.add(nodeKind);
+        logic.add(logicToken);
+        return this;
+    }
+
+    /**
      * The atom's first and last source lines, 1-based. Lines are not part of any plane. Without this call both are 0
      * (unknown).
      */
@@ -107,9 +118,11 @@ public final class AtomBuilder {
         return this;
     }
 
+    /** The atom; LOGIC and SIMHASH hash the same UTF-8 bytes of the LOGIC tokens, encoded once. */
     public Atom build() {
+        byte[][] logicBytes = PlaneHash.utf8(logic);
         return new Atom(path, kind, symbol, logic.size(), PlaneHash.sha256(source.replace("\r\n", "\n")),
-                PlaneHash.sha256(String.join(" ", logic)), PlaneHash.sha256(String.join(" ", structure)),
-                PlaneHash.simhash(logic), line, endLine);
+                PlaneHash.sha256(logicBytes), PlaneHash.sha256(PlaneHash.utf8(structure)),
+                PlaneHash.simhash(logicBytes), line, endLine);
     }
 }

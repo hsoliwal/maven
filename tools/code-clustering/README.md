@@ -162,7 +162,10 @@ run of spaces or a tab becomes one space. A URI has no white space, so the core 
 `generated` as URIs. A `roots` value that is a URI names one root.
 
 - **When.** After PARSE, each compilation unit goes through the atom collection of the `cluster` scan
-  (`AtomPlanes.collect`, the same `Collector`, `PlaneTokens` and `AtomBuilder`). The tree is still the parser's at
+  (`AtomPlanes.collect`, the same `Collector`, `PlaneTokens` and `AtomBuilder`). `PlaneTokens` walks each
+  top-level type once, recording every node's LOGIC token and the node range of every type and method; the atoms
+  nested in it (its methods, nested types) replay their range instead of walking their subtree again, with the same
+  `AtomBuilder` calls, so the planes do not change. The tree is still the parser's at
   that point: javac adds default constructors and record members later, during ENTER, which would change the TYPE
   atoms. After ANALYZE, the methods declared `native` of each attributed class are recorded. When the compilation
   ends, the tables are written.
@@ -222,8 +225,21 @@ corpus (`--patch-module java.base=...`):
 | 21.0.9 | 355 | 13,015 | 4,515 ms | 5,703 ms | +1,188 ms (26.3%) | 4,809 ms | 6,051 ms |
 
 These are warm compilations (JIT-compiled javac), so the relative overhead is the upper end. The cost is the shared
-atom collection, which walks each method under its type atom and again as its own atom, plus the clustering of the
-merged table.
+atom collection plus the clustering of the merged table. The collection now walks each top-level type once and
+replays the nested atoms; LOGIC and SIMHASH hash the tokens' UTF-8 bytes, encoded once per atom, without joining
+them, and SimHash counts the 64 bit positions at once in bit-sliced counters. The hashing itself stays per atom: a
+type's planes cover its methods' tokens, renumbered for the type's declarations. The cluster tables of the old and
+new code are byte-identical (JDK 17.0.19 and 21.0.9; `java.util`, 12,313 atoms; this module's and the extension's
+sources; 36 Python files). Measured on 2026-11-17 on a heavily loaded machine (an idle-machine compile of the
+corpus took 4.4 s of CPU, here 13.6 to 14.0 s), JDK 17.0.19, 354 `java.util` files, 5 pairs, medians:
+
+| Code | CPU off | CPU on | Overhead | Wall off | Wall on |
+|---|---|---|---|---|---|
+| before (c761a2968) | 14,046 ms | 19,140 ms | +5,094 ms (36.3%) | 74,503 ms | 88,616 ms |
+| single walk | 13,609 ms | 17,234 ms | +3,625 ms (26.6%) | 58,145 ms | 63,892 ms |
+
+The collection alone (`AtomPlanes.collect` over the parsed units, 9 runs each, alternating) went from a median of
+1,171 ms to 812 ms of CPU.
 
 ## Build and test
 

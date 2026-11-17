@@ -148,6 +148,7 @@ public final class AtomPlanes {
         private final List<Atom> atoms;
         private final String text;
         private final List<String> owners = new ArrayList<>();
+        private final PlaneTokens tokens = new PlaneTokens();
 
         Collector(CompilationUnitTree unit, SourcePositions positions, String path, List<Atom> atoms) throws IOException {
             this.unit = unit;
@@ -177,7 +178,7 @@ public final class AtomPlanes {
             long end = positions.getEndPosition(unit, node);
             if (start < 0 || end <= start || end > text.length()) return;
             LineMap lines = unit.getLineMap();
-            atoms.add(PlaneTokens.atom(node, path, kind, symbol, text.substring((int) start, (int) end))
+            atoms.add(tokens.of(node, path, kind, symbol, text.substring((int) start, (int) end))
                     .lines((int) lines.getLineNumber(start), (int) lines.getLineNumber(end - 1)).build());
         }
     }
