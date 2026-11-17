@@ -7,16 +7,10 @@ package io.synexia.maven.polyglot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -24,8 +18,9 @@ import java.util.function.Consumer;
 /**
  * Sequential execution of a validated Ant/Make-like graph. Tasks invoke the
  * original compiler or build tool by argument vector, never through a shell.
- * Explicit incremental execution reuses successful task generations from the module
- * M3IndexDB after authenticating declared input, context and output content.
+ * There is deliberately no timestamp-only skipping or undeclared build cache; the opt-in incremental mode
+ * compares content stamps of declared inputs only, and the opt-in build cache ({@link BuildCache}) restores
+ * declared outputs under the same kind of stamp.
  */
 public final class TaskRunner {
     private TaskRunner() {}
@@ -58,10 +53,9 @@ public final class TaskRunner {
     }
 
     /**
-     * Opt-in incremental execution with one persistent M3DB file per module.
-     * Only ordinary deterministic tasks with complete declared inputs and outputs
-     * may reuse a success. Provider-owned, in-place and untracked dependency work
-     * always executes. Existing overloads retain their non-incremental default.
+     * Opt-in incremental execution: a task whose content stamp (its definition and the bytes of its declared
+     * inputs, see {@link InputStamps}) equals the one recorded at its last success, and whose declared outputs
+     * exist, is not started again. Declare an upstream task's outputs as inputs to have its changes re-run this one.
      */
     public static List<String> run(
             TaskManifest plan,
@@ -72,6 +66,67 @@ public final class TaskRunner {
             boolean allowRewriteApply,
             boolean incremental,
             Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, "legacy", log);
+    }
+
+    /**
+     * Per-module persistent state is opt-in: "legacy" preserves the original per-task stamps,
+     * "file" uses one sealed state file per module, and "m3db" uses native MIndexDB artifacts.
+     * Neither mode changes Maven's lifecycle or the explicit native-tool execution contract.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, stateBackend,
+                null, log);
+    }
+
+    /**
+     * Opt-in local build cache: with a {@code buildCache} folder, a task that declares inputs and outputs and has
+     * no provider-owned state is looked up by its content stamp before it starts. On a hit its declared outputs are
+     * restored and the tool is not started; after a success its outputs are stored. {@code null} disables the
+     * cache. Independent of {@code incremental}; with both, the up-to-date check comes first.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, "legacy",
+                buildCache, log);
+    }
+
+    /** Both opt-ins together: a persistent state backend for incremental mode and a local build cache folder. */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
+        if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2").contains(stateBackend)
+                && (stateBackend == null || !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}"))) {
+            throw new IllegalArgumentException("unknown portable module state backend");
+        }
+        if (!incremental && !"legacy".equals(stateBackend)) {
+            throw new IllegalArgumentException("module state DB requires incremental execution");
+        }
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(workspace, "workspace");
         Objects.requireNonNull(target, "target");
@@ -84,26 +139,19 @@ public final class TaskRunner {
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("polyglot workspace is not a directory: " + root);
         }
-        root = root.toRealPath();
         List<TaskManifest.Task> tasks = plan.order(target);
-        // Validation/execution/publication share this lock. A write-only lock cannot
-        // prevent one Maven process from reusing another process's unfinished outputs.
-        try (M3DbModuleStore store = dryRun ? null : M3DbModuleStore.open(root, incremental, log)) {
-            return runTasks(plan, tasks, root, dryRun, timeoutPerTask, allowRewriteApply, incremental, store, log);
-        }
-    }
-
-    private static List<String> runTasks(TaskManifest plan, List<TaskManifest.Task> tasks,
-            Path root, boolean dryRun, Duration timeout, boolean allowRewriteApply, boolean incremental,
-            M3DbModuleStore store, Consumer<String> log) throws IOException, InterruptedException {
-        List<String> performed = new ArrayList<>(tasks.size());
-        Map<String, String> generations = new HashMap<>();
-        Set<String> overlappingOutputs = overlappingOutputs(plan);
-        boolean cleared = false;
+        try (M3ModuleDbRunLock moduleLock = incremental && !dryRun && !"legacy".equals(stateBackend)
+                ? M3ModuleDbRunLock.acquire(root) : null) {
+            if (moduleLock != null) log.accept("M3DB module execution lock acquired");
+            ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
+                    ? ModuleStateDb.open(root, stateBackend) : null;
+            List<String> performed = new ArrayList<>(tasks.size());
+            BuildCache cache = buildCache == null || dryRun ? null : new BuildCache(buildCache);
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
                     + " prerequisites=" + task.prerequisites().size()
                     + " inputs=" + task.inputs().size() + " outputs=" + task.outputs().size());
+            // Validate provider argument contracts even in a read-only plan.
             List<String> qualityCommand = QualityTaskCommands.supported(task.tool())
                     ? QualityTaskCommands.command(task, root, dryRun || allowRewriteApply) : null;
             List<String> m3Command = task.tool().startsWith("@m3")
@@ -113,7 +161,6 @@ public final class TaskRunner {
                 continue;
             }
             if ("-".equals(task.tool())) {
-                aggregate(task, generations);
                 performed.add(task.name());
                 continue;
             }
@@ -122,159 +169,124 @@ public final class TaskRunner {
                 throw new IOException("working directory does not exist for target " + task.name());
             }
             for (String input : task.inputs()) {
-                if (!Files.exists(checked(root, input), LinkOption.NOFOLLOW_LINKS)) {
+                Path file = checked(root, input);
+                if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException("missing declared input for " + task.name() + ": " + input);
                 }
             }
-            for (String output : task.outputs()) {
-                checked(root, output);
-                if (InputStamps.statePath(output)) {
-                    throw new IOException("declared output overlaps Maven module database: " + output);
-                }
+            // Only explicitly declared, ordinary tool actions with both inputs and outputs
+            // are candidates for this opt-in content-stamp shortcut. CodeQL databases and
+            // OpenRewrite recipes have provider-owned state and must execute normally.
+            // A path stamp never proves complete toolchain, environment or ABI inputs.
+            // Pluggable providers own further hidden inputs, so never skip them.
+            boolean candidate = !task.inputs().isEmpty() && !task.outputs().isEmpty()
+                    && qualityCommand == null && m3Command == null;
+            String stamp = !(incremental && candidate) ? null : moduleState == null
+                    ? InputStamps.stamp(task, root) : moduleState.stamp(task);
+            if (stamp != null && (moduleState == null
+                    ? InputStamps.upToDate(task, root, stamp) : moduleState.upToDate(task, stamp))) {
+                log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
+                performed.add(task.name());
+                continue;
             }
-            List<String> command = qualityCommand != null ? qualityCommand
-                    : m3Command != null ? m3Command : ordinaryCommand(task, directory);
-            ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).inheritIO();
-            Map<String, String> environment = Map.copyOf(builder.environment());
-            boolean candidate = incremental && qualityCommand == null && m3Command == null
-                    && !task.inputs().isEmpty() && !task.outputs().isEmpty() && InputStamps.separate(task)
-                    && !overlappingOutputs.contains(task.name())
-                    && task.prerequisites().stream().allMatch(generations::containsKey);
-            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations) : null;
-            String[] prior = input == null ? null : store.lookup(task.name());
-            if (prior != null && input.equals(prior[0])) {
-                String output = existingOutputs(task, root);
-                if (prior[1].equals(output)) {
-                    generations.put(task.name(), InputStamps.combine(List.of(input, output)));
-                    log.accept("UP-TO-DATE " + task.name() + " (M3DB input and output content verified)");
-                    performed.add(task.name());
-                    continue;
-                }
+            // The cache key always uses the relocatable InputStamps stamp, whatever the state backend.
+            String cacheStamp = cache == null || !candidate ? null
+                    : moduleState == null && stamp != null ? stamp : InputStamps.stamp(task, root);
+            if (restored(cache, plan, moduleState, task, root, cacheStamp, stamp, log)) {
+                performed.add(task.name());
+                continue;
             }
-            // Revoke old success before launching, including an explicit non-incremental
-            // build. A failure or crash must never leave an earlier success reusable.
-            if (!incremental && !cleared) {
-                store.invalidateAll();
-                cleared = true;
+            List<String> command = new ArrayList<>(task.arguments().size() + 1);
+            if (qualityCommand != null) {
+                command.addAll(qualityCommand);
+            } else if (m3Command != null) {
+                command.addAll(m3Command);
             } else {
-                invalidateDependents(plan, task.name(), store);
+                command.add(resolveTool(task.tool(), directory));
+                command.addAll(task.arguments());
             }
-            execute(task, builder, timeout);
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.directory(directory.toFile());
+            processBuilder.inheritIO();
+            // Revoke the old task and all consumers before tool effects begin.
+            // Stale successful records cannot survive a failed or interrupted invocation.
+            if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
+            final Process process;
+            try {
+                process = processBuilder.start();
+            } catch (IOException failure) {
+                throw new IOException("cannot start tool for target " + task.name() + ": " + task.tool(), failure);
+            }
+            final boolean finished;
+            try {
+                finished = process.waitFor(timeoutPerTask.toNanos(), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException interrupt) {
+                stop(process);
+                Thread.currentThread().interrupt();
+                throw interrupt;
+            }
+            if (!finished) {
+                stop(process);
+                throw new IOException("polyglot target timed out: " + task.name());
+            }
+            if (process.exitValue() != 0) {
+                throw new IOException("polyglot tool failed: " + task.name() + " (exit " + process.exitValue() + ")");
+            }
             for (String output : task.outputs()) {
-                if (!Files.exists(checked(root, output), LinkOption.NOFOLLOW_LINKS)) {
+                Path file = checked(root, output);
+                if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
                 }
             }
-            if (input != null) {
-                String after = null;
-                String output = null;
-                try {
-                    after = InputStamps.stamp(task, root, ordinaryCommand(task, directory), environment, generations);
-                    output = InputStamps.outputs(task, root);
-                } catch (IOException changed) {
-                    // The original command succeeded. Unstable evidence grants no reuse,
-                    // but optional caching must not reclassify that success as compilation failure.
-                    log.accept("UNCACHED " + task.name() + " (input/output identity unavailable after execution)");
-                }
-                if (input.equals(after) && output != null) {
-                    store.record(task.name(), input, output);
-                    generations.put(task.name(), InputStamps.combine(List.of(input, output)));
+            if (stamp != null) {
+                if (moduleState == null) {
+                    InputStamps.record(task, root, stamp);
                 } else {
-                    log.accept("UNCACHED " + task.name() + " (inputs changed during execution)");
+                    try {
+                        String after = moduleState.stamp(task);
+                        if (stamp.equals(after)) {
+                            moduleState.record(task, stamp);
+                        } else {
+                            log.accept("UNCACHED " + task.name() + " (module inputs changed during execution)");
+                        }
+                    } catch (IOException unstable) {
+                        // A successful original tool is not reclassified as failure by optional cache recording.
+                        // Its old success was already durably revoked before starting the process.
+                        log.accept("UNCACHED " + task.name() + " (module state publication unavailable)");
+                    }
                 }
             }
+            if (cacheStamp != null) store(cache, task, root, cacheStamp, log);
             performed.add(task.name());
         }
         return List.copyOf(performed);
-    }
-
-    private static List<String> ordinaryCommand(TaskManifest.Task task, Path directory) {
-        List<String> command = new ArrayList<>(task.arguments().size() + 1);
-        command.add(resolveTool(task.tool(), directory));
-        command.addAll(task.arguments());
-        return command;
-    }
-
-    private static String existingOutputs(TaskManifest.Task task, Path root) throws IOException {
-        try {
-            return InputStamps.outputs(task, root);
-        } catch (NoSuchFileException missing) {
-            return null;
         }
     }
 
-    private static void aggregate(TaskManifest.Task task, Map<String, String> generations) {
-        if (!task.inputs().isEmpty() || !task.outputs().isEmpty()
-                || !task.prerequisites().stream().allMatch(generations::containsKey)) return;
-        List<String> values = new ArrayList<>();
-        values.add(task.name());
-        for (String dependency : task.prerequisites().stream().sorted().toList()) {
-            values.add(dependency);
-            values.add(generations.get(dependency));
+    /**
+     * True when the build cache restored the task's declared outputs. As before a tool run, the task and its
+     * consumers are revoked in the module state first; after the restore the incremental stamp is recorded.
+     */
+    private static boolean restored(BuildCache cache, TaskManifest plan, ModuleStateDb moduleState,
+            TaskManifest.Task task, Path root, String cacheStamp, String stamp, Consumer<String> log)
+            throws IOException {
+        if (cache == null || cacheStamp == null || !Files.isRegularFile(cache.entry(BuildCache.key(cacheStamp)))) {
+            return false;
         }
-        generations.put(task.name(), InputStamps.combine(values));
+        if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
+        if (!cache.restore(task, root, cacheStamp)) return false;
+        log.accept("FROM-CACHE " + task.name() + " (declared outputs restored, key "
+                + BuildCache.key(cacheStamp).substring(0, 12) + ")");
+        if (stamp != null && moduleState == null) InputStamps.record(task, root, stamp);
+        if (stamp != null && moduleState != null) moduleState.record(task, stamp);
+        return true;
     }
 
-    /** Cross-task directory/file ownership overlap prevents a stable generation claim. */
-    private static Set<String> overlappingOutputs(TaskManifest plan) {
-        Map<String, String> owners = new HashMap<>();
-        for (TaskManifest.Task task : plan.orderAll()) {
-            for (String output : task.outputs()) owners.put(output, task.name());
-        }
-        Set<String> overlapping = new HashSet<>();
-        for (Map.Entry<String, String> output : owners.entrySet()) {
-            String path = output.getKey();
-            for (int slash = path.lastIndexOf('/'); slash >= 0; slash = path.lastIndexOf('/', slash - 1)) {
-                String ancestor = owners.get(path.substring(0, slash));
-                if (ancestor != null && !ancestor.equals(output.getValue())) {
-                    overlapping.add(ancestor);
-                    overlapping.add(output.getValue());
-                }
-            }
-        }
-        return overlapping;
-    }
-
-    private static void invalidateDependents(TaskManifest plan, String task, M3DbModuleStore store) throws IOException {
-        Map<String, List<String>> consumers = new HashMap<>();
-        for (TaskManifest.Task node : plan.orderAll()) {
-            for (String dependency : node.prerequisites()) {
-                consumers.computeIfAbsent(dependency, ignored -> new ArrayList<>()).add(node.name());
-            }
-        }
-        Set<String> invalid = new HashSet<>();
-        ArrayDeque<String> pending = new ArrayDeque<>();
-        pending.add(task);
-        while (!pending.isEmpty()) {
-            String name = pending.removeFirst();
-            if (invalid.add(name)) pending.addAll(consumers.getOrDefault(name, List.of()));
-        }
-        store.invalidate(invalid);
-    }
-
-    private static void execute(TaskManifest.Task task, ProcessBuilder builder, Duration timeout)
-            throws IOException, InterruptedException {
-        final Process process;
-        try {
-            process = builder.start();
-        } catch (IOException failure) {
-            throw new IOException("cannot start tool for target " + task.name() + ": " + task.tool(), failure);
-        }
-        final boolean finished;
-        try {
-            finished = process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (InterruptedException interrupt) {
-            stop(process);
-            Thread.currentThread().interrupt();
-            throw interrupt;
-        }
-        if (!finished) {
-            stop(process);
-            throw new IOException("polyglot target timed out: " + task.name());
-        }
-        if (process.exitValue() != 0) {
-            throw new IOException("polyglot tool failed: " + task.name() + " (exit " + process.exitValue() + ")");
-        }
+    private static void store(BuildCache cache, TaskManifest.Task task, Path root, String cacheStamp,
+            Consumer<String> log) throws IOException {
+        boolean stored = cache.store(task, root, cacheStamp);
+        log.accept((stored ? "CACHED " : "NOT-CACHED ") + task.name()
+                + (stored ? "" : " (an output is a link or special file, or exceeds the entry budget)"));
     }
 
     /**
@@ -291,8 +303,6 @@ public final class TaskRunner {
             for (String extension : System.getenv().getOrDefault("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")) {
                 if (!extension.isBlank()) extensions.add(extension.toLowerCase(java.util.Locale.ROOT));
             }
-            String lower = tool.toLowerCase(java.util.Locale.ROOT);
-            if (extensions.stream().anyMatch(lower::endsWith)) extensions.add(0, "");
         } else {
             extensions.add("");
         }
@@ -309,8 +319,7 @@ public final class TaskRunner {
         }
         for (Path folder : folders) {
             for (String extension : extensions) {
-                Path absoluteFolder = folder.isAbsolute() ? folder : directory.resolve(folder);
-                Path candidate = absoluteFolder.resolve(tool + extension).normalize();
+                Path candidate = folder.resolve(tool + extension);
                 if (Files.isRegularFile(candidate) && (windows || Files.isExecutable(candidate))) return candidate.toString();
             }
         }
@@ -318,8 +327,19 @@ public final class TaskRunner {
     }
 
     /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */
-    private static Path checked(Path root, String relative) throws IOException {
-        return InputStamps.checked(root, relative);
+    static Path checked(Path root, String relative) throws IOException {
+        Path value = root.resolve(relative).normalize();
+        if (!value.startsWith(root)) {
+            throw new IOException("resource is outside polyglot project root: " + relative);
+        }
+        Path cursor = root;
+        for (Path component : root.relativize(value)) {
+            cursor = cursor.resolve(component);
+            if (Files.isSymbolicLink(cursor)) {
+                throw new IOException("polyglot declared path traverses symlink: " + relative);
+            }
+        }
+        return value;
     }
 
     private static void stop(Process process) {

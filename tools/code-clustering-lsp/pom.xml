@@ -26,7 +26,8 @@ under the License.
   <version>0.1.0-SNAPSHOT</version>
   <name>Apache Maven Code Clustering: Language Server Front End</name>
   <description>An AtomFrontEnd for maven-code-clustering-plugin that asks language servers (through Eclipse LSP4J)
-    for document symbols: any language with a server (clangd, rust-analyzer, Eclipse JDT LS, LemMinX, pyright, gopls)
+    for document symbols: any language with a server (clangd, rust-analyzer, Eclipse JDT LS, LemMinX, pyright, gopls,
+    typescript-language-server, csharp-ls, sourcekit-lsp)
     is atomized by its own language core. Add it as a dependency of the plugin. It also holds a code-clustering
     language server that shows the plugin's duplicates as diagnostics in any LSP client.</description>
   <licenses>

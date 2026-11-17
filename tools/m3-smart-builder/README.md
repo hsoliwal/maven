@@ -33,6 +33,120 @@ Status: experimental. This project lives **outside the upstream Maven reactor** 
 - `m3:code-agent` extends the advisory pipeline with **source-bound recipe nomination**: it requires both canonical Java atom/pattern receipts and the OpenRewrite preparation report, a strictly sorted operator-approved SHA-pinned recipe catalogue, and optionally a ChromeLLM candidate. It only proposes an applicable, catalogued recipe; source mutation, recipe approval and verification remain separate. See [code-agent contract](docs/CODE_AGENT.md).
 - `m3:code-agent` optionally consumes a current-file-bound **structural/logic/SimHash atom ledger** and guides ChromeLLM with a versioned, digest-bound **M3 Machine-Oriented Programming law packet** (18 mandatory plus five additional reviewed analysis rules) packaged in the plugin. Deterministic patternization exposes at most 24 ranked atom-pair review candidates with contract-signature risk, plus AST control-flow/effect-cue counts and an opt-in JDK 21 compiler-attribution pass (`m3.smart.attributeTypes=true`) that binds static call targets and type digests when all selected sources resolve. The hashes and bindings provide signals, not proof; authority labels distinguish local gates, producer statements, advisory evidence, and proof still outstanding. `m3:code-agent-verify` is a **separate**, explicitly approved, offline/pinned OpenRewrite `dryRun` → staged `run` → Maven `verify` → fixed-point replay workflow, restricted to FILE scope. It keeps original sources unchanged and does not authenticate semantic equivalence or promote recipes. See [code-agent contract](docs/CODE_AGENT.md).
 - New `m3:machine-fingerprints` produces this ledger locally from the JDK 21 javac syntax AST, after validating canonical preparation and atom/pattern checkpoints. It emits bounded per-atom structural, normalized-logic-cue, SimHash and syntactic contract hashes, with deterministic parallel per-file fan-in. The default is syntax-only; explicit `m3.smart.attributeTypes=true` adds source-bound compiler type/call symbols under a dependency-free admission gate, still without physical atomization or equivalence proof. See [code-agent contract](docs/CODE_AGENT.md).
+
+### Persisted module computations in M3DB
+
+`m3:machine-fingerprints` can persist completed Java syntax/atom fingerprints in
+Synexia's canonical native **MIndexDB** engine. Each Maven module owns a store at
+`${project.basedir}/.m3/maven/mindexdb`. MIndexDB writes one sealed `.miart` artifact
+for each selected source root; ordinary single-root use therefore has one data
+file per module, plus Maven's small sibling `mindexdb.lock` coordination file.
+An unchanged source file reuses its prior result across Maven invocations without
+running javac parsing and fingerprint computation again. The store remains outside
+`target`, so the next fingerprint run can recreate cleaned reports from valid
+cached computations. Separate modules and source roots do not share entries.
+
+The installed `com.synexia.mindex.db.MIndexDB` provider owns its native artifact
+format and replacement through `open`, `findArtifact` and `putArtifact`. This is
+Synexia's Java/NIO engine; it needs no SQLite, H2, Derby or JNI library. Maven adds
+a bounded application record and coordinates access to this module-owned store.
+The adapter does not bundle, download or implement a database engine.
+
+| Property / CLI option | Value | Behavior |
+| --- | --- | --- |
+| `m3.smart.moduleDb` / `--module-db` | `auto` (default) | Use an installed MIndexDB provider; compute normally when it is unavailable or cache I/O is refused. |
+| Same | `off` | Run the original computation without opening or writing MIndexDB. |
+| Same | `required` | Require the native provider and report storage failures as goal failures. |
+
+Add a qualified MIndexDB build and its transitive dependencies to the Maven plugin
+realm. For the provider's current Maven coordinates, a consuming project can use:
+
+```xml
+<plugin>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-smart-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <dependencies>
+    <dependency>
+      <groupId>com.synexia</groupId>
+      <artifactId>synexia-mindex-db</artifactId>
+      <version>1.0.0-SNAPSHOT</version>
+    </dependency>
+  </dependencies>
+</plugin>
+```
+
+These artifacts must already be installed or available from your configured
+Synexia repository. The public Maven fork does not publish the provider. Then run:
+
+```sh
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:machine-fingerprints \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=receipts/preparation.json \
+  -Dm3.smart.atomPatternManifest=receipts/atom-pattern.tsv \
+  -Dm3.smart.moduleDb=required
+```
+
+The preparation and atom-pattern paths must identify current receipts from the
+existing canonical producers. Existing evidence requirements still apply. The
+standalone Java CLI resolves the same provider from its application classpath.
+
+Reuse is bound to the canonical module/source-root identity, relative filename,
+SHA-256 of source bytes, source size, producer bytecode, parser options, exact
+`jdk.compiler` resource contents, and runtime identity. Same-size edits with
+restored timestamps still miss. An added file is computed, a removed file is
+omitted from the replacement image, and compiler/producer changes invalidate
+prior syntax rows. Worker count does not change the result. Compiler and producer
+identities are calculated once per loaded plugin/JVM.
+
+Every run still validates canonical evidence, enumerates and hashes current
+inputs, and rechecks them after computation. Attribution and may-flow analysis
+run when requested because their dependency scope is wider than a single source
+file. This cache does not skip compilation, tests, resource processing, install,
+deploy, watch-mode clean builds, or any other lifecycle goal. The pending polyglot
+task-receipt proposals have a different scope and separate storage paths.
+
+The `moduleDatabase` object in `target/m3-smart/machine-fingerprints.json` reports
+`hits`, `misses`, `filesComputed`, `mode`, `provider`, `status`, and `reason`. A warm
+run reports zero files computed and `unchanged`, without rewriting its artifact.
+`stored` records a successful replacement. `superseded` means a concurrent writer
+already committed a different image; the current computation succeeds without
+replacing it. `bypassed` identifies refused cache storage in automatic mode.
+Source hashes and cache checksums establish identity and detect accidental
+corruption; local cache files are not independent semantic proofs.
+
+Publication happens only after the current computation and its output validation
+succeed. Short OS locks protect both reads and writes; an expected-image comparison
+prevents stale writers from replacing newer state. A loaded cache keeps an
+independent immutable payload while subsequent invocations publish new artifacts.
+Failed computations and cancellation before publication retain the prior accepted
+image. Once `putArtifact` starts, replacement and temporary-file cleanup belong to
+MIndexDB; the adapter does not promise rollback on cancellation inside that call.
+The provider currently falls back to ordinary replacement where atomic moves are
+unsupported and does not promise an fsync-backed power-loss commit. A lost or
+incomplete local cache is recomputed in automatic mode. This is reusable analysis
+state, not a successful-build or lifecycle completion receipt.
+
+Linked parents, artifacts and lock files, excessive artifact sizes, foreign
+artifact metadata, and malformed application records are refused. Corrupt files
+are preserved for diagnosis. To reset the cache, remove `.m3/maven/mindexdb` and
+its sibling `mindexdb.lock` after the module's Maven processes have stopped.
+Projects can add `**/.m3/maven/` to `.gitignore` for this local state.
+
+The real-provider regression lane runs through the standalone Maven build:
+
+```sh
+mvn -f tools/m3-smart-builder/pom.xml -Pm3-module-db \
+  -Dm3.smart.mindexdbClasspath=/absolute/path/to/qualified/provider-and-dependencies.jar verify
+```
+
+`m3.smart.mindexdbClasspath` can also be a platform-separated classpath containing
+the provider and every required dependency. This lane requires the actual native
+MIndexDB implementation. It tests cold/warm runs, fresh JVMs, same-time content
+changes, added/deleted files, compiler identity, module isolation, clean output
+recreation, corruption, writer races, interruption and retained attribution.
+Ordinary `verify` exercises automatic fallback, off/invalid modes and Mojo forwarding.
+
 - `-Dm3.smart.requireMachineEvidence=true` optionally makes that source-bound ledger mandatory before `m3:code-agent` will nominate a recipe. A missing or malformed `-Dm3.smart.machineEvidence` is refused before model inference; existing builds continue with the default `false`. The reusable [OpenRewrite property recipe](recipes/enable-strict-machine-evidence.yml) makes this gate declarative without attaching any goal to Maven's default lifecycle. No fingerprint counts as contract or behavior proof.
 - The canon gate (`sh m3-build.sh canon <packet.tsv> <run-dir>` or `mvn m3:canon`) is the hard M3-SCALE run contract: task packet, fixed stage order diff, atom_pattern, lint, compile, test, runtime, scope locks, mandatory atomization and patternization of every changed file, idempotence and the output contract; any violation fails. See [the canon gate contract](docs/CANON_GATE.md).
 - Build hooks can require canonical Java atomization/patternization checkpoint manifests before inference using `m3.smart.requireAtomPattern=true` and `m3.smart.atomPatternManifest`. The gate validates current Java scope coverage and ordered digest binding; non-Java files remain assigned to their existing lanes. It does not authenticate host semantic/JIT proof execution. See [the receipt contract](docs/BUILD_ADVICE_HOOKS.md#require-canonical-java-atomization-and-patternization-receipts).

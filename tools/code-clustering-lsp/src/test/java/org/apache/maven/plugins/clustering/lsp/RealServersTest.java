@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 import org.apache.maven.plugins.clustering.AtomPlanes;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
@@ -39,9 +41,12 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
  * profile finds it (system properties, environment, PATH), a fixture file is atomized through a session with it, and
  * the check asserts that the session answered (not the built-in fallback) and that the expected atoms came out. A
  * server that cannot be found prints {@code SKIP}. {@code -Dclustering.test.servers=<dir>} adds homes for a directory
- * laid out as {@code jdtls/}, {@code py/} (a pylsp virtual environment), {@code npm/} (pyright and
- * vscode-langservers-extracted), {@code lemminx/} and {@code rust-analyzer/}; a {@code clustering.lsp.*} system
- * property given on the command line wins over these defaults (for example {@code clustering.lsp.jdt.java}).
+ * laid out as {@code jdtls/}, {@code py/} (a pylsp virtual environment), {@code npm/} (pyright,
+ * vscode-langservers-extracted, typescript-language-server and typescript), {@code lemminx/}, {@code rust-analyzer/},
+ * {@code go/} (gopls in {@code bin/}), {@code dotnet/} (a {@code dotnet tool install --tool-path} directory with
+ * csharp-ls) and {@code swift/} (a toolchain's {@code usr} directory, sourcekit-lsp in {@code bin/}); a
+ * {@code clustering.lsp.*} system property given on the command line wins over these defaults (for example
+ * {@code clustering.lsp.jdt.java}).
  * Argument: a scratch directory.
  */
 public final class RealServersTest {
@@ -85,7 +90,25 @@ public final class RealServersTest {
         web(dir, root);
         run(dir, "rust", "rust", homes(root, Map.of("clustering.lsp.rust.home", "rust-analyzer")), "src/lib.rs", Fixtures.RUST,
                 List.of("TYPE#Point", "METHOD#dist(2)", "METHOD#distance(2)", "TYPE#Shape", "METHOD#Shape.area(1)"), List.of());
+        languages(dir, root);
         CHECKS.finish();
+    }
+
+    /** Go, TypeScript, C# and Swift: each fixture with the files its server needs to load it as a project. */
+    private static void languages(Path dir, String root) throws IOException {
+        run(dir, "go", "go", homes(root, Map.of("clustering.lsp.go.home", "go")), Map.of("go.mod", Fixtures.GO_MOD,
+                "geo.go", Fixtures.GO), List.of("TYPE#Point", "METHOD#Point.Norm(0)", "METHOD#Dist(2)", "METHOD#Distance(2)",
+                "TYPE#Shape"), List.of());
+        int unsupported = UNSUPPORTED.get();
+        Path ts = run(dir, "typescript", "typescript", homes(root, Map.of("clustering.lsp.typescript.home", "npm")), Map.of(
+                "geo.ts", Fixtures.TYPESCRIPT), List.of("TYPE#Point", "METHOD#Point.norm(0)", "METHOD#dist(2)",
+                "METHOD#distance(2)", "TYPE#Shape", "TYPE#Mode"), List.of());
+        if (ts != null) CHECKS.check("typescript: no 'Unsupported notification' warnings", UNSUPPORTED.get() == unsupported);
+        run(dir, "csharp", "csharp", homes(root, Map.of("clustering.lsp.csharp.home", "dotnet")), Map.of("Demo.csproj",
+                Fixtures.CSPROJ, "Calc.cs", Fixtures.CSHARP), List.of("TYPE#Calc", "METHOD#Calc.Sum(1)", "METHOD#Calc.Add(1)",
+                "TYPE#Calc.IOp", "TYPE#Calc.Mode"), List.of());
+        run(dir, "swift", "swift", homes(root, Map.of("clustering.lsp.swift.home", "swift")), Map.of("Geo.swift",
+                Fixtures.SWIFT), List.of("TYPE#Point", "METHOD#dist(2)", "METHOD#distance(2)", "TYPE#Shape"), List.of());
     }
 
     /**
@@ -95,8 +118,8 @@ public final class RealServersTest {
      */
     private static void optedOut() {
         String why = "opt-in: set -Dclustering.test.servers=<dir> or -Dclustering.test.realServers=true";
-        List.of("cdt", "jdt", "pydev (pylsp)", "pydev (pyright)", "wtp.xml", "wtp.html", "wtp.css", "wtp.json", "rust")
-                .forEach(label -> CHECKS.skip(label, why));
+        List.of("cdt", "jdt", "pydev (pylsp)", "pydev (pyright)", "wtp.xml", "wtp.html", "wtp.css", "wtp.json", "rust", "go",
+                "typescript", "csharp", "swift").forEach(label -> CHECKS.skip(label, why));
         CHECKS.finish();
     }
 
@@ -119,6 +142,12 @@ public final class RealServersTest {
      */
     private static Path run(Path dir, String label, String id, Map<String, String> defaults, String file, String text,
             List<String> expected, List<String> absent) throws IOException {
+        return run(dir, label, id, defaults, Map.of(file, text), expected, absent);
+    }
+
+    /** As above, writing several files (relative path to text); exactly one of them has an extension the server serves. */
+    private static Path run(Path dir, String label, String id, Map<String, String> defaults, Map<String, String> files,
+            List<String> expected, List<String> absent) throws IOException {
         LspServer server;
         try {
             server = ServerProfiles.server(id).resolve(lookup(defaults));
@@ -126,10 +155,12 @@ public final class RealServersTest {
             CHECKS.skip(label, e.getMessage());
             return null;
         }
-        Path src = dir.resolve(label.replaceAll("[^A-Za-z0-9.]+", "-"));
-        Path source = src.resolve(file);
-        Files.createDirectories(source.getParent());
-        Files.writeString(source, text, StandardCharsets.UTF_8);
+        Path src = clean(dir.resolve(label.replaceAll("[^A-Za-z0-9.]+", "-")));
+        for (Map.Entry<String, String> file : files.entrySet()) {
+            Path source = src.resolve(file.getKey());
+            Files.createDirectories(source.getParent());
+            Files.writeString(source, file.getValue(), StandardCharsets.UTF_8);
+        }
         return atomize(label, server, src, expected, absent) ? Path.of(server.command().get(0)) : null;
     }
 
@@ -160,6 +191,19 @@ public final class RealServersTest {
         CHECKS.check("cdt from a quoted servers entry " + setting + (clangd.toString().contains(" ") ? " (path with a space)"
                 : "") + ": " + outcomes, outcomes.size() == 1 && outcomes.get(0).ok() && !atoms.isEmpty()
                 && table.get("cpp").command().equals(List.of(clangd.toString(), "--log=error")));
+    }
+
+    /**
+     * The fixture directory emptied first: a server may write files there (csharp-ls's project load leaves
+     * {@code obj/*.cs}), which a second run would otherwise atomize too.
+     */
+    private static Path clean(Path src) throws IOException {
+        if (Files.isDirectory(src)) {
+            try (Stream<Path> walk = Files.walk(src)) {
+                for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
+            }
+        }
+        return src;
     }
 
     /** Defaults relative to the servers directory, used only when the system property is not set. */

@@ -63,6 +63,21 @@ public final class PolyglotCliContractTestMain {
                     "run", root.toString(), manifest.toString(), "all", "--incremental"
             }, log::add);
             check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE")), "changed input executes");
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--incremental",
+                    "--state-backend", "file"
+            }, log::add);
+            check(Files.isRegularFile(root.resolve(ModuleStateDb.FILE)), "one module DB exists");
+            check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE")),
+                    "first DB-backed run must execute");
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--incremental",
+                    "--state-backend", "file"
+            }, log::add);
+            check(log.stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile")),
+                    "second DB-backed run must reuse verified state");
             passed++;
 
             for (String[] rejected : List.of(
@@ -73,6 +88,8 @@ public final class PolyglotCliContractTestMain {
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "43201"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "oops"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--state-backend", "file"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--state-backend", "invalid"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--unknown"})) {
                 boolean failed = false;
                 try {

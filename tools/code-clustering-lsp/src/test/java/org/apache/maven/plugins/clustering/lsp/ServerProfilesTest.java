@@ -72,6 +72,23 @@ public final class ServerProfilesTest {
         CHECKS.check("empty setting selects nothing", ServerProfiles.names(" ", warnings::add).isEmpty());
         CHECKS.check("wtp has the XML, HTML, CSS and JSON servers", ServerProfiles.select("web", warnings::add).stream()
                 .map(ServerSpec::id).toList().equals(List.of("wtp.xml", "wtp.html", "wtp.css", "wtp.json")));
+        warnings.clear();
+        CHECKS.check("aliases ts, js, javascript, cs; go and swift by name", ServerProfiles.names("swift,ts js JavaScript CS go",
+                warnings::add).equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
+        CHECKS.check("all has nine profiles, the new ones last", ServerProfiles.NAMES.size() == 9
+                && ServerProfiles.NAMES.subList(5, 9).equals(List.of("go", "typescript", "csharp", "swift")));
+        CHECKS.check("go, typescript, csharp and swift: one server each, with the profile's id",
+                ServerProfiles.select("go,typescript,csharp,swift", warnings::add).stream().map(ServerSpec::id).toList()
+                        .equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
+        Map<String, String> ts = ServerProfiles.server("typescript").languageIds();
+        CHECKS.check("typescript languageIds: ts, mts, cts; tsx as typescriptreact; js, mjs, cjs; jsx as javascriptreact",
+                ts.get("ts").equals("typescript") && ts.get("mts").equals("typescript") && ts.get("cts").equals("typescript")
+                && ts.get("tsx").equals("typescriptreact") && ts.get("js").equals("javascript") && ts.get("mjs")
+                .equals("javascript") && ts.get("cjs").equals("javascript") && ts.get("jsx").equals("javascriptreact")
+                && ts.size() == 8);
+        CHECKS.check("go, csharp, swift languageIds", ServerProfiles.server("go").languageIds().equals(Map.of("go", "go"))
+                && ServerProfiles.server("csharp").languageIds().equals(Map.of("cs", "csharp", "csx", "csharp"))
+                && ServerProfiles.server("swift").languageIds().equals(Map.of("swift", "swift")));
     }
 
     /** property > environment > detection; home before PATH; the home property before the home variable. */
@@ -117,6 +134,11 @@ public final class ServerProfilesTest {
         CHECKS.check("a profile whose extensions are all explicit is not looked for (no warning) " + warnings,
                 warnings.isEmpty() && table.get("rs").command().equals(List.of("my-ra")));
         CHECKS.check("no settings, no servers", LspConfiguration.configured(lookup(Map.of(), Map.of()), warnings::add).isEmpty());
+        table = LspConfiguration.explicit(LspConfiguration.parse("swift=sk;mjs,cts=tls;csx=cls", warnings::add),
+                Duration.ofSeconds(60));
+        CHECKS.check("explicit entries: languageIds of swift, mjs, cts, csx", table.get("swift").languageId("swift")
+                .equals("swift") && table.get("mjs").languageId("mjs").equals("javascript") && table.get("cts")
+                .languageId("cts").equals("typescript") && table.get("csx").languageId("csx").equals("csharp"));
     }
 
     private static void timeouts() throws Unresolved {
@@ -156,6 +178,81 @@ public final class ServerProfilesTest {
                 Map.of("clustering.lsp.rust.home", ra.toString()), Map.of()).equals(List.of(exeName(ra, "rust-analyzer"))));
         CHECKS.check("npm server without node: unresolved", unresolved(ServerProfiles.server("wtp.html"), Map.of(),
                 Map.of("WTP_HOME", npm.toString())).contains("node"));
+        go(dir);
+        csharp(dir);
+        typescriptAndSwift(dir, bin, node);
+    }
+
+    /** gopls: a home directory, the PATH, then GOBIN, else each GOPATH entry's bin, else ~/go/bin. */
+    private static void go(Path dir) throws Exception {
+        ServerSpec go = ServerProfiles.server("go");
+        String empty = Files.createDirectories(dir.resolve("go/home-empty")).toString();
+        Map<String, String> noHome = Map.of("user.home", empty);
+        Path home = exe(dir.resolve("go/gohome/bin"), "gopls").getParent().getParent();
+        Path gobin = exe(dir.resolve("go/gobin"), "gopls").getParent();
+        Path gopath1 = Files.createDirectories(dir.resolve("go/gopath1"));
+        Path gopath2 = exe(dir.resolve("go/gopath2/bin"), "gopls").getParent().getParent();
+        Path userGo = exe(dir.resolve("go/home-go/go/bin"), "gopls").getParent().getParent().getParent();
+        Path pathBin = exe(dir.resolve("go/path"), "gopls").getParent();
+        String gopath = gopath1 + (WINDOWS ? ";" : ":") + gopath2;
+        CHECKS.check("go: gopls in GO_HOME/bin first", command(go, noHome, Map.of("GO_HOME", home.toString(), "PATH",
+                pathBin.toString())).equals(List.of(exeName(home.resolve("bin"), "gopls"))));
+        CHECKS.check("go: the PATH before the go install directories", command(go, noHome, Map.of("PATH", pathBin.toString(),
+                "GOBIN", gobin.toString())).equals(List.of(exeName(pathBin, "gopls"))));
+        CHECKS.check("go: GOBIN before GOPATH", command(go, noHome, Map.of("GOBIN", gobin.toString(), "GOPATH", gopath))
+                .equals(List.of(exeName(gobin, "gopls"))));
+        CHECKS.check("go: else the bin directory of any GOPATH entry", command(go, noHome, Map.of("GOPATH", gopath))
+                .equals(List.of(exeName(gopath2.resolve("bin"), "gopls"))));
+        CHECKS.check("go: else ~/go/bin", command(go, Map.of("user.home", userGo.toString()), Map.of())
+                .equals(List.of(exeName(userGo.resolve("go/bin"), "gopls"))));
+        String missing = unresolved(go, noHome, Map.of());
+        CHECKS.check("go: nothing found names ~/go", missing.contains("gopls") && missing.contains(Path.of(empty, "go").toString()));
+    }
+
+    /** csharp-ls: a home directory (a --tool-path directory), the PATH, then the .NET global tools directory. */
+    private static void csharp(Path dir) throws Exception {
+        ServerSpec cs = ServerProfiles.server("csharp");
+        String empty = Files.createDirectories(dir.resolve("cs/home-empty")).toString();
+        Path toolPath = exe(dir.resolve("cs/tool-path"), "csharp-ls").getParent();
+        Path user = exe(dir.resolve("cs/home/.dotnet/tools"), "csharp-ls").getParent().getParent().getParent();
+        Path cli = exe(dir.resolve("cs/cli/.dotnet/tools"), "csharp-ls").getParent().getParent().getParent();
+        CHECKS.check("csharp: CSHARP_HOME, a dotnet tool --tool-path directory", command(cs, Map.of("user.home", empty),
+                Map.of("CSHARP_HOME", toolPath.toString())).equals(List.of(exeName(toolPath, "csharp-ls"))));
+        CHECKS.check("csharp: ~/.dotnet/tools", command(cs, Map.of("user.home", user.toString()), Map.of())
+                .equals(List.of(exeName(user.resolve(".dotnet/tools"), "csharp-ls"))));
+        CHECKS.check("csharp: DOTNET_CLI_HOME before user.home", command(cs, Map.of("user.home", user.toString()),
+                Map.of("DOTNET_CLI_HOME", cli.toString())).equals(List.of(exeName(cli.resolve(".dotnet/tools"), "csharp-ls"))));
+        CHECKS.check("csharp: nothing found names the tools directory", unresolved(cs, Map.of("user.home", empty), Map.of())
+                .contains(Path.of(empty, ".dotnet", "tools").toString()));
+    }
+
+    /** typescript-language-server from an npm prefix or its launcher on the PATH; sourcekit-lsp from a toolchain. */
+    private static void typescriptAndSwift(Path dir, Path nodeBin, String node) throws Exception {
+        ServerSpec ts = ServerProfiles.server("typescript");
+        Path prefix = dir.resolve("ts/npm");
+        Path cli = file(prefix.resolve("node_modules/typescript-language-server/lib/cli.mjs"));
+        CHECKS.check("typescript: TYPESCRIPT_HOME (an npm prefix), run with node from the PATH", command(ts, Map.of(),
+                Map.of("TYPESCRIPT_HOME", prefix.toString(), "PATH", nodeBin.toString()))
+                .equals(List.of(node, cli.toString(), "--stdio")));
+        Path global = dir.resolve("ts/global");
+        String name = "typescript-language-server";
+        List<String> expected;
+        if (WINDOWS) {
+            file(global.resolve(name + ".cmd"));
+            expected = List.of(node, file(global.resolve("node_modules/" + name + "/lib/cli.mjs")).toString(), "--stdio");
+        } else {
+            expected = List.of(exeName(exe(global, name).getParent(), name), "--stdio");
+        }
+        CHECKS.check("typescript: the launcher on the PATH " + expected, command(ts, Map.of(), Map.of("PATH", global
+                + (WINDOWS ? ";" : ":") + nodeBin)).equals(expected));
+        ServerSpec swift = ServerProfiles.server("swift");
+        Path usr = exe(dir.resolve("swift/toolchain/usr/bin"), "sourcekit-lsp").getParent().getParent();
+        Path onPath = exe(dir.resolve("swift/path"), "sourcekit-lsp").getParent();
+        CHECKS.check("swift: SWIFT_HOME (a toolchain's usr directory) before the PATH", command(swift, Map.of(), Map.of(
+                "SWIFT_HOME", usr.toString(), "PATH", onPath.toString())).equals(List.of(exeName(usr.resolve("bin"),
+                "sourcekit-lsp"))));
+        CHECKS.check("swift: sourcekit-lsp on the PATH", command(swift, Map.of(), Map.of("PATH", onPath.toString()))
+                .equals(List.of(exeName(onPath, "sourcekit-lsp"))));
     }
 
     /** The CSS server's launcher on the PATH: run directly, or on Windows the script beside the .cmd with node. */
