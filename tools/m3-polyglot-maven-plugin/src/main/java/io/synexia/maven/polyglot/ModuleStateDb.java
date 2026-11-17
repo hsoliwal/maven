@@ -270,8 +270,11 @@ final class ModuleStateDb implements AutoCloseable {
 
     boolean upToDate(TaskManifest.Task task, String current) throws IOException {
         TaskState prior = tasks.get(task.name());
-        return prior != null && prior.inputStamp.equals(current)
-                && prior.outputStamp.equals(outputStamp(task));
+        if (prior == null || !prior.inputStamp.equals(current) || prior.outputStamp.isEmpty()) {
+            return false;
+        }
+        String observedOutputs = outputStamp(task);
+        return !observedOutputs.isEmpty() && prior.outputStamp.equals(observedOutputs);
     }
 
     /** Original immediate-publish contract (used by the single-task API and tests). */
