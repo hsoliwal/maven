@@ -6,22 +6,62 @@ package io.synexia.maven.polyglot;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.function.Consumer;
 
 /** No-dependency command-line entry for validating the same graph outside Maven. */
 public final class PolyglotCli {
     private PolyglotCli() {}
 
     public static void main(String[] args) throws Exception {
-        if ((args.length != 4 && args.length != 5) || !("plan".equals(args[0]) || "run".equals(args[0]))) {
-            throw new IllegalArgumentException(
-                    "usage: plan|run <workspace> <manifest.tsv> <target> [--approve-rewrite-apply]");
+        execute(args, System.out::println);
+    }
+
+    /**
+     * The portable invocation contract shared with non-Maven hosts such as Gradle.
+     * New flags are opt-in; the original four/five argument forms remain valid.
+     */
+    static List<String> execute(String[] args, Consumer<String> output) throws Exception {
+        if (args == null || args.length < 4 || !("plan".equals(args[0]) || "run".equals(args[0]))) {
+            throw usage();
         }
-        if (args.length == 5 && (!"run".equals(args[0]) || !"--approve-rewrite-apply".equals(args[4]))) {
-            throw new IllegalArgumentException("only run accepts --approve-rewrite-apply");
+        boolean approveRewriteApply = false;
+        boolean incremental = false;
+        boolean timeoutSupplied = false;
+        int timeoutSeconds = 900;
+        for (int index = 4; index < args.length; index++) {
+            switch (args[index]) {
+                case "--approve-rewrite-apply" -> {
+                    if (approveRewriteApply || !"run".equals(args[0])) throw usage();
+                    approveRewriteApply = true;
+                }
+                case "--incremental" -> {
+                    if (incremental || !"run".equals(args[0])) throw usage();
+                    incremental = true;
+                }
+                case "--timeout-seconds" -> {
+                    if (timeoutSupplied || ++index == args.length) throw usage();
+                    timeoutSupplied = true;
+                    try {
+                        timeoutSeconds = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException invalid) {
+                        throw usage();
+                    }
+                    if (timeoutSeconds < 1 || timeoutSeconds > 43_200) throw usage();
+                }
+                default -> throw usage();
+            }
         }
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofMinutes(15), args.length == 5, System.out::println);
-        System.out.println(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, output);
+        output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
+        return done;
+    }
+
+    private static IllegalArgumentException usage() {
+        return new IllegalArgumentException("usage: plan|run <workspace> <manifest.tsv> <target>"
+                + " [--timeout-seconds 1..43200] [--incremental] [--approve-rewrite-apply]"
+                + " (the last two flags require run)");
     }
 }
