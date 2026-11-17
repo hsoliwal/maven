@@ -22,3 +22,8 @@
 # Mac
 .DS_Store
 
+
+# Per-module incremental state is local, never source-controlled
+**/.m3/module-state-v1.bin
+**/.m3/module-state.lock
+**/.m3/maven-build-db/

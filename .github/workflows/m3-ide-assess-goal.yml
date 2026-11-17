@@ -3,10 +3,7 @@
 name: M3 Native Maven IDE Assessment Goal
 
 on:
-  pull_request:
-    paths:
-      - 'tools/m3-ide-bridge/maven-plugin/**'
-      - '.github/workflows/m3-ide-assess-goal.yml'
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
 
 permissions:

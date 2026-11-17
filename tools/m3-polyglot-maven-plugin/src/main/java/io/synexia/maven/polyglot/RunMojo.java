@@ -35,6 +35,14 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
+    /** "legacy" default, "file", native "m3db", SQLite/H2 JDBC, or an opt-in ext-* provider. */
+    @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "legacy")
+    private String incrementalState;
+
+    /** Local build cache folder: restore the declared outputs of unchanged tasks, store them after a run. Unset: off. */
+    @Parameter(property = "m3.polyglot.buildCache")
+    private File buildCache;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (skip) {
@@ -47,7 +55,8 @@ public final class RunMojo extends AbstractMojo {
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
-                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, message -> getLog().info(message));
+                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
+                    buildCache == null ? null : buildCache.toPath(), message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("M3 polyglot tool execution interrupted", interruption);

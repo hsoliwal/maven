@@ -80,10 +80,20 @@ record Lookup(UnaryOperator<String> properties, UnaryOperator<String> environmen
         return Path.of(properties.apply("java.home"), "bin", windows() ? "java.exe" : "java");
     }
 
+    /** The {@code user.home} system property as a path, if it is set and valid. */
+    Optional<Path> userHome() {
+        return Optional.ofNullable(properties.apply("user.home")).filter(v -> !v.isBlank()).flatMap(Lookup::toPath);
+    }
+
     List<Path> pathDirectories() {
-        String path = environment.apply("PATH");
-        if (path == null) return List.of();
-        return Arrays.stream(path.split(windows() ? ";" : ":")).map(s -> s.strip().replace("\"", ""))
+        return variablePaths("PATH");
+    }
+
+    /** A list variable such as {@code PATH} or {@code GOPATH}, split at the platform's separator; invalid entries dropped. */
+    List<Path> variablePaths(String variable) {
+        String value = environment.apply(variable);
+        if (value == null) return List.of();
+        return Arrays.stream(value.split(windows() ? ";" : ":")).map(s -> s.strip().replace("\"", ""))
                 .filter(s -> !s.isEmpty()).map(Lookup::toPath).flatMap(Optional::stream).collect(Collectors.toList());
     }
 

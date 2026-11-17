@@ -186,8 +186,14 @@ final class LspSession implements AutoCloseable {
         default void actionable(Object params) { }
     }
 
+    /** typescript-language-server's notification of the TypeScript version it loaded, accepted and ignored. */
+    public interface TypeScriptNotifications {
+        @JsonNotification("$/typescriptVersion")
+        default void typescriptVersion(Object params) { }
+    }
+
     /** A client that answers server notifications and requests without user interaction. */
-    private static final class QuietClient implements LanguageClient, JdtNotifications {
+    private static final class QuietClient implements LanguageClient, JdtNotifications, TypeScriptNotifications {
         /** No settings: one {@code null} per item asked for, as the protocol allows. */
         @Override public CompletableFuture<List<Object>> configuration(ConfigurationParams params) {
             return CompletableFuture.completedFuture(new ArrayList<>(Collections.nCopies(params.getItems().size(), null)));

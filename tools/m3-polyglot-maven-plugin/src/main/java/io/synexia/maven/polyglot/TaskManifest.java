@@ -256,7 +256,7 @@ public final class TaskManifest {
         }
     }
 
-    private static String relativePath(String value, boolean allowDot) throws IOException {
+    static String relativePath(String value, boolean allowDot) throws IOException {
         text(value, "project-relative path");
         if (allowDot && ".".equals(value)) {
             return value;
