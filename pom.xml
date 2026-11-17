@@ -110,6 +110,8 @@ under the License.
     <!-- Code clustering (atoms, hash planes, clusters, baseline compare) and its language-server front end. -->
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
+    <!-- Per-project build database (one IndexStore/M3IndexDB owner): ingest build data, answer with provenance. -->
+    <module>tools/project-db</module>
     <module>apache-maven</module>
   </modules>
 
@@ -899,6 +901,12 @@ under the License.
               <!-- FOSS reuse decision tables (tab-separated, no comment syntax); license attribution is in each
                    module's README and the project NOTICE. -->
               <exclude>tools/*/FOSS_REUSE_DECISION.tsv</exclude>
+              <!-- MCP tool definitions of the project database (JSON has no comment syntax); license attribution is
+                   in the adjacent Apache-licensed sources and project NOTICE. Exact single-file exception. -->
+              <exclude>tools/project-db/src/main/resources/META-INF/project-db/mcp-tools.json</exclude>
+              <!-- Sealed source-closure provenance of the vendored M3IndexDB library form (exact rows, Apache-2.0
+                   attribution in the adjacent LICENSE-M3-APACHE-2.0.txt and M3-SYNEXIA-NOTICE.md). -->
+              <exclude>tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv</exclude>
               <!-- OSGi bundle manifest of the Eclipse bundle (the manifest format allows no comments). -->
               <exclude>tools/code-clustering-eclipse/META-INF/MANIFEST.MF</exclude>
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>

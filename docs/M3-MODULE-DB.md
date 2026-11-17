@@ -100,3 +100,34 @@ Run `sh tools/m3-polyglot-maven-plugin/scripts/verify.sh` for offline
 Java 17-language-level contract tests. Full Maven plugin descriptor/build,
 multi-module reactor, Windows, Maven Build Cache Extension and M3JDK21/M3File
 integration require separate CI qualification.
+
+## Union of #143, #144 and #145 (one owner)
+
+Three lanes implemented per-module state on the same afternoon: #143 (merged before this union), #144 and #145.
+Where two implemented the same thing, the more complete one is kept and the other's tests run against it.
+
+| Source | Item | Kept as |
+| --- | --- | --- |
+| #143 | `ModuleStateDb` `file` backend (`.m3/module-state-v1.bin`, ctime + file-key stat reuse) | kept unchanged; its stat reuse is a behaviour neither #144 nor #145 has |
+| #143 | `m3db` backend (sealed image via reflection on `com.synexia.mindex.db.MIndexDB`) | kept name, image and directory; storage now through `IndexStore` (works on any JDK instead of failing without the Synexia jar) |
+| #143 | `m3.polyglot.incrementalState`, `--state-backend legacy\|file\|m3db` | kept; adds `indexdb` |
+| #143 | `ModuleStateDbContractTestMain`, README section, ignore rules | kept |
+| #143 | Maven build of the plugin (descriptor) | fixed: QDox 2.2 reads `sealed` as a keyword; the parameter is renamed. The unused `FileLock` variable failed `-Werror` in `verify.sh` and is now checked |
+| #144 | `M3ModuleDb` (`.m3/module.m3db`, own sealed format) | retired; the same file and purpose are owned by #145's `M3DbModuleStore` (revocation, prerequisite generations, context binding, run-long lock, original M3IndexDB format) |
+| #144 | `-Dm3.polyglot.m3db=true`, `--m3db`, `TaskRunner.run(..., boolean moduleDb, ...)` | kept as the switch for the `indexdb` backend |
+| #144 | a failed database write never fails a successful build | kept (`M3DB NOT-RECORDED` is logged); a failed revocation still stops the task (#145) |
+| #144 | `moduleDbPersistsAndInvalidatesPerModule`, CLI `--m3db` cases | ported onto `M3DbModuleStore.FILE`; all pass |
+| #144 | this document, `EnableM3ModuleDb` recipe, `verify.sh` RunMojo stub compile, ignore rules | kept |
+| #145 | `M3DbModuleStore`, `InputStamps` v2, vendored `jdk.m3.indexdb` with provenance, license and notice | kept as the owner of the `indexdb` backend |
+| #145 | `incremental=true` alone switches to M3IndexDB | not taken: the default stays `legacy` (master, #143 and #144); #145's store is selected explicitly and its tests select it |
+| #145 | lock file on every real run; revocation of an older success by a nonincremental run | the store is opened for `indexdb` and whenever `.m3/module.m3db` exists, so revocation is kept and default runs create no `.m3/` |
+| #145 | engine identity from the M3IndexDB code source | binds the `jdk.m3.indexdb` module name and version on M3jdk21 (no code source there), the library bytes otherwise |
+| #145 | Windows tool resolution, `ModuleStateContractTestMain`, `M3DbModuleStoreContractTestMain`, provider re-execution test, recipe provenance JSON | kept; the input stamp also binds the file Windows launches for an explicit path without extension |
+| #145 | `TaskEngine`/`Mavenizer` assertions rewritten for its default | master's assertions restored for the default backend; #145's added where they hold |
+| new | `IndexStore`, `IndexStores`, `LibraryIndexStore`, `PlatformIndexStore`, `IndexStoreContractTestMain` | one storage interface; the platform binding is proven with a real module layer |
+| new | `ModuleStateView` | public read-only view of every backend's task state, for `tools/project-db` |
+| new | `tools/project-db` | per-project build database over the same `IndexStore` |
+
+com.synexia #18285 (merged) holds the qualification and regression recipe crate for #145's files; its hash-pinned
+snapshots of the files changed here (TaskRunner, InputStamps, RunMojo, README, pom, verify.sh, M3DbModuleStore, tests)
+describe #145, not this union.

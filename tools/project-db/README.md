@@ -1,0 +1,121 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Project database (`maven-project-db-plugin`)
+
+A per-project build database. It stores the build data a project already produces and answers questions about it,
+CPU-only and deterministic. Every answer line carries its provenance: **file, line and build id**.
+
+```sh
+mvn verify | tee build.log                     # any build, green or red
+mvn project-db:ingest -Dproject-db.buildLog=build.log
+mvn project-db:query -Dproject-db.question="why did the build fail"
+```
+
+The goal prefix `project-db` resolves when `org.apache.maven.plugins` is a plugin group (the default); otherwise use
+`org.apache.maven.plugins:maven-project-db-plugin:0.1.0-SNAPSHOT:ingest`.
+
+## One storage owner
+
+All storage goes through `io.synexia.maven.polyglot.IndexStore`, the one small interface the polyglot plugin defines:
+named, content-addressed, versioned artifacts. The single owner of the storage logic is **M3IndexDB**: the
+`jdk.m3.indexdb` module of the running JDK on M3jdk21, otherwise the library form of the same source carried by the
+polyglot plugin (Apache-2.0, see its `META-INF/M3INDEXDB-PROVENANCE.tsv`). The ingest goal logs which one is bound
+(`storage platform` or `storage library`). The polyglot task ledger (`indexdb` backend) and the `m3db` module image use
+the same interface; see [docs/M3-MODULE-DB.md](../../docs/M3-MODULE-DB.md).
+
+Artifacts in the store: `builds` (the build list), `catalog/<build>` (each source with its content hash and the build
+that first ingested that content), `chunks/v1/<sha256>` (the parsed chunks of one source content) and
+`derived/<build>` (changes since the last green build, flaky tests).
+
+## Where the store lives
+
+| Option | Store |
+| --- | --- |
+| default | `target/project-db` of the execution root (removed by `clean`) |
+| `-Dproject-db.persistent=true` | `.mvn/project-db` of the execution root (survives `clean`) |
+| `-Dproject-db.directory=DIR` | `DIR`, relative to the execution root |
+
+Every store directory gets a `.gitignore` of `*`, so it is never committed; this repository also ignores
+`**/.mvn/project-db/`.
+
+## What is ingested (per module, when present)
+
+| Source | Producer | Chunks |
+| --- | --- | --- |
+| `.m3/` polyglot task state, every backend | `m3-polyglot:run` (legacy stamps, `file`, `m3db`, `indexdb`), read through `ModuleStateView` | one per recorded task with its input and output digests |
+| `target/surefire-reports/TEST-*.xml`, `target/failsafe-reports/TEST-*.xml` | Surefire, Failsafe | one per test case: passed, failed, error, skipped or flaky (a `flakyFailure`/`flakyError` rerun that passed); provenance is the first stack frame in the test class, else the report line |
+| `target/effective-pom.xml`, else `target/project-db/effective-pom.xml` | `help:effective-pom`, else written by `ingest` from the module model | one per dependency and plugin block |
+| `target/dependency-tree.txt` | `dependency:tree -DoutputFile=...` | one per dependency with the path that brings it in |
+| `target/code-clustering/ATOM_HASHES.tsv`, `CLUSTERS.tsv` | `code-clustering:cluster` | one per atom (with its source line) and one per set of duplicated atoms, planes listed |
+| `target/build-events/*.jsonl`, `target/build-events*.jsonl` | a build-events writer (the smart builder's JSONL events once that lane lands) | one per event |
+| `-Dproject-db.buildLog=FILE` | the Maven console | `[ERROR]` lines (noise and rerun repeats removed) and `BUILD FAILURE`, with `file:[line,col]` when present |
+
+**Incremental by content hash.** A source's key is its module and path; its SHA-256 covers the parser version, kind,
+path and every file's bytes. An unchanged source is never parsed again, and the same content anywhere is parsed once
+(`chunks/v1/<sha256>`). The ingest reports `N parsed, M unchanged`.
+
+**Build status and derived facts.** A build is red when the log says `BUILD FAILURE` or a test failed or errored.
+At each ingest, against the last green build: changed code atoms (exact-plane hash), changed test outcomes, changed
+polyglot task digests, otherwise new/gone/changed sources (console logs excluded). Flaky tests: a Surefire rerun that
+passed after failing, or an outcome that flipped between two builds while the module's clustering atoms were identical
+(a test-only change also looks like such a flip).
+
+## Retrieval
+
+`Retriever` is CPU-only and deterministic: BM25 over chunk tokens (k1 1.2, b 0.75), the cosine of signed
+feature-hashing vectors (1024 dimensions, unigrams and bigrams), exact facet filters written into the question as
+`key:value` (`kind:flaky`, `module:core`, `status:failed`, `artifact:junit:junit`), and a fixed boost for the kind a
+question asks about (fail/error -> build errors and failed tests, duplicate/clone -> duplicates, change -> changes,
+bring/depend -> dependencies, flaky -> flaky tests). At most two answers come from one file. Ties are broken by file,
+line and text. Answers are extractive: each line is stored chunk text plus `(file:line @build)`.
+
+## MCP tools
+
+`META-INF/project-db/mcp-tools.json` defines `project_db_query` and `project_db_ingest`. `tools/maven-mcp-server`
+(being landed by its own lane, not on master yet) plugs them in with two calls:
+
+```java
+String definitions = org.apache.maven.plugins.projectdb.McpTools.definitions();          // tools/list
+String resultJson = org.apache.maven.plugins.projectdb.McpTools.call(name, arguments, projectRoot, store);  // tools/call
+```
+
+Until then, the same tools are served over stdio (newline-delimited JSON-RPC 2.0, protocol `2025-06-18`):
+
+```sh
+java -cp maven-project-db-plugin.jar:m3-polyglot-maven-plugin.jar \
+  org.apache.maven.plugins.projectdb.ProjectDbCli mcp /work/project
+```
+
+`ProjectDbCli` also has `ingest <root> [--build-log FILE]`, `query <root> <question> [--k N] [--json]` and `tools`;
+all take `--store DIR` and `--persistent`.
+
+## Proof
+
+- `mvn verify` runs `ProjectDbTest`: three builds of a two-module fixture with real polyglot task state, incremental
+  reuse, the five questions, determinism, facets, store locations, storage binding, MCP and CLI.
+- `scripts/e2e.sh` runs a real multi-module Maven build (`src/test/projects/e2e`) twice (green, then red), ingests
+  both, and checks the five questions and that every answer has file, line and build id.
+
+## Attribution
+
+`Retriever` and `Tokens` adapt the BM25 formula and token rule of Synexia's `Bm25Index` (M3JDK21,
+`jdk.m3.llm.projection`), and `HashVectors` the FNV-1a constants of Synexia's `M3LaneFnv1a` (M3JDK21 `m3/indexdb`).
+Synexia files are offered under Apache-2.0 OR EPL-2.0; this module takes them under Apache-2.0. Decisions per
+candidate: [FOSS_REUSE_DECISION.tsv](FOSS_REUSE_DECISION.tsv).
