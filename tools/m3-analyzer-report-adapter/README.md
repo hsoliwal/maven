@@ -339,3 +339,31 @@ runs automatically. The normalized SHA-256 proves bytes, not tool
 execution, target coverage or cache eligibility. The original Semgrep
 CLI JSON specification and original rule engine remain with the
 Semgrep project; only the external schema fields are used here.
+
+## Compiler diagnostics: ECJ XML logs and javac output
+
+Two formats put Java compiler diagnostics into the same M3-STATIC-ANALYSIS-V1 rows, whichever compiler ran
+(for example the polyglot plugin's `@m3:jdk:compiler:java` or `@m3:ecj:compiler:java`):
+
+| Format | Input | Rule | Column |
+| --- | --- | --- | --- |
+| `ECJ` | the XML log ECJ writes with `-log <file>.xml` | `ecj.<problem id>` (`ecj.TypeMismatch`, `ecj.RawTypeReference`) | 0: ECJ's log trims its context line, so it has none |
+| `JAVAC` | javac's error stream in its default format, captured as UTF-8 | `javac.<lint key>` for keyed warnings (`javac.rawtypes`), else `javac.error` / `javac.warning` | from the caret line |
+
+Severities map directly (ECJ ERROR/WARNING/INFO; javac error, warning, and `Note:` as INFO). Paths are made
+relative to the project root, so javac must run there or print absolute paths. javac detail lines (`symbol:`,
+`location:`, `where ...`) join the message. Diagnostics without a file (`warning: [options] ...`, `Note:` lines,
+ECJ `extra_problems`) are project-wide rows. Both formats give the same file, line and severity for the same
+problem; the test fixtures are real ECJ 3.45.0 and javac 21.0.9 output for the same two sources, with license
+header lines added and this machine's folders replaced.
+
+Fail-closed rules: ECJ's own DOCTYPE (its public DTD identifier, no internal subset) is accepted and never loaded;
+any other DOCTYPE, entity or processing instruction is refused. An ECJ `exception` element, or javac's "only
+showing the first N errors" line, forbids COMPLETE. PARTIAL and FAILED keep the rows, and an ECJ exception
+becomes one project-wide `ecj.exception` ERROR row. The design of the ECJ reader follows plexus-compiler-eclipse's
+`EcjResponseParser` (MIT). No code is copied, and ECJ itself is never run here.
+
+~~~sh
+java -jar target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar ECJ COMPLETE \
+  /work/project /work/project/target/ecj.xml /work/project/target/ecj.tsv /work/project/target/ecj.sha256
+~~~

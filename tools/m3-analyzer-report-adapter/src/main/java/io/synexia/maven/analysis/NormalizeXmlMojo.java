@@ -13,7 +13,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
 /**
- * Opt-in Maven adapter for original XML, SARIF or Semgrep CLI JSON reports. This goal
+ * Opt-in Maven adapter for original XML, SARIF, Semgrep CLI JSON, ECJ log or javac output reports. This goal
  * does not execute an analyzer, bind itself to a lifecycle phase, validate
  * analyzer coverage, skip another Mojo or publish a Maven session receipt.
  */
