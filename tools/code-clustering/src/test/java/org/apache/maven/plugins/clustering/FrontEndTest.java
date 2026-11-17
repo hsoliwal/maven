@@ -28,7 +28,8 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 /**
  * Front-end SPI checks. The service-registered {@link ToyFrontEnd} is discovered first, and its renamed copies share
  * the logic plane. A front end earlier in an explicit list takes files away from the built-in ones. The range
- * entry point used by language-server adapters gives the same logic for a renamed copy.
+ * entry point used by language-server adapters gives the same logic for a renamed copy, and lines counted in the
+ * whole file.
  */
 final class FrontEndTest {
     private static int failures;
@@ -74,6 +75,15 @@ final class FrontEndTest {
         Atom r1 = LexicalAtoms.rangeAtom("r.js", js, 0, split - 1, "METHOD", "sum", "", false);
         Atom r2 = LexicalAtoms.rangeAtom("r.js", js, split, js.length() - 1, "METHOD", "add", "", false);
         check("range atoms: renamed copy shares logic", r1.logic().equals(r2.logic()) && r1.symbol().equals("sum(1)"));
+        check("range lines: one line each", r1.line() == 1 && r1.endLine() == 1 && r2.line() == 2 && r2.endLine() == 2);
+        String text = "// lead\n\nfunction g(a) {\n  return 'a\\\nb' + a;\n}\n";
+        Atom g = LexicalAtoms.rangeAtom("g.js", text, 0, text.length(), "METHOD", "g", "", false);
+        check("range lines: leading comment left out, escaped newline counted: " + g.line() + "-" + g.endLine(),
+                g.line() == 3 && g.endLine() == 6);
+        String py = "x = 1\n\ndef doc():\n    return \"\"\"a\nb\"\"\"\n";
+        Atom doc = LexicalAtoms.rangeAtom("d.py", py, py.indexOf("def"), py.length(), "METHOD", "doc", "", true);
+        check("range lines: a multi-line string ends the atom: " + doc.line() + "-" + doc.endLine(),
+                doc.line() == 3 && doc.endLine() == 5);
     }
 
     private static Atom find(List<Atom> atoms, String path, String symbol) {

@@ -42,6 +42,11 @@ finds.
    knows symbol ranges (for example a language server's document symbols) can call `LexicalAtoms.rangeAtom` to
    get planes from the range's tokens.
 
+   Every atom also records its first and last source lines, so that reports and editors can point at it: javac
+   takes them from the compilation unit's line map, the lexical front end from its first and last tokens, and
+   `rangeAtom` counts them in the whole file. A plugged-in front end sets them with `AtomBuilder.lines(line,
+   endLine)`; without that call they are 0 (unknown). Lines are not part of any plane.
+
    ```xml
    <plugin>
      <groupId>org.apache.maven.plugins</groupId>
@@ -137,13 +142,17 @@ java -cp ... org.apache.maven.plugins.clustering.CodeClustering join <A/ATOM_HAS
 `mvn verify` compiles the plugin with `-Xlint:all -Werror` and runs `CodeClusteringTest` against a fixture. The
 fixture has an exact copy with CRLF line ends, a copy with renamed locals (logic plane), a copy with one changed
 literal (structure plane), a copy with one extra statement (SimHash), and a renamed copy of a whole file (file
-family). The test then checks the join, the coverage and the command-line exit codes. `LexicalAtomsTest` checks
-the lexical front end on JavaScript, Python, Go, C, Rust and Kotlin fixtures: atom symbols, the logic and
-structure planes, and braces inside strings and comments.
+family). The test then checks the atoms' source lines, the join, the coverage, the command-line exit codes, the
+atom table's line columns and reading an 8-column table. `LexicalAtomsTest` checks the lexical front end on
+JavaScript, Python, Go, C, Rust and Kotlin fixtures: atom symbols, the logic and structure planes, braces inside
+strings and comments, and source lines. `FrontEndTest` checks front-end discovery and `rangeAtom`, including its
+lines.
 
 ## Report columns
 
-- `ATOM_HASHES.tsv`: path, kind (TYPE or METHOD), symbol, tokens, exact, logic, structure, simhash
+- `ATOM_HASHES.tsv`: path, kind (TYPE or METHOD), symbol, tokens, exact, logic, structure, simhash, line, end_line
+  (the atom's first and last source lines, 1-based; 0 when the front end does not know them). Tables written
+  before the two line columns existed (8 columns) are still read, with lines 0.
 - `CLUSTERS.tsv`: plane, cluster, kind, members, tokens, atoms (`path#symbol|...`)
 - `PLANE_SUMMARY.tsv`: plane, clusters, clustered_atoms
 - `FILE_PAIRS.tsv`: left, right, shared, left_methods, right_methods, jaccard

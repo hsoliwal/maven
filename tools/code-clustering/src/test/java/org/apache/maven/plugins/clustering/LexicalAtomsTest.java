@@ -30,7 +30,7 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 /**
  * Lexical front end checks on JavaScript, Python, Go, C, Rust and Kotlin fixtures: which blocks become atoms and
  * under which symbol; that a renamed copy shares the logic hash, a changed literal shares only the structure hash,
- * and that braces inside strings and comments do not open blocks.
+ * and that braces inside strings and comments do not open blocks; and the atoms' source lines in JavaScript and Python.
  */
 final class LexicalAtomsTest {
     private static final String JS = String.join("\n",
@@ -124,6 +124,16 @@ final class LexicalAtomsTest {
         check("py structure: same shape apart from the decorator", total.tokens() + 2 == summe.tokens());
         check("py near: decorated copy within radius", PlaneHash.hamming(total.simhash(), summe.simhash()) <= 12);
         check("py method in class: own symbol", !atoms.get("s.py#METHOD#Stats.total(2)").logic().equals(total.logic()));
+        check("js lines: sum 2-6, Bag 17-19, Bag.size 18, twice 20", lines(sum, 2, 6)
+                && lines(atoms.get("a.js#TYPE#Bag"), 17, 19) && lines(atoms.get("a.js#METHOD#Bag.size(1)"), 18, 18)
+                && lines(atoms.get("a.js#METHOD#twice(1)"), 20, 20));
+        check("py lines: Stats 1-6, Stats.total 2-6, total 8-12, decorated summe 14-19",
+                lines(atoms.get("s.py#TYPE#Stats"), 1, 6) && lines(atoms.get("s.py#METHOD#Stats.total(2)"), 2, 6)
+                && lines(total, 8, 12) && lines(summe, 14, 19));
+    }
+
+    private static boolean lines(Atom atom, int line, int endLine) {
+        return atom != null && atom.line() == line && atom.endLine() == endLine;
     }
 
     private static void check(String name, boolean ok) {

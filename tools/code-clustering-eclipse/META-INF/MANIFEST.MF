@@ -1,0 +1,14 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Apache Maven Code Clustering: Eclipse LSP4E Connector
+Bundle-SymbolicName: org.apache.maven.plugins.clustering.eclipse;
+ singleton:=true
+Bundle-Version: 0.1.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Automatic-Module-Name: org.apache.maven.plugins.clustering.eclipse
+Require-Bundle: org.eclipse.lsp4e,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources
+Bundle-ClassPath: .
+Bundle-ActivationPolicy: lazy
+Eclipse-BundleShape: dir
