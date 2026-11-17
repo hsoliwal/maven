@@ -22,6 +22,9 @@ import java.util.stream.Stream;
  *       results folder are removed and the tool runs (looked up as the task runner looks up bare tool names); the TRX
  *       files are then converted whatever its exit status, one report per test class. Prints one
  *       {@code M3-SUREFIRE} summary line.</li>
+ *   <li>{@code junit <results> <reports> [<tool> <argument>...]}: the same for the JUnit XML files CTest writes
+ *       ({@link JUnitReport}), one report per file, named after it ({@code ctest-junit.xml} gives
+ *       {@code TEST-ctest.xml}).</li>
  *   <li>{@code libtest <reports> <tool> <argument>...}: {@link CargoTestReport} runs the tool, echoes its output and
  *       writes one report per test binary.</li>
  * </ul>
@@ -32,6 +35,8 @@ public final class SurefireReportMain {
     static final String TRX = "trx";
     /** The libtest output format of cargo test. */
     static final String LIBTEST = "libtest";
+    /** The JUnit XML format of CTest. */
+    static final String JUNIT = "junit";
 
     private SurefireReportMain() { }
 
@@ -45,37 +50,61 @@ public final class SurefireReportMain {
             return CargoTestReport.run(directory.resolve(args.get(1)).normalize(), args.subList(2, args.size()),
                     System.out);
         }
-        if (args.size() < 3 || !TRX.equals(args.get(0))) {
-            throw new IOException("usage: trx <results> <reports> [<tool> <argument>...] | libtest <reports> <tool>"
-                    + " <argument>...");
+        if (args.size() < 3 || !(TRX.equals(args.get(0)) || JUNIT.equals(args.get(0)))) {
+            throw new IOException("usage: trx|junit <results> <reports> [<tool> <argument>...] | libtest <reports>"
+                    + " <tool> <argument>...");
         }
-        return trx(args.subList(1, args.size()), directory);
+        return results(args.get(0), args.subList(1, args.size()), directory);
     }
 
-    private static int trx(List<String> args, Path directory) throws IOException, InterruptedException {
+    /** A format that reads result files: removes old ones, runs the tool if any, converts what is there. */
+    private static int results(String format, List<String> args, Path directory)
+            throws IOException, InterruptedException {
         Path results = directory.resolve(SurefireReportProvider.relative(args.get(0))).normalize();
         Path reports = directory.resolve(SurefireReportProvider.relative(args.get(1))).normalize();
         int exit = 0;
         if (args.size() > 2) {
-            for (Path old : trx(results)) Files.delete(old);
+            for (Path old : files(results, format)) Files.delete(old);
+            if (JUNIT.equals(format)) Files.createDirectories(results);
             exit = execute(args.subList(2, args.size()), directory);
         }
-        System.out.println(convert(results, reports));
+        System.out.println(convert(format, results, reports));
         return exit;
     }
 
     /** Converts every TRX file of {@code results}, one report per test class; returns the summary line. */
     static String convert(Path results, Path reports) throws IOException {
-        List<Path> files = trx(results);
-        List<TestSuiteReport.Case> cases = new ArrayList<>();
-        for (Path file : files) cases.addAll(TrxReport.read(file));
-        List<TestSuiteReport> suites = suites(cases);
+        return convert(TRX, results, reports);
+    }
+
+    /** Converts the result files of {@code results}; returns the summary line. */
+    static String convert(String format, Path results, Path reports) throws IOException {
+        List<Path> files = files(results, format);
+        List<TestSuiteReport> suites = TRX.equals(format) ? suites(trxCases(files)) : junitSuites(files);
         for (TestSuiteReport suite : suites) SurefireXmlWriter.write(suite, reports);
-        TestSuiteReport all = new TestSuiteReport("all", cases);
-        return "M3-SUREFIRE trx=" + files.size() + " tests=" + cases.size()
+        TestSuiteReport all = new TestSuiteReport("all",
+                suites.stream().flatMap(suite -> suite.cases().stream()).toList());
+        return "M3-SUREFIRE " + format + "=" + files.size() + " tests=" + all.cases().size()
                 + " failures=" + all.count(TestSuiteReport.Status.FAILED)
                 + " errors=" + all.count(TestSuiteReport.Status.ERRORED)
                 + " skipped=" + all.count(TestSuiteReport.Status.SKIPPED) + " reports=" + suites.size();
+    }
+
+    private static List<TestSuiteReport.Case> trxCases(List<Path> files) throws IOException {
+        List<TestSuiteReport.Case> cases = new ArrayList<>();
+        for (Path file : files) cases.addAll(TrxReport.read(file));
+        return cases;
+    }
+
+    private static List<TestSuiteReport> junitSuites(List<Path> files) throws IOException {
+        List<TestSuiteReport> suites = new ArrayList<>();
+        for (Path file : files) suites.add(JUnitReport.read(file, JUnitReport.suite(file)));
+        return suites;
+    }
+
+    /** The result files of a format ({@code *.trx}, {@code *.xml}) in {@code results}, or that file itself. */
+    static List<Path> files(Path results, String format) throws IOException {
+        return TRX.equals(format) ? trx(results) : matching(results, ".xml");
     }
 
     /** One suite per class name, in name order, each with its cases in the given order. */
@@ -87,10 +116,15 @@ public final class SurefireReportMain {
 
     /** The TRX file itself, or the {@code *.trx} files directly in the folder, in name order; none when absent. */
     static List<Path> trx(Path results) throws IOException {
+        return matching(results, ".trx");
+    }
+
+    /** The file itself, or the files with the suffix directly in the folder, in name order; none when absent. */
+    private static List<Path> matching(Path results, String suffix) throws IOException {
         if (Files.isRegularFile(results, LinkOption.NOFOLLOW_LINKS)) return List.of(results);
         if (!Files.isDirectory(results, LinkOption.NOFOLLOW_LINKS)) return List.of();
         try (Stream<Path> list = Files.list(results)) {
-            return list.filter(path -> path.getFileName().toString().endsWith(".trx"))
+            return list.filter(path -> path.getFileName().toString().endsWith(suffix))
                     .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)).sorted().toList();
         }
     }

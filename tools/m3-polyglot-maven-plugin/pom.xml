@@ -207,6 +207,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>ctest-report-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.CTestReportContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>eclipse-model-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>

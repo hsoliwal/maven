@@ -30,6 +30,9 @@ public final class Mavenizer {
     private static final Pattern SCRIPTS = Pattern.compile("\"scripts\"\\s*:\\s*\\{([^}]*)\\}", Pattern.DOTALL);
     static final String CMAKE_BUILD = "build/cmake";
     static final String CMAKE_CONFIG = "Debug";
+    /** CTest's own JUnit XML, converted by the surefire report runner's junit format. */
+    static final String CTEST_RESULTS = "target/ctest";
+    static final String CTEST_TOOL = "@m3:surefire:interpreter:junit";
     /** clangd's project configuration naming the compile database; cdt-lsp reads and writes the same key. */
     static final String CLANGD = "CompileFlags:\n  CompilationDatabase: " + CMAKE_BUILD + "\n";
 
@@ -245,8 +248,9 @@ public final class Mavenizer {
     /**
      * CMake: configure exports compile_commands.json (Makefile and Ninja generators; a Visual Studio generator
      * ignores it); build and test name the configuration, which a multi-config generator needs (without -C, CTest
-     * reports "Not Run"); CTest writes JUnit XML to the module's target/surefire-reports (a relative
-     * --output-junit is resolved in the test directory).
+     * reports "Not Run"); CTest writes JUnit XML to the module's target/ctest (a relative --output-junit is resolved
+     * in the test directory), which the junit format of the surefire report runner turns into
+     * target/surefire-reports/TEST-ctest.xml: a disabled test skipped, a test CTest could not run an error.
      */
     private static void cmake(Path dir, List<Step> steps) throws IOException {
         if (!has(dir, "CMakeLists.txt")) return;
@@ -254,8 +258,9 @@ public final class Mavenizer {
         add(steps, "compile", "cmake", "--build", CMAKE_BUILD, "--config", CMAKE_CONFIG);
         String text = read(dir, "CMakeLists.txt");
         if (text.contains("enable_testing") || text.contains("add_test")) {
-            add(steps, "test", "ctest", "--test-dir", CMAKE_BUILD, "-C", CMAKE_CONFIG, "--output-on-failure",
-                    "--output-junit", "../../target/surefire-reports/TEST-ctest.xml");
+            steps.add(new Step("test", "ctest-test", CTEST_TOOL, List.of(CTEST_RESULTS, "target/surefire-reports",
+                    "ctest", "--test-dir", CMAKE_BUILD, "-C", CMAKE_CONFIG, "--output-on-failure", "--output-junit",
+                    "../../" + CTEST_RESULTS + "/ctest-junit.xml")));
         }
     }
 

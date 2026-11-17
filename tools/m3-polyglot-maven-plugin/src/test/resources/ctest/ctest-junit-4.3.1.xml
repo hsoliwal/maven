@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+  SPDX-License-Identifier: Apache-2.0
+  ctest 4.3.1 output (unchanged apart from this comment) for CTestReportContractTestMain.CMAKE_PROJECT:
+  ctest with the options test-dir build/cmake, C Debug, output-on-failure and output-junit ../../ctest-junit.xml
+-->
+<testsuite name="(empty)"
+	tests="4"
+	failures="1"
+	disabled="1"
+	skipped="1"
+	hostname=""
+	time="0"
+	timestamp="2026-11-18T04:25:34"
+	>
+	<testcase name="passes" classname="passes" time="0.0826121" status="run">
+		<properties/>
+		<system-out>hello
+</system-out>
+	</testcase>
+	<testcase name="fails" classname="fails" time="0.0964022" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="off" classname="off" time="0" status="disabled">
+		<properties/>
+		<system-out>Disabled</system-out>
+	</testcase>
+	<testcase name="missing" classname="missing" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties/>
+		<system-out>Unable to find executable: does-not-exist-4711</system-out>
+	</testcase>
+</testsuite>

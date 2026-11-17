@@ -37,7 +37,7 @@ public final class CargoTestReport {
             });
         }
         int exit = process.waitFor();
-        write(parser.finish(), reports, echo);
+        write(parser.finish(exit), reports, echo);
         return exit;
     }
 
