@@ -159,6 +159,20 @@ public final class SmartBuilderAdapterTest {
             require(Files.readString(build.resolve("m3-smart/code-agent-verify.json")).contains("\"status\":\"refused\""),
                     "Maven verifier cannot be invoked by default without operator approval");
         }
+        MachineFingerprintMojo fingerprints = new MachineFingerprintMojo();
+        set(fingerprints, "baseDir", project.toFile());
+        set(fingerprints, "buildDir", build.toFile());
+        set(fingerprints, "sourceRoot", source.toFile());
+        set(fingerprints, "preparationReport", project.resolve("absent-preparation.json").toFile());
+        set(fingerprints, "atomPatternManifest", project.resolve("absent-checkpoints.tsv").toFile());
+        set(fingerprints, "machineWorkers", 2);
+        try {
+            fingerprints.execute();
+            throw new AssertionError("machine-fingerprints must require current canonical producer receipts");
+        } catch (org.apache.maven.plugin.MojoExecutionException expected) {
+            require(Files.readString(build.resolve("m3-smart/machine-fingerprints.json")).contains("\"status\":\"refused\""),
+                    "Maven AST producer cannot bypass canonical evidence gates");
+        }
         int count = 7;
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {

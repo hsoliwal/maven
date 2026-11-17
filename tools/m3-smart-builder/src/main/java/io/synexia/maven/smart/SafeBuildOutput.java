@@ -28,7 +28,7 @@ import java.util.Set;
 
 /** Fixed Maven receipt output with component-wise symlink rejection. */
 public final class SafeBuildOutput {
-    private static final Set<String> RECEIPTS = Set.of("plan.json", "provision.json", "diagnose.json", "pre-build.json", "post-build.json", "code-agent.json", "code-agent-verify.json");
+    private static final Set<String> RECEIPTS = Set.of("plan.json", "provision.json", "diagnose.json", "pre-build.json", "post-build.json", "code-agent.json", "code-agent-verify.json", "machine-evidence.tsv", "machine-fingerprints.json");
     private SafeBuildOutput() { }
 
     public static Path directory(Path projectBase, Path mavenBuildDirectory) throws IOException {

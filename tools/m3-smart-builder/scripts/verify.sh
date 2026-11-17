@@ -30,6 +30,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
   src/main/java/io/synexia/maven/smart/RecipeCatalog.java \
   src/main/java/io/synexia/maven/smart/MachineEvidence.java \
+  src/main/java/io/synexia/maven/smart/MachineFingerprintMain.java \
   src/main/java/io/synexia/maven/smart/MachineRulebook.java \
   src/main/java/io/synexia/maven/smart/CodeAgentMain.java \
   src/main/java/io/synexia/maven/smart/CodeAgentVerifyMain.java \
@@ -39,6 +40,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/test/java/io/synexia/maven/smart/CanonicalPreparationEvidenceTestMain.java \
   src/test/java/io/synexia/maven/smart/CodeAgentTest.java \
   src/test/java/io/synexia/maven/smart/CodeAgentVerifyTest.java \
+  src/test/java/io/synexia/maven/smart/MachineFingerprintTest.java \
   src/test/java/io/synexia/maven/smart/MachineRulebookTest.java
 # Packaged rulebook resources are also present on the dependency-free test classpath.
 cp -R src/main/resources/. target/jdk-only/
@@ -66,6 +68,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -cp "target/jdk-only${sep}target/canon-
   src/main/java/io/synexia/maven/smart/BuildHookMojo.java \
   src/main/java/io/synexia/maven/smart/CodeAgentMojo.java \
   src/main/java/io/synexia/maven/smart/CodeAgentVerifyMojo.java \
+  src/main/java/io/synexia/maven/smart/MachineFingerprintMojo.java \
   src/main/java/io/synexia/maven/smart/CanonMojo.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java
 mkdir -p target/mcp-fixture
@@ -89,6 +92,7 @@ done
 java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaagent:target/syntax-agent.jar \
   -cp target/syntax-only io.synexia.maven.smart.ast.SyntaxTreeAtomicFailureContract
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
+java -cp target/jdk-only io.synexia.maven.smart.MachineFingerprintTest
 java -cp target/jdk-only io.synexia.maven.smart.MachineRulebookTest
 java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
 java -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest
