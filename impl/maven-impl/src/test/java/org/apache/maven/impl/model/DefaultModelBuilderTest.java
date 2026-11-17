@@ -2034,6 +2034,49 @@ class DefaultModelBuilderTest {
                 "org.apache.maven.test:profile-parent:1.0.0", warnings.get(0).getModelId());
     }
 
+    @Test
+    void aMissingSubprojectFailsOnlyARecursiveBuild(@TempDir Path directory) throws Exception {
+        String head = "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>"
+                + "<groupId>org.example</groupId><version>1</version>";
+        Files.writeString(
+                directory.resolve("pom.xml"),
+                head + "<artifactId>root</artifactId><packaging>pom</packaging>"
+                        + "<modules><module>present</module><module>missing</module></modules></project>");
+        Files.createDirectories(directory.resolve(".mvn"));
+        Files.createDirectories(directory.resolve("present"));
+        Files.writeString(
+                directory.resolve("present/pom.xml"),
+                head + "<artifactId>present</artifactId><packaging>pom</packaging></project>");
+        ModelBuilderRequest.ModelBuilderRequestBuilder request = ModelBuilderRequest.builder()
+                .session(session)
+                .requestType(ModelBuilderRequest.RequestType.BUILD_PROJECT)
+                .source(Sources.buildSource(directory.resolve("pom.xml")));
+
+        ModelBuilderResult nonRecursive =
+                builder.newSession().build(request.recursive(false).build());
+
+        List<ModelProblem> missing = results(nonRecursive)
+                .flatMap(r -> r.getProblemCollector().problems())
+                .filter(p -> p.getMessage().startsWith("Child subproject missing of "))
+                .toList();
+        assertEquals(1, missing.size(), missing.toString());
+        assertEquals("WARNING", missing.get(0).getSeverity().name());
+        assertTrue(missing.get(0).getMessage().endsWith("(not built: non-recursive build)"));
+        assertEquals("root", nonRecursive.getEffectiveModel().getArtifactId());
+
+        ModelBuilderException recursive = assertThrows(
+                ModelBuilderException.class,
+                () -> builder.newSession().build(request.recursive(true).build()));
+        assertTrue(
+                recursive.getMessage().contains("Child subproject missing of ")
+                        || recursive
+                                .getProblemCollector()
+                                .problems()
+                                .anyMatch(p -> p.getMessage().startsWith("Child subproject missing of ")
+                                        && "ERROR".equals(p.getSeverity().name())),
+                recursive.getMessage());
+    }
+
     private List<ModelProblem> bomImportWarnings(ModelBuilderResult result) {
         return results(result)
                 .flatMap(r -> r.getProblemCollector().problems())

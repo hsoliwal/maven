@@ -1157,9 +1157,14 @@ public class DefaultModelBuilder implements ModelBuilder {
                     Path rawSubprojectFile = modelProcessor.locateExistingPom(pomDirectory.resolve(subproject));
 
                     if (rawSubprojectFile == null) {
+                        // A non-recursive build (-N) never builds its subprojects, as in Maven 3: a missing one
+                        // (a sparse or partial checkout) is reported but does not stop the build. Only builds
+                        // report reactor load failures; validating a POM keeps this an error.
+                        boolean nonRecursiveBuild = reportReactorLoadFailures && !request.isRecursive();
                         ModelProblem problem = new DefaultModelProblem(
-                                "Child subproject " + subproject + " of " + pomDirectory + " does not exist",
-                                Severity.ERROR,
+                                "Child subproject " + subproject + " of " + pomDirectory + " does not exist"
+                                        + (nonRecursiveBuild ? " (not built: non-recursive build)" : ""),
+                                nonRecursiveBuild ? Severity.WARNING : Severity.ERROR,
                                 Version.BASE,
                                 model,
                                 -1,
