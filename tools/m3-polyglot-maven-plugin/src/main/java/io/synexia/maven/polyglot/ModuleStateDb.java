@@ -82,6 +82,13 @@ final class ModuleStateDb {
 
     static ModuleStateDb open(Path workspace, String backend) throws IOException {
         Path root = workspace.toAbsolutePath().normalize();
+        Path stateDirectory = root.resolve(".m3");
+        if (Files.isSymbolicLink(stateDirectory) || Files.isSymbolicLink(root.resolve(NATIVE_DIRECTORY))) {
+            throw new IOException("module state directory must not be a symlink");
+        }
+        // Create the stable module-state parent before hashing an input directory
+        // that includes the project root, avoiding a spurious second build.
+        Files.createDirectories(stateDirectory);
         Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
             case "file" -> new FileStorage(root.resolve(FILE));
             case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
@@ -207,6 +214,7 @@ final class ModuleStateDb {
     private void addEntry(MessageDigest digest, Path path) throws IOException {
         Path relative = root.relativize(path);
         if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
+                || path.equals(root.resolve(".m3/module-state.lock"))
                 || path.startsWith(root.resolve(NATIVE_DIRECTORY)))) return;
         if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         String name = relative.toString().replace('\\', '/');
