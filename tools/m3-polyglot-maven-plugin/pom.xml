@@ -72,6 +72,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>index-store-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.IndexStoreContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>module-store-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>

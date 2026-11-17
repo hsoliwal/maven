@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+# Explicitly selected OpenRewrite migration; never activates on ordinary Maven invocations.
+type: specs.openrewrite.org/v1beta/recipe
+name: io.synexia.maven.recipe.EnableM3ModuleDb
+displayName: Enable opt-in per-module M3DB reuse for polyglot tasks
+description: >-
+  Adds the two independent opt-in properties for module-local, content-verified
+  polyglot task receipts. No arbitrary Maven Mojo, CodeQL, OpenRewrite or M3
+  compiler/atomizer/patternizer provider becomes cacheable. Existing explicit
+  property values remain authoritative and must be checked by the operator.
+recipeList:
+  - org.openrewrite.maven.AddProperty:
+      key: m3.polyglot.incremental
+      value: 'true'
+      preserveExistingValue: true
+      trustParent: true
+  - org.openrewrite.maven.AddProperty:
+      key: m3.polyglot.m3db
+      value: 'true'
+      preserveExistingValue: true
+      trustParent: true

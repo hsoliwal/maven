@@ -1,4 +1,6 @@
 **/target/**
+**/.m3/module.m3db
+**/.m3/module.m3db.lock
 .project
 .classpath
 .settings/
@@ -27,3 +29,6 @@
 **/.m3/module-state-v1.bin
 **/.m3/module-state.lock
 **/.m3/maven-build-db/
+**/.m3/module-state-*/
+# Per-project build database (opt-in persistent location); target/project-db is under target/
+**/.mvn/project-db/

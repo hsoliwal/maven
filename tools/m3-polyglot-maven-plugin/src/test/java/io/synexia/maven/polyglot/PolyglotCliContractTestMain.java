@@ -80,9 +80,34 @@ public final class PolyglotCliContractTestMain {
                     "second DB-backed run must reuse verified state");
             passed++;
 
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db"
+            }, log::add);
+            check(Files.isRegularFile(root.resolve(M3DbModuleStore.FILE)), "CLI creates one per-module M3DB database");
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--m3db", "--incremental"
+            }, log::add);
+            check(log.stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile")),
+                    "CLI reads its completed module M3DB receipt");
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--incremental", "--state-backend", "indexdb"
+            }, log::add);
+            check(log.stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile")),
+                    "--state-backend indexdb is the same module M3DB as --m3db");
+            passed++;
+
             for (String[] rejected : List.of(
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--incremental"},
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--approve-rewrite-apply"},
+                    new String[] {"plan", root.toString(), manifest.toString(), "all", "--m3db"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--m3db"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db", "--m3db"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db",
+                        "--state-backend", "file"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--state-backend", "indexdb"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--incremental"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "0"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "43201"},

@@ -31,13 +31,24 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.approveRewriteApply", defaultValue = "false")
     private boolean approveRewriteApply;
 
-    /** Reuse M3DB task state only after verifying declared inputs, context and output content. */
+    /**
+     * Skip a task whose declared inputs and definition are unchanged since its last success (content stamps);
+     * with the indexdb backend, reuse M3DB task state only after verifying declared inputs, context and output
+     * content.
+     */
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
-    /** "legacy" (unchanged default), "file" (one image per module), or "m3db" (native MIndexDB). */
+    /**
+     * "legacy" (unchanged default), "file" (one image per module), "m3db" (that image as one M3IndexDB
+     * artifact), or "indexdb" (one M3IndexDB receipt archive per module, {@code .m3/module.m3db}).
+     */
     @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "legacy")
     private String incrementalState;
+
+    /** Store declared-input and verified-output receipts in one file per project module (the indexdb backend). */
+    @Parameter(property = "m3.polyglot.m3db", defaultValue = "false")
+    private boolean moduleDb;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -48,10 +59,11 @@ public final class RunMojo extends AbstractMojo {
         if (timeoutSeconds < 1 || timeoutSeconds > 43_200) {
             throw new MojoExecutionException("m3.polyglot.timeoutSeconds must be between 1 and 43200");
         }
+        String backend = backend();
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
-                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
+                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, backend,
                     message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
@@ -59,5 +71,16 @@ public final class RunMojo extends AbstractMojo {
         } catch (Exception failure) {
             throw new MojoExecutionException("M3 polyglot execution failed: " + failure.getMessage(), failure);
         }
+    }
+
+    /** m3.polyglot.m3db=true selects the indexdb backend; it cannot contradict an explicit other backend. */
+    private String backend() throws MojoExecutionException {
+        if (!moduleDb) return incrementalState;
+        if (!"legacy".equals(incrementalState) && !"indexdb".equals(incrementalState)) {
+            throw new MojoExecutionException("m3.polyglot.m3db=true conflicts with m3.polyglot.incrementalState="
+                    + incrementalState);
+        }
+        if (!incremental) throw new MojoExecutionException("m3.polyglot.m3db requires m3.polyglot.incremental=true");
+        return "indexdb";
     }
 }

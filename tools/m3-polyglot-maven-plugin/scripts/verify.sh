@@ -16,11 +16,18 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskManifest.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskRunner.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/InputStamps.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LegacyStamps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \
-  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DbModuleStore.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/LegacyStamps.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStore.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStores.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/LibraryIndexStore.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/PlatformIndexStore.java   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateView.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DbModuleStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateView.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStores.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LibraryIndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/PlatformIndexStore.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/*.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/Mavenizer.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \
@@ -37,6 +44,17 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java
+# Compile the actual Maven goal against the fork's pinned offline API stubs.
+# This checks source/overload integration, not the real Maven plugin descriptor.
+STUBS="$ROOT/../m3-smart-builder/scripts/adapter-stubs"
+compile -cp "$DEST" -d "$DEST" \
+  "$STUBS"/org/apache/maven/plugins/annotations/Parameter.java \
+  "$STUBS"/org/apache/maven/plugins/annotations/Mojo.java \
+  "$STUBS"/org/apache/maven/plugin/logging/Log.java \
+  "$STUBS"/org/apache/maven/plugin/AbstractMojo.java \
+  "$STUBS"/org/apache/maven/plugin/MojoExecutionException.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/RunMojo.java
+java -cp "$DEST" io.synexia.maven.polyglot.IndexStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain

@@ -91,13 +91,28 @@ final class InputStamps {
         Path tool = Path.of(command.get(0));
         if (!tool.isAbsolute()) tool = root.resolve(task.workingDir()).resolve(tool);
         // Installed tool launchers commonly use symlinks. Bind the actual target and bytes.
-        tool = tool.toRealPath();
+        tool = launched(tool).toRealPath();
         update(digest, "executable");
         update(digest, tool.toString());
         file(digest, tool, new Budget());
         configuration(digest, root);
         update(digest, paths(task.inputs(), root));
         return hex(digest);
+    }
+
+    /**
+     * The file Windows actually starts for an explicit path without an executable extension (".../bin/java"
+     * starts ".../bin/java.exe"); elsewhere, and whenever the named file exists, the path itself.
+     */
+    static Path launched(Path tool) {
+        if (Files.exists(tool, LinkOption.NOFOLLOW_LINKS) || !System.getProperty("os.name", "").startsWith("Windows")) {
+            return tool;
+        }
+        for (String extension : System.getenv().getOrDefault("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")) {
+            Path candidate = tool.resolveSibling(tool.getFileName() + extension.toLowerCase(java.util.Locale.ROOT));
+            if (!extension.isBlank() && Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)) return candidate;
+        }
+        return tool;
     }
 
     /** Exact declared output tree identity, including empty directories and added files. */
