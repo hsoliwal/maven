@@ -18,21 +18,28 @@
  */
 package org.apache.maven.extensions.clustering;
 
+import java.lang.reflect.InvocationTargetException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
+import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import org.apache.maven.eventspy.AbstractEventSpy;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.toolchain.ToolchainManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,12 +50,15 @@ import org.slf4j.LoggerFactory;
  * execution ({@link CompilerWiring}). Tables go to {@code ${project.build.directory}/code-clustering/inline} (test
  * sources: its {@code test} directory), apart from the {@code cluster} goal's tables.
  * <p>
- * On unless {@code clustering.inline} is {@code false} in any letter case (user property, POM property or system
- * property). The plugin jar is {@code clustering.pluginJar}, else maven-code-clustering-plugin
+ * On while {@code clustering.inline} (user property, POM property or system property) is absent or {@code true},
+ * {@code yes}, {@code on} or {@code 1} in any letter case; any other value ({@code false}, {@code 0}, {@code no},
+ * {@code off}, empty) turns it off. The plugin jar is {@code clustering.pluginJar}, else maven-code-clustering-plugin
  * {@code clustering.pluginVersion} (default {@value #VERSION}) in the local repository; it must register the javac
  * plugin ({@link PluginJar}). Without such a jar the build runs as usual and the spy logs why once. Options
- * {@code clustering.minTokens}, {@code clustering.radius} and {@code clustering.fileThreshold} pass through. Any
- * failure is logged and leaves the execution as it was: the spy never fails a build.
+ * {@code clustering.minTokens}, {@code clustering.radius} and {@code clustering.fileThreshold} pass through. Before an
+ * execution that compiles stale sources only, the rows of deleted sources are dropped ({@code InlineClustering.prune}).
+ * A JDK toolchain in the build context leaves an execution alone ({@link ToolchainManager}). Any failure is logged and
+ * leaves the execution as it was: the spy never fails a build.
  */
 @Named("inline-code-clustering")
 @Singleton
@@ -57,7 +67,15 @@ public final class InlineClusteringSpy extends AbstractEventSpy {
     static final String ARTIFACT = "maven-code-clustering-plugin";
     static final String VERSION = "0.1.0-SNAPSHOT";
     private static final Logger LOG = LoggerFactory.getLogger(InlineClusteringSpy.class);
+    /** The values of {@code clustering.inline} that keep it on (any letter case); any other value turns it off. */
+    private static final Set<String> ON = Set.of("true", "yes", "on", "1");
     private final Set<String> logged = ConcurrentHashMap.newKeySet();
+    private final Provider<ToolchainManager> toolchains;
+
+    @Inject
+    public InlineClusteringSpy(Provider<ToolchainManager> toolchains) {
+        this.toolchains = toolchains;
+    }
 
     @Override
     public void onEvent(Object event) {
@@ -70,25 +88,53 @@ public final class InlineClusteringSpy extends AbstractEventSpy {
         try {
             wire(started.getSession(), started.getProject(), mojo);
         } catch (Throwable failure) {
-            if (failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError)) throw (Error) failure;
+            if (fatal(failure)) throw (Error) failure;
             LOG.warn("Inline code clustering skipped for {} {}: {}", started.getProject().getArtifactId(),
                     mojo.getExecutionId(), failure.toString());
         }
     }
 
     private void wire(MavenSession session, MavenProject project, MojoExecution mojo) {
-        String inline = property(session, project, "clustering.inline");
-        if (inline != null && "false".equalsIgnoreCase(inline.trim())) return;
+        if (!on(property(session, project, "clustering.inline"))) return;
         Optional<Path> jar = pluginJar(session, project);
         if (jar.isEmpty()) return;
-        CompilerWiring wiring = new CompilerWiring(session, project, mojo);
+        CompilerWiring wiring = new CompilerWiring(session, project, mojo, toolchains.get());
         Optional<String> blocked = wiring.blocked(coordinatesProblem(session, project));
         if (blocked.isPresent()) {
             LOG.info("Inline code clustering skipped for {} {}: {}", project.getArtifactId(), mojo.getExecutionId(), blocked.get());
             return;
         }
-        wiring.wire(jar.get(), version(session, project), options(session, project));
+        String options = options(session, project);
+        wiring.wire(jar.get(), version(session, project), options);
         once("Inline code clustering: javac plugin CodeClustering from " + jar.get() + " (-Dclustering.inline=false turns it off)");
+        wiring.pruneArguments(options).ifPresent(args -> prune(jar.get(), args, project, mojo));
+    }
+
+    /** Whether {@code clustering.inline} keeps it on: absent, or {@link #ON}; false, 0, no, off, empty and others: off. */
+    static boolean on(String value) {
+        return value == null || ON.contains(value.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean fatal(Throwable failure) {
+        return failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError);
+    }
+
+    /**
+     * Drops the rows of deleted sources before an execution that compiles stale sources only (javac may not run at
+     * all): {@code InlineClustering.prune} from a class loader of the plugin jar, closed after the call. A failure is
+     * logged and leaves the wiring in place.
+     */
+    private static void prune(Path jar, String[] args, MavenProject project, MojoExecution mojo) {
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, ClassLoader.getSystemClassLoader())) {
+            Object line = Class.forName(PluginJar.PLUGIN_CLASS, true, loader).getMethod("prune", String[].class)
+                    .invoke(null, (Object) args);
+            LOG.debug("Inline code clustering prune for {} {}: {}", project.getArtifactId(), mojo.getExecutionId(), line);
+        } catch (Throwable failure) {
+            Throwable cause = failure instanceof InvocationTargetException ? failure.getCause() : failure;
+            if (fatal(cause)) throw (Error) cause;
+            LOG.warn("Inline code clustering: rows of deleted sources not dropped for {} {}: {}", project.getArtifactId(),
+                    mojo.getExecutionId(), cause.toString());
+        }
     }
 
     /**

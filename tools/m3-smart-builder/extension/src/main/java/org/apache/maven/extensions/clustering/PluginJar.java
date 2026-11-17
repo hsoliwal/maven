@@ -19,8 +19,11 @@
 package org.apache.maven.extensions.clustering;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +40,8 @@ import java.util.stream.Collectors;
  * fails every compilation ({@code plug-in not found}) when {@code -Xplugin:CodeClustering} names a plugin that its
  * processor path does not register, so the jar must hold {@value #SERVICE} listing {@value #PLUGIN_CLASS}, and that
  * class. A jar of the plugin built without the javac plugin (an older or another tree's {@code 0.1.0-SNAPSHOT}) has
- * neither. Results are cached by path, size and modification time. Class path elements are checked for annotation
+ * neither. The class must be compiled for the running Java or an older one, and the jar's path must not hold the path
+ * separator. Results are cached by path, size and modification time. Class path elements are checked for annotation
  * processor registrations ({@value #PROCESSOR_SERVICE}).
  */
 final class PluginJar {
@@ -45,11 +49,23 @@ final class PluginJar {
     static final String PLUGIN_CLASS = "org.apache.maven.plugins.clustering.InlineClustering";
     static final String PROCESSOR_SERVICE = "META-INF/services/javax.annotation.processing.Processor";
     private static final Map<String, Optional<String>> CHECKED = new ConcurrentHashMap<>();
+    /** A class file starts with the magic number, the minor and the major version: 8 bytes. */
+    private static final int CLASS_HEAD = 8;
+    private static final int CLASS_MAGIC = 0xCAFEBABE;
+    private static final int MAJOR_OFFSET = 6;
+    /** Class file major version minus this is the Java feature release (61 is Java 17). */
+    private static final int MAJOR_JAVA_OFFSET = 44;
 
     private PluginJar() { }
 
-    /** Why the jar cannot serve as the javac plugin; empty when it can. */
+    /**
+     * Why the jar cannot serve as the javac plugin; empty when it can. Its path must not hold the path separator (a
+     * processor path is split at it), and the plugin class must be compiled for the running Java or an older one.
+     */
     static Optional<String> problem(Path jar) {
+        if (jar.toString().contains(File.pathSeparator)) {
+            return Optional.of(jar + " contains the path separator " + File.pathSeparator + " (a processor path splits at it)");
+        }
         if (!Files.isRegularFile(jar)) return Optional.of(jar + " is not a file");
         try {
             String key = jar.toAbsolutePath() + "|" + Files.size(jar) + "|" + Files.getLastModifiedTime(jar).toMillis();
@@ -63,12 +79,25 @@ final class PluginJar {
         try (JarFile file = new JarFile(jar.toFile())) {
             JarEntry service = file.getJarEntry(SERVICE);
             boolean registered = service != null && registrations(file, service).contains(PLUGIN_CLASS);
-            boolean present = file.getJarEntry(PLUGIN_CLASS.replace('.', '/') + ".class") != null;
+            JarEntry plugin = file.getJarEntry(PLUGIN_CLASS.replace('.', '/') + ".class");
             String problem = jar + " has no javac plugin CodeClustering (" + SERVICE + " listing " + PLUGIN_CLASS + ")";
-            return registered && present ? Optional.empty() : Optional.of(problem);
+            return registered && plugin != null ? classVersion(jar, file, plugin) : Optional.of(problem);
         } catch (IOException e) {
             return Optional.of(jar + " cannot be read: " + e.getMessage());
         }
+    }
+
+    /** Why the plugin class cannot load in this Java: not a class file, or compiled for a newer Java. */
+    private static Optional<String> classVersion(Path jar, JarFile file, JarEntry plugin) throws IOException {
+        byte[] head;
+        try (InputStream in = file.getInputStream(plugin)) {
+            head = in.readNBytes(CLASS_HEAD);
+        }
+        ByteBuffer bytes = ByteBuffer.wrap(head);
+        if (head.length < CLASS_HEAD || bytes.getInt(0) != CLASS_MAGIC) return Optional.of(jar + " holds a damaged " + PLUGIN_CLASS);
+        int java = Short.toUnsignedInt(bytes.getShort(MAJOR_OFFSET)) - MAJOR_JAVA_OFFSET;
+        int running = Runtime.version().feature();
+        return java > running ? Optional.of(jar + " needs Java " + java + ", Maven runs on Java " + running) : Optional.empty();
     }
 
     /** The class names a service file lists: one per line, {@code #} comments and blanks left out. */
