@@ -278,11 +278,13 @@ final class ModuleStateDb {
 
     private void addEntry(MessageDigest digest, Path path) throws IOException {
         Path relative = root.relativize(path);
-        if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
-                || path.equals(root.resolve(".m3/module-state.lock"))
-                || path.startsWith(root.resolve(NATIVE_DIRECTORY)))) return;
-        if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         String name = relative.toString().replace('\\', '/');
+        // A declared .m3 input cannot recursively fingerprint the cache's own
+        // lock, database, SQLite journal or H2 lock/trace/temporary sidecars.
+        if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
+                || path.startsWith(root.resolve(NATIVE_DIRECTORY))
+                || name.startsWith(".m3/module-state."))) return;
+        if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         update(digest, name);
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             update(digest, "directory");
