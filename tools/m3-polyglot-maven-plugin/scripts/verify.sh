@@ -18,6 +18,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/InputStamps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdbcModuleStateStorage.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3BuildStateStoreProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/Mavenizer.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \
@@ -32,10 +33,13 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/PolyglotCliContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/TaskEngineContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateDbContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/TestMemoryBuildStateProvider.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.ModuleStateProviderContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.QualityProviderContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.MavenizerContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
