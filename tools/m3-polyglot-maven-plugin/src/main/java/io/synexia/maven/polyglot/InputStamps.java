@@ -104,6 +104,20 @@ final class InputStamps {
         return root.resolve(DIRECTORY).resolve(task.name() + ".sha256");
     }
 
+    /** SHA-256 over length-framed values, framed like {@link #stamp(TaskManifest.Task, Path)}. */
+    static String digest(String... values) {
+        MessageDigest digest = sha256();
+        for (String value : values) update(digest, value);
+        return hex(digest);
+    }
+
+    /** SHA-256 of the bytes of one file, as hex. */
+    static String fileSha256(Path file) throws IOException {
+        try (InputStream bytes = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            return content(bytes, new Budget());
+        }
+    }
+
     /**
      * M3DB ("m3db" state backend): bind the actual command, inherited process environment, local Maven configuration,
      * declared inputs and successful prerequisite generations to this module location.

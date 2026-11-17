@@ -354,14 +354,14 @@ final class ModuleStateDb {
         return result;
     }
 
-    private void decode(byte[] sealedImage) throws IOException {
-        if (sealedImage.length < 48 || sealedImage.length > MAX_IMAGE) return;
-        int end = sealedImage.length - 32;
-        byte[] actual = sha256().digest(Arrays.copyOf(sealedImage, end));
-        if (!MessageDigest.isEqual(actual, Arrays.copyOfRange(sealedImage, end, sealedImage.length))) return;
+    private void decode(byte[] image) throws IOException {
+        if (image.length < 48 || image.length > MAX_IMAGE) return;
+        int end = image.length - 32;
+        byte[] actual = sha256().digest(Arrays.copyOf(image, end));
+        if (!MessageDigest.isEqual(actual, Arrays.copyOfRange(image, end, image.length))) return;
         Map<String, FileState> readFiles = new TreeMap<>();
         Map<String, TaskState> readTasks = new TreeMap<>();
-        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(sealedImage, 0, end))) {
+        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(image, 0, end))) {
             if (data.readInt() != MAGIC || data.readInt() != VERSION) return;
             int count = data.readInt();
             if (count < 0 || count > MAX_ENTRIES) return;
@@ -400,7 +400,6 @@ final class ModuleStateDb {
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
-    @SuppressWarnings("try") // the lock is held for its scope, never referenced
     private static final class FileStorage implements Storage {
         private final Path file;
         FileStorage(Path file) { this.file = file; }
@@ -410,7 +409,8 @@ final class ModuleStateDb {
             if (Files.size(file) > MAX_IMAGE) return null;
             return Files.readAllBytes(file);
         }
-        @Override public void write(byte[] bytes) throws IOException {
+        // The FileLock is held for the try block only; javac -Xlint:try reports it as unused.
+        @Override @SuppressWarnings("try") public void write(byte[] bytes) throws IOException {
             Path parent = file.getParent();
             if (Files.isSymbolicLink(parent)) throw new IOException("module cache directory is a symlink");
             Files.createDirectories(parent);

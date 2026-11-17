@@ -27,6 +27,7 @@ import java.util.function.Consumer;
  * There is no timestamp-only skipping or undeclared build cache. Explicit incremental execution
  * compares content stamps of declared inputs; with the "m3db" state backend it reuses successful
  * task generations from the module M3IndexDB after authenticating input, context and output content.
+ * The opt-in build cache ({@link BuildCache}) restores declared outputs under a relocatable stamp.
  */
 public final class TaskRunner {
     private TaskRunner() {}
@@ -94,6 +95,42 @@ public final class TaskRunner {
             boolean incremental,
             String stateBackend,
             Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, stateBackend,
+                (Path) null, log);
+    }
+
+    /**
+     * Opt-in local build cache: with a {@code buildCache} folder, a task that declares inputs and outputs and has
+     * no provider-owned state is looked up by its content stamp before it starts. On a hit its declared outputs are
+     * restored and the tool is not started; after a success its outputs are stored. {@code null} disables the
+     * cache. Independent of {@code incremental}; with both, the up-to-date check comes first.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, "legacy",
+                buildCache, log);
+    }
+
+    /** Both opt-ins together: a persistent state backend for incremental mode and a local build cache folder. */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
         if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2").contains(stateBackend)
                 && (stateBackend == null || !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}"))) {
             throw new IllegalArgumentException("unknown portable module state backend");
@@ -127,13 +164,31 @@ public final class TaskRunner {
                         ? M3DbModuleStore.open(root, m3db, log) : null) {
             if (moduleLock != null) log.accept("M3DB module execution lock acquired");
             ModuleStateDb moduleState = portable ? ModuleStateDb.open(root, stateBackend) : null;
+            BuildCache cache = buildCache == null || dryRun ? null : new BuildCache(buildCache);
             return runTasks(plan, tasks, root, dryRun, timeoutPerTask, allowRewriteApply, incremental,
-                    new State(m3db, store, moduleState), log);
+                    new State(m3db, store, moduleState, cache), log);
         }
     }
 
-    /** Selected persistent state: owner M3IndexDB image, portable sealed image, or legacy stamps. */
-    private record State(boolean m3db, M3DbModuleStore store, ModuleStateDb moduleState) {}
+    /** Selected persistent state and the optional build cache; "cleared" marks a one-time M3DB revocation. */
+    private static final class State {
+        final boolean m3db;
+        final M3DbModuleStore store;
+        final ModuleStateDb moduleState;
+        final BuildCache cache;
+        boolean cleared;
+
+        State(boolean m3db, M3DbModuleStore store, ModuleStateDb moduleState, BuildCache cache) {
+            this.m3db = m3db;
+            this.store = store;
+            this.moduleState = moduleState;
+            this.cache = cache;
+        }
+
+        boolean m3db() { return m3db; }
+        M3DbModuleStore store() { return store; }
+        ModuleStateDb moduleState() { return moduleState; }
+    }
 
     private static List<String> runTasks(TaskManifest plan, List<TaskManifest.Task> tasks,
             Path root, boolean dryRun, Duration timeout, boolean allowRewriteApply, boolean incremental,
@@ -143,7 +198,6 @@ public final class TaskRunner {
         List<String> performed = new ArrayList<>(tasks.size());
         Map<String, String> generations = new HashMap<>();
         Set<String> overlappingOutputs = overlappingOutputs(plan);
-        boolean cleared = false;
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
                     + " prerequisites=" + task.prerequisites().size()
@@ -184,8 +238,9 @@ public final class TaskRunner {
             // Only explicitly declared, ordinary tool actions with both inputs and outputs
             // are candidates for reuse. CodeQL databases, OpenRewrite recipes and pluggable
             // providers own further hidden inputs and must execute normally.
-            boolean ordinary = incremental && qualityCommand == null && m3Command == null
+            boolean cacheable = qualityCommand == null && m3Command == null
                     && !task.inputs().isEmpty() && !task.outputs().isEmpty();
+            boolean ordinary = incremental && cacheable;
             boolean candidate = state.m3db() && ordinary && InputStamps.separate(task)
                     && !overlappingOutputs.contains(task.name())
                     && task.prerequisites().stream().allMatch(generations::containsKey);
@@ -208,15 +263,24 @@ public final class TaskRunner {
                 performed.add(task.name());
                 continue;
             }
+            // The cache key always uses the relocatable legacy InputStamps stamp, whatever the state backend.
+            String cacheStamp = state.cache == null || !cacheable ? null
+                    : !state.m3db() && moduleState == null && stamp != null ? stamp : InputStamps.stamp(task, root);
+            if (cacheStamp != null && Files.isRegularFile(state.cache.entry(BuildCache.key(cacheStamp)))) {
+                // As before a tool run, the task and its consumers are revoked first.
+                revoke(plan, task, state);
+                if (state.cache.restore(task, root, cacheStamp)) {
+                    log.accept("FROM-CACHE " + task.name() + " (declared outputs restored, key "
+                            + BuildCache.key(cacheStamp).substring(0, 12) + ")");
+                    if (input != null) recordM3db(task, root, directory, input, environment, generations, store, log);
+                    if (stamp != null) recordStamp(task, root, stamp, moduleState, log);
+                    performed.add(task.name());
+                    continue;
+                }
+            }
             // Revoke the old task and all consumers before tool effects begin.
             // A failure or crash must never leave an earlier success reusable.
-            if (store != null && !state.m3db() && !cleared) {
-                store.invalidateAll();
-                cleared = true;
-            } else if (store != null && state.m3db()) {
-                invalidateDependents(plan, task.name(), store);
-            }
-            if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
+            revoke(plan, task, state);
             execute(task, builder, timeout);
             for (String output : task.outputs()) {
                 if (!Files.exists(checked(root, output), LinkOption.NOFOLLOW_LINKS)) {
@@ -225,9 +289,28 @@ public final class TaskRunner {
             }
             if (input != null) recordM3db(task, root, directory, input, environment, generations, store, log);
             if (stamp != null) recordStamp(task, root, stamp, moduleState, log);
+            if (cacheStamp != null) store(state.cache, task, root, cacheStamp, log);
             performed.add(task.name());
         }
         return List.copyOf(performed);
+    }
+
+    /** m3db revokes the task and its transitive consumers; any other run revokes an M3DB image once. */
+    private static void revoke(TaskManifest plan, TaskManifest.Task task, State state) throws IOException {
+        if (state.store() != null && !state.m3db() && !state.cleared) {
+            state.store().invalidateAll();
+            state.cleared = true;
+        } else if (state.store() != null && state.m3db()) {
+            invalidateDependents(plan, task.name(), state.store());
+        }
+        if (state.moduleState() != null) state.moduleState().invalidateTransitive(plan, task.name());
+    }
+
+    private static void store(BuildCache cache, TaskManifest.Task task, Path root, String cacheStamp,
+            Consumer<String> log) throws IOException {
+        boolean stored = cache.store(task, root, cacheStamp);
+        log.accept((stored ? "CACHED " : "NOT-CACHED ") + task.name()
+                + (stored ? "" : " (an output is a link or special file, or exceeds the entry budget)"));
     }
 
     private static void recordM3db(TaskManifest.Task task, Path root, Path directory, String input,
@@ -401,7 +484,7 @@ public final class TaskRunner {
     }
 
     /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */
-    private static Path checked(Path root, String relative) throws IOException {
+    static Path checked(Path root, String relative) throws IOException {
         return InputStamps.checked(root, relative);
     }
 

@@ -42,6 +42,7 @@ import org.apache.maven.api.PathScope;
 import org.apache.maven.api.PathType;
 import org.apache.maven.api.Project;
 import org.apache.maven.api.Session;
+import org.apache.maven.api.services.ArtifactMatcherFactory;
 import org.apache.maven.api.services.DependencyResolver;
 import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.api.services.ProjectBuilder;
@@ -70,6 +71,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -146,6 +148,17 @@ class TestApi {
                         .build())
                 .getProject()
                 .get();
+    }
+
+    @Test
+    void testArtifactMatcherFactoryFromSession() {
+        ArtifactMatcherFactory factory = session.getService(ArtifactMatcherFactory.class);
+        Artifact artifact =
+                session.createArtifact("org.codehaus.plexus", "plexus-container-default", "1.0-alpha-32", "pom");
+        assertTrue(factory.createIncludeOnlyMatcher(List.of("org.codehaus.plexus:*:pom:*:[1.0-alpha-1,1.0)"))
+                .matches(artifact));
+        assertFalse(factory.createExcludeOnlyMatcher(List.of("org.codehaus.*")).matches(artifact));
+        assertTrue(factory.isIncludesAll(factory.createArtifactMatcher(null, null)));
     }
 
     @Test

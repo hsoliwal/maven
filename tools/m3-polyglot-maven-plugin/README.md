@@ -31,6 +31,23 @@ inputs of each cacheable task; this is not whole-reactor or arbitrary Mojo cachi
   (default `legacy`). With `m3db`, a task needs separate declared input and output paths and
   verified prerequisite generations.
   CodeQL, OpenRewrite and pluggable M3 providers always execute, as do their unverified dependents.
+- `-Dm3.polyglot.buildCache=<folder>` turns on a local build cache. It reuses the declared outputs of a task
+  across checkouts, branches and `clean` runs, as Gradle's local build cache does. The tasks that qualify are the
+  ones incremental mode would consider: those with declared inputs and outputs, and never CodeQL, OpenRewrite or
+  `@m3` provider tasks. The cache key is the legacy content stamp plus the OS and the architecture, whatever
+  `incrementalState` is. Before such a task starts, a stored entry for its key replaces its declared outputs, and
+  the tool is not started (`FROM-CACHE`). After a successful run, its outputs are stored (`CACHED`):
+  `entries/xx/<key>.tsv` lists the output folders and files, and each file body is stored once, by SHA-256, under
+  `blobs/xx/`. A hit replaces a declared output folder as a whole. With a module state backend, a hit first
+  revokes the task and its consumers, as a tool run does, then records the state (for `m3db`, the verified
+  input and output generation). A malformed entry, an entry that
+  names a path outside the declared outputs, or a stored file whose bytes no longer match its SHA-256 counts as a
+  miss: the task runs and the damaged file is replaced. Outputs that contain a link or a special file, and entries
+  over 1 GiB, are not stored (`NOT-CACHED`). The cache is off by default and works with or without
+  `-Dm3.polyglot.incremental` (when both are on, the up-to-date check runs first). Keep the folder outside the
+  workspace, for example `~/.m2/polyglot-build-cache`. Nothing is evicted yet. A key has the same limits as a
+  stamp: it covers the declared inputs and the task definition, including the tool path, but not the tool's
+  version or the environment.
 
 ### Persistent module database (`incrementalState=m3db`)
 
@@ -300,17 +317,18 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 java -cp /verified/m3-polyglot-maven-plugin.jar \
   io.synexia.maven.polyglot.PolyglotCli \
   run /work/project /work/project/m3-build.tsv all \
-  --timeout-seconds 900 --incremental --state-backend file
+  --timeout-seconds 900 --incremental --state-backend file \
+  --build-cache /work/polyglot-build-cache
 ```
 
 `--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only
-with `run --incremental` and accepts `legacy|file|m3db|sqlite|h2|ext-id`. `--incremental` and
-`--approve-rewrite-apply` require `run`; recipe mutation still requires the
+with `run --incremental` and accepts `legacy|file|m3db|sqlite|h2|ext-id`. `--incremental`,
+`--build-cache <folder>` and `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
 and retain its own task/diagnostic lifecycle. The Gradle quality-bridge fork
 can invoke this exact class without loading Maven Core or copying the task
-engine. No separate caching, toolchain download or CodeQL execution is implicit.
+engine. No caching, toolchain download or CodeQL execution happens unless its option is given.
 
 ## Eclipse (m2e)
 
