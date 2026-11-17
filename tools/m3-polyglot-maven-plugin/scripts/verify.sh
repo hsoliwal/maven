@@ -16,7 +16,12 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskManifest.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskRunner.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/InputStamps.java \
-  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDb.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbRunLock.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleJdbcStorage.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/BuildCache.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/BuildCacheContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/Mavenizer.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \
@@ -30,19 +35,14 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/PolyglotCli.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/PolyglotCliContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/TaskEngineContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateDbContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java
-# Compile the actual Maven goal against the fork's pinned offline API stubs.
-# This checks source/overload integration, not the real Maven plugin descriptor.
-STUBS="$ROOT/../m3-smart-builder/scripts/adapter-stubs"
-compile -cp "$DEST" -d "$DEST" \
-  "$STUBS"/org/apache/maven/plugins/annotations/Parameter.java \
-  "$STUBS"/org/apache/maven/plugins/annotations/Mojo.java \
-  "$STUBS"/org/apache/maven/plugin/logging/Log.java \
-  "$STUBS"/org/apache/maven/plugin/AbstractMojo.java \
-  "$STUBS"/org/apache/maven/plugin/MojoExecutionException.java \
-  "$ROOT"/src/main/java/io/synexia/maven/polyglot/RunMojo.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.BuildCacheContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.QualityProviderContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.MavenizerContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain

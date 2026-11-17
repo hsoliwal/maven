@@ -278,6 +278,20 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
       <artifactId>maven-toolchain-builder</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Reference implementation for the ArtifactMatcherFactory parity test only; its Maven 3 types
+         come from this module's own dependencies. -->
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-common-artifact-filters</artifactId>
+      <version>3.4.0</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
   </dependencies>
 
   <build>

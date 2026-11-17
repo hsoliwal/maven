@@ -63,32 +63,33 @@ public final class PolyglotCliContractTestMain {
                     "run", root.toString(), manifest.toString(), "all", "--incremental"
             }, log::add);
             check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE")), "changed input executes");
-            passed++;
-
             log.clear();
             PolyglotCli.execute(new String[] {
-                    "run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db"
+                    "run", root.toString(), manifest.toString(), "all", "--incremental",
+                    "--state-backend", "file"
             }, log::add);
-            check(Files.isRegularFile(M3ModuleDb.file(root)), "CLI creates one per-module M3DB database");
+            check(Files.isRegularFile(root.resolve(ModuleStateDb.FILE)), "one module DB exists");
+            check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE")),
+                    "first DB-backed run must execute");
             log.clear();
             PolyglotCli.execute(new String[] {
-                    "run", root.toString(), manifest.toString(), "all", "--m3db", "--incremental"
+                    "run", root.toString(), manifest.toString(), "all", "--incremental",
+                    "--state-backend", "file"
             }, log::add);
             check(log.stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile")),
-                    "CLI reads its completed module M3DB receipt");
+                    "second DB-backed run must reuse verified state");
             passed++;
 
             for (String[] rejected : List.of(
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--incremental"},
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--approve-rewrite-apply"},
-                    new String[] {"plan", root.toString(), manifest.toString(), "all", "--m3db"},
-                    new String[] {"run", root.toString(), manifest.toString(), "all", "--m3db"},
-                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db", "--m3db"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--incremental"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "0"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "43201"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "oops"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--state-backend", "file"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--state-backend", "invalid"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--unknown"})) {
                 boolean failed = false;
                 try {

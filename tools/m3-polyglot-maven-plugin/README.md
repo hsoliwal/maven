@@ -17,8 +17,6 @@ incremental mode can reuse a declared-input content stamp, with the limitations 
 flatten source inputs, automatically download toolchains, or skip goals using
 unverified data. More sophisticated incremental verification belongs to the
 source owners and M3JDK/M3FS evidence services.
-See [M3DB module state](../../docs/M3-MODULE-DB.md) for the durable per-module adapter,
-its storage contract, and the pending native Maven/Core admission gates.
 
 ## Goals and explicit lifecycle activation
 
@@ -34,21 +32,115 @@ its storage contract, and the pending native Maven/Core admission gates.
   task's inputs to have its changes re-run this task. Off by default. A task without both declared inputs and
   outputs always executes; CodeQL and OpenRewrite providers always execute, even in incremental mode.
   Stamps do **not** certify complete inputs, external tool versions, environment or ABI compatibility.
-- `-Dm3.polyglot.incremental=true -Dm3.polyglot.m3db=true` uses the **M3DB module ledger** instead of
-  separate task stamps. Every module gets its own `.m3/module.m3db` (plus a coordination `.lock` file).
-  One versioned, SHA-256-sealed database stores the successful input/task fingerprint and actual output-tree
-  fingerprint for each eligible task. Input and output paths are recursively content-hashed, including file
-  and directory identity; timestamps alone do not authorize reuse. Entries are updated under a cross-process
-  lock, with atomic replacement so a crash or corrupt/truncated database becomes a cache miss. The database
-  is bounded to 256 task entries / 1 MiB per module, does not follow symlinks, and is independent for every
-  Maven module. Missing or changed output bytes force a re-run; no result restoration is attempted. A failed
-  database read or write never changes the result of a successful original build.
-  This is an **opt-in completed-work ledger**, not a cache for arbitrary Maven Mojos. The calling project
-  remains responsible for complete declared inputs, tool versions, toolchain, dependency/ABI and environment
-  changes; CodeQL, OpenRewrite and M3 compiler/atomizer/patternizer providers continue to run normally.
-  If the database cannot verify a result, the original task executes. The old per-task stamp mode and all
-  original entry points remain available unchanged. The OpenRewrite recipe
-  `io.synexia.maven.recipe.EnableM3ModuleDb` explicitly configures both opt-in properties.
+- `-Dm3.polyglot.buildCache=<folder>` turns on a local build cache. It reuses the declared outputs of a task
+  across checkouts, branches and `clean` runs, as Gradle's local build cache does. The tasks that qualify are the
+  ones incremental mode would consider: those with declared inputs and outputs, and never CodeQL, OpenRewrite or
+  `@m3` provider tasks. The cache key is the content stamp above plus the OS and the architecture, whatever
+  `incrementalState` is. Before such a task starts, a stored entry for its key replaces its declared outputs, and
+  the tool is not started (`FROM-CACHE`). After a successful run, its outputs are stored (`CACHED`):
+  `entries/xx/<key>.tsv` lists the output folders and files, and each file body is stored once, by SHA-256, under
+  `blobs/xx/`. A hit replaces a declared output folder as a whole. With a module state backend, a hit first
+  revokes the task and its consumers, as a tool run does, then records the stamp. A malformed entry, an entry that
+  names a path outside the declared outputs, or a stored file whose bytes no longer match its SHA-256 counts as a
+  miss: the task runs and the damaged file is replaced. Outputs that contain a link or a special file, and entries
+  over 1 GiB, are not stored (`NOT-CACHED`). The cache is off by default and works with or without
+  `-Dm3.polyglot.incremental` (when both are on, the up-to-date check runs first). Keep the folder outside the
+  workspace, for example `~/.m2/polyglot-build-cache`. Nothing is evicted yet. A key has the same limits as a
+  stamp: it covers the declared inputs and the task definition, including the tool path, but not the tool's
+  version or the environment.
+
+### M3DB-backed persistent state for each module (new, opt-in)
+
+The existing `-Dm3.polyglot.incremental=true` behavior remains backward compatible.
+To persist a **single module-wide build-state image** instead of one stamp per
+task, add `-Dm3.polyglot.incrementalState=file`. To use the canonical **native
+MIndexDB artifact store**, set `-Dm3.polyglot.incrementalState=m3db` and put
+`com.synexia.mindex.db.MIndexDB` plus its runtime dependencies on the Maven
+plugin's runtime classpath. The native backend calls `MIndexDB.open(Path)`,
+`findArtifact`, and `putArtifact` through its real public API; Maven's
+bootstrap classpath does not require Synexia.
+
+```sh
+# Immediately usable standalone module-state file, one per project/module:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=file verify
+
+# Canonical M3DB, when the MIndexDB implementation is available in the plugin realm:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=m3db verify
+```
+
+- `file` stores `.m3/module-state-v1.bin` under **each module** and
+  atomically replaces a SHA-256-sealed binary image.
+- `m3db` stores the same versioned payload as a single native MIndexDB
+  artifact under `.m3/maven-build-db/` of that module. The exact native
+  artifact filename is owned by MIndexDB.
+- The database retains previous per-file SHA-256 digests, file identities,
+  sizes, modification/change times, per-task input stamps and successful
+  output stamps. A stable POSIX `ctime` **and** stable file key plus
+  unchanged size/mtime permit reuse without rereading bytes. Other file
+  systems conservatively rehash contents. All new or changed files are
+  SHA-256 checked; deleted/added files, output drift, task configuration,
+  POM changes, manifest changes, resolved tool binary and basic runtime
+  identity change the state.
+- State publication happens only after the native tool reports success and
+  declared outputs exist. An absent, unsupported or corrupt state image
+  is a cache miss. A requested missing MIndexDB runtime is an error, not a
+  silent backend substitution. The default remains the legacy per-task
+  stamp model, and no cache applies to tasks without declared input/output
+  edges or to CodeQL/OpenRewrite/opaque M3 tool providers.
+- As with any declared-input cache, environment variables other than the
+  explicitly captured runtime/PATH/JAVA_HOME values, external services,
+  dynamically discovered files and plugin-specific hidden inputs are **not**
+  verified. Such tasks must not opt into skipping. This is **not yet** a
+  Maven Core Java-compiler/reactor-wide skip engine: Maven Resolver, Java
+  compiler invalidation and ordinary Maven plugin lifecycle remain intact.
+  Maven's official build-cache extension is the appropriate complementary
+  mechanism for full Maven lifecycle artifact restoration.
+
+CLI/other hosts can use
+`--incremental --state-backend file` or
+`--incremental --state-backend m3db`. The standalone verification suite
+includes `ModuleStateDbContractTestMain`.
+
+### Portable database backends (additional opt-in)
+
+The existing sealed `ModuleStateDb` image now also supports local `sqlite` and
+`h2` JDBC persistence, or an explicitly installed `ext-*` storage provider.
+The backend stores the **same** sealed image: changing backend does not migrate
+or translate evidence. Default `legacy` and the preexisting `file`/`m3db`
+modes retain their CLI/API contracts.
+
+```sh
+# Requires the org.sqlite.JDBC class in this plugin's explicit runtime dependencies:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=sqlite verify
+
+# Requires org.h2.Driver in the plugin realm (H2 is MPL-2.0 / EPL-1.0):
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=h2 verify
+
+# Portable CLI: --incremental --state-backend sqlite|h2|ext-provider-id
+```
+
+No JDBC driver is bundled or fetched. SQLite uses a module-local
+`.m3/module-state.sqlite` and its transaction journal; H2 uses a
+`.m3/module-state.mv.db` with its own temporary/lock files. Each module
+takes `.m3/module-state.run.lock` for the entire opt-in incremental run,
+not merely during snapshot publication. A conflicting concurrent build of
+the same module refuses the lock. The new backend SPI is
+`M3ModuleDbBackendProvider`; operators must install and independently
+qualify external implementations. Missing drivers/providers fail explicitly.
+
+Before any changed task starts, previous task/dependent success records are
+revoked; missing outputs cannot be recorded as successful. After a successful
+process, the inputs are checked again before recording new state. These
+protections avoid presenting a stale snapshot as a success after failed or
+interrupted work. The database is still **not** a whole-reactor Mojo cache
+or a zero-byte-read M3File content oracle. See
+[portable database contract](docs/M3_PORTABLE_DATABASES.md) for donor
+provenance, license boundaries, storage tradeoffs and remaining integration
+qualification.
 
 ### Any language through Maven's own phases
 
@@ -101,9 +193,6 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:mavenize -Dm3.polyglot.ma
 # Using the M3 Maven fork with its explicit core extension:
 mvn -Dm3.polyglot.lifecycle=true verify
 
-# Use the module-local database for explicitly declared polyglot inputs/outputs:
-mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true -Dm3.polyglot.m3db=true verify
-
 # Using stock Maven 3.9+ / Maven 4 with the installed polyglot plugin:
 mvn -Pm3-polyglot verify
 ```
@@ -155,17 +244,18 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 java -cp /verified/m3-polyglot-maven-plugin.jar \
   io.synexia.maven.polyglot.PolyglotCli \
   run /work/project /work/project/m3-build.tsv all \
-  --timeout-seconds 900 --incremental --m3db
+  --timeout-seconds 900 --incremental --state-backend file \
+  --build-cache /work/polyglot-build-cache
 ```
 
-`--timeout-seconds` accepts 1–43200 (default 900). `--m3db` requires `--incremental`;
-`--incremental` and
-`--approve-rewrite-apply` require `run`; recipe mutation still requires the
+`--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only
+with `run --incremental` and accepts `legacy|file|m3db`. `--incremental`,
+`--build-cache <folder>` and `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
 and retain its own task/diagnostic lifecycle. The Gradle quality-bridge fork
 can invoke this exact class without loading Maven Core or copying the task
-engine. No separate caching, toolchain download or CodeQL execution is implicit.
+engine. No caching, toolchain download or CodeQL execution happens unless its option is given.
 
 ## Eclipse (m2e)
 

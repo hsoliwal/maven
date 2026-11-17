@@ -40,11 +40,16 @@ import java.util.function.Consumer;
  *       HTML, CSS and JSON servers ({@code wtp.html}, {@code wtp.css}, {@code wtp.json})</td>
  *       <td>xml, xsd, xsl; html, htm; css, scss, less; json, jsonc</td></tr>
  *   <tr><td>rust</td><td>rustdt, corrosion</td><td>rust-analyzer ({@code rust})</td><td>rs</td></tr>
+ *   <tr><td>go</td><td></td><td>gopls ({@code go})</td><td>go</td></tr>
+ *   <tr><td>typescript</td><td>ts, js, javascript</td><td>typescript-language-server ({@code typescript})</td>
+ *       <td>ts, tsx, mts, cts, js, jsx, mjs, cjs</td></tr>
+ *   <tr><td>csharp</td><td>cs</td><td>csharp-ls ({@code csharp})</td><td>cs, csx</td></tr>
+ *   <tr><td>swift</td><td></td><td>sourcekit-lsp ({@code swift})</td><td>swift</td></tr>
  * </table>
  * See {@link ServerSpec} for how each server's command is found.
  */
 final class ServerProfiles {
-    static final List<String> NAMES = List.of("jdt", "cdt", "pydev", "wtp", "rust");
+    static final List<String> NAMES = List.of("jdt", "cdt", "pydev", "wtp", "rust", "go", "typescript", "csharp", "swift");
     static final List<ServerSpec> SERVERS = List.of(
             new ServerSpec("jdt", "jdt", Map.of("java", "java"), Duration.ofSeconds(180), JdtlsCommand::detect),
             new ServerSpec("cdt", "cdt", Map.of("c", "c", "h", "c", "cc", "cpp", "cpp", "cpp", "cxx", "cpp", "hpp", "cpp",
@@ -57,11 +62,21 @@ final class ServerProfiles {
             web("css", Map.of("css", "css", "scss", "scss", "less", "less")),
             web("json", Map.of("json", "json", "jsonc", "jsonc")),
             new ServerSpec("rust", "rust", Map.of("rs", "rust"), Duration.ofSeconds(60),
-                    (l, h) -> ServerDetection.executable(l, h, "rust-analyzer")));
+                    (l, h) -> ServerDetection.executable(l, h, "rust-analyzer")),
+            new ServerSpec("go", "go", Map.of("go", "go"), Duration.ofSeconds(60), ServerDetection::gopls),
+            new ServerSpec("typescript", "typescript", Map.of("ts", "typescript", "tsx", "typescriptreact", "mts",
+                    "typescript", "cts", "typescript", "js", "javascript", "jsx", "javascriptreact", "mjs", "javascript",
+                    "cjs", "javascript"), Duration.ofSeconds(60), (l, h) -> ServerDetection.npm(l, h,
+                    "typescript-language-server", "typescript-language-server", "lib/cli.mjs")),
+            new ServerSpec("csharp", "csharp", Map.of("cs", "csharp", "csx", "csharp"), Duration.ofSeconds(120),
+                    ServerDetection::csharpLs),
+            new ServerSpec("swift", "swift", Map.of("swift", "swift"), Duration.ofSeconds(60),
+                    (l, h) -> ServerDetection.executable(l, h, "sourcekit-lsp")));
     private static final Map<String, String> ALIASES = Map.ofEntries(Map.entry("java", "jdt"), Map.entry("c", "cdt"),
             Map.entry("cpp", "cdt"), Map.entry("python", "pydev"), Map.entry("xml", "wtp"), Map.entry("html", "wtp"),
             Map.entry("css", "wtp"), Map.entry("json", "wtp"), Map.entry("web", "wtp"), Map.entry("rustdt", "rust"),
-            Map.entry("corrosion", "rust"));
+            Map.entry("corrosion", "rust"), Map.entry("ts", "typescript"), Map.entry("js", "typescript"),
+            Map.entry("javascript", "typescript"), Map.entry("cs", "csharp"));
 
     private ServerProfiles() { }
 

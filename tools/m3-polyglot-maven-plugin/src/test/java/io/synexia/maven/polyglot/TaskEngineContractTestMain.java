@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +27,6 @@ public final class TaskEngineContractTestMain {
             preservesArgumentsAndNoShell(temp);
             checksInputsOutputsWithoutSkipping(temp);
             skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp);
-            moduleDbPersistsAndInvalidatesPerModule(temp);
             checksInvalidUTF8(temp);
             checksSymlinkRefusal(temp);
             System.out.println("PASS: " + passed + " M3 polyglot contract cases");
@@ -155,97 +153,6 @@ public final class TaskEngineContractTestMain {
 
     private static List<String> incremental(TaskManifest manifest, Path project, List<String> log) throws Exception {
         return TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, true, log::add);
-    }
-
-    private static void moduleDbPersistsAndInvalidatesPerModule(Path workspace) throws Exception {
-        Path module = Files.createDirectories(workspace.resolve("m3db-module-a"));
-        Path otherModule = Files.createDirectories(workspace.resolve("m3db-module-b"));
-        String executable = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String source = "import java.nio.file.*;\n"
-                + "public class Copy { public static void main(String[] args) throws Exception {\n"
-                + " Files.copy(Path.of(args[0]), Path.of(args[1]), StandardCopyOption.REPLACE_EXISTING);\n"
-                + " Files.writeString(Path.of(args[2]), args[3] + \"\\n\","
-                + " StandardOpenOption.CREATE, StandardOpenOption.APPEND); } }\n";
-        String definition = "task\tall\t-\t.\n"
-                + "dep\tall\tfirst\n"
-                + "dep\tall\tsecond\n"
-                + "task\tfirst\t" + executable + "\t.\n"
-                + "arg\tfirst\tCopy.java\n"
-                + "arg\tfirst\tfirst.in\n"
-                + "arg\tfirst\tfirst.out\n"
-                + "arg\tfirst\truns.log\n"
-                + "arg\tfirst\tfirst\n"
-                + "input\tfirst\tCopy.java\n"
-                + "input\tfirst\tfirst.in\n"
-                + "output\tfirst\tfirst.out\n"
-                + "task\tsecond\t" + executable + "\t.\n"
-                + "arg\tsecond\tCopy.java\n"
-                + "arg\tsecond\tsecond.in\n"
-                + "arg\tsecond\tsecond.out\n"
-                + "arg\tsecond\truns.log\n"
-                + "arg\tsecond\tsecond\n"
-                + "input\tsecond\tCopy.java\n"
-                + "input\tsecond\tsecond.in\n"
-                + "output\tsecond\tsecond.out\n";
-        for (Path root : List.of(module, otherModule)) {
-            Files.writeString(root.resolve("Copy.java"), source, StandardCharsets.UTF_8);
-            Files.writeString(root.resolve("first.in"), "one", StandardCharsets.UTF_8);
-            Files.writeString(root.resolve("second.in"), "two", StandardCharsets.UTF_8);
-        }
-        TaskManifest plan = TaskManifest.load(manifestFile(module, definition));
-        TaskManifest otherPlan = TaskManifest.load(manifestFile(otherModule, definition));
-        List<String> messages = new ArrayList<>();
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 2, "both original module tasks execute on first run");
-        require(Files.isRegularFile(M3ModuleDb.file(module)), "one per-module M3DB file is published");
-        require(!Files.exists(module.resolve(InputStamps.DIRECTORY)), "M3DB does not write legacy per-task stamps");
-        messages.clear();
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 2 && messages.stream().filter(s -> s.startsWith("UP-TO-DATE")).count() == 2,
-                "two tasks are reused from one module database after process restart");
-
-        // An identical-size, identical-timestamp output mutation must invalidate a previous successful receipt.
-        Path out = module.resolve("first.out");
-        FileTime originalTime = Files.getLastModifiedTime(out);
-        Files.writeString(out, "bad", StandardCharsets.UTF_8);
-        Files.setLastModifiedTime(out, originalTime);
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 3 && Files.readString(out).equals("one"),
-                "changed output bytes trigger the original tool even with forged metadata");
-
-        Path input = module.resolve("second.in");
-        FileTime inputTime = Files.getLastModifiedTime(input);
-        Files.writeString(input, "TWO", StandardCharsets.UTF_8);
-        Files.setLastModifiedTime(input, inputTime);
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 4 && Files.readString(module.resolve("second.out")).equals("TWO"),
-                "changed input bytes trigger only the affected task even with forged metadata");
-
-        // Corrupting a completed database must cause a miss, not reuse of a forged success.
-        byte[] damaged = Files.readAllBytes(M3ModuleDb.file(module));
-        damaged[damaged.length - 1] ^= 1;
-        Files.write(M3ModuleDb.file(module), damaged);
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 6, "corrupt database fails closed and is repaired by completed work");
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 6, "repaired database is reusable");
-
-        Files.delete(module.resolve("second.out"));
-        moduleDbRun(plan, module, messages);
-        require(runs(module) == 7, "missing output forces rebuild");
-
-        moduleDbRun(otherPlan, otherModule, messages);
-        require(runs(otherModule) == 2 && Files.isRegularFile(M3ModuleDb.file(otherModule)),
-                "each Maven module owns an independent file with no cross-module hit");
-        moduleDbRun(otherPlan, otherModule, messages);
-        require(runs(otherModule) == 2, "second module's database independently reuses its own results");
-        expectFailure(() -> TaskRunner.run(plan, module, "all", false, Duration.ofSeconds(60),
-                false, false, true, messages::add));
-        passed++;
-    }
-
-    private static List<String> moduleDbRun(TaskManifest manifest, Path project, List<String> log) throws Exception {
-        return TaskRunner.run(manifest, project, "all", false, Duration.ofSeconds(60), false, true, true, log::add);
     }
 
     private static Path manifestFile(Path project, String body) throws IOException {
