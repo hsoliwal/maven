@@ -55,18 +55,21 @@ public final class M3ToolProvidersContractTestMain {
 
     private static void supportsDeterministicCapabilityInventory() throws Exception {
         var descriptions = M3ToolProviders.available();
-        require(descriptions.size() == 2, "built-in + test provider must both be loaded");
-        require(descriptions.get(0).id().equals("jdk"), "sorted built-in provider");
-        require(descriptions.get(0).capabilities().equals(List.of("compiler")), "jdk compiler only");
-        require(descriptions.get(1).id().equals("probe"), "external SPI registration");
-        require(descriptions.get(1).capabilities().equals(List.of(
+        require(descriptions.size() == 3, "built-in providers + test provider must all be loaded");
+        require(descriptions.get(0).id().equals("cargo"), "sorted built-in cargo test provider");
+        require(descriptions.get(0).capabilities().equals(List.of("interpreter"))
+                && descriptions.get(0).languages().equals(List.of("rust")), "cargo runs Rust tests only");
+        require(descriptions.get(1).id().equals("jdk"), "sorted built-in provider");
+        require(descriptions.get(1).capabilities().equals(List.of("compiler")), "jdk compiler only");
+        require(descriptions.get(2).id().equals("probe"), "external SPI registration");
+        require(descriptions.get(2).capabilities().equals(List.of(
                 "atomizer", "interpreter", "patternizer", "transpiler")), "all external operations");
-        require(descriptions.get(1).languages().equals(List.of("cpp", "java", "python", "rust")),
+        require(descriptions.get(2).languages().equals(List.of("cpp", "java", "python", "rust")),
                 "languages ordered without interpretation");
         var lines = new ArrayList<String>();
         var selected = PolyglotCli.execute(new String[]{"providers"}, lines::add);
-        require(selected.equals(List.of("jdk", "probe")), "portable provider inventory");
-        require(lines.get(0).equals("M3-POLYGLOT-PROVIDERS-V1") && lines.size() == 3,
+        require(selected.equals(List.of("cargo", "jdk", "probe")), "portable provider inventory");
+        require(lines.get(0).equals("M3-POLYGLOT-PROVIDERS-V1") && lines.size() == 4,
                 "versioned portable inventory format");
         passed++;
     }

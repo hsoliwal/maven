@@ -40,6 +40,12 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestOutput.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/TestSuiteReport.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireXmlWriter.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/CargoTestReportContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/PolyglotCli.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/PolyglotCliContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/TaskEngineContractTestMain.java \
@@ -67,6 +73,8 @@ java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.CargoTestReportContractTestMain
 if [ -n "${M3_JDBC_DRIVER_CLASSPATH:-}" ]; then
   java -cp "$DEST" io.synexia.maven.polyglot.M3JdbcDbContractTestMain \
     --driver-classpath "$M3_JDBC_DRIVER_CLASSPATH" h2 sqlite

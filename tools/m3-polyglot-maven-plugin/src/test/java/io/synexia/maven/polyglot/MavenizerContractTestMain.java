@@ -28,6 +28,7 @@ public final class MavenizerContractTestMain {
         try {
             detectsEachToolFamily(temp.resolve("detect"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
+            pointsClangdAtTheCMakeCompileDatabase(temp.resolve("clangd"));
             neverSkipsATaskWithoutDeclaredInputs(temp.resolve("noinputs"));
             resolvesBareToolNames(temp.resolve("tools"));
             System.out.println("PASS: " + passed + " Mavenizer contract cases");
@@ -44,15 +45,26 @@ public final class MavenizerContractTestMain {
                 "validate npm-validate npm [install]");
         expect(dir(root, "pnpm", "package.json", "{}", "pnpm-lock.yaml", ""), "validate pnpm-validate pnpm [install]");
         expect(dir(root, "cargo", "Cargo.toml", "[package]"),
-                "compile cargo-compile cargo [build]", "test cargo-test cargo [test]", "package cargo-package cargo [build, --release]");
+                "compile cargo-compile cargo [build]", "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast]",
+                "package cargo-package cargo [build, --release]",
+                "package cargo-package-2 cargo [package, --allow-dirty, --no-verify]");
+        // A lock file makes every step --locked; a virtual workspace has no crate of its own to package.
+        expect(dir(root, "cargo-workspace", "Cargo.toml", "[workspace]\nmembers = [\"a\"]\n\n[workspace.package]\n",
+                "Cargo.lock", ""),
+                "compile cargo-compile cargo [build, --locked]",
+                "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast, --locked]",
+                "package cargo-package cargo [build, --release, --locked]");
         expect(dir(root, "go", "go.mod", "module x"), "compile go-compile go [build, ./...]", "test go-test go [test, ./...]");
         expect(dir(root, "make", "Makefile", "all:\n\tcc x.c\ntest: all\n\t./x\n"), "compile make-compile make []", "test make-test make [test]");
         expect(dir(root, "make-notest", "Makefile", "all:\n\tcc x.c\n"), "compile make-compile make []");
         expect(dir(root, "cmake", "CMakeLists.txt", "project(x)\nenable_testing()\n"),
-                "validate cmake-validate cmake [-S, ., -B, build/cmake]", "compile cmake-compile cmake [--build, build/cmake]",
-                "test ctest-test ctest [--test-dir, build/cmake]");
+                "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
+                "compile cmake-compile cmake [--build, build/cmake, --config, Debug]",
+                "test ctest-test ctest [--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
+                        + "../../target/surefire-reports/TEST-ctest.xml]");
         expect(dir(root, "cmake-notest", "CMakeLists.txt", "project(x)\n"),
-                "validate cmake-validate cmake [-S, ., -B, build/cmake]", "compile cmake-compile cmake [--build, build/cmake]");
+                "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
+                "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
         Path python = dir(root, "python", "pyproject.toml", "[project]\nname='x'\n");
         Files.createDirectories(python.resolve("tests"));
         expect(python, "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
@@ -137,6 +149,26 @@ public final class MavenizerContractTestMain {
         require(modules(root.resolve("pom.xml")).equals(List.of("lib", "svc", "tools", "web")), "the kept root pom is unchanged");
         Path nothing = Files.createDirectories(root.resolve("../nothing"));
         require(Mavenizer.mavenize(nothing, "g", "1", true).get(0).startsWith("NOTHING "), "no build tool found");
+        passed++;
+    }
+
+    private static void pointsClangdAtTheCMakeCompileDatabase(Path root) throws Exception {
+        dir(root, "native", "CMakeLists.txt", "project(x)\nenable_testing()\n");
+        dir(root, "kept", "CMakeLists.txt", "project(y)\n", ".clangd", "CompileFlags:\n  Add: [-Wall]\n");
+        dir(root, "crate", "Cargo.toml", "[package]\n");
+        List<String> plan = Mavenizer.mavenize(root, "org.example", "1", false);
+        require(plan.contains("PLAN native/.clangd") && plan.contains("KEEP kept/.clangd (exists)")
+                && plan.stream().noneMatch(line -> line.startsWith("PLAN crate/.clangd")), "plan: " + plan);
+        Mavenizer.mavenize(root, "org.example", "1", true);
+        require(Files.readString(root.resolve("native/.clangd")).equals("CompileFlags:\n  CompilationDatabase: build/cmake\n"),
+                "the .clangd pointer names the configure step's build folder");
+        require(Files.readString(root.resolve("kept/.clangd")).equals("CompileFlags:\n  Add: [-Wall]\n"),
+                "an existing .clangd (cdt-lsp writes one too) is never replaced");
+        TaskManifest crate = TaskManifest.load(root.resolve("crate/m3-build.tsv"));
+        require(names(crate.order("test")).equals(List.of("cargo-test", "test"))
+                && crate.order("test").get(0).tool().equals(CargoTestProvider.TOOL), "cargo tests run through the provider");
+        require(names(crate.order("package")).equals(List.of("cargo-package", "cargo-package-2", "package")),
+                "release build and .crate both bind to package");
         passed++;
     }
 

@@ -1,1 +1,2 @@
 io.synexia.maven.polyglot.JdkCompilerProvider
+io.synexia.maven.polyglot.CargoTestProvider

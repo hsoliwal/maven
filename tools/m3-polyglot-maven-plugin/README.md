@@ -258,10 +258,10 @@ and `package` run the native commands:
 | Descriptor | Steps |
 | --- | --- |
 | `package.json` (npm, or pnpm / yarn / bun by lock file) | install (`npm ci` with a lock file); `run build` and `test` when the scripts define them (not npm's placeholder test) |
-| `Cargo.toml` | `cargo build`, `cargo test`, `cargo build --release` |
+| `Cargo.toml` | `cargo build`; `cargo test --no-fail-fast` with surefire reports (below); `cargo build --release` and, for a `[package]`, `cargo package` (a `.crate` in `target/package`); `--locked` on every step when `Cargo.lock` exists |
 | `go.mod` | `go build ./...`, `go test ./...` |
 | `Makefile` / `GNUmakefile` | `make`, `make test` when a `test:` target exists |
-| `CMakeLists.txt` | configure into `build/cmake`, build, `ctest` when testing is enabled |
+| `CMakeLists.txt` | configure into `build/cmake` with `compile_commands.json`, build and `ctest` in the `Debug` configuration, CTest JUnit XML into `target/surefire-reports`; a `.clangd` pointer (below) |
 | `meson.build` | `meson setup/compile/test` in `build/meson` |
 | `pyproject.toml` / `setup.py` / `setup.cfg` | `compileall`; `pytest` when configured, else `unittest` over `tests/` |
 | `.sln` / `.slnx` / `.csproj` | `dotnet build`, `dotnet test` |
@@ -269,6 +269,23 @@ and `package` run the native commands:
 | Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
 | `Package.swift` | `swift build`, `swift test` |
 | `build.xml` | `ant`, `ant test` when a `test` target exists |
+
+Test reports. CTest writes its JUnit XML itself (`--output-junit`, CMake 3.21+) to
+`target/surefire-reports/TEST-ctest.xml`. Cargo has no stable report format (libtest's JUnit and JSON formats need
+nightly), so the `cargo-test` task uses the built-in `@m3:cargo:interpreter:rust` provider: it starts
+`CargoTestReport` in a JVM of the running JDK, which runs the original `cargo test`, echoes its output, reads the
+stable libtest lines (`test <name> ... ok|FAILED|ignored`, the `---- <name> stdout ----` failure sections, the
+`test result:` line, cargo's `Running` and `Doc-tests` lines) and writes one surefire report per test binary
+(`TEST-<crate>_<source>.xml`, `TEST-<crate>_doc-tests.xml`) into `target/surefire-reports`, next to cargo's own
+`target/debug`. A binary that ends without a result line (a crash) gets an error case. Cargo's exit status is kept:
+failing tests fail the build after their reports are written. The report writer (`SurefireXmlWriter`,
+`TestSuiteReport`) is the native-build plugin's, ported here so both use one copy.
+
+clangd and CDT. A mavenized CMake folder also gets a `.clangd` file (`CompileFlags: CompilationDatabase:
+build/cmake`), so clangd, and CDT's LSP editor (cdt-lsp, which reads and writes the same key), find the compile
+database without a copy at the root. CMake writes `compile_commands.json` only with Makefile and Ninja generators:
+set `CMAKE_GENERATOR=Ninja` where the default is Visual Studio. An existing `.clangd` is kept. CMake presets,
+toolchains, MSVC environments and staging stay with the native-build plugin.
 
 A folder with a hand-written `pom.xml` is a Maven project: listed as a module, never touched, not entered.
 Existing files are never overwritten; a run over an already mavenized tree reports `KEEP` lines, writes files for
