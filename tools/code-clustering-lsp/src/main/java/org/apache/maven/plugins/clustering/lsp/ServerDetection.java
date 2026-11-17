@@ -30,8 +30,12 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
 /**
  * Finds server programs in home directories and on the {@code PATH}, without a shell:
  * <ul>
- *   <li>a native executable ({@code clangd}, {@code rust-analyzer}) in {@code <home>/bin}, {@code <home>} or on the
- *       PATH;</li>
+ *   <li>a native executable ({@code clangd}, {@code rust-analyzer}, {@code sourcekit-lsp}) in {@code <home>/bin},
+ *       {@code <home>} or on the PATH;</li>
+ *   <li>a program that its language's own tool installs outside the PATH, looked for after the PATH: {@code gopls}
+ *       from {@code go install} in {@code GOBIN}, else {@code <entry>/bin} of each {@code GOPATH} entry, else
+ *       {@code ~/go/bin}; {@code csharp-ls} from {@code dotnet tool install --global} in
+ *       {@code $DOTNET_CLI_HOME/.dotnet/tools}, else {@code ~/.dotnet/tools};</li>
  *   <li>an npm package's server script ({@code pyright}, {@code vscode-langservers-extracted}) under
  *       {@code <home>/node_modules} or {@code <home>/lib/node_modules} of an npm prefix, run with {@code node} from the
  *       PATH; or its launcher on the PATH: run directly elsewhere, and on Windows, where the launcher is a
@@ -49,8 +53,29 @@ final class ServerDetection {
 
     /** A native server program, run with no arguments. */
     static List<String> executable(Lookup lookup, List<Path> homes, String name) throws Unresolved {
-        return inHomes(lookup, homes, name).or(() -> lookup.onPath(name)).map(p -> List.of(p.toString()))
-                .orElseThrow(() -> missing(name + " is not on the PATH", homes));
+        return executable(lookup, homes, name, List.of());
+    }
+
+    /** A native server program from the home directories, the PATH, then the directories its installer uses. */
+    static List<String> executable(Lookup lookup, List<Path> homes, String name, List<Path> installed) throws Unresolved {
+        return inHomes(lookup, homes, name).or(() -> lookup.onPath(name)).or(() -> inHomes(lookup, installed, name))
+                .map(p -> List.of(p.toString())).orElseThrow(() -> missing(name + " is not on the PATH",
+                        Stream.concat(homes.stream(), installed.stream()).toList()));
+    }
+
+    /** gopls: the home directories, the PATH, then where {@code go install} puts it (GOBIN, GOPATH, ~/go). */
+    static List<String> gopls(Lookup lookup, List<Path> homes) throws Unresolved {
+        List<Path> gopath = lookup.variablePaths("GOPATH");
+        List<Path> installed = lookup.variablePath("GOBIN").map(List::of).orElseGet(() -> !gopath.isEmpty() ? gopath
+                : lookup.userHome().map(h -> List.of(h.resolve("go"))).orElse(List.of()));
+        return executable(lookup, homes, "gopls", installed);
+    }
+
+    /** csharp-ls: the home directories, the PATH, then the .NET global tools directory. */
+    static List<String> csharpLs(Lookup lookup, List<Path> homes) throws Unresolved {
+        List<Path> installed = lookup.variablePath("DOTNET_CLI_HOME").or(lookup::userHome)
+                .map(h -> List.of(h.resolve(".dotnet").resolve("tools"))).orElse(List.of());
+        return executable(lookup, homes, "csharp-ls", installed);
     }
 
     /** An npm package's server: {@code bin} is the launcher name, {@code script} the file inside the package. */
