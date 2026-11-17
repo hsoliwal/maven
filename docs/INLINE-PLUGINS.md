@@ -157,6 +157,12 @@ Boot repository licences:
 
 ### Known issues and NOT RUN
 
+- A maven-core built with `-Pplugins` binds the default lifecycle to the inline plugin versions
+  (`4.2.0-SNAPSHOT`), which resolve only from the distribution's boot repository. It is valid only inside that
+  distribution and must never be deployed or embedded on its own: embedders and the embedded-invoker tests
+  (`MavenInvokerTest#defaultFs`) fail with "maven-resources-plugin:4.2.0-SNAPSHOT ... could not be resolved".
+  CI therefore runs core verify on the stock bindings and builds `-Pplugins` as a separate `-DskipTests`
+  package step, plus `-f plugins/pom.xml verify` for the plugins' own tests.
 - At the base commit, `tools/m3-polyglot-maven-plugin`'s `task-contract` exec check fails on Windows
   (`NoSuchFileException ...\bin\java`), with or without this change. The local distribution build used
   `-Dexec.skip=true` for the last three modules. master fixes it in a0d887fe8f.

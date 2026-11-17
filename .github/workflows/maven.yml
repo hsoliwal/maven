@@ -104,9 +104,19 @@ jobs:
           mkdir -p ~/.m2
           cp .github/ci-extensions.xml ~/.m2/extensions.xml
 
-      - name: Build Maven distributions
+      # Core modules and their tests run on the stock plugin bindings: a maven-core built with -Pplugins resolves
+      # the inline plugins only from the distribution's boot repository, which embedded-invoker tests do not have.
+      - name: Build and test Maven (stock bindings)
         shell: bash
-        run: ./mvnw verify -Pplugins -e -B -V
+        run: ./mvnw verify -e -B -V
+
+      - name: Build Maven distributions with the inline plugins
+        shell: bash
+        run: ./mvnw package -Pplugins -DskipTests -e -B -V
+
+      - name: Test the inline plugins
+        shell: bash
+        run: ./mvnw -f plugins/pom.xml verify -e -B -V
 
       - name: List contents of target directory
         shell: bash
@@ -225,7 +235,11 @@ jobs:
 
       - name: Build with downloaded Maven
         shell: bash
-        run: mvn verify -Papache-release,plugins -Dgpg.skip=true -e -B -V
+        run: mvn verify -Papache-release -Dgpg.skip=true -e -B -V
+
+      - name: Package with the inline plugins
+        shell: bash
+        run: mvn package -Papache-release,plugins -Dgpg.skip=true -DskipTests -e -B -V
 
       - name: Build site with downloaded Maven
         # one OS covers the site; every JDK still builds it, since Javadoc changes with the JDK
