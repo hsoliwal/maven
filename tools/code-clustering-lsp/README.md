@@ -285,6 +285,9 @@ servers returned for its fixture files, through each mapping: code (JDT LS, clan
 does, atomizes a fixture file through a session with it, and checks that the session answered (not the fallback) and
 that the expected atoms came out; for JDT LS it also checks that no notification was logged as unsupported, and it
 runs clangd once more from a quoted `clustering.lsp.servers` entry. A server that is not found prints `SKIP`.
+These checks are opt-in, so that whatever servers a machine happens to have on its PATH (for example a CI runner's
+rust-analyzer proxy) cannot decide the build: without `-Dclustering.test.servers=<dir>` or
+`-Dclustering.test.realServers=true` every server prints `SKIP` with that reason.
 `-Dclustering.test.servers=<dir>` adds homes for a directory laid out as `jdtls/`, `py/` (a pylsp virtual
 environment), `npm/` (pyright and vscode-langservers-extracted), `lemminx/` and `rust-analyzer/`; `clustering.lsp.*`
 properties on the command line win, for example:
