@@ -37,22 +37,22 @@ source owners and M3JDK/M3FS evidence services.
 
 The previous per-task content-stamp behavior remains the default. Use the
 versioned module-wide M3 state engine only with
-\`-Dm3.polyglot.incremental=true\`. It stores input/output digests, build task
+`-Dm3.polyglot.incremental=true`. It stores input/output digests, build task
 definitions, module-local file identities and successful execution records.
 
 | Backend | Property value | Location in each module | External runtime |
 | --- | --- | --- | --- |
-| Per-task stamps (unchanged) | \`legacy\` (default) | \`.m3/polyglot-stamps/\` | None |
-| Built-in sealed image | \`file\` | \`.m3/module-state-v1.bin\` | None |
-| Native M3DB | \`m3db\` | \`.m3/maven-build-db/\` | Canonical Synexia \`MIndexDB\` |
-| SQLite | \`sqlite\` | \`.m3/module-state.sqlite\` (transient journal possible) | SQLite JDBC |
-| H2 MVStore | \`h2\` | \`.m3/module-state-h2.mv.db\` (lock file possible) | H2 JDBC |
-| Apache Derby | \`derby\` | \`.m3/module-state-derby/\` | Embedded Derby JDBC (legacy) |
+| Per-task stamps (unchanged) | `legacy` (default) | `.m3/polyglot-stamps/` | None |
+| Built-in sealed image | `file` | `.m3/module-state-v1.bin` | None |
+| Native M3DB | `m3db` | `.m3/maven-build-db/` | Canonical Synexia `MIndexDB` |
+| SQLite | `sqlite` | `.m3/module-state.sqlite` (transient journal possible) | SQLite JDBC |
+| H2 MVStore | `h2` | `.m3/module-state-h2.mv.db` (lock file possible) | H2 JDBC |
+| Apache Derby | `derby` | `.m3/module-state-derby/` | Embedded Derby JDBC (legacy) |
 
 The portable stores save **the same M3-owned, SHA-256-sealed and versioned
-image**, not six incompatible Maven cache schemas. The \`file\` engine uses
+image**, not six incompatible Maven cache schemas. The `file` engine uses
 atomic replacement with a forced image write; native M3DB uses its existing
-\`MIndexDB.open(Path)\`, \`findArtifact\`, \`putArtifact\` interface; and JDBC
+`MIndexDB.open(Path)`, `findArtifact`, `putArtifact` interface; and JDBC
 backends publish the complete image inside one transaction. Existing JDBC
 donors are invoked as libraries, not copied or relicensed into Maven. SQLite
 and H2 are test-only Maven dependencies; production callers must explicitly
@@ -67,8 +67,8 @@ symlinked state paths, caps images at 32 MiB, and treats invalid sealed data as
 a cold cache. Storage I/O errors are surfaced, not silently converted to
 successful cache hits. Source/output trees reject symlinks as before.
 
-File digests can be memoized if a stable POSIX file key, size, \`mtime\`,
-and \`ctime\` agree and both timestamps are outside the recent-change race
+File digests can be memoized if a stable POSIX file key, size, `mtime`,
+and `ctime` agree and both timestamps are outside the recent-change race
 window; otherwise the bytes are hashed again. Deleted and added files,
 modified task arguments, tool executables, module POM/manifest, runtime
 identity, and altered/missing output contents invalidate affected tasks.
@@ -86,7 +86,7 @@ and reactor artifact restoration belong to the existing Apache Maven Build
 Cache Extension; this module-state optimization complements rather than
 reimplements its project graph and cache reconciliation.
 
-\`\`\`sh
+```sh
 # No extra libraries required:
 mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
     -Dm3.polyglot.incrementalState=file verify
@@ -98,11 +98,11 @@ mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
 # Alternative embedded JDBC donors: explicitly install the selected driver
 mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
     -Dm3.polyglot.incrementalState=sqlite verify
-\`\`\`
+```
 
-From another build host use \`--incremental --state-backend file|m3db|sqlite|h2|derby\`.
-\`scripts/verify.sh\` exercises the JDK-only file backend; the Maven
-\`verify\` lifecycle additionally runs live embedded SQLite and H2
+From another build host use `--incremental --state-backend file|m3db|sqlite|h2|derby`.
+`scripts/verify.sh` exercises the JDK-only file backend; the Maven
+`verify` lifecycle additionally runs live embedded SQLite and H2
 transactions using test-scoped drivers. Maven Core, m2e, JDT and the original
 language-native compilers keep their current ownership.
 
