@@ -14,6 +14,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.ByteBuffer;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -44,13 +46,15 @@ import java.util.stream.Stream;
  * timestamp (ctime). On other file systems, the contents are SHA-256 checked
  * every time. Size and mtime alone are never sufficient cache evidence.
  */
-final class ModuleStateDb {
+final class ModuleStateDb implements AutoCloseable {
     static final String FILE = ".m3/module-state-v1.bin";
     static final String NATIVE_DIRECTORY = ".m3/maven-build-db";
     private static final int MAGIC = 0x4d334253; // M3BS
     private static final int VERSION = 1;
     private static final int MAX_IMAGE = 32 * 1024 * 1024;
     private static final int MAX_ENTRIES = 250_000;
+    // JGit-style racy timestamp defense: recently modified files are always rehashed.
+    private static final long RACY_MILLIS = 3000L;
     private static final String ARTIFACT = "maven-module-build-state-v1";
     private static final String KIND = "maven-module-state";
 
@@ -58,7 +62,10 @@ final class ModuleStateDb {
     private record TaskState(String inputStamp, String outputStamp) {}
     private record Attributes(long size, long mtime, long ctime, String fileKey) {
         boolean reusable(FileState prior) {
-            return prior != null && ctime >= 0 && !fileKey.isEmpty()
+            long safeBefore = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(
+                    System.currentTimeMillis() - RACY_MILLIS);
+            return prior != null && ctime >= 0 && ctime < safeBefore
+                    && mtime < safeBefore && !fileKey.isEmpty()
                     && size == prior.size && mtime == prior.mtime
                     && ctime == prior.ctime && fileKey.equals(prior.fileKey);
         }
@@ -71,39 +78,96 @@ final class ModuleStateDb {
 
     private final Path root;
     private final Storage storage;
+    private final FileChannel leaseChannel;
+    private final FileLock lease;
     private final Map<String, FileState> files = new TreeMap<>();
     private final Map<String, TaskState> tasks = new TreeMap<>();
     private int digestedFiles;
 
-    private ModuleStateDb(Path root, Storage storage) {
+    private ModuleStateDb(Path root, Storage storage, FileChannel leaseChannel, FileLock lease) {
         this.root = root;
         this.storage = storage;
+        this.leaseChannel = leaseChannel;
+        this.lease = lease;
     }
 
+    /**
+     * Acquire a module-wide exclusive lease before reading a state snapshot.
+     *
+     * <p>This prevents two Maven processes from deciding to reuse or overwrite
+     * the same module outputs concurrently, including when using native M3DB.
+     */
     static ModuleStateDb open(Path workspace, String backend) throws IOException {
         Path root = workspace.toAbsolutePath().normalize();
         Path stateDirectory = root.resolve(".m3");
         if (Files.isSymbolicLink(stateDirectory) || Files.isSymbolicLink(root.resolve(NATIVE_DIRECTORY))) {
             throw new IOException("module state directory must not be a symlink");
         }
-        // Create the stable module-state parent before hashing an input directory
-        // that includes the project root, avoiding a spurious second build.
         Files.createDirectories(stateDirectory);
-        Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
-            case "file" -> new FileStorage(root.resolve(FILE));
-            case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
-            default -> throw new IllegalArgumentException("incremental database must be file or m3db");
-        };
-        ModuleStateDb database = new ModuleStateDb(root, storage);
+        Path lockPath = stateDirectory.resolve("module-state.lock");
+        if (Files.isSymbolicLink(lockPath)) throw new IOException("module state lock must not be a symlink");
+        FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+        FileLock lock;
         try {
-            byte[] image = storage.read();
-            if (image != null) database.decode(image);
-        } catch (IOException | IllegalArgumentException corrupt) {
-            // Untrusted/malformed cache state is a cache miss, never build authority.
-            database.files.clear();
-            database.tasks.clear();
+            lock = channel.tryLock();
+        } catch (OverlappingFileLockException overlapping) {
+            channel.close();
+            throw new IOException("module state already owned by another Maven build: " + root, overlapping);
+        } catch (IOException | RuntimeException failure) {
+            channel.close();
+            throw failure;
         }
-        return database;
+        if (lock == null) {
+            channel.close();
+            throw new IOException("module state already owned by another Maven build: " + root);
+        }
+        try {
+            Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
+                case "file" -> new FileStorage(root.resolve(FILE));
+                case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
+                case "sqlite", "h2", "derby" -> {
+                    JdbcModuleStateStorage jdbc = new JdbcModuleStateStorage(root, backend);
+                    yield new Storage() {
+                        @Override public byte[] read() throws IOException { return jdbc.read(); }
+                        @Override public void write(byte[] bytes) throws IOException { jdbc.write(bytes); }
+                    };
+                }
+                default -> throw new IllegalArgumentException(
+                        "incremental database must be file, m3db, sqlite, h2, or derby");
+            };
+            ModuleStateDb database = new ModuleStateDb(root, storage, channel, lock);
+            byte[] image = storage.read();
+            if (image != null) {
+                try {
+                    database.decode(image);
+                } catch (IOException | IllegalArgumentException corrupted) {
+                    // An invalid sealed payload is never a cache hit. Storage failures
+                    // are deliberately propagated instead of being hidden as misses.
+                    database.files.clear();
+                    database.tasks.clear();
+                }
+            }
+            return database;
+        } catch (IOException | RuntimeException | LinkageError failure) {
+            try { lock.release(); }
+            catch (IOException suppressed) { failure.addSuppressed(suppressed); }
+            try { channel.close(); }
+            catch (IOException suppressed) { failure.addSuppressed(suppressed); }
+            throw failure;
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        IOException failure = null;
+        try { lease.release(); }
+        catch (IOException error) { failure = error; }
+        try { leaseChannel.close(); }
+        catch (IOException error) {
+            if (failure != null) failure.addSuppressed(error);
+            else failure = error;
+        }
+        if (failure != null) throw failure;
     }
 
     int digestedFiles() {
@@ -122,6 +186,9 @@ final class ModuleStateDb {
         update(digest, System.getProperty("os.name", ""));
         update(digest, System.getProperty("os.arch", ""));
         update(digest, System.getProperty("java.runtime.version", ""));
+        update(digest, System.getProperty("file.encoding", ""));
+        update(digest, System.getProperty("user.language", ""));
+        update(digest, System.getProperty("user.timezone", ""));
         update(digest, System.getenv().getOrDefault("JAVA_HOME", ""));
         update(digest, System.getenv().getOrDefault("PATH", ""));
 
@@ -215,6 +282,13 @@ final class ModuleStateDb {
         Path relative = root.relativize(path);
         if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
                 || path.equals(root.resolve(".m3/module-state.lock"))
+                || path.equals(root.resolve(".m3/module-state.sqlite"))
+                || path.equals(root.resolve(".m3/module-state.sqlite-journal"))
+                || path.equals(root.resolve(".m3/module-state.sqlite-wal"))
+                || path.equals(root.resolve(".m3/module-state.sqlite-shm"))
+                || path.equals(root.resolve(".m3/module-state-h2.mv.db"))
+                || path.equals(root.resolve(".m3/module-state-h2.lock.db"))
+                || path.startsWith(root.resolve(".m3/module-state-derby"))
                 || path.startsWith(root.resolve(NATIVE_DIRECTORY)))) return;
         if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         String name = relative.toString().replace('\\', '/');
@@ -343,23 +417,34 @@ final class ModuleStateDb {
         }
         @Override public void write(byte[] bytes) throws IOException {
             Path parent = file.getParent();
-            if (Files.isSymbolicLink(parent)) throw new IOException("module cache directory is a symlink");
+            if (Files.isSymbolicLink(parent) || Files.isSymbolicLink(file)) {
+                throw new IOException("module cache image or directory is a symlink");
+            }
             Files.createDirectories(parent);
-            Path lockPath = parent.resolve("module-state.lock");
-            if (Files.isSymbolicLink(lockPath)) throw new IOException("module cache lock is a symlink");
-            try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock ignored = channel.lock()) {
-                Path tmp = Files.createTempFile(parent, "module-state-", ".tmp");
-                try {
-                    Files.write(tmp, bytes);
-                    try {
-                        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                    } catch (AtomicMoveNotSupportedException unsupported) {
-                        throw new IOException("module state needs atomic file replacement", unsupported);
-                    }
-                } finally {
-                    Files.deleteIfExists(tmp);
+            // The DB's outer lease covers the whole build, including this write.
+            // Force the image before atomic publication (SQLite/LMDB-inspired
+            // durable commit fence; no WAL or invasive Maven core mutation).
+            Path tmp = Files.createTempFile(parent, "module-state-", ".tmp");
+            try {
+                try (FileChannel image = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
+                    ByteBuffer data = ByteBuffer.wrap(bytes);
+                    while (data.hasRemaining()) image.write(data);
+                    image.force(true);
                 }
+                try {
+                    Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException unsupported) {
+                    throw new IOException("module state needs atomic file replacement", unsupported);
+                }
+                // Directory fsync is not provided everywhere (notably Windows).
+                try (FileChannel directory = FileChannel.open(parent, StandardOpenOption.READ)) {
+                    directory.force(true);
+                } catch (IOException | UnsupportedOperationException unsupported) {
+                    // Still atomic at the filesystem rename boundary. Power-loss
+                    // durability on filesystems without directory sync is weaker.
+                }
+            } finally {
+                Files.deleteIfExists(tmp);
             }
         }
     }
