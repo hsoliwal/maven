@@ -144,6 +144,15 @@ public final class McpAdviser {
         return propose(command, config.timeoutSeconds(), prompt);
     }
 
+    /** Additive bridge provider: ChromeLLM's loopback chat-completions backend; a null token file sends none. */
+    public static String proposeBridge(Path moduleJar, String url, Path tokenFile, int timeoutSeconds, String prompt) throws Exception {
+        if (moduleJar == null || !Files.isRegularFile(moduleJar) || url == null || url.isBlank() || timeoutSeconds < 1 || timeoutSeconds > 600) throw new IllegalArgumentException("explicit module, bridge URL and 1..600 s timeout required");
+        List<String> command = command(moduleJar);
+        command.addAll(List.of("--backend", "bridge", "--bridge-url", url));
+        if (tokenFile != null) command.addAll(List.of("--bridge-token-file", tokenFile.toString()));
+        return propose(command, timeoutSeconds, prompt);
+    }
+
     private static List<String> command(Path moduleJar) {
         Path javaExe = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");

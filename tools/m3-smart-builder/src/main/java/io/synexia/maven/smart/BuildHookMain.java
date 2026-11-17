@@ -4,11 +4,15 @@ package io.synexia.maven.smart;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /** Independently runnable advisory hooks; never executes or changes the Maven build. */
 public final class BuildHookMain {
@@ -17,7 +21,10 @@ public final class BuildHookMain {
             "--chrome-binary", "--chrome-profile", "--headless", "--allow-download",
             "--llama-bin", "--jni-lib", "--model", "--timeout-seconds",
             "--require-atom-pattern", "--atom-pattern-manifest",
-            "--preparation-required", "--preparation-report");
+            "--preparation-required", "--preparation-report",
+            "--bridge-url", "--bridge-token-file", "--summarizer", "--summarizer-timeout-seconds");
+    static final String DEFAULT_BRIDGE_URL = "http://127.0.0.1:11435/v1/";
+    private static final int MAX_SUMMARY_LINES = 40;
 
     private BuildHookMain() { }
 
@@ -40,8 +47,8 @@ public final class BuildHookMain {
             Path base = Path.of(options.getOrDefault("--project-dir", ".")).toAbsolutePath().normalize();
             if (!Files.isDirectory(base)) throw new IllegalArgumentException("project directory is missing");
             String provider = options.getOrDefault("--backend", "none");
-            if (!Set.of("none", "chrome", "cli", "jni").contains(provider))
-                throw new IllegalArgumentException("backend must be none, chrome, cli or jni");
+            if (!Set.of("none", "chrome", "cli", "jni", "bridge").contains(provider))
+                throw new IllegalArgumentException("backend must be none, chrome, cli, jni or bridge");
             int timeout = Integer.parseInt(options.getOrDefault("--timeout-seconds", "120"));
             if (timeout < 1 || timeout > 600) throw new IllegalArgumentException("timeout outside 1..600 seconds");
             boolean download = bool(options, "--allow-download", false);
@@ -116,7 +123,8 @@ public final class BuildHookMain {
                     + ",\"atomPatternStatus\":" + TinyJson.quote(!evidenceRequested ? "not-requested"
                             : evidenceRejected ? "rejected" : "structurally-validated")
                     + ",\"atomPatternError\":" + TinyJson.quote(evidenceError)
-                    + ",\"atomPatternFacts\":" + (evidence == null ? "null" : evidence.json());
+                    + ",\"atomPatternFacts\":" + (evidence == null ? "null" : evidence.json())
+                    + summary(options, base, directory, phase);
             if (preparationRequired) {
                 facts += ",\"preparationRequired\":true"
                         + ",\"preparationStatus\":" + TinyJson.quote(preparationRejected
@@ -152,6 +160,11 @@ public final class BuildHookMain {
                             path(base, required(options, provider.equals("jni") ? "--jni-lib" : "--llama-bin")),
                             path(base, required(options, "--model")), timeout);
                     candidate = McpAdviser.propose(nativeProvider, prompt);
+                } else if (!admissionRejected && provider.equals("bridge")) {
+                    candidate = McpAdviser.proposeBridge(path(base, required(options, "--chrome-llm-jar")),
+                            options.getOrDefault("--bridge-url", DEFAULT_BRIDGE_URL),
+                            options.containsKey("--bridge-token-file") ? path(base, options.get("--bridge-token-file")) : null,
+                            timeout, prompt);
                 }
             } catch (InterruptedException interrupted) {
                 adviceStatus = "failed";
@@ -178,13 +191,67 @@ public final class BuildHookMain {
         }
     }
 
+    /** The configured CPU summarizer on the pom and the log; its output lines become facts. Failure is recorded, never raised. */
+    private static String summary(Map<String, String> options, Path base, Path directory, String phase) {
+        if (!options.containsKey("--summarizer")) return ",\"summaryStatus\":\"not-requested\"";
+        String status;
+        List<String> lines = new ArrayList<>();
+        try {
+            int timeout = Integer.parseInt(options.getOrDefault("--summarizer-timeout-seconds", "60"));
+            if (timeout < 1 || timeout > 600) throw new IllegalArgumentException("summarizer timeout outside 1..600 seconds");
+            List<String> command = commandLine(options.get("--summarizer"));
+            if (command.isEmpty()) throw new IllegalArgumentException("empty summarizer command");
+            if (Files.isRegularFile(base.resolve("pom.xml"))) command.add(base.resolve("pom.xml").toString());
+            if (options.containsKey("--log-file") && Files.isRegularFile(path(base, options.get("--log-file"))))
+                command.add(path(base, options.get("--log-file")).toString());
+            Path out = directory.resolve(phase + ".summary.txt");
+            Process process = new ProcessBuilder(command).directory(base.toFile())
+                    .redirectOutput(out.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            if (!process.waitFor(timeout, TimeUnit.SECONDS)) { process.destroyForcibly(); status = "failed: timeout"; }
+            else if (process.exitValue() != 0) status = "failed: exit " + process.exitValue();
+            else {
+                status = "available";
+                Files.readAllLines(out, StandardCharsets.UTF_8).stream().map(String::strip).filter(line -> !line.isEmpty())
+                        .limit(MAX_SUMMARY_LINES).map(line -> line.length() > 300 ? line.substring(0, 300) : line).forEach(lines::add);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            status = "failed: interrupted";
+        } catch (IOException | RuntimeException failure) {
+            status = "failed: " + failure.getClass().getSimpleName();
+        }
+        StringBuilder json = new StringBuilder(",\"summaryStatus\":").append(TinyJson.quote(status)).append(",\"summaryLines\":[");
+        for (int i = 0; i < lines.size(); i++) json.append(i == 0 ? "" : ",").append(TinyJson.quote(lines.get(i)));
+        return json.append(']').toString();
+    }
+
+    /** Splits a command line on whitespace; double or single quotes group an argument and are removed. */
+    static List<String> commandLine(String line) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        char quote = 0;
+        boolean started = false;
+        for (char c : line.toCharArray()) {
+            if (quote != 0) { if (c == quote) quote = 0; else current.append(c); }
+            else if (c == '"' || c == '\'') { quote = c; started = true; }
+            else if (Character.isWhitespace(c)) { if (started) { tokens.add(current.toString()); current.setLength(0); started = false; } }
+            else { current.append(c); started = true; }
+        }
+        if (started) tokens.add(current.toString());
+        return tokens;
+    }
+
     private static void rejectIrrelevantOptions(Map<String, String> options, String provider) {
         Set<String> chrome = Set.of("--chrome-binary", "--chrome-profile", "--headless", "--allow-download");
         Set<String> nativeOptions = Set.of("--llama-bin", "--jni-lib", "--model");
         if (!provider.equals("chrome") && chrome.stream().anyMatch(options::containsKey))
             throw new IllegalArgumentException("Chrome controls require backend chrome");
-        if ((provider.equals("chrome") || provider.equals("none")) && nativeOptions.stream().anyMatch(options::containsKey))
+        if (Set.of("chrome", "none", "bridge").contains(provider) && nativeOptions.stream().anyMatch(options::containsKey))
             throw new IllegalArgumentException("native controls require cli or jni");
+        if (!provider.equals("bridge") && (options.containsKey("--bridge-url") || options.containsKey("--bridge-token-file")))
+            throw new IllegalArgumentException("bridge controls require backend bridge");
+        if (!options.containsKey("--summarizer") && options.containsKey("--summarizer-timeout-seconds"))
+            throw new IllegalArgumentException("summarizer timeout requires a summarizer");
         if (provider.equals("none") && options.containsKey("--chrome-llm-jar"))
             throw new IllegalArgumentException("module requires explicit backend");
         if (provider.equals("cli") && options.containsKey("--jni-lib") || provider.equals("jni") && options.containsKey("--llama-bin"))

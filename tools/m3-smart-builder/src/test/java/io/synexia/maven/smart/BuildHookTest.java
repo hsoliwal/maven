@@ -153,6 +153,47 @@ public final class BuildHookTest {
                 "--preparation-report", ".reports/preparation.json") == 2,
                 "preparation report alone cannot implicitly enable the gated mode");
 
+        // Bridge controls belong to the bridge backend; a bridge without the ChromeLLM module is a visible failure.
+        require(run(base, "--phase", "pre-build", "--bridge-url", "http://127.0.0.1:1/v1/") == 2,
+                "bridge URL requires backend bridge");
+        require(run(base, "--phase", "pre-build", "--backend", "chrome", "--bridge-token-file", "t") == 2,
+                "bridge token requires backend bridge");
+        require(run(base, "--phase", "pre-build", "--backend", "bridge", "--llama-bin", "x") == 2,
+                "native controls are refused with the bridge");
+        require(run(base, "--phase", "pre-build", "--backend", "bridge") == 2, "bridge needs the ChromeLLM module");
+        Map<String, Object> noModule = report(project, "pre-build");
+        require("bridge".equals(noModule.get("provider")) && "failed".equals(noModule.get("adviceStatus")),
+                "missing module recorded as a failed bridge advisory");
+
+        // A CPU summarizer of the operator's choice: its lines join the facts; a failure is recorded, not raised.
+        require(run(base, "--phase", "pre-build", "--summarizer-timeout-seconds", "5") == 2,
+                "summarizer timeout requires a summarizer");
+        Path summarizerSource = Files.writeString(root.resolve("Summ.java"),
+                "public class Summ { public static void main(String[] a) { if (a.length > 0 && a[0].equals(\"--fail\")) System.exit(4);"
+                        + " System.out.println(\"summary of \" + a.length + \" inputs\");"
+                        + " for (String s : a) System.out.println(\"input \" + java.nio.file.Path.of(s).getFileName());"
+                        + " System.out.println(\"  \"); } }");
+        String summarizer = "\"" + Path.of(System.getProperty("java.home"), "bin", "java") + "\" \"" + summarizerSource + "\"";
+        require(run(base, "--phase", "pre-build") == 0, "no summarizer");
+        require("not-requested".equals(report(project, "pre-build").get("summaryStatus")), "summarizer is opt-in");
+        require(run(base, "--phase", "pre-build", "--summarizer", summarizer) == 0, "summarizer before the build");
+        Map<String, Object> summarized = report(project, "pre-build");
+        require("available".equals(summarized.get("summaryStatus")), "summarizer completed");
+        require(List.of("summary of 1 inputs", "input pom.xml").equals(summarized.get("summaryLines")),
+                "pre-build hands the pom; blank lines are not facts");
+        require(run(base, "--phase", "post-build", "--build-outcome", "failure", "--log-file", "build.log",
+                "--summarizer", summarizer, "--summarizer-timeout-seconds", "60") == 0, "summarizer after the build");
+        require(List.of("summary of 2 inputs", "input pom.xml", "input build.log")
+                .equals(report(project, "post-build").get("summaryLines")), "post-build hands the pom and the log");
+        require(run(base, "--phase", "post-build", "--build-outcome", "success", "--summarizer", summarizer + " --fail") == 0,
+                "a failing summarizer does not fail the hook");
+        require("failed: exit 4".equals(report(project, "post-build").get("summaryStatus")), "summarizer exit recorded");
+        require(run(base, "--phase", "pre-build", "--summarizer", "\"" + root.resolve("no summarizer here") + "\"") == 0,
+                "a summarizer that cannot start does not fail the hook");
+        require("failed: IOException".equals(report(project, "pre-build").get("summaryStatus")), "start failure recorded");
+        require(List.of("a b", "c", "", "d'e").equals(BuildHookMain.commandLine(" \"a b\"  c '' \"d'e\" ")),
+                "quotes group arguments and are removed");
+
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
             Path module = Path.of(fixture);
@@ -166,6 +207,19 @@ public final class BuildHookTest {
             require(!Files.exists(profile), "fixture does not prepare or invent a real model");
             McpAdviser.Config nativeConfig = new McpAdviser.Config(module, "jni", executable, executable, 7);
             require(McpAdviser.propose(nativeConfig, "legacy").contains("fake MCP advisory"), "legacy native API preserved");
+            require(McpAdviser.proposeBridge(module, BuildHookMain.DEFAULT_BRIDGE_URL, null, 7, "bridge check")
+                    .contains("backend=bridge url=http://127.0.0.1:11435/v1/ token=none timeout=7"), "bridge selected explicitly");
+            Path token = Files.writeString(root.resolve("bridge token"), "fixture-token\n");
+            require(McpAdviser.proposeBridge(module, "http://127.0.0.1:9/v1/", token, 7, "bridge token check")
+                    .contains("url=http://127.0.0.1:9/v1/ token=file"), "bridge URL and token file reach the engine");
+            List<String> bridge = new ArrayList<>(base);
+            bridge.addAll(List.of("--backend", "bridge", "--chrome-llm-jar", module.toString(),
+                    "--bridge-token-file", token.toString(), "--timeout-seconds", "7"));
+            require(run(bridge, "--phase", "pre-build") == 0, "bridge hook completes");
+            Map<String, Object> bridged = report(project, "pre-build");
+            require("bridge".equals(bridged.get("provider")) && "available".equals(bridged.get("adviceStatus")),
+                    "bridge advice recorded");
+            require(String.valueOf(bridged.get("llmCandidate")).contains("token=file"), "bridge candidate recorded");
 
             List<String> live = new ArrayList<>(base);
             live.addAll(List.of("--backend", "chrome", "--chrome-llm-jar", module.toString(),

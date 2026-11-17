@@ -95,3 +95,7 @@ The existing provider now supports explicit Chrome built-in AI for `m3:plan`,
 command invoke it before and after a build, including after failed compilation.
 See [Chrome build hooks](docs/CHROME_BUILD_HOOKS.md) for setup, lazy download,
 failure preservation and the distinct synthetic/live qualification lanes.
+`m3:build-hook` also takes the `bridge` provider (a loopback chat-completions
+endpoint in front of an already provisioned Chrome model), an operator-chosen CPU
+summarizer whose lines join the facts, and `failOnError=false` for binding the hook
+into a POM's lifecycle without letting advice change the build result.

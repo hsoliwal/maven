@@ -47,6 +47,16 @@ public final class StandaloneMain {
             strictProtocolFixture(lines, scenario, options);
             return;
         }
+        if ("bridge".equals(options.get("--backend"))) {
+            if (options.containsKey("--model") || options.containsKey("--jni-lib") || options.containsKey("--llama-bin")
+                    || options.containsKey("--chrome-bin") || options.containsKey("--chrome-profile")
+                    || !options.containsKey("--bridge-url"))
+                throw new IllegalArgumentException("mixed provider options");
+            var lines = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            if (!lines.readLine().contains("initialize")) throw new IllegalArgumentException("expected initialize");
+            strictProtocolFixture(lines, "valid", options);
+            return;
+        }
         Path model = null;
         String backend = null;
         String nativeFlag = null;
@@ -147,7 +157,10 @@ public final class StandaloneMain {
             String timeout = request.replaceAll(".*\\\"timeoutSeconds\\\":([0-9]+).*", "$1");
             String text = "fake MCP advisory" + ("chrome".equals(options.get("--backend"))
                     ? " backend=chrome headless=" + options.get("--chrome-headless")
-                    + " download=" + options.get("--chrome-download") + " timeout=" + timeout : "");
+                    + " download=" + options.get("--chrome-download") + " timeout=" + timeout
+                    : "bridge".equals(options.get("--backend"))
+                    ? " backend=bridge url=" + options.get("--bridge-url")
+                    + " token=" + (options.containsKey("--bridge-token-file") ? "file" : "none") + " timeout=" + timeout : "");
             String response = switch (scenario) {
                 case "call-wrong-id" -> "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"fake MCP advisory\"}]}}";
                 case "call-wrong-rpc" -> "{\"jsonrpc\":\"1.0\",\"id\":2,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"fake MCP advisory\"}]}}";
