@@ -100,15 +100,15 @@ public final class ModuleStateDbContractTestMain {
         Files.writeString(module.resolve("product.txt"), "build");
         Files.writeString(module.resolve("consumer.txt"), "dependent");
         String manifest = TaskManifest.MAGIC + "\n"
-                + "task\\tcompile\\t" + tool + "\\t.\\n"
-                + "arg\\tcompile\\t-version\\n"
-                + "input\\tcompile\\tsource.txt\\n"
-                + "output\\tcompile\\tproduct.txt\\n"
-                + "task\\tconsumer\\t" + tool + "\\t.\\n"
-                + "dep\\tconsumer\\tcompile\\n"
-                + "arg\\tconsumer\\t-version\\n"
-                + "input\\tconsumer\\tproduct.txt\\n"
-                + "output\\tconsumer\\tconsumer.txt\\n";
+                + "task\tcompile\t" + tool + "\t.\n"
+                + "arg\tcompile\t-version\n"
+                + "input\tcompile\tsource.txt\n"
+                + "output\tcompile\tproduct.txt\n"
+                + "task\tconsumer\t" + tool + "\t.\n"
+                + "dep\tconsumer\tcompile\n"
+                + "arg\tconsumer\t-version\n"
+                + "input\tconsumer\tproduct.txt\n"
+                + "output\tconsumer\tconsumer.txt\n";
         Path manifestPath = Files.writeString(module.resolve("m3-build.tsv"), manifest);
         TaskManifest graph = TaskManifest.load(manifestPath);
         TaskManifest.Task first = graph.orderAll().stream()
