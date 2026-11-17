@@ -71,6 +71,36 @@ under the License.
           <execution><id>descriptor</id><goals><goal>descriptor</goal></goals></execution>
         </executions>
       </plugin>
+      <!-- The javac plugin's service registration goes into the jar only, never into target/classes: javac reads
+           the com.sun.source.util.Plugin services of its class path even without -Xplugin, and fails on a
+           registration whose class is missing, as it is while this module compiles or when an incremental compile has
+           just deleted the old classes. The jar is made from target/jar, a copy of target/classes plus the
+           registration. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>jar-content</id>
+            <phase>prepare-package</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/jar</outputDirectory>
+              <resources>
+                <resource><directory>${project.build.outputDirectory}</directory></resource>
+                <resource><directory>src/main/javac-plugin</directory></resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration><classesDirectory>${project.build.directory}/jar</classesDirectory></configuration>
+      </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>

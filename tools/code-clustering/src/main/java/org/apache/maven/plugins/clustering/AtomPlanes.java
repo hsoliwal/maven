@@ -131,6 +131,15 @@ public final class AtomPlanes {
         }
     }
 
+    /**
+     * Adds the atoms of one compilation unit that a compiler has parsed to {@code atoms}, exactly as {@link #scan}
+     * does: the javac plugin ({@link InlineClustering}) calls it with the trees of the build's own compilation.
+     */
+    static void collect(CompilationUnitTree unit, SourcePositions positions, String path, List<Atom> atoms)
+            throws IOException {
+        new Collector(unit, positions, path, atoms).scan(unit, null);
+    }
+
     /** Walks one compilation unit and records an atom for every type and method. */
     private static final class Collector extends TreePathScanner<Void, Void> {
         private final CompilationUnitTree unit;

@@ -95,6 +95,8 @@ public final class CodeClusteringTest {
         failures += PlaneCompareTest.failures();
         FrontEndTest.run(dir.resolve("front-ends"));
         failures += FrontEndTest.failures();
+        InlinePluginTest.run(dir.resolve("inline"));
+        failures += InlinePluginTest.failures();
         if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
         System.err.println("code clustering: all checks passed");
     }

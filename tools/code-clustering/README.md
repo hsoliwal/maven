@@ -137,6 +137,77 @@ java -cp maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar org.apache.maven.plugin
 java -cp ... org.apache.maven.plugins.clustering.CodeClustering join <A/ATOM_HASHES.tsv> <B/ATOM_HASHES.tsv> <out-dir>
 ```
 
+## Inline: the javac plugin
+
+The same jar is a javac plugin named `CodeClustering`. It atomizes the sources of the compilation that runs it
+from the trees javac builds anyway, so a build gets its tables during compilation, without a second parse and
+without a separate goal:
+
+```
+javac -processorpath maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar \
+      -Xplugin:"CodeClustering out=target/code-clustering minTokens=12 radius=3" ...
+```
+
+| Argument | Meaning | Default |
+|---|---|---|
+| `out` | directory of the tables (required) | none: the plugin stays off |
+| `minTokens`, `radius`, `fileThreshold` | as for `cluster` | 12, 3, 0.5 (or the `clustering.*` system properties) |
+| `roots` | source roots, separated by the platform path separator | each file's package root |
+
+- **When.** After PARSE, each compilation unit goes through the atom collection of the `cluster` scan
+  (`AtomPlanes.collect`, the same `Collector`, `PlaneTokens` and `AtomBuilder`). The tree is still the parser's at
+  that point: javac adds default constructors and record members later, during ENTER, which would change the TYPE
+  atoms. After ANALYZE, the methods declared `native` of each attributed class are recorded. When the compilation
+  ends, the tables are written.
+- **Paths.** A file's table path is relative to the longest `roots` entry that holds it. Without one, it is relative
+  to the directory its package declaration names (`src/main/java` for `src/main/java/p/A.java` in package `p`).
+  That is the path `cluster` gives when it scans that root. Sources that annotation processors generate are
+  compiled units too, so their atoms are in the tables, filed under their own package root.
+- **Tables.** The plugin writes the five tables of `cluster` (`ATOM_HASHES.tsv`, `CLUSTERS.tsv`, `PLANE_SUMMARY.tsv`,
+  `FILE_PAIRS.tsv`, `FILE_CLUSTERS.tsv`). It also writes:
+  - `JNI.tsv`: path, symbol (the atom symbol), class_name (binary name in internal form: `p/Outer$Inner`, also for
+    local and anonymous classes), method, arguments (JVM descriptor of the erased parameter types, for example
+    `Ljava/lang/String;[I`; a type javac could not resolve is `L?;`). Attribution makes these exact. They are the
+    Java side a JNI linker matches against native functions; the build has no native atoms, so the plugin links
+    nothing itself.
+  - `ATOM_SOURCES.tsv`: path, source file.
+- **Incremental compilations.** A compilation may compile only some files. Its units replace the rows of their
+  paths. Rows of other paths are kept while their source file (from `ATOM_SOURCES.tsv`) exists. Rows of deleted
+  files are dropped. Then the clusters and file families are computed again over the merged atoms. A table written
+  by `cluster` (it has no `ATOM_SOURCES.tsv`) is replaced, not merged. A module that javac does not compile because
+  it is up to date keeps its tables as they are.
+- **Identity.** For the same sources and the same JDK, the tables equal those of `cluster` byte for byte (tested on
+  fixtures and on this plugin's own sources). LOGIC and STRUCTURE depend on the tree shapes of the JDK's javac: for
+  example, JDK 21 gives arrow `case` labels nodes that JDK 17 does not have. Compare tables made with the same JDK
+  only. EXACT is taken from the text javac read, in the build's `-encoding`.
+- **Never fails a compilation.** Bad arguments disable the plugin. Any other failure (an output path that is a file,
+  for example) is logged as one warning through `System.Logger` (java.util.logging unless configured otherwise).
+  The compilation's result is unchanged.
+- **Registration.** `META-INF/services/com.sun.source.util.Plugin` is in the jar only, never in `target/classes`.
+  javac reads the plugin registrations of its class path even without `-Xplugin`, and stops with
+  `ServiceConfigurationError` when a registered class is missing. A class is missing while this module compiles, and
+  after an incremental compile has deleted the old classes. The registration lives in `src/main/javac-plugin`, and the
+  jar is made from `target/jar`, a copy of `target/classes` plus the registration.
+
+In the fork, the core extension (`tools/m3-smart-builder/extension`, `InlineClusteringSpy`) adds the plugin to every
+maven-compiler-plugin execution. The output is `target/code-clustering` for main sources and
+`target/code-clustering/test` for test sources. `-Dclustering.inline=false` turns it off; see that README.
+
+`src/it/inline_timing.sh <java-home> <runs> <source-root> [javac argument...]` compares compile cost with and
+without the plugin (`InlineTiming`, test scope). It runs in one JVM: a warm-up, then pairs in alternating order with
+the same processor path, where only `-Xplugin` differs. It reports wall time and the compiling thread's CPU time.
+Measured on 2026-11-17 (Windows, busy machine, 5 pairs, medians) with the JDK's own `java.util` sources as the
+corpus (`--patch-module java.base=...`):
+
+| JDK | Files | Atoms | CPU off | CPU on | Overhead | Wall off | Wall on |
+|---|---|---|---|---|---|---|---|
+| 17.0.19 | 340 | 12,157 | 4,453 ms | 5,625 ms | +1,172 ms (26.3%) | 4,762 ms | 6,050 ms |
+| 21.0.9 | 355 | 13,015 | 4,515 ms | 5,703 ms | +1,188 ms (26.3%) | 4,809 ms | 6,051 ms |
+
+These are warm compilations (JIT-compiled javac), so the relative overhead is the upper end. The cost is the shared
+atom collection, which walks each method under its type atom and again as its own atom, plus the clustering of the
+merged table.
+
 ## Build and test
 
 `mvn verify` compiles the plugin with `-Xlint:all -Werror` and runs `CodeClusteringTest` against a fixture. The
@@ -146,7 +217,17 @@ family). The test then checks the atoms' source lines, the join, the coverage, t
 atom table's line columns and reading an 8-column table. `LexicalAtomsTest` checks the lexical front end on
 JavaScript, Python, Go, C, Rust and Kotlin fixtures: atom symbols, the logic and structure planes, braces inside
 strings and comments, and source lines. `FrontEndTest` checks front-end discovery and `rangeAtom`, including its
-lines.
+lines. `InlinePluginTest` compiles fixtures with `-Xplugin:CodeClustering` and checks the following:
+
+- the five tables are byte-identical to `cluster` of the same root. The fixtures have classes without constructors
+  and a record, so collecting later than PARSE gives other tables (a mutation that collected after ANALYZE failed
+  three of these checks);
+- the JNI rows: nested and anonymous classes, overloads, a type variable erased to its bound, varargs, an imported
+  type;
+- partial compilations that replace rows, keep rows, and drop the rows of a deleted file;
+- a space in `out=`;
+- a compilation stays green when the output is a file, a number is bad, or `out` is missing;
+- the plugin's own sources against `cluster` of `src/main/java`.
 
 ## Report columns
 
@@ -160,3 +241,5 @@ lines.
 - `JOIN.tsv`: path, kind, symbol, plane, match_path, match_symbol
 - `COVERAGE.tsv`: path, atoms, exact, logic, structure, near, absent, top_match, top_share, proposal
 - `COMPARE.tsv`: state, path, kind, symbol, baseline_path, baseline_symbol
+- `JNI.tsv` (javac plugin): path, symbol, class_name, method, arguments
+- `ATOM_SOURCES.tsv` (javac plugin): path, source
