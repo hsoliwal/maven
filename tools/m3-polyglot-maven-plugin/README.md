@@ -180,6 +180,10 @@ and `package` run the native commands:
 | `build.xml` | `ant`, `ant test` when a `test` target exists |
 
 A folder with a hand-written `pom.xml` is a Maven project: listed as a module, never touched, not entered.
+A folder with `settings.gradle` / `settings.gradle.kts` is one Gradle build and is not entered either: its
+included projects, `buildSrc` and any build below it (test fixtures, samples with their own settings) are run by
+that build, once, with its own wrapper. Eclipse buildship, mavenized per sub-folder, ran Gradle for 25 modules,
+mixed the wrapper with the `gradle` on `PATH` and made `buildSrc` and its test fixtures reactor modules.
 Existing files are never overwritten; a run over an already mavenized tree reports `KEEP` lines, writes files for
 new sub-projects and names them `MISSING-MODULE` where the kept parent pom does not list them yet.
 `-Dm3.polyglot.dryRun=true` prints `PLAN` lines and writes nothing. Bare tool names in a manifest are looked up

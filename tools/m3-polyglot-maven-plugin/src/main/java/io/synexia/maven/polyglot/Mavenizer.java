@@ -98,6 +98,11 @@ public final class Mavenizer {
             found.add(new Project(dir, List.of("maven"), List.of(), List.of(), true));
             return true;
         }
+        if (gradleBuildRoot(dir)) {
+            List<Step> steps = steps(dir);
+            found.add(new Project(dir, tools(steps), List.copyOf(steps), List.of(), false));
+            return true;
+        }
         int slot = found.size();
         List<Path> modules = new ArrayList<>();
         if (depth < MAX_DEPTH) {
@@ -107,14 +112,27 @@ public final class Mavenizer {
         }
         List<Step> steps = steps(dir);
         if (steps.isEmpty() && modules.isEmpty()) return false;
+        found.add(slot, new Project(dir, tools(steps), List.copyOf(steps), List.copyOf(modules), false));
+        return true;
+    }
+
+    /**
+     * A folder with settings.gradle(.kts) is one Gradle build: its included projects, buildSrc and every build
+     * below it (test fixtures, samples with their own settings) are Gradle's business. It becomes one project whose
+     * steps run the build's own wrapper once; nothing below it becomes a Maven module.
+     */
+    static boolean gradleBuildRoot(Path dir) {
+        return has(dir, "settings.gradle") || has(dir, "settings.gradle.kts");
+    }
+
+    private static List<String> tools(List<Step> steps) {
         List<String> tools = new ArrayList<>();
         for (Step step : steps) {
             String tool = step.name().substring(0, step.name().indexOf('-'));
             if (!tools.contains(tool)) tools.add(tool);
         }
         if (tools.isEmpty()) tools.add("aggregator");
-        found.add(slot, new Project(dir, List.copyOf(tools), List.copyOf(steps), List.copyOf(modules), false));
-        return true;
+        return List.copyOf(tools);
     }
 
     private static List<Path> children(Path dir) throws IOException {
