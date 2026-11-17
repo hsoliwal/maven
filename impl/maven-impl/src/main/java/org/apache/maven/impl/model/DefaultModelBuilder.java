@@ -134,6 +134,14 @@ import org.slf4j.LoggerFactory;
 public class DefaultModelBuilder implements ModelBuilder {
 
     public static final String NAMESPACE_PREFIX = "http://maven.apache.org/POM/";
+
+    /**
+     * Properties naming the directory of the POM being read. Repository URLs keep them uninterpolated in the
+     * file model (the validator accepts exactly these), so an inherited repository resolves them per subproject.
+     */
+    private static final Set<String> PROJECT_DIRECTORY_PROPERTIES =
+            Set.of("basedir", "project.basedir", "project.basedir.uri", "project.baseUri");
+
     private static final String RAW = "raw";
     private static final String FILE = "file";
     private static final String IMPORT = "import";
@@ -2020,8 +2028,11 @@ public class DefaultModelBuilder implements ModelBuilder {
                                             : null)
                             .build();
 
-                    // Repository URL interpolation with the same profile-aware properties
-                    UnaryOperator<String> callback = properties::get;
+                    // Repository URL interpolation with the same profile-aware properties, except the
+                    // project directory: a repository inherited by a subproject resolves ${project.basedir}
+                    // against the subproject, as in Maven 3, when the effective model is interpolated.
+                    UnaryOperator<String> callback =
+                            key -> PROJECT_DIRECTORY_PROPERTIES.contains(key) ? null : properties.get(key);
                     model = model.with()
                             .repositories(interpolateRepository(model.getRepositories(), callback))
                             .pluginRepositories(interpolateRepository(model.getPluginRepositories(), callback))
