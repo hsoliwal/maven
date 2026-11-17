@@ -1,6 +1,20 @@
 /*
- * SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
- * SPDX-License-Identifier: Apache-2.0
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.impl;
 
@@ -57,7 +71,8 @@ public final class DefaultBuildInputsService implements BuildInputsService {
     private static Manifest parse(M3PluginEvidenceService.Receipt receipt, byte[] contents) throws IOException {
         final String text;
         try {
-            text = StandardCharsets.UTF_8.newDecoder()
+            text = StandardCharsets.UTF_8
+                    .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(contents))
@@ -114,11 +129,12 @@ public final class DefaultBuildInputsService implements BuildInputsService {
             if (fields.length != 4) {
                 throw new IOException("resource manifest requires four columns");
             }
-            int role = switch (fields[0]) {
-                case "I" -> 0;
-                case "O" -> 1;
-                default -> throw new IOException("unknown resource manifest role");
-            };
+            int role =
+                    switch (fields[0]) {
+                        case "I" -> 0;
+                        case "O" -> 1;
+                        default -> throw new IOException("unknown resource manifest role");
+                    };
             String path = fields[1];
             validatePath(path);
             String hash = fields[2];
@@ -169,7 +185,10 @@ public final class DefaultBuildInputsService implements BuildInputsService {
         }
 
         private static void validatePath(String path) throws IOException {
-            if (path.isEmpty() || path.length() > 1_024 || path.charAt(0) == '/' || path.indexOf('\\') >= 0
+            if (path.isEmpty()
+                    || path.length() > 1_024
+                    || path.charAt(0) == '/'
+                    || path.indexOf('\\') >= 0
                     || path.indexOf(':') >= 0) {
                 throw new IOException("unsafe resource manifest path");
             }
@@ -229,8 +248,11 @@ public final class DefaultBuildInputsService implements BuildInputsService {
         @Override
         public FileFact entry(int index) {
             Objects.checkIndex(index, count);
-            return new FileFact(direction[index] == 0 ? Direction.INPUT : Direction.OUTPUT,
-                    paths[index], hashes[index], bytes[index]);
+            return new FileFact(
+                    direction[index] == 0 ? Direction.INPUT : Direction.OUTPUT,
+                    paths[index],
+                    hashes[index],
+                    bytes[index]);
         }
     }
 }

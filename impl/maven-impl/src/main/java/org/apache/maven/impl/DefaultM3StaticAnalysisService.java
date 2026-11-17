@@ -52,14 +52,14 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
     private static final String COLUMNS = "rule\tseverity\tpath\tline\tcolumn\tmessage64";
     private static final int MAX_LINE = 16_384;
     private static final Severity[] LEVELS = Severity.values();
-    private static final Comparator<M3PluginEvidenceService.Identity> IDENTITIES =
-            Comparator.comparing(M3PluginEvidenceService.Identity::project)
-                    .thenComparing(M3PluginEvidenceService.Identity::pluginGa)
-                    .thenComparing(M3PluginEvidenceService.Identity::version)
-                    .thenComparing(M3PluginEvidenceService.Identity::goal)
-                    .thenComparing(M3PluginEvidenceService.Identity::execution)
-                    .thenComparing(M3PluginEvidenceService.Identity::contextSha256)
-                    .thenComparingLong(M3PluginEvidenceService.Identity::generation);
+    private static final Comparator<M3PluginEvidenceService.Identity> IDENTITIES = Comparator.comparing(
+                    M3PluginEvidenceService.Identity::project)
+            .thenComparing(M3PluginEvidenceService.Identity::pluginGa)
+            .thenComparing(M3PluginEvidenceService.Identity::version)
+            .thenComparing(M3PluginEvidenceService.Identity::goal)
+            .thenComparing(M3PluginEvidenceService.Identity::execution)
+            .thenComparing(M3PluginEvidenceService.Identity::contextSha256)
+            .thenComparingLong(M3PluginEvidenceService.Identity::generation);
 
     private static final Comparator<Finding> FINDINGS = Comparator.comparing(Finding::relativePath)
             .thenComparingInt(Finding::line)
@@ -121,14 +121,12 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
     }
 
     /** Atom: validate, sort and deduplicate complete expected identities before any receipt I/O. */
-    private static M3PluginEvidenceService.Identity[] sortedExpected(
-            List<M3PluginEvidenceService.Identity> expected) {
+    private static M3PluginEvidenceService.Identity[] sortedExpected(List<M3PluginEvidenceService.Identity> expected) {
         Objects.requireNonNull(expected, "expected");
         if (expected.isEmpty() || expected.size() > MAX_PRODUCERS) {
             throw new IllegalArgumentException("analysis producer budget or empty expectation");
         }
-        M3PluginEvidenceService.Identity[] identities =
-                expected.toArray(M3PluginEvidenceService.Identity[]::new);
+        M3PluginEvidenceService.Identity[] identities = expected.toArray(M3PluginEvidenceService.Identity[]::new);
         for (M3PluginEvidenceService.Identity identity : identities) {
             Objects.requireNonNull(identity, "expected identity");
         }
@@ -210,7 +208,8 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
 
     private static String decode(byte[] bytes) throws IOException {
         try {
-            return StandardCharsets.UTF_8.newDecoder()
+            return StandardCharsets.UTF_8
+                    .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes))
@@ -263,8 +262,12 @@ public final class DefaultM3StaticAnalysisService implements M3StaticAnalysisSer
         }
         try {
             return new Finding(
-                    fields[0], Severity.valueOf(fields[1]), fields[2], position(fields[3]),
-                    position(fields[4]), message(fields[5]));
+                    fields[0],
+                    Severity.valueOf(fields[1]),
+                    fields[2],
+                    position(fields[3]),
+                    position(fields[4]),
+                    message(fields[5]));
         } catch (IllegalArgumentException invalid) {
             throw new IOException("invalid normalized static analysis finding", invalid);
         }

@@ -24,12 +24,12 @@ import java.util.Collections;
 import java.util.List;
 
 import org.apache.maven.api.services.M3ExternalBuildService;
-import org.apache.maven.api.services.M3ExternalBuildWire;
 import org.apache.maven.api.services.M3ExternalBuildService.Change;
 import org.apache.maven.api.services.M3ExternalBuildService.ChangeKind;
 import org.apache.maven.api.services.M3ExternalBuildService.Disposition;
 import org.apache.maven.api.services.M3ExternalBuildService.Generation;
 import org.apache.maven.api.services.M3ExternalBuildService.Reason;
+import org.apache.maven.api.services.M3ExternalBuildWire;
 import org.apache.maven.di.Injector;
 import org.junit.jupiter.api.Test;
 
@@ -62,10 +62,9 @@ final class DefaultM3ExternalBuildServiceTest {
     @Test
     void jdtAndOtherHostDeltaRemainsAdvisoryAndOrdered() {
         List<Change> input = new ArrayList<>(List.of(
-                new Change("src/B.java", ChangeKind.MODIFIED, null),
-                new Change("src/A.java", ChangeKind.ADDED, A)));
-        var result = service.assess(generation("eclipse.jdt", 7, A, true),
-                generation("eclipse.jdt", 8, A, true), input);
+                new Change("src/B.java", ChangeKind.MODIFIED, null), new Change("src/A.java", ChangeKind.ADDED, A)));
+        var result =
+                service.assess(generation("eclipse.jdt", 7, A, true), generation("eclipse.jdt", 8, A, true), input);
         input.clear();
         assertEquals(Disposition.HOST_DELTA_AVAILABLE, result.disposition());
         assertEquals(List.of(Reason.HOST_DELTA_READY), result.reasons());
@@ -84,13 +83,13 @@ final class DefaultM3ExternalBuildServiceTest {
         var first = service.assess(null, current, List.of());
         assertEquals(Disposition.MAVEN_RECONCILIATION, first.disposition());
         assertTrue(first.reasons().contains(Reason.INITIAL_BASELINE_MISSING));
-        var missing = service.assess(generation("eclipse.jdt", 9, A, true),
-                generation("eclipse.jdt", 10, A, false), List.of());
+        var missing = service.assess(
+                generation("eclipse.jdt", 9, A, true), generation("eclipse.jdt", 10, A, false), List.of());
         assertTrue(missing.reasons().contains(Reason.INCOMPLETE_DELTA));
         var gap = service.assess(generation("eclipse.jdt", 3, A, true), current, List.of());
         assertTrue(gap.reasons().contains(Reason.GENERATION_GAP));
-        var rollover = service.assess(generation("eclipse.jdt", Long.MAX_VALUE, A, true),
-                generation("eclipse.jdt", 1, A, true), List.of());
+        var rollover = service.assess(
+                generation("eclipse.jdt", Long.MAX_VALUE, A, true), generation("eclipse.jdt", 1, A, true), List.of());
         assertTrue(rollover.reasons().contains(Reason.GENERATION_GAP));
     }
 
@@ -100,24 +99,30 @@ final class DefaultM3ExternalBuildServiceTest {
         var different = generation("visualstudio.msbuild", 2, A, true);
         assertTrue(service.assess(previous, different, List.of()).reasons().contains(Reason.FOREIGN_BASELINE));
         var changed = generation("eclipse.jdt", 2, B, true);
-        assertTrue(service.assess(previous, changed, List.of()).reasons()
-                .contains(Reason.MODEL_OR_TOOLCHAIN_CHANGED));
+        assertTrue(service.assess(previous, changed, List.of()).reasons().contains(Reason.MODEL_OR_TOOLCHAIN_CHANGED));
     }
 
     @Test
     void deletedSourcesAndBuildConfigChangesNeverClaimIncrementalMavenReuse() {
         var previous = generation("visualstudio.msbuild", 2, A, true);
         var current = generation("visualstudio.msbuild", 3, A, true);
-        for (String filename : List.of("pom.xml", "module-a/pom.xml", ".mvn/maven.config", ".classpath",
-                "module-info.java", "settings.gradle.kts", "project.vcxproj", "CMakeLists.txt",
-                "project/pyproject.toml", "src/build/Generated.java")) {
-            var assessment = service.assess(previous, current,
-                    List.of(new Change(filename, ChangeKind.MODIFIED, null)));
+        for (String filename : List.of(
+                "pom.xml",
+                "module-a/pom.xml",
+                ".mvn/maven.config",
+                ".classpath",
+                "module-info.java",
+                "settings.gradle.kts",
+                "project.vcxproj",
+                "CMakeLists.txt",
+                "project/pyproject.toml",
+                "src/build/Generated.java")) {
+            var assessment =
+                    service.assess(previous, current, List.of(new Change(filename, ChangeKind.MODIFIED, null)));
             assertEquals(Disposition.MAVEN_RECONCILIATION, assessment.disposition(), filename);
             assertFalse(assessment.authorizesMavenGoalSkipping());
         }
-        var deleted = service.assess(previous, current,
-                List.of(new Change("src/Old.java", ChangeKind.DELETED, null)));
+        var deleted = service.assess(previous, current, List.of(new Change("src/Old.java", ChangeKind.DELETED, null)));
         assertTrue(deleted.reasons().contains(Reason.INPUT_REMOVED));
         assertEquals(Disposition.MAVEN_RECONCILIATION, deleted.disposition());
     }
@@ -126,26 +131,42 @@ final class DefaultM3ExternalBuildServiceTest {
     void duplicatePathsAndUnsafeInputsAreRejectedBeforeAnyUse() {
         var previous = generation("eclipse.jdt", 1, A, true);
         var current = generation("eclipse.jdt", 2, A, true);
-        assertThrows(IllegalArgumentException.class, () -> service.assess(previous, current,
-                List.of(new Change("src/A.java", ChangeKind.ADDED, A),
-                        new Change("src/A.java", ChangeKind.MODIFIED, B))));
-        for (String path : List.of("", "/etc/passwd", "C:/temp/file", "src/../outside", "src/./x",
-                "src//x", "src/x\\y", "src/tab\tfile", "src/" + (char) 0xd800)) {
-            assertThrows(IllegalArgumentException.class,
-                    () -> new Change(path, ChangeKind.MODIFIED, null), path);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.assess(
+                        previous,
+                        current,
+                        List.of(
+                                new Change("src/A.java", ChangeKind.ADDED, A),
+                                new Change("src/A.java", ChangeKind.MODIFIED, B))));
+        for (String path : List.of(
+                "",
+                "/etc/passwd",
+                "C:/temp/file",
+                "src/../outside",
+                "src/./x",
+                "src//x",
+                "src/x\\y",
+                "src/tab\tfile",
+                "src/" + (char) 0xd800)) {
+            assertThrows(IllegalArgumentException.class, () -> new Change(path, ChangeKind.MODIFIED, null), path);
         }
         assertThrows(IllegalArgumentException.class, () -> new Change("a", ChangeKind.MODIFIED, "A".repeat(64)));
         assertThrows(IllegalArgumentException.class, () -> new Change("a", ChangeKind.DELETED, A));
         assertThrows(IllegalArgumentException.class, () -> generation("eclipse.jdt", 0, A, true));
-        assertThrows(IllegalArgumentException.class, () -> new M3ExternalBuildService.Request(
-                previous, current, Collections.nCopies(M3ExternalBuildService.MAX_CHANGES + 1,
-                        new Change("a", ChangeKind.MODIFIED, null))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new M3ExternalBuildService.Request(
+                        previous,
+                        current,
+                        Collections.nCopies(
+                                M3ExternalBuildService.MAX_CHANGES + 1, new Change("a", ChangeKind.MODIFIED, null))));
     }
 
     @Test
     void emptyCompleteHostDeltaIsNotAProvenMavenCacheHit() {
-        var assessment = service.assess(generation("vscode.java", 4, A, true),
-                generation("vscode.java", 5, A, true), List.of());
+        var assessment =
+                service.assess(generation("vscode.java", 4, A, true), generation("vscode.java", 5, A, true), List.of());
         assertEquals(Disposition.HOST_DELTA_AVAILABLE, assessment.disposition());
         assertEquals(List.of(Reason.HOST_DELTA_EMPTY), assessment.reasons());
         assertFalse(assessment.authorizesMavenGoalSkipping());
@@ -155,11 +176,10 @@ final class DefaultM3ExternalBuildServiceTest {
     void boundedLargeDeltasAreSortedWithoutPerEntryRetainedObjects() {
         var changes = new ArrayList<Change>();
         for (int i = 1_000; i >= 1; i--) {
-            changes.add(new Change("src/C" + String.format("%04d", i) + ".java",
-                    ChangeKind.MODIFIED, null));
+            changes.add(new Change("src/C" + String.format("%04d", i) + ".java", ChangeKind.MODIFIED, null));
         }
-        var report = service.assess(generation("eclipse.jdt", 1, A, true),
-                generation("eclipse.jdt", 2, A, true), changes);
+        var report =
+                service.assess(generation("eclipse.jdt", 1, A, true), generation("eclipse.jdt", 2, A, true), changes);
         assertEquals(1_000, report.size());
         assertEquals("src/C0001.java", report.entry(0).relativePath());
         assertEquals("src/C1000.java", report.entry(999).relativePath());
@@ -186,46 +206,58 @@ final class DefaultM3ExternalBuildServiceTest {
         assertTrue(cold.reasons().contains(Reason.INITIAL_BASELINE_MISSING));
 
         byte[] incompletePacket = M3ExternalBuildWire.encode(new M3ExternalBuildWire.Envelope(
-                "eclipse.m2e",
-                "project",
-                "AUTO",
-                false,
-                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null))));
+                "eclipse.m2e", "project", "AUTO", false, List.of(new Change("src/A.java", ChangeKind.MODIFIED, null))));
         var incomplete = service.assess(incompletePacket, previous, current);
         assertEquals(Disposition.MAVEN_RECONCILIATION, incomplete.disposition());
         assertTrue(incomplete.reasons().contains(Reason.INCOMPLETE_DELTA));
         assertThrows(
                 IOException.class,
-                () -> service.assess("not an IDE delta".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                        previous, current));
+                () -> service.assess(
+                        "not an IDE delta".getBytes(java.nio.charset.StandardCharsets.UTF_8), previous, current));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.assess(
-                        readyPacket,
-                        previous,
-                        new Generation("vscode.java", "project", 5, A, A, A, A, true)));
+                        readyPacket, previous, new Generation("vscode.java", "project", 5, A, A, A, A, true)));
     }
 
     @Test
     void ideConfigurationAndCrossLanguageLockfilesRequireReconciliation() {
         var before = generation("eclipse.m2e", 4, A, true);
         var current = generation("eclipse.m2e", 5, A, true);
-        for (String path : List.of("module/.mvn/extensions.xml", "module/.settings/org.eclipse.jdt.core.prefs",
-                ".factorypath", "gradle/libs.versions.toml", "gradle/wrapper/gradle-wrapper.properties",
-                "build.gradle.kts", "native/custom.gradle", "frontend/pnpm-lock.yaml", "frontend/bun.lockb",
-                "frontend/package-lock.json", "python/uv.lock", "python/poetry.lock", "python/setup.cfg",
-                "dotnet/global.json", "dotnet/NuGet.Config", "dotnet/packages.lock.json",
-                "native/CMakeUserPresets.json", "native/conanfile.py", "native/meson.options",
-                "rust/rust-toolchain.toml", "rust/build.rs", "go/go.work", "swift/Package.resolved",
-                "bazel/MODULE.bazel", "bazel/BUILD", "ant/ivy.xml")) {
-            var evaluation = service.assess(before, current,
-                    List.of(new Change(path, ChangeKind.MODIFIED, null)));
+        for (String path : List.of(
+                "module/.mvn/extensions.xml",
+                "module/.settings/org.eclipse.jdt.core.prefs",
+                ".factorypath",
+                "gradle/libs.versions.toml",
+                "gradle/wrapper/gradle-wrapper.properties",
+                "build.gradle.kts",
+                "native/custom.gradle",
+                "frontend/pnpm-lock.yaml",
+                "frontend/bun.lockb",
+                "frontend/package-lock.json",
+                "python/uv.lock",
+                "python/poetry.lock",
+                "python/setup.cfg",
+                "dotnet/global.json",
+                "dotnet/NuGet.Config",
+                "dotnet/packages.lock.json",
+                "native/CMakeUserPresets.json",
+                "native/conanfile.py",
+                "native/meson.options",
+                "rust/rust-toolchain.toml",
+                "rust/build.rs",
+                "go/go.work",
+                "swift/Package.resolved",
+                "bazel/MODULE.bazel",
+                "bazel/BUILD",
+                "ant/ivy.xml")) {
+            var evaluation = service.assess(before, current, List.of(new Change(path, ChangeKind.MODIFIED, null)));
             assertEquals(Disposition.MAVEN_RECONCILIATION, evaluation.disposition(), path);
             assertTrue(evaluation.reasons().contains(Reason.BUILD_DESCRIPTOR_CHANGED));
             assertFalse(evaluation.authorizesMavenGoalSkipping());
         }
-        var ordinary = service.assess(before, current,
-                List.of(new Change("src/main/java/example/Example.java", ChangeKind.MODIFIED, null)));
+        var ordinary = service.assess(
+                before, current, List.of(new Change("src/main/java/example/Example.java", ChangeKind.MODIFIED, null)));
         assertEquals(Disposition.HOST_DELTA_AVAILABLE, ordinary.disposition());
         assertFalse(ordinary.authorizesMavenGoalSkipping());
     }
@@ -234,14 +266,16 @@ final class DefaultM3ExternalBuildServiceTest {
     void previousIncompleteGenerationCannotAnchorACompleteNewDelta() {
         var current = generation("eclipse.m2e", 2, A, true);
         var previous = generation("eclipse.m2e", 1, A, false);
-        var assessment = service.assess(previous, current,
-                List.of(new Change("src/A.java", ChangeKind.MODIFIED, null)));
+        var assessment =
+                service.assess(previous, current, List.of(new Change("src/A.java", ChangeKind.MODIFIED, null)));
         assertEquals(Disposition.MAVEN_RECONCILIATION, assessment.disposition());
         assertTrue(assessment.reasons().contains(Reason.INCOMPLETE_DELTA));
         assertFalse(assessment.authorizesMavenGoalSkipping());
 
         // A contiguous, complete prior generation still exposes a host hint.
-        var complete = service.assess(generation("eclipse.m2e", 1, A, true), current,
+        var complete = service.assess(
+                generation("eclipse.m2e", 1, A, true),
+                current,
                 List.of(new Change("src/A.java", ChangeKind.MODIFIED, null)));
         assertEquals(Disposition.HOST_DELTA_AVAILABLE, complete.disposition());
         assertFalse(complete.authorizesMavenGoalSkipping());

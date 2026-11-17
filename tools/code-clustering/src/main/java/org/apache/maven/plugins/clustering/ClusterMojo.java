@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -60,9 +59,16 @@ public final class ClusterMojo extends AbstractMojo {
     @Parameter(property = "clustering.against")
     private File against;
 
+    /**
+     * Source directories to atomize instead of the compile source roots, for projects whose sources are not Java
+     * (for example {@code src/main/js}, {@code src/main/python}, {@code src/main/cpp}); comma-separated as a property.
+     */
+    @Parameter(property = "clustering.sourceDirectories")
+    private List<File> sourceDirectories;
+
     @Override public void execute() throws MojoExecutionException {
         try {
-            List<Path> roots = sourceRoots.stream().map(Path::of).collect(Collectors.toList());
+            List<Path> roots = SnapshotMojo.roots(sourceDirectories, sourceRoots);
             Path out = outputDirectory.toPath();
             getLog().info(CodeClustering.cluster(out, roots, minTokens, radius, fileThreshold));
             if (against != null) {
