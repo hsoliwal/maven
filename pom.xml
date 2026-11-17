@@ -107,6 +107,10 @@ under the License.
     <!-- The plugins the extension binds, built and installed with the fork: build-hook and the polyglot lifecycle. -->
     <module>tools/m3-smart-builder</module>
     <module>tools/m3-polyglot-maven-plugin</module>
+    <!-- Describes a build for coding agents: project.json and llms.txt (uses the extension's MavenCommands). -->
+    <module>tools/maven-agent-plugin</module>
+    <!-- Model Context Protocol server on stdio: build, test and read the agent files as compact JSON. -->
+    <module>tools/maven-mcp-server</module>
     <!-- Code clustering (atoms, hash planes, clusters, baseline compare) and its language-server front end. -->
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
