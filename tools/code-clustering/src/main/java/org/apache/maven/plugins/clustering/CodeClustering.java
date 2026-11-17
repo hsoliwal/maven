@@ -34,7 +34,8 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  * </pre>
  * {@code compare} writes COMPARE.tsv; it reads {@code clustering.failOn} (comma-separated states) and
  * {@code clustering.receipts} (a file of {@code path#symbol} lines) and exits 3 when an atom is in a failing state.
- * {@code cluster} writes ATOM_HASHES.tsv, CLUSTERS.tsv, PLANE_SUMMARY.tsv, FILE_PAIRS.tsv and FILE_CLUSTERS.tsv;
+ * {@code cluster} writes ATOM_HASHES.tsv, CLUSTERS.tsv, PLANE_SUMMARY.tsv, FILE_PAIRS.tsv and FILE_CLUSTERS.tsv, and
+ * JNI.tsv when the sources have a native method or a {@code Java_} function ({@link JniLinker});
  * {@code join} writes JOIN.tsv and COVERAGE.tsv. Options (system properties): {@code clustering.minTokens} (default
  * 12), {@code clustering.radius} (SimHash Hamming radius, default 3), {@code clustering.fileThreshold} (Jaccard
  * similarity of two files' method logic sets, default 0.5). Exit status: 0 written, 2 usage, 1 failure.
@@ -88,10 +89,11 @@ public final class CodeClustering {
     /** As {@link #cluster(Path, List, int, int)} with the Jaccard threshold of a file family. */
     public static String cluster(Path out, List<Path> roots, int minTokens, int radius, double fileThreshold)
             throws IOException {
-        List<Atom> atoms = AtomPlanes.scan(roots);
+        List<AtomFrontEnd> frontEnds = AtomFrontEnd.all();
+        List<Atom> atoms = AtomPlanes.scan(roots, frontEnds);
         PlaneTables.writeAtoms(out.resolve("ATOM_HASHES.tsv"), atoms);
         return PlaneTables.writeClusters(out, atoms, minTokens, radius) + " | "
-                + FileClusters.write(out, atoms, minTokens, fileThreshold);
+                + FileClusters.write(out, atoms, minTokens, fileThreshold) + JniLinker.write(out, roots, atoms, frontEnds);
     }
 
     private static List<Path> paths(String[] args, int from) {

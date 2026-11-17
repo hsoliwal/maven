@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.TreeSet;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 
 /**
@@ -60,8 +62,14 @@ public interface AtomFrontEnd {
         return all;
     }
 
-    /** The built-in Java front end: the compiler's own parser. */
+    /**
+     * The built-in Java front end: the compiler's own parser. It also keeps the methods declared {@code native} and
+     * the binary names of the classes it parsed.
+     */
     final class JavacFrontEnd implements AtomFrontEnd {
+        private final List<JniMethod> natives = new ArrayList<>();
+        private final Set<String> classes = new TreeSet<>();
+
         @Override public String name() {
             return "javac";
         }
@@ -71,7 +79,17 @@ public interface AtomFrontEnd {
         }
 
         @Override public List<Atom> atoms(Path root, List<Path> files) throws IOException {
-            return AtomPlanes.parse(root, files);
+            return AtomPlanes.parse(root, files, natives, classes);
+        }
+
+        /** The native methods of the files this front end has atomized so far, for {@link JniLinker}. */
+        List<JniMethod> natives() {
+            return List.copyOf(natives);
+        }
+
+        /** The binary names in internal form ({@code p/Outer$Inner}) of the named classes parsed so far. */
+        Set<String> classes() {
+            return Set.copyOf(classes);
         }
     }
 

@@ -89,14 +89,31 @@ public final class CodeClusteringTest {
         families(dir);
         setters(dir);
         nearJoin(dir);
+        suites(dir, src);
+        if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
+        System.err.println("code clustering: all checks passed");
+    }
+
+    /** The other test classes, each in its own scratch directory. */
+    private static void suites(Path dir, Path src) throws Exception {
         LexicalAtomsTest.run(dir.resolve("lexical"));
         failures += LexicalAtomsTest.failures();
         PlaneCompareTest.run(dir.resolve("compare"), src, B);
         failures += PlaneCompareTest.failures();
         FrontEndTest.run(dir.resolve("front-ends"));
         failures += FrontEndTest.failures();
-        if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
-        System.err.println("code clustering: all checks passed");
+        ObjectiveCTest.run(dir.resolve("objc"));
+        failures += ObjectiveCTest.failures();
+        JniNamesTest.run(dir.resolve("jni-names"));
+        failures += JniNamesTest.failures();
+        JniLinkerTest.run(dir.resolve("jni"));
+        failures += JniLinkerTest.failures();
+        CFamilyTest.run(dir.resolve("c-family"));
+        failures += CFamilyTest.failures();
+        JniCasesTest.run(dir.resolve("jni-cases"));
+        failures += JniCasesTest.failures();
+        JniTypesTest.run(dir.resolve("jni-types"));
+        failures += JniTypesTest.failures();
     }
 
     /**

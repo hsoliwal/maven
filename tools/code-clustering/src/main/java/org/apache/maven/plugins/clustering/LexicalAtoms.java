@@ -22,39 +22,60 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.IntStream;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.Lexer.Kind;
 import org.apache.maven.plugins.clustering.Lexer.Token;
 
 /**
- * Lexical front end: atoms of the languages without a dedicated parser front end. In brace languages, a block whose
- * header names a type (class, struct, interface, enum, trait, impl, object, record, union) is a TYPE atom. A block
- * whose header has a name followed by a parameter list, or ends in an arrow, is a METHOD atom. Control statements
- * are not atoms. In indentation languages, {@code def} and {@code class} lines open atoms that run to the next line
- * indented as far or less, with their decorators. The planes follow the javac front end. LOGIC numbers the names
- * the atom declares: its own name, its parameters, and names bound by a declaration keyword, {@code :=}, a plain
- * assignment, or {@code in}/{@code of}. Other names and all literals are kept. STRUCTURE keeps keywords and
- * operators and reduces names and literals to their class. An atom's lines are those of its first and last tokens.
+ * Lexical front end: atoms of the languages without a dedicated parser front end. In brace languages
+ * ({@link BraceBlocks}), a block whose header names a type (class, struct, interface, enum, trait, impl, object,
+ * record, union) is a TYPE atom. A block whose header has a name followed by a parameter list, or ends in an arrow, is
+ * a METHOD atom. Control statements are not atoms. C, C++ and Objective-C headers follow {@link CFamilyHeader}. In
+ * indentation languages ({@link IndentedAtoms}), {@code def} and {@code class} lines open atoms. The planes follow the
+ * javac front end ({@link LexicalPlanes}). LOGIC numbers the names the atom declares: its own name, its parameters,
+ * and names bound by a declaration keyword, {@code :=}, a plain assignment, or {@code in}/{@code of}. Other names and
+ * all literals are kept. STRUCTURE keeps keywords and operators and reduces names and literals to their class. An
+ * atom's lines are those of its first and last tokens.
  */
 public final class LexicalAtoms {
-    static final Set<String> BRACE = Set.of("c", "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "js", "mjs", "cjs", "jsx",
-            "ts", "tsx", "go", "rs", "kt", "kts", "scala", "swift", "php", "dart", "groovy");
+    static final Set<String> BRACE = Set.of("c", "h", "cc", "cpp", "cxx", "hpp", "hh", "m", "mm", "cs", "js", "mjs",
+            "cjs", "jsx", "ts", "tsx", "go", "rs", "kt", "kts", "scala", "swift", "php", "dart", "groovy");
     static final Set<String> INDENTED = Set.of("py");
-    private static final Set<String> TYPE_WORDS = Set.of("class", "struct", "interface", "enum", "trait", "impl",
-            "object", "record", "union");
-    private static final Set<String> CONTROL = Set.of("if", "for", "while", "switch", "catch", "synchronized",
+    /** Words that open a control statement: a block after them is not an atom. */
+    static final Set<String> CONTROL = Set.of("if", "for", "while", "switch", "catch", "synchronized",
             "using", "lock", "foreach", "elif", "when", "match", "guard", "defer", "unless", "do", "else", "try",
             "finally", "return", "with", "loop", "sizeof", "typeof", "new", "throw");
-    private static final Set<String> DECLARE = Set.of("let", "const", "var", "val", "def", "fn", "func", "function",
+    private static final Set<String> TYPE_WORDS = Set.of("class", "struct", "interface", "enum", "trait", "impl",
+            "object", "record", "union");
+    /** Declaration keywords: a name after one is bound in the atom. */
+    static final Set<String> DECLARE = Set.of("let", "const", "var", "val", "def", "fn", "func", "function",
             "fun", "auto", "local", "my");
 
     private LexicalAtoms() { }
+
+    /**
+     * An open block. {@code objc} marks an Objective-C method, whose symbol is its selector without a parameter
+     * count, or an {@code @implementation}, which {@code @end} closes instead of a brace.
+     */
+    record Frame(int headerStart, String kind, String name, List<Token> params, boolean objc) {
+        Frame(int headerStart, String kind, String name, List<Token> params) {
+            this(headerStart, kind, name, params, false);
+        }
+
+        boolean container() {
+            return objc && "TYPE".equals(kind);
+        }
+
+        Frame at(int start) {
+            return new Frame(start, kind, name, params, objc);
+        }
+    }
 
     static boolean accepts(Path file) {
         String ext = AtomFrontEnd.extension(file);
@@ -66,75 +87,75 @@ public final class LexicalAtoms {
         for (Path file : files) {
             String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
             String path = root.relativize(file).toString().replace('\\', '/');
-            boolean indented = INDENTED.contains(AtomFrontEnd.extension(file));
+            String extension = AtomFrontEnd.extension(file);
+            boolean indented = INDENTED.contains(extension);
             List<Token> tokens = Lexer.tokens(text, indented);
-            if (indented) indentedAtoms(path, text, tokens, atoms);
-            else braceAtoms(path, text, tokens, atoms);
+            if (indented) IndentedAtoms.scan(path, text, tokens, atoms);
+            else BraceBlocks.scan(path, text, tokens, atoms, extension);
         }
         return atoms;
     }
 
-    private record Frame(int headerStart, String kind, String name, List<Token> params) { }
-
-    private static void braceAtoms(String path, String text, List<Token> tokens, List<Atom> atoms) {
-        Deque<Frame> open = new ArrayDeque<>();
-        int boundary = 0;
-        for (int i = 0; i < tokens.size(); i++) {
-            String t = tokens.get(i).kind() == Kind.OP ? tokens.get(i).text() : "";
-            if (t.equals("{")) {
-                Frame frame = classify(tokens.subList(boundary, i), boundary);
-                open.push(frame);
-                boundary = i + 1;
-            } else if (t.equals("}") && !open.isEmpty()) {
-                Frame frame = open.pop();
-                if (frame.kind() != null) {
-                    atoms.add(atom(path, text, tokens.subList(frame.headerStart(), i + 1), frame, owners(open), 0));
-                }
-                boundary = i + 1;
-            } else if (t.equals(";")) {
-                boundary = i + 1;
-            }
-        }
-    }
-
     /** The header is the tokens since the last {@code ; { }}; the part after its last unclosed bracket names the block. */
-    private static Frame classify(List<Token> header, int offset) {
-        int tail = 0;
-        int depth = 0;
-        for (int i = 0; i < header.size(); i++) {
-            String t = header.get(i).text();
-            if (t.equals("(") || t.equals("[")) depth++;
-            if ((t.equals(")") || t.equals("]")) && depth > 0) depth--;
-        }
-        for (int i = header.size() - 1, d = 0; i >= 0 && depth > 0; i--) {
-            String t = header.get(i).text();
-            if (t.equals(")") || t.equals("]")) d++;
-            if (t.equals("(") || t.equals("[")) {
-                if (d == 0) {
-                    tail = i + 1;
-                    break;
-                }
-                d--;
-            }
-        }
+    static Frame classify(List<Token> header, int offset) {
+        int tail = tail(header);
         List<Token> h = header.subList(tail, header.size());
         int start = offset + tail;
         if (h.isEmpty() || CONTROL.contains(h.get(0).text())) return new Frame(start, null, null, List.of());
+        return goType(h, start).or(() -> type(h, start)).or(() -> method(h, start)).orElseGet(() -> arrow(h, start));
+    }
+
+    /** Where the part after the header's last unclosed parenthesis or square bracket starts; 0 when all are closed. */
+    private static int tail(List<Token> header) {
+        int unclosed = unclosed(header);
+        for (int i = header.size() - 1, d = 0; i >= 0 && unclosed > 0; i--) {
+            String t = header.get(i).text();
+            if (t.equals(")") || t.equals("]")) d++;
+            if (t.equals("(") || t.equals("[")) {
+                if (d == 0) return i + 1;
+                d--;
+            }
+        }
+        return 0;
+    }
+
+    private static int unclosed(List<Token> header) {
+        int depth = 0;
+        for (Token token : header) {
+            String t = token.text();
+            if (t.equals("(") || t.equals("[")) depth++;
+            if ((t.equals(")") || t.equals("]")) && depth > 0) depth--;
+        }
+        return depth;
+    }
+
+    /** Go {@code type Name struct}. */
+    private static Optional<Frame> goType(List<Token> h, int start) {
         int n = h.size();
-        for (int k = n - 3; k >= 0; k--) {
-            if (h.get(k).text().equals("type") && h.get(k + 1).kind() == Kind.ID && TYPE_WORDS.contains(h.get(n - 1).text())) {
-                return new Frame(start + k, "TYPE", h.get(k + 1).text(), List.of());
-            }
-        }
-        for (int k = 0; k + 1 < h.size(); k++) {
-            if (h.get(k).kind() == Kind.KEYWORD && TYPE_WORDS.contains(h.get(k).text()) && h.get(k + 1).kind() == Kind.ID
-                    && (firstParen(h) < 0 || firstParen(h) == k + 2)) return new Frame(start, "TYPE", h.get(k + 1).text(), List.of());
-        }
-        for (int k = 0; k + 1 < h.size(); k++) {
-            if (h.get(k).kind() == Kind.ID && h.get(k + 1).text().equals("(") && depthAt(h, k) == 0) {
-                return new Frame(start, "METHOD", h.get(k).text(), group(h, k + 1));
-            }
-        }
+        return IntStream.iterate(n - 3, k -> k >= 0, k -> k - 1)
+                .filter(k -> h.get(k).text().equals("type") && h.get(k + 1).kind() == Kind.ID
+                        && TYPE_WORDS.contains(h.get(n - 1).text()))
+                .mapToObj(k -> new Frame(start + k, "TYPE", h.get(k + 1).text(), List.of())).findFirst();
+    }
+
+    /** A type word and a name, before any parameter list or right before it ({@code class Foo(val a: Int)}). */
+    private static Optional<Frame> type(List<Token> h, int start) {
+        int paren = firstParen(h);
+        return IntStream.range(0, h.size() - 1)
+                .filter(k -> h.get(k).kind() == Kind.KEYWORD && TYPE_WORDS.contains(h.get(k).text())
+                        && h.get(k + 1).kind() == Kind.ID && (paren < 0 || paren == k + 2))
+                .mapToObj(k -> new Frame(start, "TYPE", h.get(k + 1).text(), List.of())).findFirst();
+    }
+
+    /** The first name followed by a parameter list outside brackets. */
+    private static Optional<Frame> method(List<Token> h, int start) {
+        return IntStream.range(0, h.size() - 1)
+                .filter(k -> h.get(k).kind() == Kind.ID && h.get(k + 1).text().equals("(") && depthAt(h, k) == 0)
+                .mapToObj(k -> new Frame(start, "METHOD", h.get(k).text(), group(h, k + 1))).findFirst();
+    }
+
+    /** A header that ends in an arrow, or an anonymous {@code function}: a METHOD; otherwise no atom. */
+    private static Frame arrow(List<Token> h, int start) {
         boolean arrow = h.get(h.size() - 1).text().equals("=>");
         boolean anonymous = DECLARE.contains(h.get(0).text()) && h.get(0).text().startsWith("f");
         if (!arrow && !anonymous) return new Frame(start, null, null, List.of());
@@ -144,8 +165,7 @@ public final class LexicalAtoms {
     }
 
     private static int firstParen(List<Token> h) {
-        for (int i = 0; i < h.size(); i++) if (h.get(i).text().equals("(")) return i;
-        return -1;
+        return IntStream.range(0, h.size()).filter(i -> h.get(i).text().equals("(")).findFirst().orElse(-1);
     }
 
     private static int depthAt(List<Token> h, int k) {
@@ -158,8 +178,8 @@ public final class LexicalAtoms {
         return depth;
     }
 
-    /** Tokens inside the bracket group that opens at {@code open}. */
-    private static List<Token> group(List<Token> h, int open) {
+    /** Tokens inside the parenthesis group that opens at {@code open}; up to the end when it is not closed. */
+    static List<Token> group(List<Token> h, int open) {
         int depth = 0;
         for (int i = open; i < h.size(); i++) {
             String t = h.get(i).text();
@@ -169,7 +189,8 @@ public final class LexicalAtoms {
         return h.subList(open + 1, h.size());
     }
 
-    private static String owners(Deque<Frame> open) {
+    /** The names of the TYPE blocks that are open, outermost first, joined with {@code .}. */
+    static String owners(Deque<Frame> open) {
         List<String> names = new ArrayList<>();
         open.descendingIterator().forEachRemaining(f -> {
             if ("TYPE".equals(f.kind())) names.add(f.name());
@@ -177,95 +198,13 @@ public final class LexicalAtoms {
         return String.join(".", names);
     }
 
-    private static void indentedAtoms(String path, String text, List<Token> tokens, List<Atom> atoms) {
-        String[] lines = text.split("\n", -1);
-        int[] offsets = new int[lines.length + 1];
-        for (int i = 0; i < lines.length; i++) offsets[i + 1] = offsets[i] + lines[i].length() + 1;
-        List<int[]> classes = new ArrayList<>();
-        List<String> classNames = new ArrayList<>();
-        for (int i = 0; i < lines.length; i++) {
-            String stripped = lines[i].strip();
-            boolean type = stripped.startsWith("class ");
-            if (!type && !stripped.startsWith("def ") && !stripped.startsWith("async def ")) continue;
-            int indent = lines[i].length() - lines[i].stripLeading().length();
-            int first = i;
-            while (first > 0 && lines[first - 1].strip().startsWith("@")) first--;
-            int last = i;
-            for (int j = i + 1; j < lines.length; j++) {
-                String s = lines[j].strip();
-                if (s.isEmpty() || s.startsWith("#")) continue;
-                if (lines[j].length() - lines[j].stripLeading().length() <= indent) break;
-                last = j;
-            }
-            int from = offsets[first];
-            int to = Math.min(offsets[last + 1], text.length());
-            List<Token> span = trim(tokens.stream().filter(t -> t.start() >= from && t.start() < to).toList());
-            int nameAt = indexOfName(span);
-            if (nameAt < 0) continue;
-            String name = span.get(nameAt).text();
-            String owner = owner(classes, classNames, i, indent);
-            int paren = nameAt + 1 < span.size() && span.get(nameAt + 1).text().equals("(") ? nameAt + 1 : -1;
-            Frame frame = new Frame(0, type ? "TYPE" : "METHOD", name, paren < 0 ? List.of() : group(span, paren));
-            atoms.add(atom(path, text, span, frame, owner, 0));
-            if (type) {
-                classes.add(new int[] {i, last, indent});
-                classNames.add(name);
-            }
-        }
-    }
-
     /** Drops the synthetic indentation tokens at either end, so nesting depth does not change an atom's planes. */
-    private static List<Token> trim(List<Token> span) {
+    static List<Token> trim(List<Token> span) {
         int from = 0;
         int to = span.size();
         while (from < to && span.get(from).start() == span.get(from).end()) from++;
         while (to > from && span.get(to - 1).start() == span.get(to - 1).end()) to--;
         return span.subList(from, to);
-    }
-
-    private static int indexOfName(List<Token> span) {
-        for (int i = 0; i + 1 < span.size(); i++) {
-            String t = span.get(i).text();
-            if ((t.equals("def") || t.equals("class")) && span.get(i + 1).kind() == Kind.ID) return i + 1;
-        }
-        return -1;
-    }
-
-    private static String owner(List<int[]> classes, List<String> names, int line, int indent) {
-        List<String> chain = new ArrayList<>();
-        for (int c = 0; c < classes.size(); c++) {
-            int[] span = classes.get(c);
-            if (span[0] < line && line <= span[1] && span[2] < indent) chain.add(names.get(c));
-        }
-        return String.join(".", chain);
-    }
-
-    /**
-     * The atom of a token span. Its lines run from the start of the first token to the end of the last, plus
-     * {@code lineBase} when the tokens come from a slice of the file that starts on line {@code lineBase + 1}.
-     */
-    private static Atom atom(String path, String text, List<Token> span, Frame frame, String owner, int lineBase) {
-        int from = span.get(0).start();
-        int to = span.get(span.size() - 1).end();
-        String symbol = (owner.isEmpty() ? "" : owner + ".") + frame.name()
-                + ("METHOD".equals(frame.kind()) ? "(" + arity(frame.params()) + ")" : "");
-        AtomBuilder builder = AtomBuilder.atom(path, frame.kind(), symbol, text.substring(from, to))
-                .lines(lineBase + span.get(0).line(), lineBase + span.get(span.size() - 1).endLine());
-        declared(span, frame).forEach(builder::declare);
-        for (int i = 0; i < span.size(); i++) {
-            Token t = span.get(i);
-            boolean member = i > 0 && (span.get(i - 1).text().equals(".") || span.get(i - 1).text().equals("->"));
-            switch (t.kind()) {
-                case ID -> {
-                    if (member) builder.literal("ID", t.text());
-                    else builder.name("ID", t.text());
-                }
-                case NUMBER -> builder.literal("NUM", t.text());
-                case STRING -> builder.literal("STR", t.text());
-                default -> builder.node(t.text());
-            }
-        }
-        return builder.build();
     }
 
     /**
@@ -292,55 +231,14 @@ public final class LexicalAtoms {
             return AtomBuilder.atom(path, kind, (owner.isEmpty() ? "" : owner + ".") + name, source)
                     .lines(lineBase + 1, lineOf(text, Math.max(from, to - 1))).build();
         }
-        int paren = -1;
-        for (int i = 0; i + 1 < span.size() && paren < 0; i++) {
-            if (span.get(i).text().equals(name) && span.get(i + 1).text().equals("(")) paren = i + 1;
-        }
+        int paren = IntStream.range(0, span.size() - 1).filter(i -> span.get(i).text().equals(name)
+                && span.get(i + 1).text().equals("(")).findFirst().orElse(-2) + 1;
         Frame frame = new Frame(0, kind, name, paren < 0 ? List.of() : group(span, paren));
-        return atom(path, source, span, frame, owner, lineBase);
+        return LexicalPlanes.atom(path, source, span, frame, owner, lineBase);
     }
 
     /** The 1-based line of a character offset. */
     private static int lineOf(String text, int offset) {
         return 1 + (int) text.chars().limit(offset).filter(c -> c == '\n').count();
     }
-
-    private static int arity(List<Token> params) {
-        if (params.isEmpty()) return 0;
-        int depth = 0;
-        int commas = 0;
-        for (Token t : params) {
-            String s = t.text();
-            if (s.equals("(") || s.equals("[") || s.equals("{") || s.equals("<")) depth++;
-            if ((s.equals(")") || s.equals("]") || s.equals("}") || s.equals(">")) && depth > 0) depth--;
-            if (s.equals(",") && depth == 0) commas++;
-        }
-        return commas + 1;
-    }
-
-    /** Names the atom binds, in order: its own name, its parameters, then local bindings. */
-    private static Set<String> declared(List<Token> span, Frame frame) {
-        Set<String> declared = new LinkedHashSet<>();
-        declared.add(frame.name());
-        List<Token> params = frame.params();
-        for (int i = 0; i < params.size(); i++) {
-            String next = i + 1 < params.size() ? params.get(i + 1).text() : ")";
-            if (params.get(i).kind() == Kind.ID && Set.of(",", ")", "=", ":").contains(next)) declared.add(params.get(i).text());
-        }
-        for (int i = 0; i + 1 < span.size(); i++) {
-            Token t = span.get(i);
-            if (t.kind() != Kind.ID) continue;
-            String prev = i > 0 ? span.get(i - 1).text() : ";";
-            Token prevToken = i > 0 ? span.get(i - 1) : null;
-            String next = span.get(i + 1).text();
-            boolean afterKeyword = prevToken != null && prevToken.kind() == Kind.KEYWORD && DECLARE.contains(prev);
-            boolean assigned = next.equals("=") && (prevToken == null || prevToken.kind() == Kind.ID
-                    || Set.of("*", ">", "]", ";", "{", "}", "INDENT", "DEDENT", ",").contains(prev));
-            boolean loop = next.equals("in") || next.equals("of") || next.equals(":=")
-                    || next.equals(":") && prevToken != null && prevToken.kind() == Kind.ID;
-            if (afterKeyword || assigned || loop) declared.add(t.text());
-        }
-        return declared;
-    }
-
 }

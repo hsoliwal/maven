@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+
+A CMake static and shared library, a program and two CTest tests (one expected to fail), built in Maven's phases.
+Windows: MinGW gcc + Ninja by default, -Dtoolset=msvc for the Visual Studio generator, -Dtoolset=clang-cl for
+clang-cl + Ninja (neither needs vcvars). Linux: CMake's default generator and compiler.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.apache.maven.plugins.it.nativebuild</groupId>
+  <artifactId>cmake-lib</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+  <properties>
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+  </properties>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-native-build-plugin</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>detect</goal>
+              <goal>configure</goal>
+              <goal>build</goal>
+              <goal>compile-commands</goal>
+              <goal>test</goal>
+              <goal>stage</goal>
+              <goal>attach</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <profiles>
+    <profile>
+      <id>mingw</id>
+      <activation>
+        <os><family>windows</family></os>
+        <property><name>!toolset</name></property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-native-build-plugin</artifactId>
+            <configuration>
+              <cmakeGenerator>Ninja</cmakeGenerator>
+              <tools><cc>gcc</cc></tools>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>msvc</id>
+      <activation><property><name>toolset</name><value>msvc</value></property></activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-native-build-plugin</artifactId>
+            <configuration>
+              <cmakeGenerator>Visual Studio 17 2022</cmakeGenerator>
+              <configureArgs><arg>-A</arg><arg>x64</arg></configureArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>clang-cl</id>
+      <activation><property><name>toolset</name><value>clang-cl</value></property></activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-native-build-plugin</artifactId>
+            <configuration>
+              <classifier>windows-x86_64-msvc-clangcl</classifier>
+              <cmakeGenerator>Ninja</cmakeGenerator>
+              <tools><cc>clang-cl</cc></tools>
+              <configureArgs><arg>-DCMAKE_LINKER=lld-link</arg></configureArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
