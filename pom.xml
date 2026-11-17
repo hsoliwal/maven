@@ -110,6 +110,8 @@ under the License.
     <!-- Code clustering (atoms, hash planes, clusters, baseline compare) and its language-server front end. -->
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
+    <!-- Per-project build database (one IndexStore/M3IndexDB owner): ingest build data, answer with provenance. -->
+    <module>tools/project-db</module>
     <module>apache-maven</module>
   </modules>
 
