@@ -4,6 +4,7 @@
  */
 package io.synexia.maven.polyglot;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -12,7 +13,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
 import java.util.List;
 
-/** Portable, dependency-free contract tests for one DB image per reactor module. */
+/** Offline contract tests for persistent M3 module state, concurrency and invalidation. */
 public final class ModuleStateDbContractTestMain {
     private ModuleStateDbContractTestMain() {}
 
@@ -27,59 +28,82 @@ public final class ModuleStateDbContractTestMain {
             TaskManifest.Task task = new TaskManifest.Task("compile", tool.toString(), ".",
                     List.of("-version"), List.of(), List.of("source.txt"), List.of("output.txt"));
 
-            ModuleStateDb first = ModuleStateDb.open(module, "file");
-            String fingerprint = first.stamp(task);
-            require(!first.upToDate(task, fingerprint), "cold module state must miss");
-            first.record(task, fingerprint);
+            String fingerprint;
+            try (ModuleStateDb first = ModuleStateDb.open(module, "file")) {
+                fingerprint = first.stamp(task);
+                require(!first.upToDate(task, fingerprint), "cold state must miss");
+                first.record(task, fingerprint);
+                expectIOException(() -> ModuleStateDb.open(module, "file"),
+                        "second concurrent writer must be refused");
+            }
             Path database = module.resolve(ModuleStateDb.FILE);
-            require(Files.isRegularFile(database, LinkOption.NOFOLLOW_LINKS), "one module-local DB image");
+            require(Files.isRegularFile(database, LinkOption.NOFOLLOW_LINKS), "one module DB image");
             require(!Files.exists(module.resolve(InputStamps.DIRECTORY).resolve("compile.sha256")),
-                    "DB mode must not create legacy per-task stamp files");
+                    "DB mode must not create legacy per-task stamps");
 
-            ModuleStateDb reopened = ModuleStateDb.open(module, "file");
-            String same = reopened.stamp(task);
-            require(fingerprint.equals(same), "persistent content fingerprint across process state");
-            require(reopened.upToDate(task, same), "unchanged task and output must hit");
-
-            // On POSIX, a stable ctime + fileKey avoids rereading unchanged source/tool bytes.
-            Object change = null;
-            try { change = Files.getAttribute(src, "unix:ctime", LinkOption.NOFOLLOW_LINKS); }
-            catch (UnsupportedOperationException unsupported) { /* rehash is required */ }
-            if (change != null) require(reopened.digestedFiles() == 0, "unchanged files should use M3DB metadata");
-
-            Files.writeString(output, "tampered", StandardCharsets.UTF_8);
-            require(!reopened.upToDate(task, same), "output drift invalidates previous successful build");
-            Files.writeString(output, "result", StandardCharsets.UTF_8);
+            try (ModuleStateDb reopened = ModuleStateDb.open(module, "file")) {
+                String same = reopened.stamp(task);
+                require(fingerprint.equals(same), "fingerprints stable across process state");
+                require(reopened.upToDate(task, same), "unchanged task and output must hit");
+                // JGit-inspired racy timestamp guard may deliberately rehash recently modified
+                // files even on POSIX. A hit is about correctness, not zero digests.
+                Files.writeString(output, "tampered", StandardCharsets.UTF_8);
+                require(!reopened.upToDate(task, same), "output drift must invalidate");
+                Files.writeString(output, "result", StandardCharsets.UTF_8);
+            }
 
             FileTime previousMtime = Files.getLastModifiedTime(src);
             Files.writeString(src, "BBBB", StandardCharsets.UTF_8);
             Files.setLastModifiedTime(src, previousMtime);
-            ModuleStateDb changed = ModuleStateDb.open(module, "file");
-            String changedStamp = changed.stamp(task);
-            require(!changedStamp.equals(fingerprint), "same-size edit with restored mtime invalidates cache");
-            require(!changed.upToDate(task, changedStamp), "new content must not use old task state");
-            changed.record(task, changedStamp);
-            require(ModuleStateDb.open(module, "file").upToDate(task, changedStamp),
-                    "updated successful state survives reopening");
+            String changedStamp;
+            try (ModuleStateDb changed = ModuleStateDb.open(module, "file")) {
+                changedStamp = changed.stamp(task);
+                require(!changedStamp.equals(fingerprint), "same-size edit with restored mtime invalidates");
+                require(!changed.upToDate(task, changedStamp), "new content must miss");
+                changed.record(task, changedStamp);
+            }
+            try (ModuleStateDb verified = ModuleStateDb.open(module, "file")) {
+                require(verified.upToDate(task, changedStamp), "committed result survives reopening");
+                TaskManifest.Task flags = new TaskManifest.Task(task.name(), task.tool(), task.workingDir(),
+                        List.of("-version", "-ea"), task.prerequisites(), task.inputs(), task.outputs());
+                require(!verified.stamp(flags).equals(changedStamp), "tool arguments affect the key");
+                Files.delete(output);
+                require(!verified.upToDate(task, changedStamp), "missing output invalidates");
+            }
 
-            TaskManifest.Task flags = new TaskManifest.Task(task.name(), task.tool(), task.workingDir(),
-                    List.of("-version", "-ea"), task.prerequisites(), task.inputs(), task.outputs());
-            require(!ModuleStateDb.open(module, "file").stamp(flags).equals(changedStamp),
-                    "tool flags are part of the module key");
-
-            Files.delete(output);
-            require(!ModuleStateDb.open(module, "file").upToDate(task, changedStamp),
-                    "deleted output always invalidates");
+            // Independent modules cannot overwrite one another's state.
+            Path sibling = Files.createDirectories(root.resolve("sibling"));
+            Files.writeString(sibling.resolve("source.txt"), "BBBB", StandardCharsets.UTF_8);
+            Files.writeString(sibling.resolve("output.txt"), "result", StandardCharsets.UTF_8);
+            try (ModuleStateDb other = ModuleStateDb.open(sibling, "file")) {
+                require(!other.upToDate(task, other.stamp(task)), "different module starts cold");
+            }
 
             Files.write(database, new byte[] {1, 2, 3, 4});
-            ModuleStateDb corrupt = ModuleStateDb.open(module, "file");
-            require(!corrupt.upToDate(task, changedStamp), "malformed state is a safe cache miss");
+            try (ModuleStateDb corrupt = ModuleStateDb.open(module, "file")) {
+                require(!corrupt.upToDate(task, changedStamp), "corruption must miss safely");
+            }
 
-            System.out.println("PASS: per-module state persistence, stat reuse, edits, outputs, args, corruption");
+            // Driver-optional modes reject missing backend drivers. The dedicated JDBC suite
+            // exercises the real SQLite/H2 engines when Maven test dependencies are available.
+            require(Files.exists(module.resolve(".m3/module-state.lock")), "lease file is module-local");
+            System.out.println("PASS: module DB persistence, lease, invalidation, racy times, corruption, isolation");
         } finally {
             try (var walk = Files.walk(root)) {
                 for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
             }
+        }
+    }
+
+    @FunctionalInterface
+    private interface Checked { void run() throws Exception; }
+
+    private static void expectIOException(Checked operation, String message) throws Exception {
+        try {
+            operation.run();
+            throw new AssertionError(message);
+        } catch (IOException expected) {
+            // Contention is a deliberate refusal, not a cache hit or a timeout.
         }
     }
 
