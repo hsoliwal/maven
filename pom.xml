@@ -104,6 +104,9 @@ under the License.
     <module>compat</module>
     <!-- Built-in build advice: the smart builder's core extension, packaged into lib/ext of the distribution. -->
     <module>tools/m3-smart-builder/extension</module>
+    <!-- The plugins the extension binds, built and installed with the fork: build-hook and the polyglot lifecycle. -->
+    <module>tools/m3-smart-builder</module>
+    <module>tools/m3-polyglot-maven-plugin</module>
     <module>apache-maven</module>
   </modules>
 

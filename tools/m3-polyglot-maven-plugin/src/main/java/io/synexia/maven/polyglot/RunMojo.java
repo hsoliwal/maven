@@ -31,6 +31,10 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.approveRewriteApply", defaultValue = "false")
     private boolean approveRewriteApply;
 
+    /** Skip a task whose declared inputs and definition are unchanged since its last success (content stamps). */
+    @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
+    private boolean incremental;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (skip) {
@@ -43,7 +47,7 @@ public final class RunMojo extends AbstractMojo {
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
-                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, message -> getLog().info(message));
+                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("M3 polyglot tool execution interrupted", interruption);
