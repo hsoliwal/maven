@@ -4,7 +4,12 @@ package io.synexia.maven.smart.extension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import javax.inject.Named;
 import javax.inject.Singleton;
 import org.apache.maven.AbstractMavenLifecycleParticipant;
@@ -20,11 +25,52 @@ import org.slf4j.LoggerFactory;
 @Named("chromellm-advice")
 @Singleton
 public final class AdviceLifecycleParticipant extends AbstractMavenLifecycleParticipant {
-    static final String PROPERTY = "chromellm.advice";
+    public static final String PROPERTY = "chromellm.advice";
     static final String GROUP = "io.synexia";
     static final String ARTIFACT = "m3-smart-maven-plugin";
     static final String VERSION = "0.1.0-SNAPSHOT";
+    /** The hook's main class in the plugin jar, run directly for the advice on a failed build. */
+    public static final String HOOK_MAIN = "io.synexia.maven.smart.BuildHookMain";
+    /** The m3:build-hook parameters a failed build's hook gets on its command line, when set as properties. */
+    private static final Map<String, String> HOOK_OPTIONS = Map.ofEntries(Map.entry("m3.smart.llmBackend", "--backend"),
+            Map.entry("m3.smart.chromeLlmJar", "--chrome-llm-jar"), Map.entry("m3.smart.chromeBin", "--chrome-binary"),
+            Map.entry("m3.smart.chromeProfile", "--chrome-profile"), Map.entry("m3.smart.chromeHeadless", "--headless"),
+            Map.entry("m3.smart.chromeDownload", "--allow-download"), Map.entry("m3.smart.llamaBin", "--llama-bin"),
+            Map.entry("m3.smart.jniLib", "--jni-lib"), Map.entry("m3.smart.modelPath", "--model"),
+            Map.entry("m3.smart.llmTimeoutSeconds", "--timeout-seconds"), Map.entry("m3.smart.bridgeUrl", "--bridge-url"),
+            Map.entry("m3.smart.bridgeTokenFile", "--bridge-token-file"), Map.entry("m3.smart.summarizer", "--summarizer"));
     private static final Logger LOG = LoggerFactory.getLogger(AdviceLifecycleParticipant.class);
+
+    /** The plugin jar the hook runs from, in {@code localRepository}. */
+    public static Path pluginJar(Path localRepository) {
+        return localRepository.resolve(Path.of("io", "synexia", ARTIFACT, VERSION, ARTIFACT + "-" + VERSION + ".jar"));
+    }
+
+    /**
+     * Arguments of {@link #HOOK_MAIN} for the post-build advice of a failed build of {@code projectDir}: outcome
+     * failure, the build log when known, and every m3:build-hook parameter set as a property (user over system).
+     */
+    public static List<String> failureHookArguments(Properties user, Properties system, Path projectDir, Optional<Path> log) {
+        List<String> arguments = new ArrayList<>(List.of("--phase", "post-build", "--project-dir", projectDir.toString(),
+                "--build-dir", "target", "--build-outcome", "failure"));
+        log.ifPresent(file -> arguments.addAll(List.of("--log-file", file.toString())));
+        HOOK_OPTIONS.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(option -> {
+            String value = user.getProperty(option.getKey(), system.getProperty(option.getKey()));
+            if (value != null && !value.isBlank()) arguments.addAll(List.of(option.getValue(), value.trim()));
+        });
+        return arguments;
+    }
+
+    /** The hook's provider timeout ({@code m3.smart.llmTimeoutSeconds}, default 120), within 1..600 seconds. */
+    public static int hookTimeoutSeconds(Properties user, Properties system) {
+        try {
+            int seconds = Integer.parseInt(user.getProperty("m3.smart.llmTimeoutSeconds",
+                    system.getProperty("m3.smart.llmTimeoutSeconds", "120")).trim());
+            return Math.max(1, Math.min(600, seconds));
+        } catch (NumberFormatException unparsable) {
+            return 120;
+        }
+    }
 
     @Override
     public void afterProjectsRead(MavenSession session) {
@@ -34,8 +80,7 @@ public final class AdviceLifecycleParticipant extends AbstractMavenLifecyclePart
             LOG.info("ChromeLLM advice skipped: m3:build-hook needs Maven on Java 21 or newer");
             return;
         }
-        Path plugin = Path.of(session.getRepositorySession().getLocalRepository().getBasedir().getPath(),
-                "io", "synexia", ARTIFACT, VERSION, ARTIFACT + "-" + VERSION + ".jar");
+        Path plugin = pluginJar(session.getRepositorySession().getLocalRepository().getBasedir().toPath());
         if (!Files.isRegularFile(plugin)) {
             LOG.info("ChromeLLM advice skipped: " + GROUP + ":" + ARTIFACT + ":" + VERSION + " is not in the local repository");
             return;

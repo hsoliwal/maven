@@ -1,0 +1,9 @@
+a/pom.xml
+a/src/main/java/fix/a/Calc.java
+a/src/test/java/fix/a/ATest.java
+a/src/test/java/fix/a/SlowTest.java
+b/pom.xml
+b/src/main/java/fix/b/Use.java
+c/pom.xml
+c/src/main/java/fix/c/Broken.java
+pom.xml

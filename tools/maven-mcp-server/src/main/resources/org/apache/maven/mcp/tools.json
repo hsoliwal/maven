@@ -1,0 +1,120 @@
+[
+  {
+    "name": "build",
+    "hints": "run",
+    "description": "Run Maven on the project with the given lifecycle phases or plugin goals, for example [\"verify\"] or [\"clean\",\"install\"]. Returns compact JSON: outcome, exit code, duration, the Maven command, the session-end event, the first diagnostics and failed tests from the build event stream, whether a failure digest exists (read it with explain_failure), and the paths of the run's files. When no build-events extension ran, it says so and returns the first [ERROR] lines of the log instead. Values cannot start with '-' and cannot hold white space or shell characters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "goals": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20, "description": "Lifecycle phases or plugin goals, in order."},
+        "projects": {"type": "array", "items": {"type": "string"}, "maxItems": 50, "description": "Modules to build (-pl): a relative path or [groupId]:artifactId."},
+        "alsoMake": {"type": "boolean", "description": "Also build the modules the selected ones depend on (-am). Default true."},
+        "properties": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}, "description": "User properties, passed as -Dkey=value."},
+        "offline": {"type": "boolean", "description": "Work offline (-o)."},
+        "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Stop Maven after this many seconds. Default 900."}
+      },
+      "required": ["goals"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "test",
+    "hints": "run",
+    "description": "Run one test selection with Surefire (-Dtest), or with Failsafe (-Dit.test, phase verify) when it is true, optionally in one module and the modules it depends on. A selection is a class, Class#method, a pattern with *, or a comma-separated list. Returns the same JSON as build plus the selection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "selection": {"type": "string", "description": "Test class, Class#method, a pattern with * or a comma-separated list."},
+        "project": {"type": "string", "description": "The module that holds the test; built with -pl <project> -am."},
+        "it": {"type": "boolean", "description": "Run an integration test with Failsafe instead of a unit test."},
+        "offline": {"type": "boolean", "description": "Work offline (-o)."},
+        "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Stop Maven after this many seconds. Default 900."}
+      },
+      "required": ["selection"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "effective_pom",
+    "hints": "query",
+    "description": "The effective POM of one module, or of the root project when none is named, written by maven-help-plugin 3.5.1: coordinates, parent, modules, build plugins with their executions (id@phase:goals) and dependencies (groupId:artifactId:version scope), plus the file path and its SHA-256.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {"type": "string", "description": "Module path or [groupId]:artifactId; the root project when absent."},
+        "offline": {"type": "boolean", "description": "Work offline (-o)."},
+        "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Stop Maven after this many seconds."}
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "dependency_tree",
+    "hints": "query",
+    "description": "The resolved dependency tree of one module (run with -pl <project> -am, so reactor modules resolve from the reactor), or of the root project when none is named, written as JSON by maven-dependency-plugin 3.11.0: one row per node in depth-first order with depth d, id groupId:artifactId[:type][:classifier]:version and scope, capped at maxNodes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {"type": "string", "description": "Module path or [groupId]:artifactId; the root project when absent."},
+        "scope": {"type": "string", "enum": ["compile", "runtime", "test", "provided", "system"], "description": "Only dependencies in this scope."},
+        "maxNodes": {"type": "integer", "minimum": 1, "maximum": 5000, "description": "Most rows to return. Default 200."},
+        "offline": {"type": "boolean", "description": "Work offline (-o)."},
+        "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Stop Maven after this many seconds."}
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "describe_goal",
+    "hints": "query",
+    "description": "Describe one plugin goal: phase, thread safety, and every configurable parameter with its type, user property, default, whether it is required, and the first sentence of its documentation. Name the goal as prefix:goal (compiler:compile), groupId:artifactId:goal or groupId:artifactId:version:goal. Read from the plugin descriptor in the local repository without running Maven; without a version, the version pinned in the root pom.xml is used, else the highest local release. Falls back to help:describe when the plugin is not in the local repository.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "goal": {"type": "string", "description": "prefix:goal, groupId:artifactId:goal or groupId:artifactId:version:goal."},
+        "offline": {"type": "boolean", "description": "Work offline (-o) in the help:describe fallback."},
+        "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Time limit of the help:describe fallback."}
+      },
+      "required": ["goal"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "list_modules",
+    "hints": "read",
+    "description": "The modules of the project, without running Maven: index, groupId:artifactId, path, packaging, version and the reactor modules each one depends on, read from the POMs in declaration order (or from target/agent/project.json when the agent plugin wrote it).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "explain_failure",
+    "hints": "read",
+    "description": "The failure digest of a build or test run (failure.json, written by the build-events extension): for each failed module the kind, mojo, message, located diagnostics with source lines, failed tests with trimmed stacks, and a command to reproduce. When there is no digest it says why and returns the first [ERROR] lines of the log.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run": {"type": "string", "description": "\"latest\" (default) or the run number that build or test returned."}
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "build_events",
+    "hints": "read",
+    "description": "One page of the build event stream of a run (build-events.jsonl, written by the build-events extension): session-start, project-start, project-end, mojo-start, mojo-end, diagnostic, test, test-suite, repeat and session-end events, filtered by type and project. When the stream is absent it says why.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run": {"type": "string", "description": "\"latest\" (default) or the run number that build or test returned."},
+        "types": {"type": "array", "items": {"type": "string"}, "description": "Event types to keep, for example [\"diagnostic\",\"test\"]."},
+        "project": {"type": "string", "description": "Keep events of this module: groupId:artifactId, artifactId or path."},
+        "offset": {"type": "integer", "minimum": 0, "description": "Matching events to skip. Default 0."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Most events to return. Default 50."}
+      },
+      "additionalProperties": false
+    }
+  }
+]
