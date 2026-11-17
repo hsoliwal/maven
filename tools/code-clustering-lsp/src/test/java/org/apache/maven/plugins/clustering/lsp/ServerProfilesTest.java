@@ -55,6 +55,7 @@ public final class ServerProfilesTest {
         languagePluginSelection();
         order(dir);
         configured(dir);
+        explicitLanguageIds();
         timeouts();
         detection(dir);
         jdt(dir);
@@ -163,8 +164,12 @@ public final class ServerProfilesTest {
         CHECKS.check("a profile whose extensions are all explicit is not looked for (no warning) " + warnings,
                 warnings.isEmpty() && table.get("rs").command().equals(List.of("my-ra")));
         CHECKS.check("no settings, no servers", LspConfiguration.configured(lookup(Map.of(), Map.of()), warnings::add).isEmpty());
-        table = LspConfiguration.explicit(LspConfiguration.parse("swift=sk;mjs,cts=tls;csx=cls", warnings::add),
-                Duration.ofSeconds(60));
+    }
+
+    /** Explicit {@code clustering.lsp.servers} entries take the languageIds of the new profiles' extensions. */
+    private static void explicitLanguageIds() {
+        Map<String, LspServer> table = LspConfiguration.explicit(
+                LspConfiguration.parse("swift=sk;mjs,cts=tls;csx=cls", m -> { }), Duration.ofSeconds(60));
         CHECKS.check("explicit entries: languageIds of swift, mjs, cts, csx", table.get("swift").languageId("swift")
                 .equals("swift") && table.get("mjs").languageId("mjs").equals("javascript") && table.get("cts")
                 .languageId("cts").equals("typescript") && table.get("csx").languageId("csx").equals("csharp"));
@@ -221,31 +226,39 @@ public final class ServerProfilesTest {
 
     /** gopls, csharp-ls, typescript-language-server, sourcekit-lsp, then the Eclipse language plug-in servers. */
     private static void moreDetection(Path dir, Path bin, String node) throws Exception {
-        go(dir);
+        goHomeAndPath(dir);
+        goInstallDirs(dir);
         csharp(dir);
-        typescriptAndSwift(dir, bin, node);
+        typescript(dir, bin, node);
+        swift(dir);
         groovy(dir);
         cobol(dir);
         kotlin(dir);
         phpAndErlang(dir, bin, node);
     }
 
-    /** gopls: a home directory, the PATH, then GOBIN, else each GOPATH entry's bin, else ~/go/bin. */
-    private static void go(Path dir) throws Exception {
+    /** gopls: a home directory (GO_HOME, bin/) first, then the PATH before the go install directories. */
+    private static void goHomeAndPath(Path dir) throws Exception {
         ServerSpec go = ServerProfiles.server("go");
-        String empty = Files.createDirectories(dir.resolve("go/home-empty")).toString();
-        Map<String, String> noHome = Map.of("user.home", empty);
+        Map<String, String> noHome = Map.of("user.home", Files.createDirectories(dir.resolve("go/home-empty")).toString());
         Path home = exe(dir.resolve("go/gohome/bin"), "gopls").getParent().getParent();
         Path gobin = exe(dir.resolve("go/gobin"), "gopls").getParent();
-        Path gopath1 = Files.createDirectories(dir.resolve("go/gopath1"));
-        Path gopath2 = exe(dir.resolve("go/gopath2/bin"), "gopls").getParent().getParent();
-        Path userGo = exe(dir.resolve("go/home-go/go/bin"), "gopls").getParent().getParent().getParent();
         Path pathBin = exe(dir.resolve("go/path"), "gopls").getParent();
-        String gopath = gopath1 + (WINDOWS ? ";" : ":") + gopath2;
         CHECKS.check("go: gopls in GO_HOME/bin first", command(go, noHome, Map.of("GO_HOME", home.toString(), "PATH",
                 pathBin.toString())).equals(List.of(exeName(home.resolve("bin"), "gopls"))));
         CHECKS.check("go: the PATH before the go install directories", command(go, noHome, Map.of("PATH", pathBin.toString(),
                 "GOBIN", gobin.toString())).equals(List.of(exeName(pathBin, "gopls"))));
+    }
+
+    /** gopls in the go install directories: GOBIN, else each GOPATH entry's bin, else ~/go/bin. */
+    private static void goInstallDirs(Path dir) throws Exception {
+        ServerSpec go = ServerProfiles.server("go");
+        String empty = Files.createDirectories(dir.resolve("go/home-empty")).toString();
+        Map<String, String> noHome = Map.of("user.home", empty);
+        Path gobin = exe(dir.resolve("go/gobin"), "gopls").getParent();
+        Path gopath2 = exe(dir.resolve("go/gopath2/bin"), "gopls").getParent().getParent();
+        Path userGo = exe(dir.resolve("go/home-go/go/bin"), "gopls").getParent().getParent().getParent();
+        String gopath = Files.createDirectories(dir.resolve("go/gopath1")) + (WINDOWS ? ";" : ":") + gopath2;
         CHECKS.check("go: GOBIN before GOPATH", command(go, noHome, Map.of("GOBIN", gobin.toString(), "GOPATH", gopath))
                 .equals(List.of(exeName(gobin, "gopls"))));
         CHECKS.check("go: else the bin directory of any GOPATH entry", command(go, noHome, Map.of("GOPATH", gopath))
@@ -273,14 +286,20 @@ public final class ServerProfilesTest {
                 .contains(Path.of(empty, ".dotnet", "tools").toString()));
     }
 
-    /** typescript-language-server from an npm prefix or its launcher on the PATH; sourcekit-lsp from a toolchain. */
-    private static void typescriptAndSwift(Path dir, Path nodeBin, String node) throws Exception {
+    /** typescript-language-server from an npm prefix, or its launcher on the PATH. */
+    private static void typescript(Path dir, Path nodeBin, String node) throws Exception {
         ServerSpec ts = ServerProfiles.server("typescript");
         Path prefix = dir.resolve("ts/npm");
         Path cli = file(prefix.resolve("node_modules/typescript-language-server/lib/cli.mjs"));
         CHECKS.check("typescript: TYPESCRIPT_HOME (an npm prefix), run with node from the PATH", command(ts, Map.of(),
                 Map.of("TYPESCRIPT_HOME", prefix.toString(), "PATH", nodeBin.toString()))
                 .equals(List.of(node, cli.toString(), "--stdio")));
+        typescriptLauncher(dir, nodeBin, node);
+    }
+
+    /** typescript-language-server's launcher on the PATH: run directly, or on Windows the script beside the .cmd. */
+    private static void typescriptLauncher(Path dir, Path nodeBin, String node) throws Exception {
+        ServerSpec ts = ServerProfiles.server("typescript");
         Path global = dir.resolve("ts/global");
         String name = "typescript-language-server";
         List<String> expected;
@@ -292,6 +311,10 @@ public final class ServerProfilesTest {
         }
         CHECKS.check("typescript: the launcher on the PATH " + expected, command(ts, Map.of(), Map.of("PATH", global
                 + (WINDOWS ? ";" : ":") + nodeBin)).equals(expected));
+    }
+
+    /** sourcekit-lsp from a toolchain's usr directory, or on the PATH. */
+    private static void swift(Path dir) throws Exception {
         ServerSpec swift = ServerProfiles.server("swift");
         Path usr = exe(dir.resolve("swift/toolchain/usr/bin"), "sourcekit-lsp").getParent().getParent();
         Path onPath = exe(dir.resolve("swift/path"), "sourcekit-lsp").getParent();

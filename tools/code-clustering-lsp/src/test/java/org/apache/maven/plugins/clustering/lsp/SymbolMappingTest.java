@@ -43,6 +43,9 @@ public final class SymbolMappingTest {
     public static void main(String[] args) {
         kinds();
         code();
+        goSymbols();
+        typescriptSymbols();
+        csharpSymbols();
         markup();
         style();
         data();
@@ -103,11 +106,10 @@ public final class SymbolMappingTest {
                 flat("total", null, SymbolKind.Function, 13, 0, 18, 0), flat("sum_all", null, SymbolKind.Function, 20, 0, 25, 0));
         CHECKS.check("pydev (flat pylsp form) " + pydev, pydev.equals(List.of("TYPE#Shape", "METHOD#Shape.__init__(3)",
                 "METHOD#Shape.area(1)", "METHOD#total(1)", "METHOD#sum_all(1)")));
-        languages();
     }
 
-    /** gopls 0.24.0, typescript-language-server 6.1.0 (TypeScript 6.0.3) and csharp-ls 0.28.0 on the new fixtures. */
-    private static void languages() {
+    /** gopls 0.24.0 on the Go fixture, and receivers that are pointers or generic types. */
+    private static void goSymbols() {
         List<String> go = names(Fixtures.GO, SymbolMapping.CODE,
                 sym("Point", SymbolKind.Struct, 5, 5, 8, 1, sym("X", SymbolKind.Field, 6, 4, 6, 13)),
                 sym("(Point).Norm", SymbolKind.Method, 10, 0, 12, 1), sym("Dist", SymbolKind.Function, 14, 0, 18, 1),
@@ -120,6 +122,10 @@ public final class SymbolMappingTest {
                 sym("(*Point).Scale", SymbolKind.Method, 3, 0, 4, 1));
         CHECKS.check("go: pointer and generic receivers " + receivers, receivers.equals(List.of("METHOD#List.Push(1)",
                 "METHOD#Point.Scale(1)")));
+    }
+
+    /** typescript-language-server 6.1.0 (TypeScript 6.0.3) on the TypeScript fixture. */
+    private static void typescriptSymbols() {
         List<String> ts = names(Fixtures.TYPESCRIPT, SymbolMapping.CODE,
                 sym("dist", SymbolKind.Function, 9, 0, 13, 1, sym("dx", SymbolKind.Constant, 10, 10, 10, 24)),
                 sym("distance", SymbolKind.Function, 15, 0, 19, 1),
@@ -130,6 +136,10 @@ public final class SymbolMappingTest {
         CHECKS.check("typescript (typescript-language-server) " + ts, ts.equals(List.of("METHOD#dist(2)", "METHOD#distance(2)",
                 "TYPE#Mode", "TYPE#Point", "METHOD#Point.constructor(2)", "METHOD#Point.norm(0)", "TYPE#Shape",
                 "METHOD#Shape.area(0)")));
+    }
+
+    /** csharp-ls 0.28.0 on the C# fixture. */
+    private static void csharpSymbols() {
         List<String> cs = names(Fixtures.CSHARP, SymbolMapping.CODE, sym("Calc.cs", SymbolKind.File, 1, 0, 33, 0,
                 sym("Demo", SymbolKind.Namespace, 1, 0, 33, 0, sym("Calc", SymbolKind.Class, 2, 0, 33, 0,
                         sym("total", SymbolKind.Field, 5, 16, 5, 21), sym("Calc(int start)", SymbolKind.Constructor, 6, 0, 11, 0),

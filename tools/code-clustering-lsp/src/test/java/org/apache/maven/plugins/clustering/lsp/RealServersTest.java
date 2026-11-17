@@ -63,15 +63,7 @@ public final class RealServersTest {
             optedOut();
             return;
         }
-        LSP4J.addHandler(new Handler() {
-            @Override public void publish(LogRecord record) {
-                if (String.valueOf(record.getMessage()).contains("Unsupported notification")) UNSUPPORTED.incrementAndGet();
-            }
-
-            @Override public void flush() { }
-
-            @Override public void close() { }
-        });
+        LSP4J.addHandler(new UnsupportedNotifications());
         Path cdt = run(dir, "cdt", "cdt", Map.of(), "geo.cpp", Fixtures.CPP, List.of("TYPE#Point", "METHOD#Point.norm(0)",
                 "METHOD#dist(2)", "METHOD#distance(2)"), List.of());
         if (cdt != null) quoted(dir, cdt);
@@ -155,13 +147,29 @@ public final class RealServersTest {
             CHECKS.skip(label, e.getMessage());
             return null;
         }
-        Path src = clean(dir.resolve(label.replaceAll("[^A-Za-z0-9.]+", "-")));
+        Path src = writeFixtures(clean(dir.resolve(label.replaceAll("[^A-Za-z0-9.]+", "-"))), files);
+        return atomize(label, server, src, expected, absent) ? Path.of(server.command().get(0)) : null;
+    }
+
+    /** Writes each file (relative path to text) under {@code src}; returns {@code src}. */
+    private static Path writeFixtures(Path src, Map<String, String> files) throws IOException {
         for (Map.Entry<String, String> file : files.entrySet()) {
             Path source = src.resolve(file.getKey());
             Files.createDirectories(source.getParent());
             Files.writeString(source, file.getValue(), StandardCharsets.UTF_8);
         }
-        return atomize(label, server, src, expected, absent) ? Path.of(server.command().get(0)) : null;
+        return src;
+    }
+
+    /** Counts LSP4J's 'Unsupported notification' warnings, which a server's unknown notifications cause. */
+    private static final class UnsupportedNotifications extends Handler {
+        @Override public void publish(LogRecord record) {
+            if (String.valueOf(record.getMessage()).contains("Unsupported notification")) UNSUPPORTED.incrementAndGet();
+        }
+
+        @Override public void flush() { }
+
+        @Override public void close() { }
     }
 
     private static boolean atomize(String label, LspServer server, Path src, List<String> expected, List<String> absent)
