@@ -22,6 +22,22 @@ import java.util.stream.Stream;
  * lines; ECJ rows carry column 0, javac rows the caret's column.
  */
 public final class CompilerDiagnosticsContractTestMain {
+    /** The rows of the javac fixture, message decoded. */
+    private static final List<String> JAVAC_ROWS = List.of(
+            "javac.error\tERROR\tsrc/demo/Bad.java\t6\t17\tincompatible types: String cannot be converted to int",
+            "javac.error\tERROR\tsrc/demo/Bad.java\t7\t16\tcannot find symbol symbol: method missing(int)"
+                    + " location: class Bad",
+            "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t13\t5\tfound raw type: List missing type arguments for"
+                    + " generic class List<E> where E is a type-variable: E extends Object declared in interface List",
+            "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t14\t9\tfound raw type: List missing type arguments for"
+                    + " generic class List<E> where E is a type-variable: E extends Object declared in interface List",
+            "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t14\t24\tfound raw type: ArrayList missing type arguments"
+                    + " for generic class ArrayList<E> where E is a type-variable: E extends Object declared in class"
+                    + " ArrayList",
+            "javac.unchecked\tWARNING\tsrc/demo/Warn.java\t15\t16\tunchecked call to add(E) as a member of the raw"
+                    + " type List where E is a type-variable: E extends Object declared in interface List",
+            "javac.deprecation\tWARNING\tsrc/demo/Warn.java\t22\t13\told() in Warn has been deprecated");
+
     private static int passed;
 
     private CompilerDiagnosticsContractTestMain() { }
@@ -31,8 +47,12 @@ public final class CompilerDiagnosticsContractTestMain {
         try {
             ecjLog(root);
             javacLog(root);
+            javacProjectWideLog(root);
+            javacColumnForm(root);
             sameLinesFromBothCompilers(root);
-            refusesUnsafeOrPartialLogs(root);
+            refusesUnsafeEcjLogs(root);
+            refusesPartialJavacLogs(root);
+            refusesForeignLocaleLogs(root);
             System.out.println("PASS: " + passed + " ECJ/javac diagnostics contract cases");
         } finally {
             erase(root);
@@ -59,27 +79,26 @@ public final class CompilerDiagnosticsContractTestMain {
 
     private static void javacLog(Path root) throws Exception {
         List<String> rows = rows(convert(root, AnalyzerXmlNormalizer.Format.JAVAC, fixture("javac-21.txt")));
-        require(rows.equals(List.of(
-                "javac.error\tERROR\tsrc/demo/Bad.java\t6\t17\tincompatible types: String cannot be converted to int",
-                "javac.error\tERROR\tsrc/demo/Bad.java\t7\t16\tcannot find symbol symbol: method missing(int)"
-                        + " location: class Bad",
-                "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t13\t5\tfound raw type: List missing type arguments for"
-                        + " generic class List<E> where E is a type-variable: E extends Object declared in interface List",
-                "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t14\t9\tfound raw type: List missing type arguments for"
-                        + " generic class List<E> where E is a type-variable: E extends Object declared in interface List",
-                "javac.rawtypes\tWARNING\tsrc/demo/Warn.java\t14\t24\tfound raw type: ArrayList missing type arguments"
-                        + " for generic class ArrayList<E> where E is a type-variable: E extends Object declared in class"
-                        + " ArrayList",
-                "javac.unchecked\tWARNING\tsrc/demo/Warn.java\t15\t16\tunchecked call to add(E) as a member of the raw"
-                        + " type List where E is a type-variable: E extends Object declared in interface List",
-                "javac.deprecation\tWARNING\tsrc/demo/Warn.java\t22\t13\told() in Warn has been deprecated")),
-                "javac rows " + rows);
+        require(rows.equals(JAVAC_ROWS), "javac rows " + rows);
+        passed++;
+    }
+
+    private static void javacProjectWideLog(Path root) throws Exception {
         String global = "warning: [options] system modules path not set in conjunction with -source 17\n"
                 + "Note: src/demo/Warn.java uses or overrides a deprecated API.\n1 warning\n";
         require(rows(convert(root, AnalyzerXmlNormalizer.Format.JAVAC, global)).equals(List.of(
                 "javac.note\tINFO\t\t0\t0\tsrc/demo/Warn.java uses or overrides a deprecated API.",
                 "javac.options\tWARNING\t\t0\t0\tsystem modules path not set in conjunction with -source 17")),
                 "project-wide javac diagnostics");
+        passed++;
+    }
+
+    /** The line grammar of the smart builder's canon Diagnostics: a column after the line is taken as given. */
+    private static void javacColumnForm(Path root) throws Exception {
+        String log = "src/demo/A.java:3:9: error: x\nsrc/demo/A.java:4:  warning:  y\n1 error\n1 warning\n";
+        require(rows(convert(root, AnalyzerXmlNormalizer.Format.JAVAC, log)).equals(List.of(
+                "javac.error\tERROR\tsrc/demo/A.java\t3\t9\tx",
+                "javac.warning\tWARNING\tsrc/demo/A.java\t4\t0\ty")), "file:line:column form");
         passed++;
     }
 
@@ -94,7 +113,7 @@ public final class CompilerDiagnosticsContractTestMain {
         passed++;
     }
 
-    private static void refusesUnsafeOrPartialLogs(Path root) throws Exception {
+    private static void refusesUnsafeEcjLogs(Path root) throws Exception {
         String ecj = ecjFixture(root);
         refuses(root, AnalyzerXmlNormalizer.Format.ECJ, AnalyzerXmlNormalizer.Status.COMPLETE,
                 ecj.replace("compiler_32_006.dtd\">", "compiler_32_006.dtd\" [<!ENTITY x \"y\">]>"), "internal subset");
@@ -106,11 +125,19 @@ public final class CompilerDiagnosticsContractTestMain {
                 ecj.replace("severity=\"ERROR\"", "severity=\"FATAL\""), "unknown severity");
         refuses(root, AnalyzerXmlNormalizer.Format.ECJ, AnalyzerXmlNormalizer.Status.COMPLETE,
                 "<checkstyle/>", "not an ECJ log");
+        refusesCrashedEcjRun(root);
+        passed++;
+    }
+
+    private static void refusesCrashedEcjRun(Path root) throws Exception {
         String crashed = "<compiler><exception class=\"java.lang.Error\" message=\"internal\"/></compiler>";
         refuses(root, AnalyzerXmlNormalizer.Format.ECJ, AnalyzerXmlNormalizer.Status.COMPLETE, crashed, "exception");
         require(rows(AnalyzerXmlNormalizer.normalize(AnalyzerXmlNormalizer.Format.ECJ,
                 AnalyzerXmlNormalizer.Status.FAILED, root, crashed.getBytes(StandardCharsets.UTF_8)))
                 .equals(List.of("ecj.exception\tERROR\t\t0\t0\tinternal")), "a failed ECJ run is one project-wide row");
+    }
+
+    private static void refusesPartialJavacLogs(Path root) throws Exception {
         String partial = "src/demo/A.java:1: error: x\nclass A {\n^\n"
                 + "only showing the first 1 errors, of 2 total; use -Xmaxerrs if you would like to see more\n";
         refuses(root, AnalyzerXmlNormalizer.Format.JAVAC, AnalyzerXmlNormalizer.Status.COMPLETE, partial, "truncated");
@@ -119,6 +146,23 @@ public final class CompilerDiagnosticsContractTestMain {
                 "a truncated javac log is PARTIAL");
         refuses(root, AnalyzerXmlNormalizer.Format.JAVAC, AnalyzerXmlNormalizer.Status.COMPLETE,
                 "../A.java:1: error: x\n", "javac path outside the root");
+        passed++;
+    }
+
+    /**
+     * javac in another language (German, real javac 21.0.9 output), or its log read in the wrong code page: the
+     * diagnostic and count lines are not read, so the log cannot be COMPLETE; as PARTIAL it gives no rows.
+     */
+    private static void refusesForeignLocaleLogs(Path root) throws Exception {
+        String german = fixture("javac-21-de.txt");
+        refuses(root, AnalyzerXmlNormalizer.Format.JAVAC, AnalyzerXmlNormalizer.Status.COMPLETE, german, "German");
+        require(rows(AnalyzerXmlNormalizer.normalize(AnalyzerXmlNormalizer.Format.JAVAC,
+                AnalyzerXmlNormalizer.Status.PARTIAL, root, german.getBytes(StandardCharsets.UTF_8))).isEmpty(),
+                "a German javac log as PARTIAL has no rows");
+        refuses(root, AnalyzerXmlNormalizer.Format.JAVAC, AnalyzerXmlNormalizer.Status.COMPLETE,
+                "src/demo/A.java:1: \uFFFD\uFFFD\uFFFD: x\n", "a diagnostic in the wrong code page");
+        refuses(root, AnalyzerXmlNormalizer.Format.JAVAC, AnalyzerXmlNormalizer.Status.COMPLETE,
+                "1 \uFFFD\uFFFD\uFFFD\n", "a count line in the wrong code page");
         passed++;
     }
 

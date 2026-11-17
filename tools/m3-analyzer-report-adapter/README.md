@@ -348,7 +348,7 @@ Two formats put Java compiler diagnostics into the same M3-STATIC-ANALYSIS-V1 ro
 | Format | Input | Rule | Column |
 | --- | --- | --- | --- |
 | `ECJ` | the XML log ECJ writes with `-log <file>.xml` | `ecj.<problem id>` (`ecj.TypeMismatch`, `ecj.RawTypeReference`) | 0: ECJ's log trims its context line, so it has none |
-| `JAVAC` | javac's error stream in its default format, captured as UTF-8 | `javac.<lint key>` for keyed warnings (`javac.rawtypes`), else `javac.error` / `javac.warning` | from the caret line |
+| `JAVAC` | javac's error stream in its default format, in English, captured as UTF-8 | `javac.<lint key>` for keyed warnings (`javac.rawtypes`), else `javac.error` / `javac.warning` | from the caret line, or a column after the line number |
 
 Severities map directly (ECJ ERROR/WARNING/INFO; javac error, warning, and `Note:` as INFO). Paths are made
 relative to the project root, so javac must run there or print absolute paths. javac detail lines (`symbol:`,
@@ -356,6 +356,12 @@ relative to the project root, so javac must run there or print absolute paths. j
 ECJ `extra_problems`) are project-wide rows. Both formats give the same file, line and severity for the same
 problem; the test fixtures are real ECJ 3.45.0 and javac 21.0.9 output for the same two sources, with license
 header lines added and this machine's folders replaced.
+
+javac prints its diagnostics in the language of its locale and its error stream in the console encoding, so run
+it with `-J-Duser.language=en -J-Dstderr.encoding=UTF-8`. A diagnostic line (`File.java:12: Fehler: ...`) or a
+count line (`2 Fehler`) the reader cannot read forbids COMPLETE, so a log in another language or code page is never
+reported as complete with no findings. Diagnostic lines are read with the line grammar of the smart builder's
+`canon.Diagnostics` (`file:line[:column]: error|warning: message`), for `.java` files.
 
 Fail-closed rules: ECJ's own DOCTYPE (its public DTD identifier, no internal subset) is accepted and never loaded;
 any other DOCTYPE, entity or processing instruction is refused. An ECJ `exception` element, or javac's "only
