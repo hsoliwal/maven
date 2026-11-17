@@ -22,12 +22,19 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseModelCli.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EclipseProjectModelContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/QualityTaskCommands.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolCapability.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/PolyglotCli.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/PolyglotCliContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/TaskEngineContractTestMain.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.QualityProviderContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.MavenizerContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
