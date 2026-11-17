@@ -30,7 +30,8 @@ SEP=:
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -wp "$1"; else printf '%s' "$1"; fi; }
 rm -rf "$DEST" && mkdir -p "$DEST/engine" "$DEST/classes" "$DEST/test-classes"
 compile() { javac --release 17 -encoding UTF-8 -Xlint:all -Werror "$@"; }
-compile -d "$DEST/engine" $(ls "$ENGINE"/src/main/java/io/synexia/maven/polyglot/*.java | grep -v 'Mojo\.java$')
+compile -d "$DEST/engine" $(ls "$ENGINE"/src/main/java/io/synexia/maven/polyglot/*.java | grep -v 'Mojo\.java$') \
+  $(ls "$ENGINE"/src/main/java/jdk/m3/indexdb/*.java)
 cp -r "$ENGINE/src/main/resources/META-INF" "$DEST/engine/"
 M2="${M2_REPO:-$HOME/.m2/repository}"
 LSP4J="$M2/org/eclipse/lsp4j/org.eclipse.lsp4j/0.23.1/org.eclipse.lsp4j-0.23.1.jar"
