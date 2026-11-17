@@ -53,6 +53,48 @@ counts, receipt SHA-256, and explicitly unverified authority flags are bound
 into the model request, nomination and verification replay. They identify
 similarity candidates, never equivalence or permission to refactor.
 
+### Generate a local Java 21 AST fingerprint ledger
+
+The additive, opt-in `m3:machine-fingerprints` goal now materializes these
+candidate hashes using the **JDK 21 javac AST parser**. It requires the same
+fresh canonical preparation receipt and Java atom/pattern checkpoint manifest
+as `m3:code-agent`. No LLM or model download is involved:
+
+```sh
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:machine-fingerprints \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=.reports/preparation.json \
+  -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
+  -Dm3.smart.machineWorkers=4
+
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=.reports/preparation.json \
+  -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
+  -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
+  -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv
+```
+
+The producer inventories every selected Java file, uses the compiler AST
+instead of text regex to isolate method, lambda and initializer candidates,
+then computes per-atom SHA-256 of tree kinds (structural), SHA-256 of tree
+kinds plus literal/member cues (normalized logic candidate), a 64-bit
+kind-frequency SimHash, and a separately hashed syntactic signature/contract
+cue. It deliberately omits local variable names from the logic cue and
+preserves operator kinds and literal values. These algorithms are **syntax
+fingerprints, not type-attributed semantic hashes**. They can collide for
+semantically different code. API, ABI, JNI effects, behavior and contract
+equivalence must still be proven externally.
+
+Files are parsed independently with 1–8 bounded workers; results fan in in
+source-path and atom-id order. Output is the fixed
+`target/m3-smart/machine-evidence.tsv` plus
+`target/m3-smart/machine-fingerprints.json`. The generated ledger is passed
+through the same independent `MachineEvidence.inspect` consumer check as
+external ledgers. A refused regeneration invalidates any previous successful
+generated ledger. Normal Maven builds are unaffected, and no Java sources
+are modified by this goal.
+
 The model receives a bounded rule set derived from M3Scale: inventory and
 contracts first; string/comment masking before regex; atomization before
 patternization; private-leaf transformation; FILE→PACKAGE→MODULE→REACTOR→API

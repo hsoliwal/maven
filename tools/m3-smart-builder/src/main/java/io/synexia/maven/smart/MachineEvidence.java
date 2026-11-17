@@ -50,8 +50,7 @@ final class MachineEvidence {
         String previous = "";
         for (int i = 1; i < rows.length; i++) {
             String[] parts = rows[i].split("\t", -1);
-            if (parts.length != 7 || !parts[0].matches("[A-Za-z0-9_.$/-]+\\.java")
-                    || parts[0].startsWith("/") || parts[0].contains("../") || parts[0].contains("//")
+            if (parts.length != 7 || !parts[0].endsWith(".java") || !sources.containsKey(parts[0])
                     || !parts[1].matches("[0-9a-f]{64}") || !parts[2].matches("[a-zA-Z0-9_$#.:/-]{1,128}")
                     || !parts[3].matches("[0-9a-f]{64}") || !parts[4].matches("[0-9a-f]{64}")
                     || !parts[5].matches("[0-9a-f]{16}") || !parts[6].matches("[0-9a-f]{64}"))

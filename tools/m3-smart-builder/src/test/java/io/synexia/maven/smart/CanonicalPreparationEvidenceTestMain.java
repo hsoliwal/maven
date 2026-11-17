@@ -27,27 +27,33 @@ public final class CanonicalPreparationEvidenceTestMain {
     }
 
     static String report(SourceInventory.Selected selected) {
-        SourceInventory.FileFact file = selected.files().getFirst();
-        String id = TinyJson.quote(file.path());
-        String hash = TinyJson.quote(file.sha256());
+        StringBuilder fileRows = new StringBuilder();
+        for (SourceInventory.FileFact file : selected.files()) {
+            if (fileRows.length() > 0) fileRows.append(',');
+            String id = TinyJson.quote(file.path());
+            String hash = TinyJson.quote(file.sha256());
+            fileRows.append("{\"path\":").append(id).append(",\"sha256\":").append(hash)
+                    .append(",\"bytes\":").append(file.bytes())
+                    .append(",\"kind\":\"JAVA\",\"status\":\"COMPLETE\",")
+                    .append("\"reason\":\"NO_SUPPORTED_EXTRACTION\",")
+                    .append("\"atomPreparation\":{\"status\":\"UNCHANGED:NO_SUPPORTED_EXTRACTION:SYNEXIA-FILE-ATOM-CANONICALIZATION-1\",")
+                    .append("\"candidateSha256\":").append(hash).append(",\"proposedHelpers\":0},")
+                    .append("\"patterns\":[]}");
+        }
         String owners = "{\"M3PreparePrivatePrimitiveAtomsRecipe.java\":\"" + "a".repeat(64) + "\"}";
         return "{"
                 + "\"schema\":\"synexia.smart-build.preparation.v1\","
                 + "\"status\":\"COMPLETE\","
                 + "\"sourceRoot\":" + TinyJson.quote(selected.sourceRoot()) + ","
                 + "\"sourceDigest\":" + TinyJson.quote(selected.summary().digest()) + ","
-                + "\"sourceFiles\":1,\"sourceBytes\":" + selected.summary().bytes() + ","
-                + "\"files\":[{\"path\":" + id + ",\"sha256\":" + hash
-                + ",\"bytes\":" + file.bytes()
-                + ",\"kind\":\"JAVA\",\"status\":\"COMPLETE\","
-                + "\"reason\":\"NO_SUPPORTED_EXTRACTION\","
-                + "\"atomPreparation\":{\"status\":\"UNCHANGED:NO_SUPPORTED_EXTRACTION:SYNEXIA-FILE-ATOM-CANONICALIZATION-1\","
-                + "\"candidateSha256\":" + hash + ",\"proposedHelpers\":0},"
-                + "\"patterns\":[]}],"
+                + "\"sourceFiles\":" + selected.files().size() + ",\"sourceBytes\":" + selected.summary().bytes() + ","
+                + "\"files\":[" + fileRows + "],"
                 + "\"recipes\":[{\"name\":\"com.synexia.rewrite.M3PreparePrivatePrimitiveAtomsRecipe\","
-                + "\"status\":\"EXECUTED\",\"executedFiles\":1,\"rows\":1},"
+                + "\"status\":\"EXECUTED\",\"executedFiles\":" + selected.files().size()
+                + ",\"rows\":" + selected.files().size() + "},"
                 + "{\"name\":\"com.synexia.rewrite.M3JavaPatternInventoryRecipe\","
-                + "\"status\":\"EXECUTED\",\"executedFiles\":1,\"rows\":0}],"
+                + "\"status\":\"EXECUTED\",\"executedFiles\":" + selected.files().size()
+                + ",\"rows\":0}],"
                 + "\"atomCandidateFiles\":0,\"proposedPrivateHelpers\":0,"
                 + "\"patternRowCount\":0,\"patternCounts\":{},\"unsupportedFiles\":0,"
                 + "\"executionProvenance\":{\"runner\":\"com.synexia.rewrite.ChromeLlmRecipeExecution\","

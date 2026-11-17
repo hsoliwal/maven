@@ -70,6 +70,10 @@ limitations under the License.
       <execution><id>machine-rulebook-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
         <configuration><mainClass>io.synexia.maven.smart.MachineRulebookTest</mainClass>
           <classpathScope>test</classpathScope></configuration>
+      </execution>
+      <execution><id>machine-fingerprint-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.MachineFingerprintTest</mainClass>
+          <classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>
