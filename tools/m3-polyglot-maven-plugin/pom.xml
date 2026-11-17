@@ -81,6 +81,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>build-cache-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.BuildCacheContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>quality-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>

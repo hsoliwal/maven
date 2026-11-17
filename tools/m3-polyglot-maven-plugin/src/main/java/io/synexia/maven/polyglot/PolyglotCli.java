@@ -6,6 +6,7 @@ package io.synexia.maven.polyglot;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -35,6 +36,8 @@ public final class PolyglotCli {
         if (args == null || args.length < 4 || !("plan".equals(args[0]) || "run".equals(args[0]))) {
             throw usage();
         }
+        Path buildCache = buildCache(args);
+        args = withoutBuildCache(args);
         boolean approveRewriteApply = false;
         boolean incremental = false;
         String stateBackend = "legacy";
@@ -77,14 +80,35 @@ public final class PolyglotCli {
         if (stateBackendSupplied && !incremental) throw usage();
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend, output);
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend, buildCache, output);
         output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
         return done;
     }
 
+    /** The folder of the single optional {@code --build-cache <dir>} after the four positional arguments, or null. */
+    private static Path buildCache(String[] args) {
+        List<String> all = List.of(args);
+        int index = all.indexOf("--build-cache");
+        if (index < 0) return null;
+        if (index < 4 || index + 1 >= args.length || args[index + 1].startsWith("--")
+                || all.lastIndexOf("--build-cache") != index || !"run".equals(args[0])) {
+            throw usage();
+        }
+        return Path.of(args[index + 1]);
+    }
+
+    private static String[] withoutBuildCache(String[] args) {
+        int index = List.of(args).indexOf("--build-cache");
+        if (index < 0) return args;
+        List<String> rest = new ArrayList<>(List.of(args));
+        rest.subList(index, index + 2).clear();
+        return rest.toArray(String[]::new);
+    }
+
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db|sqlite|h2|ext-id] [--approve-rewrite-apply]"
-                + " (the last two flags require run)");
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db|sqlite|h2|ext-id]"
+                + " [--build-cache <dir>] [--approve-rewrite-apply]"
+                + " (--state-backend needs --incremental; it, --build-cache and the last flag require run)");
     }
 }
