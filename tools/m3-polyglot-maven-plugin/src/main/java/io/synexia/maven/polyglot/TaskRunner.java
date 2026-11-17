@@ -83,8 +83,8 @@ public final class TaskRunner {
             boolean incremental,
             String stateBackend,
             Consumer<String> log) throws IOException, InterruptedException {
-        if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2", "derby").contains(stateBackend)) {
-            throw new IllegalArgumentException("state backend must be legacy, file, m3db, sqlite, h2 or derby");
+        if (stateBackend == null || !stateBackend.matches("[a-z][a-z0-9-]{0,31}")) {
+            throw new IllegalArgumentException("module state backend must be a lower-case provider id");
         }
         if (!incremental && !"legacy".equals(stateBackend)) {
             throw new IllegalArgumentException("module state DB requires incremental execution");
