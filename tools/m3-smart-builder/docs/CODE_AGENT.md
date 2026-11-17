@@ -39,9 +39,14 @@ consumer does not invent source preparation, file atomization or proof roots.
 
 For an existing AST/atom producer that also emits structural, normalized logic
 and SimHash fingerprints, pass `-Dm3.smart.machineEvidence=.reports/machine.tsv`.
-Its exact, sorted UTF-8 TSV schema is:
+The existing seven-column sorted UTF-8 TSV schema is:
 
 `source_path<TAB>source_sha256<TAB>atom_id<TAB>structural_sha256<TAB>logic_sha256<TAB>simhash64<TAB>contract_sha256`
+
+For additive source-level static-analysis cues, a producer may append exactly
+two columns: `control_flow_mask<TAB>effect_cue_mask`. Both are four-digit
+lowercase hex masks with strictly checked, versioned bit assignments. The
+seven-column form remains accepted without inventing missing analysis.
 
 Paths are relative to `sourceRoot`, `source_sha256` binds each row to the current
 whole Java file, and every selected source file must have at least one atom
@@ -50,7 +55,12 @@ checks coverage, order and current file SHA-256, and computes bounded exact-hash
 duplicate-group counts and SimHash Hamming-distance-near-pair counts (distance
 at most 3). It **does not recompute producer AST or logic hashes**. The resulting
 counts, receipt SHA-256, and explicitly unverified authority flags are bound
-into the model request, nomination and verification replay. They identify
+into the model request, nomination and verification replay. Patternization
+adds **at most 24 deterministic atom pairs**, ranked by exact normalized logic,
+then exact structure, then SimHash distance ≤3. Each pair carries source paths,
+atom IDs, distance, syntactic-contract-match status and `REVIEW_ONLY` authority.
+The total candidate-pair count and truncation flag remain visible, so a prompt
+cannot misrepresent the bounded sample as a complete search result. These are
 similarity candidates, never equivalence or permission to refactor.
 
 ### Generate a local Java 21 AST fingerprint ledger
@@ -86,6 +96,15 @@ fingerprints, not type-attributed semantic hashes**. They can collide for
 semantically different code. API, ABI, JNI effects, behavior and contract
 equivalence must still be proven externally.
 
+The extended ledger additionally records **syntactic static-analysis cues**
+for each candidate atom: branch/loop/switch/try/throw/return/jump/yield bits,
+and call/potential-write/allocation/throw/synchronization bits. The consumer
+exposes aggregate atom counts for these categories in the bounded ChromeLLM
+prompt. Every call target is **unresolved**; an assignment is only a potential
+write. These masks neither construct a compiler CFG nor establish purity,
+aliasing, external effects, or resolved type/call graph semantics. Those remain
+explicit typed residue for future JDT/CodeQL/host compiler proof gates.
+
 Files are parsed independently with 1–8 bounded workers; results fan in in
 source-path and atom-id order. Output is the fixed
 `target/m3-smart/machine-evidence.tsv` plus
@@ -108,7 +127,8 @@ This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
 the LLM is a constrained speculative operator, while the machine owns evidence,
 recipes, verification, and canonical promotion.
 
-The 18 required M3 laws are materialized as the packaged resource
+The 18 required M3 laws and four additional reviewed static-analysis/ranking
+rules (22 in the current packet) are materialized as the packaged resource
 `src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
 `rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
 complete required set, bounded syntax, and an exact schema before any model

@@ -30,6 +30,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -72,7 +73,7 @@ public final class MachineFingerprintMain {
                     || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
                     || !before.equals(SourceInventory.inspectSelected(base, source)))
                 throw new IOException("source or canonical evidence changed during AST fingerprinting");
-            StringBuilder tsv = new StringBuilder(MachineEvidence.HEADER).append('\n');
+            StringBuilder tsv = new StringBuilder(MachineEvidence.EXTENDED_HEADER).append('\n');
             for (String line : lines) tsv.append(line).append('\n');
             SafeBuildOutput.write(destination, "machine-evidence.tsv", tsv.toString());
             MachineEvidence.Summary accepted = MachineEvidence.inspect(base, source, destination.resolve("machine-evidence.tsv"));
@@ -160,7 +161,9 @@ public final class MachineFingerprintMain {
             String id = String.format(Locale.ROOT, "a%06d", i + 1);
             rows.add(source.path() + "\t" + source.sha256() + "\t" + id
                     + "\t" + fp.structural() + "\t" + fp.logic() + "\t" + fp.simHash()
-                    + "\t" + Hashes.sha256(atoms.get(i).signature().getBytes(StandardCharsets.UTF_8)));
+                    + "\t" + Hashes.sha256(atoms.get(i).signature().getBytes(StandardCharsets.UTF_8))
+                    + "\t" + String.format(Locale.ROOT, "%04x", fp.flow())
+                    + "\t" + String.format(Locale.ROOT, "%04x", fp.effect()));
         }
         rows.sort(Comparator.naturalOrder());
         return rows;
@@ -176,7 +179,7 @@ public final class MachineFingerprintMain {
         return result.toString();
     }
 
-    private record Fingerprint(String structural, String logic, String simHash) {
+    private record Fingerprint(String structural, String logic, String simHash, int flow, int effect) {
         // A finite JDK AST kind vocabulary is indexed once rather than hashed for every node.
         private static final long[] KIND_FEATURES = kindFeatures();
 
@@ -193,10 +196,15 @@ public final class MachineFingerprintMain {
             MessageDigest shape = Hashes.digest();
             MessageDigest logic = Hashes.digest();
             int[] weights = new int[64];
+            int[] cues = new int[2];
             new TreeScanner<Void, Void>() {
                 @Override public Void scan(Tree node, Void unused) {
                     if (node == null) return null;
                     String kind = node.getKind().name();
+                    classify(node.getKind(), cues);
+                    if (node instanceof MethodTree method
+                            && method.getModifiers().getFlags().contains(Modifier.SYNCHRONIZED))
+                        cues[1] |= MachineEvidence.EFFECT_SYNCHRONIZATION;
                     update(shape, "<" + kind);
                     update(logic, "<" + kind);
                     long feature = KIND_FEATURES[node.getKind().ordinal()];
@@ -215,7 +223,34 @@ public final class MachineFingerprintMain {
             for (int bit = 0; bit < 64; bit++) if (weights[bit] >= 0) simHash |= 1L << bit;
             return new Fingerprint(java.util.HexFormat.of().formatHex(shape.digest()),
                     java.util.HexFormat.of().formatHex(logic.digest()),
-                    String.format(Locale.ROOT, "%016x", simHash));
+                    String.format(Locale.ROOT, "%016x", simHash), cues[0], cues[1]);
+        }
+
+        private static void classify(Tree.Kind kind, int[] cues) {
+            switch (kind) {
+                case IF, CONDITIONAL_EXPRESSION -> cues[0] |= MachineEvidence.FLOW_CONDITIONAL;
+                case FOR_LOOP, ENHANCED_FOR_LOOP, WHILE_LOOP, DO_WHILE_LOOP ->
+                        cues[0] |= MachineEvidence.FLOW_LOOP;
+                case SWITCH, SWITCH_EXPRESSION -> cues[0] |= MachineEvidence.FLOW_SWITCH;
+                case TRY, CATCH -> cues[0] |= MachineEvidence.FLOW_TRY;
+                case RETURN -> cues[0] |= MachineEvidence.FLOW_RETURN;
+                case BREAK, CONTINUE -> cues[0] |= MachineEvidence.FLOW_JUMP;
+                case THROW -> {
+                    cues[0] |= MachineEvidence.FLOW_THROW;
+                    cues[1] |= MachineEvidence.EFFECT_THROW;
+                }
+                case YIELD -> cues[0] |= MachineEvidence.FLOW_YIELD;
+                case METHOD_INVOCATION -> cues[1] |= MachineEvidence.EFFECT_CALL;
+                case ASSIGNMENT, AND_ASSIGNMENT, OR_ASSIGNMENT, XOR_ASSIGNMENT,
+                        PLUS_ASSIGNMENT, MINUS_ASSIGNMENT, MULTIPLY_ASSIGNMENT,
+                        DIVIDE_ASSIGNMENT, REMAINDER_ASSIGNMENT, LEFT_SHIFT_ASSIGNMENT,
+                        RIGHT_SHIFT_ASSIGNMENT, UNSIGNED_RIGHT_SHIFT_ASSIGNMENT,
+                        PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT ->
+                        cues[1] |= MachineEvidence.EFFECT_POTENTIAL_WRITE;
+                case NEW_CLASS, NEW_ARRAY -> cues[1] |= MachineEvidence.EFFECT_ALLOCATION;
+                case SYNCHRONIZED -> cues[1] |= MachineEvidence.EFFECT_SYNCHRONIZATION;
+                default -> { /* Unattributed AST nodes are not classified as proven effects. */ }
+            }
         }
         private static void update(MessageDigest digest, String token) {
             byte[] bytes = token.getBytes(StandardCharsets.UTF_8);

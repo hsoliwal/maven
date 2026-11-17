@@ -13,7 +13,7 @@ public final class MachineRulebookTest {
 
     public static void main(String[] args) throws Exception {
         MachineRulebook.Policy rules = MachineRulebook.load();
-        require(rules.rules().size() == 18, "all M3 laws present");
+        require(rules.rules().size() == 22, "18 mandatory M3 laws and four reviewed static-analysis laws present");
         require(rules.sha256().matches("[0-9a-f]{64}"), "policy has a strong content digest");
         Map<?, ?> object = object(TinyJson.parse(rules.json()));
         require("m3.machine.rules.v1".equals(object.get("schema")), "policy is machine readable");
@@ -26,6 +26,15 @@ public final class MachineRulebookTest {
                         && rule.authority().equals("PRODUCER_REPORTED")), "logic hashes do not imply semantic proof");
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("masked-regex")
                         && rule.authority().equals("EXTERNAL_GATE")), "masked lexical checks belong to their proof owner");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("callgraph-residue")
+                        && rule.authority().equals("REVIEW_ONLY")),
+                "unattributed call sites are typed residue rather than effect proof");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("control-flow-cues")
+                        && rule.authority().equals("PRODUCER_REPORTED")),
+                "syntax-based flow/effect flags cannot claim CFG authority");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("match-priority")
+                        && rule.authority().equals("REVIEW_ONLY")),
+                "similarity ranking is a bounded model hint");
         String original = MachineRulebook.VERSION + "\n" + MachineRulebook.HEADER + "\n";
         for (MachineRulebook.Rule rule : rules.rules())
             original += rule.id() + "\t" + rule.stage() + "\t" + rule.authority() + "\t" + rule.directive() + "\n";

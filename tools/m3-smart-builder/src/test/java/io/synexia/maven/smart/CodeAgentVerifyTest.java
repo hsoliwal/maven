@@ -65,6 +65,8 @@ public final class CodeAgentVerifyTest {
         Map<?, ?> machine = object(report.get("machineEvidenceFacts"));
         require("m3.smart.machine-evidence.v1".equals(machine.get("schema")), "fingerprint ledger reaches nomination");
         require(Boolean.FALSE.equals(machine.get("similarityIsProof")), "SimHash never authenticates equivalence");
+        require(Boolean.FALSE.equals(object(machine.get("staticCues")).get("available")),
+                "legacy seven-column machine ledgers remain accepted without fabricated static cues");
         String binding = (String) report.get("evidenceBindingSha256");
         Files.writeString(project.resolve("candidate.json"), "{\"schema\":\"m3.smart.code-agent.candidate.v1\","
                 + "\"evidenceSha256\":\"" + binding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"HIGH\"}");
@@ -112,6 +114,22 @@ public final class CodeAgentVerifyTest {
         require(duplicates.atoms() == 2 && duplicates.structuralGroups() == 1
                 && duplicates.logicGroups() == 1 && duplicates.similarPairs() == 1,
                 "identical structural/logic fingerprints and nearby SimHashes remain advisory groups");
+        Map<?, ?> grouped = object(TinyJson.parse(duplicates.json()));
+        List<?> patterns = (List<?>) grouped.get("patternCandidates");
+        require(patterns.size() == 1 && "LOGIC_EXACT".equals(object(patterns.getFirst()).get("kind"))
+                && "REVIEW_ONLY".equals(object(patterns.getFirst()).get("authority")),
+                "legacy ledgers now yield bounded, explicitly non-authoritative pattern pairs");
+        String shaped = "Example.java\t" + Hashes.sha256(file) + "\tExample#y\t"
+                + "b".repeat(64) + "\t" + "e".repeat(64) + "\t0000000000000002\t" + "d".repeat(64) + "\n";
+        String nearOnly = "Example.java\t" + Hashes.sha256(file) + "\tExample#z\t"
+                + "a".repeat(64) + "\t" + "f".repeat(64) + "\t0000000000000003\t" + "e".repeat(64) + "\n";
+        Files.writeString(evidence, ledger + shaped + nearOnly);
+        Map<?, ?> separated = object(TinyJson.parse(MachineEvidence.inspect(project, source, evidence).json()));
+        List<?> ranked = (List<?>) separated.get("patternCandidates");
+        require(ranked.size() == 3 && "STRUCTURE_EXACT".equals(object(ranked.getFirst()).get("kind"))
+                && "SIMHASH_NEAR".equals(object(ranked.get(1)).get("kind"))
+                && "SIMHASH_NEAR".equals(object(ranked.get(2)).get("kind")),
+                "structure matches rank above near-only SimHash suggestions even with no logic match");
         Files.writeString(evidence, MachineEvidence.HEADER + "\n" + second + ledger.substring(ledger.indexOf('\n') + 1));
         require(rejectsMachine(project, source, evidence), "unsorted atom ledger rejected");
         Files.writeString(evidence, ledger.replace(Hashes.sha256(file), "0".repeat(64)));

@@ -36,8 +36,13 @@ public final class MachineFingerprintTest {
                 original.base.resolve("target/m3-smart/machine-evidence.tsv"));
         require(checked.files() == 2 && checked.atoms() == 2 && checked.json().contains("\"similarityIsProof\":false"),
                 "both selected Java files have AST atoms bound to current source");
+        Map<?, ?> originalCues = object(object(TinyJson.parse(checked.json())).get("staticCues"));
+        require(Boolean.TRUE.equals(originalCues.get("available"))
+                && Boolean.FALSE.equals(originalCues.get("typeAttributionExecuted"))
+                && Boolean.FALSE.equals(originalCues.get("effectProofAuthenticated")),
+                "control/effect masks report unattributed syntax-only authority");
         String first = original.tsv();
-        require(first.contains(MachineEvidence.HEADER) && first.contains("Example.java\t")
+        require(first.startsWith(MachineEvidence.EXTENDED_HEADER + "\n") && first.contains("Example.java\t")
                 && first.contains("Extra.java\t"), "source names and SHA-bound atoms have a stable sorted TSV");
         require(original.run(4) == 0 && first.equals(original.tsv()),
                 "parallel file partition and deterministic fan-in produce byte-identical fingerprints");
@@ -56,6 +61,68 @@ public final class MachineFingerprintTest {
         require(checked.inputSha256().equals(object(nominationReport.get("machineEvidenceFacts")).get("inputSha256"))
                         && MachineRulebook.load().sha256().equals(nominationReport.get("machineRulebookSha256")),
                 "generated AST facts and law packet are bound into the model candidate evidence");
+
+        Fixture patterns = fixture("class Example { int first(int n) { return n + 1; } "
+                + "int second(int n) { return n + 1; } int third(int n) { return n + 1; } }\n",
+                "Example.java", false);
+        require(patterns.run(1) == 0, "atom patternization consumes real AST fingerprints");
+        Map<?, ?> patternSummary = object(TinyJson.parse(MachineEvidence.inspect(patterns.base, patterns.source,
+                patterns.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        List<?> candidates = list(patternSummary.get("patternCandidates"));
+        require(candidates.size() == 3 && number(patternSummary.get("patternCandidatePairs")) == 3,
+                "three repeated method bodies produce three bounded, ordered pairs");
+        Map<?, ?> top = object(candidates.getFirst());
+        require("LOGIC_EXACT".equals(top.get("kind")) && "a000001".equals(top.get("leftAtom"))
+                && "a000002".equals(top.get("rightAtom")) && Boolean.FALSE.equals(top.get("contractSignatureMatches"))
+                && "REVIEW_ONLY".equals(top.get("authority")),
+                "exact logic match is only a review candidate when method contracts differ");
+        require(!Boolean.TRUE.equals(patternSummary.get("patternCandidatesTruncated"))
+                && Boolean.FALSE.equals(patternSummary.get("semanticProofAuthenticated")),
+                "patternization never authenticates equivalence or promotion");
+        String patternsFirst = patterns.tsv();
+        require(patterns.run(4) == 0 && patternsFirst.equals(patterns.tsv()),
+                "patternization stays stable when producer worker count changes");
+        StringBuilder manyBodies = new StringBuilder("class Example { ");
+        for (int i = 0; i < 9; i++)
+            manyBodies.append("int m").append(i).append("(int n) { return n + 1; } ");
+        Fixture crowded = fixture(manyBodies.append("}\n").toString(), "Example.java", false);
+        require(crowded.run(4) == 0, "large exact-match patterns fit the bounded producer");
+        Map<?, ?> crowdedSummary = object(TinyJson.parse(MachineEvidence.inspect(crowded.base, crowded.source,
+                crowded.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        require(number(crowdedSummary.get("patternCandidatePairs")) == 36
+                && list(crowdedSummary.get("patternCandidates")).size() == 24
+                && Boolean.TRUE.equals(crowdedSummary.get("patternCandidatesTruncated")),
+                "model receives at most 24 ranked review candidates with an honest truncation count");
+
+        Fixture effects = fixture("class Example { int f(int n) { int sum=0; "
+                + "for(int i=0;i<n;i++) { if(i%2==0) sum+=i; } "
+                + "try { return Math.abs(sum); } catch(RuntimeException ex) { throw ex; } } "
+                + "Object g() { synchronized(this) { return new Object(); } } "
+                + "synchronized void h() {} }\n", "Example.java", false);
+        require(effects.run(2) == 0, "JDK parser captures control-flow and effect-category cues");
+        Map<?, ?> effectSummary = object(TinyJson.parse(MachineEvidence.inspect(effects.base, effects.source,
+                effects.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        Map<?, ?> effectCues = object(effectSummary.get("staticCues"));
+        require(number(effectCues.get("branchAtoms")) == 1
+                && number(effectCues.get("loopAtoms")) == 1
+                && number(effectCues.get("exceptionAtoms")) == 1
+                && number(effectCues.get("unresolvedCallAtoms")) == 1,
+                "branch, loop, try/throw and unresolved calls are categorized per atom");
+        require(number(effectCues.get("potentialWriteAtoms")) == 1
+                && number(effectCues.get("allocationAtoms")) == 1
+                && number(effectCues.get("synchronizedAtoms")) == 2,
+                "potential writes, allocations, synchronized blocks and synchronized methods stay advisory");
+        String[] malformed = effects.tsv().split("\n", -1);
+        String[] mask = malformed[1].split("\t", -1);
+        mask[7] = "ffff";
+        malformed[1] = String.join("\t", mask);
+        Files.writeString(effects.base.resolve("target/m3-smart/machine-evidence.tsv"), String.join("\n", malformed));
+        boolean rejectedMask = false;
+        try {
+            MachineEvidence.inspect(effects.base, effects.source,
+                    effects.base.resolve("target/m3-smart/machine-evidence.tsv"));
+        } catch (java.io.IOException expected) { rejectedMask = true; }
+        require(rejectedMask, "reserved or forged static-cue bits fail closed");
 
         Fixture comment = fixture(baseline.replace("/* if x == 0 */", "/* return false; class Phantom {} */"),
                 "Example.java", false);
@@ -137,4 +204,9 @@ public final class MachineFingerprintTest {
         if (!(raw instanceof Map<?, ?> map)) throw new AssertionError("JSON object expected");
         return map;
     }
+    private static List<?> list(Object raw) {
+        if (!(raw instanceof List<?> values)) throw new AssertionError("JSON array expected");
+        return values;
+    }
+    private static int number(Object raw) { return Integer.parseInt(String.valueOf(raw)); }
 }
