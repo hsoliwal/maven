@@ -41,6 +41,9 @@ under the License.
     <rewriteVersion>8.89.0</rewriteVersion>
     <junitVersion>5.14.4</junitVersion>
     <spotless.action>apply</spotless.action>
+    <!-- JDK homes for the version-gate tests (empty: those tests are skipped), e.g. -Drecipes.jdk17=<JDK 17 home> -->
+    <recipes.jdk17 />
+    <recipes.jdk25 />
     <!-- one line: surefire passes it to the forked test JVM as given; the same list the tests hand to a forked javac -->
     <javacExports>--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</javacExports>
   </properties>
@@ -247,6 +250,8 @@ under the License.
             <recipes.pluginClasses>${project.build.outputDirectory}</recipes.pluginClasses>
             <recipes.workDir>${project.build.directory}/lst-tests</recipes.workDir>
             <recipes.javacExports>${javacExports}</recipes.javacExports>
+            <recipes.jdk17>${recipes.jdk17}</recipes.jdk17>
+            <recipes.jdk25>${recipes.jdk25}</recipes.jdk25>
           </systemPropertyVariables>
         </configuration>
       </plugin>

@@ -56,7 +56,9 @@ final class Javac {
         /** {@code new MavenRecipesPlugin().init(task, ...)} before the task runs. */
         DIRECT,
         /** {@code -processorpath <plugin classpath> -Xplugin:MavenRecipes census=... root=...}. */
-        XPLUGIN
+        XPLUGIN,
+        /** The plugin classpath appended to {@code -classpath}, with {@code -Xplugin:MavenRecipes ...}. */
+        XPLUGIN_CP
     }
 
     /** The plugin options of one compile, after the plugin name and separated by spaces as javac passes them. */
@@ -107,7 +109,7 @@ final class Javac {
         Path src = fixture.write(dir);
         String pluginOptions = pluginArgs.of(census, src);
         List<String> args = arguments(fixture, dir, classes, options);
-        args.addAll(mode == Mode.XPLUGIN ? xplugin(pluginOptions) : List.of());
+        args.addAll(plugin(mode, args, pluginOptions));
         Optional<String> direct = mode == Mode.DIRECT ? Optional.of(pluginOptions) : Optional.empty();
         return run(new Run(src, fixture, args, direct, classes, census));
     }
@@ -124,15 +126,31 @@ final class Javac {
         }
     }
 
+    private static List<String> plugin(Mode mode, List<String> args, String pluginOptions) throws IOException {
+        if (mode == Mode.XPLUGIN_CP) {
+            int classpath = args.lastIndexOf("-classpath") + 1;
+            args.set(classpath, args.get(classpath) + java.io.File.pathSeparator + pluginPath());
+            return List.of("-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+        }
+        return mode == Mode.XPLUGIN ? xplugin(pluginOptions) : List.of();
+    }
+
     private static List<String> xplugin(String pluginOptions) throws IOException {
         return List.of("-processorpath", pluginPath(), "-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+    }
+
+    /** Starts the plugin on a task as an in-process caller does, before the task runs. */
+    static void registerPlugin(JavacTask task, String pluginOptions) {
+        new MavenRecipesPlugin().init(task, pluginOptions.split("\\s+"));
     }
 
     private static List<String> arguments(Fixture fixture, Path dir, Path classes, String... options)
             throws IOException {
         Files.createDirectories(dir.resolve("empty"));
-        List<String> args = new ArrayList<>(List.of(
-                "-d", classes.toString(), "-classpath", dir.resolve("empty").toString()));
+        List<String> args = new ArrayList<>(List.of("-d", classes.toString()));
+        if (!fixture.options().contains("-classpath")) {
+            args.addAll(List.of("-classpath", dir.resolve("empty").toString()));
+        }
         args.addAll(fixture.options());
         args.addAll(List.of(options));
         return args;
@@ -153,7 +171,7 @@ final class Javac {
         try (StandardJavaFileManager files = javac.getStandardFileManager(diagnostics, Locale.ROOT, charset)) {
             Iterable<? extends JavaFileObject> sources = files.getJavaFileObjectsFromPaths(run.sources());
             JavacTask task = (JavacTask) javac.getTask(output, files, diagnostics, run.args(), null, sources);
-            run.direct().ifPresent(options -> new MavenRecipesPlugin().init(task, options.split("\\s+")));
+            run.direct().ifPresent(options -> registerPlugin(task, options));
             Optional<LstCollector> collector = LstCollector.of(task);
             boolean success = task.call();
             List<String> described = describe(diagnostics.getDiagnostics(), run.src());

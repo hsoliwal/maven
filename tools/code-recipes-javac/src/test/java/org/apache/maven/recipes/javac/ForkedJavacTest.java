@@ -68,33 +68,66 @@ class ForkedJavacTest {
     /** Forks javac on the fixture, with the plugin and the given options or without it. */
     static Forked fork(Fixture fixture, Path dir, Path src, boolean plugin, Javac.PluginArgs pluginArgs)
             throws IOException, InterruptedException {
-        String label = plugin ? "plugin" : "plain";
-        Path classes = dir.resolve("forked-classes-" + label);
+        return fork(new Spec(fixture, dir, src, javac(), List.of(CompilerTreeLstTest.BYFILE), plugin, pluginArgs));
+    }
+
+    /**
+     * One forked compile.
+     *
+     * @param fixture the sources and their options
+     * @param dir the fixture's work directory
+     * @param src the directory the sources were written to
+     * @param javac the javac launcher, of the running JDK or another one
+     * @param extra javac options after the fixture's, such as {@code -J-Xmx64m}
+     * @param plugin whether the plugin is wired in
+     * @param pluginArgs the plugin's options
+     */
+    record Spec(
+            Fixture fixture,
+            Path dir,
+            Path src,
+            Path javac,
+            List<String> extra,
+            boolean plugin,
+            Javac.PluginArgs pluginArgs) {}
+
+    static Forked fork(Spec spec) throws IOException, InterruptedException {
+        Path classes = spec.dir().resolve("forked-classes-" + (spec.plugin() ? "plugin" : "plain"));
         Javac.emptyDirectory(classes);
-        Path census = dir.resolve("forked-census.tsv");
+        Path census = spec.dir().resolve("forked-census.tsv");
         if (Files.isRegularFile(census)) {
             Files.delete(census);
         }
-        List<String> command = command(fixture, dir, classes);
-        if (plugin) {
-            command.addAll(List.of("-processorpath", Javac.pluginPath()));
-            command.add("-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginArgs.of(census, src));
+        List<String> command = command(spec, classes);
+        if (spec.plugin()) {
+            command.addAll(wiring(spec.pluginArgs().of(census, spec.src())));
         }
-        fixture.files().keySet().forEach(path -> command.add(src.resolve(path).toString()));
-        return run(command, dir, classes, census);
+        spec.fixture()
+                .files()
+                .keySet()
+                .forEach(path -> command.add(spec.src().resolve(path).toString()));
+        return run(command, spec.dir(), classes, census);
     }
 
-    /** javac with the jdk.compiler exports, the output directory, the policy and the fixture's options. */
-    private static List<String> command(Fixture fixture, Path dir, Path classes) throws IOException {
-        Files.createDirectories(dir.resolve("empty"));
-        List<String> command = new ArrayList<>(List.of(javac().toString()));
+    /** The options that wire the plugin into a forked javac. */
+    static List<String> wiring(String pluginOptions) throws IOException {
+        return List.of(
+                "-processorpath", Javac.pluginPath(), "-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+    }
+
+    /** javac with the jdk.compiler exports, the output directory, the fixture's options and the extra ones. */
+    private static List<String> command(Spec spec, Path classes) throws IOException {
+        Files.createDirectories(spec.dir().resolve("empty"));
+        List<String> command = new ArrayList<>(List.of(spec.javac().toString()));
         Arrays.stream(System.getProperty("recipes.javacExports", "").trim().split("\\s+"))
                 .filter(flag -> !flag.isEmpty())
                 .forEach(flag -> command.add("-J" + flag));
-        command.addAll(List.of(
-                "-d", classes.toString(), "-classpath", dir.resolve("empty").toString()));
-        command.add(CompilerTreeLstTest.BYFILE);
-        command.addAll(fixture.options());
+        command.addAll(List.of("-d", classes.toString()));
+        if (!spec.fixture().options().contains("-classpath")) {
+            command.addAll(List.of("-classpath", spec.dir().resolve("empty").toString()));
+        }
+        command.addAll(spec.fixture().options());
+        command.addAll(spec.extra());
         return command;
     }
 
@@ -111,7 +144,7 @@ class ForkedJavacTest {
                 process.exitValue(), new String(output, StandardCharsets.UTF_8), Javac.hashes(classes), censusText);
     }
 
-    private static Path javac() {
+    static Path javac() {
         boolean windows =
                 System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win");
         return Path.of(System.getProperty("java.home"), "bin", windows ? "javac.exe" : "javac");

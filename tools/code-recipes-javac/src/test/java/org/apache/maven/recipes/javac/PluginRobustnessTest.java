@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
@@ -78,6 +79,37 @@ class PluginRobustnessTest {
         assertEquals(plain.exit(), with.exit(), with.output());
         assertEquals(plain.classes(), with.classes());
         assertTrue(with.output().startsWith(NOTICE), with.output());
+    }
+
+    @Test
+    void aRunOfSpacesThatJavacSplitIsANoticeAndNoDirectoryIsCreated() throws IOException {
+        Fixture fixture = EdgeFixtures.spaced().named("two-spaces");
+        Path dir = Javac.WORK.resolve("robust").resolve(fixture.name()).toAbsolutePath();
+        Path census = dir.resolve("dir with  two spaces").resolve("LST_CENSUS.tsv");
+        Path collapsed = dir.resolve("dir with two spaces");
+        absent(census.getParent());
+        absent(collapsed);
+        Javac.Compilation with = compile(fixture, (ignored, src) -> "census=" + census + " root=" + src);
+        assertFalse(Files.exists(collapsed), collapsed::toString);
+        assertTrue(with.output().startsWith(NOTICE), with.output());
+        assertEquals(1, with.output().lines().count(), with.output());
+        Javac.Compilation uri = compile(fixture, (ignored, src) -> "census=" + census.toUri() + " root=" + src.toUri());
+        assertEquals("", uri.output());
+        assertTrue(Files.isRegularFile(census), census::toString);
+    }
+
+    private static void absent(Path dir) throws IOException {
+        Javac.emptyDirectory(dir);
+        Files.delete(dir);
+    }
+
+    @Test
+    void aFailureDetailIsOneLineOfAtMost300Characters() {
+        FileState state = new FileState("p/A.java");
+        state.failed("x\n".repeat(20_000));
+        String status = state.row().status();
+        assertTrue(status.length() <= "failed: ".length() + 300, () -> Integer.toString(status.length()));
+        assertFalse(status.contains("\n"));
     }
 
     private static void assertNotice(String name, Javac.PluginArgs args) throws IOException {
