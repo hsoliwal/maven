@@ -54,6 +54,7 @@ public final class ResultReadersTest {
         absent(checks, store.allocate(), store.allocate());
         rotation(checks, store);
         timedOut(checks, new RunStore(work.resolve("runs-timeout"), 2).allocate());
+        credentials(checks, new RunStore(work.resolve("runs-credentials"), 2).allocate());
         views(checks, work);
         checks.finish();
     }
@@ -151,6 +152,35 @@ public final class ResultReadersTest {
                 && "first problem".equals(errors.get(0).asText()), failure.toString());
         checks.that("success has no digest to explain", RunResults.failure(succeeded).path("reason").asText()
                 .contains("succeeded"));
+    }
+
+    /**
+     * Maven prints a repository URL with its user and password in its own [ERROR] lines: the log fallback, a failed
+     * query's error and every string of a tool result carry {@code ***@} instead, also when a line is capped.
+     */
+    private static void credentials(Checks checks, Path dir) throws IOException {
+        Files.write(dir.resolve(ServerArguments.LOG), List.of("[ERROR] Failed to collect dependencies at fix:b:jar:1:"
+                + " Could not transfer artifact x:y:pom:1 from/to private (https://alice:S3cretPw@127.0.0.1:9/repo):"
+                + " Connect to 127.0.0.1:9 failed", "[ERROR] " + "x".repeat(280) + " https://alice:S3cretPw@h/r"),
+                StandardCharsets.UTF_8);
+        RunStore.record(dir, CompactJson.object().put("outcome", "failure"));
+        String errors = RunResults.logErrors(dir).toString();
+        checks.that("log errors: no password", !errors.contains("S3cretPw") && errors.contains("https://***@127.0.0.1"),
+                errors);
+        String failure = RunResults.failure(dir).toString();
+        checks.that("explain_failure: no password", !failure.contains("S3cretPw"), failure);
+        ObjectNode body = CompactJson.object().put("text", "clone https://u:S3cretPw@h/x");
+        body.putArray("list").add("jdbc:mysql://u:S3cretPw@db").addObject().put("deep", "git+ssh://g:S3cretPw@h");
+        String result = text(CompactJson.result(body));
+        checks.that("every string of a result redacted", !result.contains("S3cretPw") && result.contains("***@"), result);
+        String error = text(CompactJson.error("Maven failure: https://u:S3cretPw@h"));
+        checks.that("an error result redacted", !error.contains("S3cretPw"), error);
+        checks.that("a capped string redacted before the cut", !CompactJson.cap("https://alice:S3cretPw@h/x", 20)
+                .contains("S3cret"), CompactJson.cap("https://alice:S3cretPw@h/x", 20));
+    }
+
+    private static String text(io.modelcontextprotocol.spec.McpSchema.CallToolResult result) {
+        return ((io.modelcontextprotocol.spec.McpSchema.TextContent) result.content().get(0)).text();
     }
 
     /** A run stopped at its time limit says so, rather than that no extension ran. */

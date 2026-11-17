@@ -51,8 +51,8 @@ under the License.
       <artifactId>mcp-json-jackson2</artifactId>
       <version>${mcpSdkVersion}</version>
     </dependency>
-    <!-- MavenCommands of the build events extension: the one owner of the test and integration-test spelling.
-         Only that class is shaded into the server jar (see the shade filter). -->
+    <!-- MavenCommands and Redact of the build events extension: the one owner of the test and integration-test
+         spelling and of credential redaction. Only those classes are shaded into the server jar (see the filter). -->
     <dependency>
       <groupId>io.synexia</groupId>
       <artifactId>smart-maven-extension</artifactId>
@@ -117,7 +117,9 @@ under the License.
                 <filter>
                   <artifact>io.synexia:smart-maven-extension</artifact>
                   <includes>
-                    <include>org/apache/maven/agent/events/MavenCommands.class</include>
+                    <include>org/apache/maven/agent/events/MavenCommands*.class</include>
+                    <include>org/apache/maven/agent/events/Redact*.class</include>
+                    <include>org/apache/maven/agent/events/JsonText*.class</include>
                   </includes>
                 </filter>
                 <filter>

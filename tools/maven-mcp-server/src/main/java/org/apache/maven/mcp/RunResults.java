@@ -39,7 +39,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * Reads what a run left behind: the build event stream and the failure digest that the build-events extension
  * writes (formats: README, "Files the server reads"), and the Maven log. The server only reads these files; it does not
  * parse compiler or test output itself. When the extension did not run, results say so and carry the first
- * {@code [ERROR]} lines of the log instead.
+ * {@code [ERROR]} lines of the log instead, without the credentials of URLs ({@link CompactJson#cap} redacts).
  */
 final class RunResults {
 
