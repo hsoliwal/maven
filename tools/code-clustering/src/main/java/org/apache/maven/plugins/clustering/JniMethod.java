@@ -20,11 +20,17 @@ package org.apache.maven.plugins.clustering;
 
 /**
  * A Java method declared {@code native}: its atom ({@code path}, {@code symbol}), the binary name of its class in
- * internal form ({@code p/Outer$Inner}), its name, and its argument descriptor, in which a reference type that could
- * not be resolved without a class path is {@link JniNames#UNKNOWN}.
+ * internal form ({@code p/Outer$Inner}), its name, its argument descriptor, in which a reference type that could
+ * not be resolved without a class path is {@link JniNames#UNKNOWN}, and whether its last parameter is variable arity
+ * ({@code Object... args}).
  */
-record JniMethod(String path, String symbol, String className, String method, String arguments) {
+record JniMethod(String path, String symbol, String className, String method, String arguments, boolean varargs) {
     static final String UNRESOLVED = "UNRESOLVED";
+
+    /** A method with a fixed number of parameters. */
+    JniMethod(String path, String symbol, String className, String method, String arguments) {
+        this(path, symbol, className, method, arguments, false);
+    }
 
     String shortName() {
         return JniNames.shortName(className, method);

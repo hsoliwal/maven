@@ -31,14 +31,16 @@ import java.util.Map;
  * (as in AccessBridge), a table whose file names an unscanned class (so a scanned class with a same-named method stays
  * missing), the Java file's OS ({@code java_os}, LINKED_OTHER_OS), functions of an anonymous class that are not
  * orphans, methods HotSpot binds itself (VM_BOUND), and a {@code Java_} helper outside every scanned package that is
- * not an orphan.
+ * not an orphan. A defining macro whose function name is a use of a name macro ({@code DEF(n)} with
+ * {@code CLS(n)(...) {...}}) is expanded one level; a MethodHandle native with a plain {@code Object[]} parameter (not
+ * varargs) is not signature-polymorphic.
  */
 final class JniCasesTest {
     private static final Map<String, String> TREE = Map.ofEntries(
             Map.entry("share/classes/p/Alias.java", String.join("\n", "package p;", "class Alias {",
                     "    static native int batchAbi0();", "    static native int batchCudaAbi0();",
                     "    static native int fromHeader(int x);", "    native int braced();",
-                    "    native void focusGained(Object e);", "}", "")),
+                    "    native void focusGained(Object e);", "    native int nested();", "}", "")),
             Map.entry("share/native/libp/alias.h", "#define ALIAS_NAME(n) Java_p_Alias_##n\n"),
             Map.entry("share/native/libp/Alias.c", String.join("\n", "#include \"alias.h\"", "#ifdef CUDA",
                     "#define ABI_FN Java_p_Alias_batchCudaAbi0", "#else", "#define ABI_FN Java_p_Alias_batchAbi0", "#endif",
@@ -46,7 +48,8 @@ final class JniCasesTest {
                     "JNIEXPORT jint JNICALL ALIAS_NAME(fromHeader)(JNIEnv *env, jclass cls, jint x) {", "    return x;", "}",
                     "#define HANDLE(function, method) \\", "    JNIEXPORT void JNICALL \\",
                     "    function(JNIEnv *env, jobject self, jobject e) { \\", "        method(env, e); \\", "    }",
-                    "HANDLE(Java_p_Alias_focusGained, fireFocusGained)", "")),
+                    "HANDLE(Java_p_Alias_focusGained, fireFocusGained)", "#define CLS(n) Java_p_Alias_##n",
+                    "#define DEF(n) jint JNICALL CLS(n)(JNIEnv *env, jobject self) { return 0; }", "DEF(nested)", "")),
             Map.entry("share/native/libp/Braced.cpp", String.join("\n",
                     "static jint braced(JNIEnv *env, jobject self) { return 3; }", "static JNINativeMethod methods[] {",
                     "    {\"braced\", \"()I\", (void *)&braced},", "};", "")),
@@ -76,7 +79,7 @@ final class JniCasesTest {
             Map.entry("share/classes/java/lang/invoke/MethodHandle.java", String.join("\n", "package java.lang.invoke;",
                     "public abstract class MethodHandle {",
                     "    public final native Object invokeExact(Object... args) throws Throwable;",
-                    "    native void notPolymorphic(int x);", "}", "")),
+                    "    native void notPolymorphic(int x);", "    native Object poly2(Object[] args);", "}", "")),
             Map.entry("share/classes/jdk/internal/misc/Unsafe.java", "package jdk.internal.misc;\n\npublic final class Unsafe {\n"
                     + "    public native int getInt(Object o, long offset);\n}\n"));
     private static int failures;
@@ -88,20 +91,26 @@ final class JniCasesTest {
     }
 
     static void run(Path dir) throws Exception {
-        Path root = dir.resolve("tree");
-        for (Map.Entry<String, String> e : TREE.entrySet()) write(root.resolve(e.getKey()), e.getValue());
-        Path out = dir.resolve("out");
-        String line = CodeClustering.cluster(out, List.of(root), 12, 3);
-        check("summary " + line, line.endsWith(" | JNI 14 native methods: LINKED 6 LINKED_OVERLOAD 0 REGISTERED 1"
-                + " LINKED_OTHER_OS 2 VM_BOUND 3 MISSING_NATIVE 2 ORPHAN_NATIVE 1"));
-        List<String> rows = Files.readAllLines(out.resolve(JniLinker.FILE), StandardCharsets.UTF_8);
-        check("header with java_os", rows.get(0).equals(
-                "java_path\tjava_symbol\tshort_name\tlong_name\tstatus\tnative_atoms\tos_variants\tjava_os"));
+        List<String> rows = scan(dir);
         macros(rows);
         owners(rows);
         os(rows);
         orphans(rows);
         vmBound(rows);
+    }
+
+    /** Writes the tree, clusters it, checks the summary line and the header, and returns the JNI.tsv rows. */
+    private static List<String> scan(Path dir) throws Exception {
+        Path root = dir.resolve("tree");
+        for (Map.Entry<String, String> e : TREE.entrySet()) write(root.resolve(e.getKey()), e.getValue());
+        Path out = dir.resolve("out");
+        String line = CodeClustering.cluster(out, List.of(root), 12, 3);
+        check("summary " + line, line.endsWith(" | JNI 16 native methods: LINKED 7 LINKED_OVERLOAD 0 REGISTERED 1"
+                + " LINKED_OTHER_OS 2 VM_BOUND 3 MISSING_NATIVE 3 ORPHAN_NATIVE 1"));
+        List<String> rows = Files.readAllLines(out.resolve(JniLinker.FILE), StandardCharsets.UTF_8);
+        check("header with java_os", rows.get(0).equals(
+                "java_path\tjava_symbol\tshort_name\tlong_name\tstatus\tnative_atoms\tos_variants\tjava_os"));
+        return rows;
     }
 
     private static final String ALIAS = "share/classes/p/Alias.java\tAlias.";
@@ -119,6 +128,8 @@ final class JniCasesTest {
         check("defining macro given the full Java_ name", has(rows, ALIAS + "focusGained(Object)\tJava_p_Alias_focusGained\t"
                 + "Java_p_Alias_focusGained__Ljava_lang_Object_2\tLINKED\t" + ALIAS_C
                 + "HANDLE(Java_p_Alias_focusGained,fireFocusGained)\tshare\tshare"));
+        check("defining macro whose name is a use of a name macro (one level)", has(rows, ALIAS + "nested()\t"
+                + "Java_p_Alias_nested\tJava_p_Alias_nested__\tLINKED\t" + ALIAS_C + "DEF(nested)\tshare\tshare"));
     }
 
     private static void owners(List<String> rows) {
@@ -154,6 +165,8 @@ final class JniCasesTest {
                 && rows.stream().anyMatch(r -> r.contains("MethodHandle.invokeExact(Object[])") && r.contains("\tVM_BOUND\t")));
         check("a MethodHandle native that is not signature-polymorphic stays missing", rows.stream()
                 .anyMatch(r -> r.contains("MethodHandle.notPolymorphic(int)") && r.contains("\tMISSING_NATIVE\t")));
+        check("a MethodHandle native with a plain Object[] parameter (not varargs) stays missing", rows.stream()
+                .anyMatch(r -> r.contains("MethodHandle.poly2(Object[])") && r.contains("\tMISSING_NATIVE\t")));
     }
 
     private static boolean has(List<String> rows, String prefix) {

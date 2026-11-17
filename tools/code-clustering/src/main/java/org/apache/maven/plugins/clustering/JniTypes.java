@@ -28,6 +28,7 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -106,8 +107,19 @@ final class JniTypes {
             Scope scope = scope(at.getCompilationUnit(), classes, method);
             String arguments = method.getParameters().stream().map(p -> descriptor(p.getType(), scope))
                     .collect(Collectors.joining());
-            return new JniMethod(path, symbol, scope.binary(), method.getName().toString(), arguments);
+            return new JniMethod(path, symbol, scope.binary(), method.getName().toString(), arguments, varargs(method));
         });
+    }
+
+    /**
+     * Whether the last parameter is variable arity. The parse tree keeps that only as a flag, which the tree API does not
+     * expose; javac prints such a parameter as {@code Type... name}, and a plain array as {@code Type[] name}.
+     */
+    private static boolean varargs(MethodTree method) {
+        List<? extends VariableTree> params = method.getParameters();
+        if (params.isEmpty()) return false;
+        VariableTree last = params.get(params.size() - 1);
+        return last.toString().endsWith("... " + last.getName());
     }
 
     /** The named classes around a path, innermost first; empty when one of them is local or anonymous. */

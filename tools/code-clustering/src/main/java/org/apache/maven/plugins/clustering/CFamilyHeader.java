@@ -21,7 +21,6 @@ package org.apache.maven.plugins.clustering;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.IntStream;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.LexicalAtoms.Frame;
@@ -31,14 +30,12 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
 /**
  * The block a brace opens, with the C, C++ and Objective-C rules on top of the shared ones: in Objective-C a method
  * ({@link ObjectiveC}), nothing after another {@code @} directive, and {@code @implementation} ... {@code @end}; in all
- * three a function named by {@link CFunctionName}. {@link BraceBlocks} decides where a header starts: a preprocessor
- * line ({@link Preprocessor}) inside an open parenthesis is skipped, and a header after a preprocessor line that is not
- * {@link #named} is joined to the header before that line.
+ * three a function named by {@link CFunctionName}, and no atom for a {@code case} label ({@code case FOO(1): {}}).
+ * {@link BraceBlocks} decides where a header starts: a preprocessor line ({@link Preprocessor}) inside an open
+ * parenthesis or a member-initializer list is skipped, and a header after a preprocessor line that is not
+ * {@link #named} is joined to the header before that line under the conditions {@link BraceBlocks} lists.
  */
 final class CFamilyHeader {
-    /** Words a header may hold after a parameter list without naming anything. */
-    private static final Set<String> QUALIFIERS = Set.of("const", "volatile");
-
     private CFamilyHeader() { }
 
     /** The block that the header tokens open; {@code offset} is the index of the first header token in the file. */
@@ -50,8 +47,16 @@ final class CFamilyHeader {
         }
         if (objc && ObjectiveC.hasDirective(header)) return new Frame(offset, null, null, List.of());
         Frame frame = LexicalAtoms.classify(header, offset);
-        boolean c = Preprocessor.EXTENSIONS.contains(extension) && CFunctionName.applies(header, offset, frame);
-        return c ? CFunctionName.of(header, offset, frame) : frame;
+        boolean c = Preprocessor.EXTENSIONS.contains(extension);
+        if (c && caseLabel(header, frame.headerStart() - offset)) {
+            return new Frame(frame.headerStart(), null, null, List.of());
+        }
+        return c && CFunctionName.applies(header, offset, frame) ? CFunctionName.of(header, offset, frame) : frame;
+    }
+
+    /** Whether the header part that names the block starts with {@code case}: a C-family control word. */
+    private static boolean caseLabel(List<Token> header, int start) {
+        return start >= 0 && start < header.size() && header.get(start).text().equals("case");
     }
 
     /**
@@ -70,7 +75,7 @@ final class CFamilyHeader {
 
     private static boolean name(Token t) {
         boolean word = t.kind() == Kind.ID || t.kind() == Kind.KEYWORD;
-        return word && !CFunctionName.TRAILING.contains(t.text()) && !QUALIFIERS.contains(t.text());
+        return word && !CFunctionName.TRAILING.contains(t.text()) && !CFunctionName.QUALIFIERS.contains(t.text());
     }
 
     /**

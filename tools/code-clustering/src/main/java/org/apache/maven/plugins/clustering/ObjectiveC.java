@@ -29,8 +29,9 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
 /**
  * Objective-C syntax for the lexical front end ({@code .m}, {@code .mm}): a method definition ({@code -} or {@code +}
  * that starts the header or a line after macro names, an optional {@code (type)}, then the selector parts
- * {@code name:(type)argument}, or one name without arguments that is not a keyword other than {@code class},
- * {@code self} and {@code new}), {@code @implementation Name} or {@code @implementation Name (Category)}, and
+ * {@code name:(type)argument}, or one word without arguments that is not one of the C words that cannot be a selector,
+ * {@link #NON_SELECTORS}; {@code -object}, {@code -range}, {@code -type}, {@code -class} and {@code +new} are methods),
+ * {@code @implementation Name} or {@code @implementation Name (Category)}, and
  * {@code @end}. A sign after {@code case} or {@code operator} is never a method. C and C++ functions in
  * the same files keep the brace rules. A string {@code @"..."} lexes as {@code @} and a string literal, so braces in
  * it open nothing.
@@ -38,8 +39,13 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
 final class ObjectiveC {
     static final Set<String> EXTENSIONS = Set.of("m", "mm");
     private static final Token COMMA = new Token(Kind.OP, ",", 0, 0, 0);
-    /** Keywords of the shared keyword set that are also NSObject messages ({@code -class}, {@code -self}, {@code +new}). */
-    private static final Set<String> MESSAGE_KEYWORDS = Set.of("class", "self", "new");
+    /**
+     * C qualifiers, storage classes and statement words that cannot be a one-word selector in a method header
+     * ({@code - ( ) const} is the tail of an operator). Other words of the lexer's shared keyword set are selectors.
+     */
+    static final Set<String> NON_SELECTORS = Set.of("const", "volatile", "restrict", "if", "else", "for", "while", "do",
+            "switch", "case", "return", "break", "continue", "goto", "sizeof", "typedef", "extern", "static",
+            "register", "struct", "union", "enum", "void", "operator", "throw", "try", "catch", "noexcept");
 
     /**
      * A method header: the index of its {@code -} or {@code +} in the header, its full selector ({@code drawRect:},
@@ -132,9 +138,9 @@ final class ObjectiveC {
                 && tokens.get(i).end() == tokens.get(i + 1).start();
     }
 
-    /** A selector without arguments: a name, or one of the keywords NSObject answers as messages. */
+    /** A selector without arguments: any word but the {@link #NON_SELECTORS}. */
     private static boolean message(Token t) {
-        return t.kind() == Kind.ID || MESSAGE_KEYWORDS.contains(t.text());
+        return word(t) && !NON_SELECTORS.contains(t.text());
     }
 
     private static boolean sign(Token t) {

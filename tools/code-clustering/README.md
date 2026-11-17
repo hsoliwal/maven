@@ -129,21 +129,35 @@ the classes and the native sources in one run, for example a JDK module director
 - **Native side.** The METHOD atoms of `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.m` and `.mm` files, from
   any front end, by their own name (`JNIEXPORT` is not required: the JVM finds a function by its name). In these
   files the lexical front end ends a header at a preprocessor line (`#include`, `#if !defined(X)`), except inside an
-  open parenthesis or square bracket (`#ifdef` among the parameters, whose every branch then counts), and joins a
-  header that names nothing after a preprocessor line (`#if ... __attribute__((hot)) #endif` before the brace) to
-  the header before it. It names a function by the first name before a top-level parameter list that is not a macro
-  call: a macro call is followed by another declaration word (`DEFINE(Int, jint)` or `METHODDEF(void)` on the line
-  above) while another candidate follows; candidates after a member-initializer list (`: base(a), m(0)`) do not count,
-  and `noexcept(...)` or `__attribute__((...))` never names a function. Functions whose names a macro gives are
+  open parenthesis or square bracket (`#ifdef` among the parameters, whose every branch then counts) or a C++
+  member-initializer list, and joins a header that names nothing after a preprocessor line (`#if ...
+  __attribute__((hot)) #endif` before the brace) to the header before it. That join happens only outside function
+  bodies, and only when the joined header is a type, an Objective-C method, or ends in the parameter list of the
+  function it names plus trailing specifiers, with no `=` and no leading control word; so `UNUSED(x) #endif #if ..
+  if (m) #endif {` in a function body and `XVEC(1, 2), ... #else {1, 2}` in an array initializer are not functions.
+  It names a function by the first name before a top-level parameter list that is not a macro call: a macro call is
+  followed by another declaration word (`DEFINE(Int, jint)` or `METHODDEF(void)` on the line above) while another
+  candidate follows. A `:` starts a member-initializer list (`: base(a), m(0)`, whose names do not count) only right
+  after a candidate's parameter list and its trailing specifiers (`const`, `noexcept(...)`, `try`, and upper-case
+  specifier macros such as `VULKAN_HPP_NOEXCEPT` or `SK_ACQUIRE(lock)`); an access label (`SG_ATTRIBUTE(...) private:
+  T getEffect() const {`) never does. `noexcept(...)` or `__attribute__((...))` never names a function, and a
+  `case FOO(1): {` block is not an atom. In C++ files (`.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.h`, `.mm`) the
+  member-initializer list runs on to the constructor's body: a brace right after an element's qualified name
+  (`fOrigin{0, 0}`, `Base<T>{a}`) or inside parentheses (`({150, 150})`, a lambda body) belongs to the list, and the
+  body is the first other brace, after `)`, a closing brace or a macro that stands for an initializer
+  (`st STATE_DEFAULT {}`). Outside function bodies, a brace initializer inside parentheses (a default argument
+  `SkVector advance = {0, 0}`) opens no block either. Functions whose names a macro gives are
   expanded: an object-like alias, `#define FN Java_p_Lib_open` used as `JNIEXPORT jint JNICALL FN(...) {...}` (an
   alias defined once per `#if` branch gives every branch's name); a name macro, `#define JNI_NAME(n) Java_p_Lib_##n`
   used as `JNI_NAME(open)(JNIEnv *env, ...) {...}`; a macro that defines whole functions,
-  `#define DEFINE(NAME, T) ... Java_p_Lib_sort##NAME##0(...) {...}` instantiated as `DEFINE(Int, jint)`; and a
+  `#define DEFINE(NAME, T) ... Java_p_Lib_sort##NAME##0(...) {...}` instantiated as `DEFINE(Int, jint)`; a
   defining macro whose function name is a parameter, `#define HANDLE(function, m) ... function(JNIEnv *env, ...) {...}`
-  instantiated with the full name, `HANDLE(Java_p_Lib_focusGained, fire)`. The macros of every header (`.h`, `.hh`,
-  `.hpp`) under the root apply in every native file; a file's own macros hide a header's macro of the same name. They
-  are shown as written (`path#FN`, `path#JNI_NAME(open)`, `path#DEFINE(Int,jint)`); nothing else of the preprocessor
-  is run. RegisterNatives tables are arrays `JNINativeMethod name[] = {...}` or `name[] {...}` whose entries give the
+  instantiated with the full name, `HANDLE(Java_p_Lib_focusGained, fire)`; and, one level deep, a defining macro
+  whose function name is a use of a name macro, `#define DEF(n) ... CLS(n)(JNIEnv *env, ...) {...}` with
+  `#define CLS(n) Java_p_Lib_##n` (deeper nesting is not expanded, and its methods stay MISSING_NATIVE). The macros
+  of every header (`.h`, `.hh`, `.hpp`) under the root apply in every native file; a file's own macros hide a
+  header's macro of the same name. They are shown as written (`path#FN`, `path#JNI_NAME(open)`,
+  `path#DEFINE(Int,jint)`, `path#DEF(open)`); nothing else of the preprocessor is run. RegisterNatives tables are arrays `JNINativeMethod name[] = {...}` or `name[] {...}` whose entries give the
   method name as a string literal: an entry fits a native method with that name and, when both are known, the same
   signature, of a class that the table's file writes as a string literal (`FindClass(env, "p/Peer")`, scanned or not)
   or defines `Java_` functions of; only when the file has neither a class-name literal nor a `Java_` function does any
@@ -172,8 +186,9 @@ VM_BOUND covers the native methods that HotSpot binds without library code, so t
 binds in its own table (`lookup_special_native_methods` in `nativeLookup.cpp`): `jdk.internal.foreign.abi.UpcallStubs`,
 `UpcallLinker`, `NativeEntryPoint`, `jdk.internal.vm.vector.VectorSupport`, `jdk.internal.misc.ScopedMemoryAccess`,
 `jdk.vm.ci.runtime.JVMCI`, `jdk.vm.ci.services.Services` and the WhiteBox test classes; and the signature-polymorphic
-methods of `java.lang.invoke.MethodHandle` and `VarHandle` (native with one `Object...` parameter). A method with
-native code in the scan keeps the status that code gives it.
+methods of `java.lang.invoke.MethodHandle` and `VarHandle` (native with a single variable arity `Object...`
+parameter; a plain `Object[]` parameter does not count). A method with native code in the scan keeps the status that
+code gives it.
 
 An unused `Java_` function is ORPHAN_NATIVE only when its name starts with a package that the scan holds Java classes
 of (`Java_p_q_` for package `p.q`), so a `Java_` prefix on a C helper (`Java_CTProvider`) or the functions of a
@@ -233,7 +248,11 @@ lines. `ObjectiveCTest` checks instance and class methods by selector, `@impleme
 around them, `@"{"`, `@synchronized` and a renamed argument. `CFamilyTest` checks C and C++ headers: a constructor
 with a member-initializer list, destructors, operators, a macro call above a function, a macro-named function,
 `#ifdef` among parameters, `#if ... __attribute__ ... #endif` before the brace, and that `case -kLimit: {` and C++
-operators in `.mm` are not Objective-C methods. `JniNamesTest` checks the JNI specification's escaping
+operators in `.mm` are not Objective-C methods. `CFamilyBlocksTest` checks an access label after semicolon-less
+macro calls, upper-case specifier macros before an initializer list (also with `#if` branches in it), no join across
+`#if` inside a function body or an array initializer, brace, `Base{a}`, `({150, 150})`, lambda, `#ifdef` and macro
+elements in member-initializer lists, brace default arguments, a parenthesis left open by a macro body that does
+not swallow the next namespace, `case FOO(1): {`, and the one-word selectors `-object`, `-range` and `-type`. `JniNamesTest` checks the JNI specification's escaping
 cases and compares the names of a fixture (overloads, arrays, a nested class, a type variable, imported, same-package
 and on-demand types, varargs, a non-ASCII name) with the headers `javac -h` writes for it. `JniTypesTest` compares
 the names of member types inherited from a superclass, a platform superclass and a platform interface with
@@ -241,8 +260,33 @@ the names of member types inherited from a superclass, a platform superclass and
 JDK-shaped tree with `share`, `unix`, `windows`, `linux` and `macosx` native code: every status, the OS variants, a
 RegisterNatives table with and without `FindClass`, a macro-named function, and the removal of a stale `JNI.tsv`.
 `JniCasesTest` checks an object-like alias in two `#if` branches, a name macro from a header, a table without `=`,
-a defining macro given the full `Java_` name, a table whose file names an unscanned class, `java_os` and
-LINKED_OTHER_OS, anonymous-class functions, VM_BOUND methods, and `Java_` helpers outside the scanned packages.
+a defining macro given the full `Java_` name, a defining macro whose name is a use of a name macro, a table whose
+file names an unscanned class, `java_os` and LINKED_OTHER_OS, anonymous-class functions, VM_BOUND methods (and a
+plain `Object[]` MethodHandle native that is not), and `Java_` helpers outside the scanned packages.
+
+## C-family atoms on JDK modules
+
+The C-family rules above change the C, C++ and Objective-C atoms of native code, never the atoms of other languages
+(the Java, Go, JavaScript, Python, Rust and TypeScript atoms of the six modules below are byte-identical across the
+three versions). Counts from `J:/converge-join/m3jdk/src` (round 0: before the C-family rules; round 1: constructors,
+destructors, operators and `#if` lines; round 2: access labels, joins, initializer lists, `case` labels):
+
+| Module | Round 0 | Round 1 | Round 2 |
+|---|---|---|---|
+| java.base | 2934 | 2933 | 2932 |
+| java.desktop | 19444 | 19718 | 19716 |
+| jdk.accessibility | 665 | 665 | 665 |
+| jdk.m3.collections | 371 | 371 | 371 |
+| jdk.m3.io | 52 | 52 | 52 |
+| jdk.m3.graphics | 136438 | 149000 | 150282 |
+
+In jdk.m3.graphics, joined with round 1 by path, kind and closing line: 148517 atoms keep their symbol, 265 are
+renamed (constructors named after their class instead of a member, base or specifier macro, and the 8 functions that
+round 1 had named `SG_ATTRIBUTE` named after themselves again), 136 constructors keep their name with a later closing
+line (the body, not a brace initializer), 1366 constructors are new atoms (1219 in `vulkan_structs.hpp` with
+`= {}` default arguments, 19 in `VelloComputeSteps.cpp` with `({...})` initializers), and 77 false atoms are gone
+(`case` labels, initializer elements, `PNG_UNUSED`, `XVEC`). METHOD atoms named after an `f`-prefixed member went
+2780 -> 76 -> 2. JNI statuses are unchanged by round 2 in every module.
 
 ## Report columns
 

@@ -30,8 +30,8 @@ import java.util.Set;
  * {@code nativeLookup.cpp}): {@code jdk.internal.foreign.abi.UpcallStubs}, {@code UpcallLinker},
  * {@code NativeEntryPoint}, {@code jdk.internal.vm.vector.VectorSupport}, {@code jdk.internal.misc.ScopedMemoryAccess},
  * {@code jdk.vm.ci.runtime.JVMCI}, {@code jdk.vm.ci.services.Services} and the WhiteBox test classes; and the
- * signature-polymorphic methods of {@code java.lang.invoke.MethodHandle} and {@code VarHandle} (native, with one
- * {@code Object...} parameter, JLS 15.12.3).
+ * signature-polymorphic methods of {@code java.lang.invoke.MethodHandle} and {@code VarHandle} (native, with a single
+ * variable arity parameter of type {@code Object[]}, JLS 15.12.3); a plain {@code Object[]} parameter does not count.
  */
 final class JniVmBound {
     private static final Set<String> OWNERS = Set.of("java/lang/Object", "jdk/internal/misc/Unsafe",
@@ -46,6 +46,7 @@ final class JniVmBound {
     private JniVmBound() { }
 
     static boolean bound(JniMethod m) {
-        return OWNERS.contains(m.className()) || POLYMORPHIC.contains(m.className()) && m.arguments().equals(OBJECT_VARARGS);
+        return OWNERS.contains(m.className())
+                || POLYMORPHIC.contains(m.className()) && m.varargs() && m.arguments().equals(OBJECT_VARARGS);
     }
 }

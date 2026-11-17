@@ -72,6 +72,12 @@ final class JniTypesTest {
     }
 
     static void run(Path dir) throws Exception {
+        inherited(dir);
+        unknownSuperclass(dir);
+    }
+
+    /** The inheritance fixture: every computed long name equals the one {@code javac -h} writes. */
+    private static void inherited(Path dir) throws Exception {
         Path src = dir.resolve("src");
         write(src.resolve("p/Base.java"), BASE);
         write(src.resolve("p/Entry.java"), ENTRY);
@@ -84,6 +90,10 @@ final class JniTypesTest {
         check("javac -h compiles the inheritance fixture: " + javac, javac == 0);
         check("inherited member types: javac -h " + headers + " equal computed " + computed,
                 headers.equals(computed) && headers.size() == 7);
+    }
+
+    /** A class whose superclass is not known: a reference argument is UNRESOLVED, a primitive overload is not. */
+    private static void unknownSuperclass(Path dir) throws Exception {
         Path odd = dir.resolve("odd");
         write(odd.resolve("u/Odd.java"), ODD);
         Set<String> oddNames = natives(odd).stream().map(JniMethod::longName).collect(Collectors.toCollection(TreeSet::new));

@@ -21,6 +21,7 @@ package org.apache.maven.plugins.clustering;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -34,8 +35,11 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
  * its symbol ({@code operator+}, {@code operator()}, {@code operator new[]}, {@code operator bool}). A destructor is
  * {@code ~Name}. The function is the first candidate that is not a macro call: a candidate is a macro call when a
  * declaration word (a name or keyword other than {@link #TRAILING}) follows its argument list and another candidate
- * comes later, as in {@code DEFINE(Int, jint)} or {@code METHODDEF(void)} on the line above a function. Candidates
- * after a member-initializer list ({@code : base(a), m(0)}) do not count, and specifiers with an argument
+ * comes later, as in {@code DEFINE(Int, jint)} or {@code METHODDEF(void)} on the line above a function. A ':' starts a
+ * member-initializer list ({@code : base(a), m(0)}) only right after a candidate's parameter list and its trailing
+ * specifiers ({@link #specifiers}, which take upper-case specifier macros such as {@code VULKAN_HPP_NOEXCEPT} or
+ * {@code SK_ACQUIRE(lock)}); candidates after it do not count. A ':' after an access label, as in
+ * {@code SG_ATTRIBUTE(...) private: T getEffect() const}, never does. Specifiers with an argument
  * ({@code noexcept(true)}, {@code __attribute__((hot))}) are never candidates. The atom starts after the last macro
  * call and after an access label ({@code public:}).
  */
@@ -46,6 +50,12 @@ final class CFunctionName {
     /** Words that may follow a parameter list without starting another declaration. */
     static final Set<String> TRAILING = Stream.concat(SPECIFIERS.stream(),
             Stream.of("override", "final", "try", "mutable", "throw")).collect(Collectors.toUnmodifiableSet());
+    /** Qualifiers that may follow a parameter list ({@code const}, {@code volatile}, ref-qualifiers). */
+    static final Set<String> QUALIFIERS = Set.of("const", "volatile", "&", "&&");
+    /** Words that label an access section: a {@code :} after them never starts a member-initializer list. */
+    static final Set<String> ACCESS = Set.of("public", "private", "protected", "signals", "slots", "Q_SIGNALS", "Q_SLOTS");
+    /** An upper-case name, as a macro that stands for a specifier is written ({@code VULKAN_HPP_NOEXCEPT}). */
+    private static final Pattern MACRO_WORD = Pattern.compile("[A-Z][A-Z0-9_]+");
     private static final String OPERATOR = "operator";
 
     /** A candidate: where its name starts, the name, its parameter list's parenthesis and the index after the list. */
@@ -76,8 +86,26 @@ final class CFunctionName {
     static Frame of(List<Token> header, int offset, Frame frame) {
         int from = frame.headerStart() - offset;
         CFunctionName name = new CFunctionName(header.subList(from, header.size()));
-        return IntStream.range(0, name.candidates.size()).filter(c -> !name.macroCall(c)).boxed().findFirst()
-                .map(c -> name.frame(c, offset + from)).orElse(frame);
+        return name.named().mapToObj(c -> name.frame(c, offset + from)).findFirst().orElse(frame);
+    }
+
+    /**
+     * Whether a header ends in the parameter list of the function it names, followed by trailing specifiers only: then
+     * a ':' after it starts a member-initializer list, and a header continued after preprocessor lines belongs to it.
+     * A header with an {@code =} outside brackets (other than {@code operator=}) or that starts with a control word
+     * does not.
+     */
+    static boolean endsInParameters(List<Token> header) {
+        if (header.isEmpty() || LexicalAtoms.CONTROL.contains(header.get(0).text())) return false;
+        CFunctionName name = new CFunctionName(header);
+        boolean assigns = IntStream.range(0, header.size()).anyMatch(i -> name.depth[i] == 0
+                && header.get(i).text().equals("=") && (i == 0 || !header.get(i - 1).text().equals(OPERATOR)));
+        return !assigns && name.named().anyMatch(c -> name.specifiers(name.candidates.get(c).after()) == header.size());
+    }
+
+    /** The index of the candidate that names the function, the first that is not a macro call; empty without one. */
+    private IntStream named() {
+        return IntStream.range(0, candidates.size()).filter(c -> !macroCall(c)).limit(1);
     }
 
     private Frame frame(int c, int offset) {
@@ -89,14 +117,37 @@ final class CFunctionName {
                 LexicalAtoms.group(h, named.paren()));
     }
 
-    /** The candidates in order, up to a member-initializer list after the first one's parameter list. */
+    /**
+     * The candidates in order, up to the first one whose parameter list and trailing specifiers are followed by a
+     * member-initializer ':'; the candidates inside the initializer list ({@code m(0)}) do not count.
+     */
     private List<Candidate> candidates() {
         List<Candidate> all = IntStream.range(0, h.size()).filter(i -> depth[i] == 0).mapToObj(this::candidate)
                 .flatMap(Optional::stream).toList();
-        if (all.isEmpty()) return all;
-        int stop = IntStream.range(all.get(0).after(), h.size()).filter(i -> depth[i] == 0 && h.get(i).text().equals(":"))
-                .findFirst().orElse(h.size());
-        return all.stream().filter(c -> c.start() < stop).toList();
+        int last = IntStream.range(0, all.size()).filter(c -> colon(specifiers(all.get(c).after()))).findFirst()
+                .orElse(all.size() - 1);
+        return all.subList(0, last + 1);
+    }
+
+    private boolean colon(int i) {
+        return i < h.size() && h.get(i).text().equals(":");
+    }
+
+    /**
+     * The index after the trailing specifiers that start at {@code i}: {@link #TRAILING} words and upper-case macro
+     * names other than {@link #ACCESS} labels, each with its argument ({@code noexcept(false)},
+     * {@code __attribute__((hot))}, {@code VULKAN_HPP_NOEXCEPT}, {@code SK_ACQUIRE(lock)}), and {@link #QUALIFIERS}.
+     */
+    private int specifiers(int i) {
+        if (i >= h.size()) return i;
+        String t = h.get(i).text();
+        boolean specifier = TRAILING.contains(t) || macroWord(h.get(i));
+        if (specifier && i + 1 < h.size() && h.get(i + 1).text().equals("(")) return specifiers(after(h, i + 1));
+        return specifier || QUALIFIERS.contains(t) ? specifiers(i + 1) : i;
+    }
+
+    private static boolean macroWord(Token t) {
+        return t.kind() == Kind.ID && MACRO_WORD.matcher(t.text()).matches() && !ACCESS.contains(t.text());
     }
 
     private Optional<Candidate> candidate(int i) {
