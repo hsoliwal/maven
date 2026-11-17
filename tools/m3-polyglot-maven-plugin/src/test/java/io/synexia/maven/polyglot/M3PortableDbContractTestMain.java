@@ -51,12 +51,32 @@ public final class M3PortableDbContractTestMain {
                 // Symlink setup is optional on Windows.
             }
             check(!Files.exists(root.resolve("elsewhere"), LinkOption.NOFOLLOW_LINKS), "no out-of-scope writes");
+            rejectsUnapprovedJdbcBackends(first);
             System.out.println("PASS: " + passed + " M3 portable module DB lock cases");
         } finally {
             try (var paths = Files.walk(root)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
                     Files.deleteIfExists(path);
                 }
+            }
+        }
+    }
+
+    private static void rejectsUnapprovedJdbcBackends(Path module) throws Exception {
+        boolean refused = false;
+        try {
+            new M3ModuleJdbcStorage(module, "remote-postgres");
+        } catch (IllegalArgumentException expected) {
+            refused = true;
+        }
+        check(refused, "network JDBC backend ids are not accepted");
+        for (String[] option : new String[][] {
+                {"sqlite", "org.sqlite.JDBC"}, {"h2", "org.h2.Driver"}}) {
+            try {
+                Class.forName(option[1]);
+            } catch (ClassNotFoundException unavailable) {
+                expectFailure(() -> new M3ModuleJdbcStorage(module, option[0]),
+                        "missing explicit " + option[0] + " driver refuses selection");
             }
         }
     }
