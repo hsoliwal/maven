@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * {@code @m3:clustering:atomizer:<language>} and {@code @m3:clustering:differ:<language>}: the code clustering
@@ -59,7 +60,7 @@ public final class ClusteringProvider implements M3ToolProvider {
     }
 
     @Override public Set<M3ToolCapability> capabilities() {
-        return Set.of(M3ToolCapability.ATOMIZER, M3ToolCapability.DIFFER);
+        return ToolArgs.kinds(() -> Set.of(M3ToolCapability.ATOMIZER, M3ToolCapability.DIFFER));
     }
 
     @Override public Set<String> languages() {
@@ -93,12 +94,9 @@ public final class ClusteringProvider implements M3ToolProvider {
         List<String> roots = absolute(args.subList(3, args.size()), task, workspace);
         String out = ToolArgs.absolute(workspace, task, args.get(2));
         ToolArgs.outside(out, roots);
-        List<String> argv = new ArrayList<>(List.of(ToolArgs.java()));
-        failOn.ifPresent(states -> argv.add("-Dclustering.failOn=" + states));
-        argv.addAll(List.of("-cp", ToolArgs.absolute(workspace, task, args.get(0)), MAIN, "compare",
-                ToolArgs.absolute(workspace, task, args.get(1)), out));
-        argv.addAll(roots);
-        return argv;
+        return Stream.of(List.of(ToolArgs.java()), failOn.map(states -> List.of("-Dclustering.failOn=" + states))
+                .orElse(List.of()), List.of("-cp", ToolArgs.absolute(workspace, task, args.get(0)), MAIN, "compare",
+                ToolArgs.absolute(workspace, task, args.get(1)), out), roots).flatMap(List::stream).toList();
     }
 
     private static List<String> absolute(List<String> paths, TaskManifest.Task task, Path workspace) {

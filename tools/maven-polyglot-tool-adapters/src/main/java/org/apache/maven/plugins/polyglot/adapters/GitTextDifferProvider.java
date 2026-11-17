@@ -29,26 +29,26 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
- * {@code @m3:git:differ:text}: a unified diff written by the original git program, in two modes.
+ * {@code @m3:git:differ:text}: a unified diff written by the original git program through {@link GitDiffMain}, which
+ * pins every byte-changing setting ({@link PinnedGit}) and tells git's errors from differences. Two modes:
  * <ul>
- *   <li>{@code trees <git> <before> <after> <out.patch>}: {@code git diff --no-index}; exit 1 means "differences found"
- *   and is a declared success. Report grade: the paths keep both folder names, so code-patch does not apply it.</li>
+ *   <li>{@code trees <git> <before> <after> <out.patch>}: {@code git diff --no-index}; before and after must be
+ *   declared inputs (so the engine checks they exist). Report grade: the paths keep both folder names, so code-patch
+ *   does not apply it.</li>
  *   <li>{@code repo <git> <repository> <revision> <out.patch> [<pathspec>...]}: the work tree of a git repository
- *   against a revision; paths are repository-relative, so code-patch can plan, verify and apply the patch.</li>
+ *   against a revision, untracked (not ignored) files included; paths are repository-relative, so code-patch can
+ *   plan, verify and apply the patch.</li>
  * </ul>
- * User and system configuration are pinned so the bytes do not depend on the machine: Git for Windows sets
- * {@code core.autocrlf=true} in its system configuration, which turns CRLF into LF in the patch.
+ * Either mode exits 0 with the patch (empty when nothing differs) and 2 without one when git failed. The repository's
+ * own {@code .gitattributes} still apply: with {@code text}/{@code eol} conversion the patch is in repository form.
  */
 public final class GitTextDifferProvider implements M3ToolProvider {
+    static final String MAIN = "org.apache.maven.plugins.polyglot.adapters.GitDiffMain";
     static final String USAGE = "trees <git> <before> <after> <out.patch>"
             + " | repo <git> <repository> <revision> <out.patch> [<pathspec>...]";
-    static final List<String> PINNED_CONFIG = List.of("-c", "core.autocrlf=false", "-c", "core.safecrlf=false",
-            "-c", "core.quotePath=true", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
-            "-c", "diff.relative=false");
-    static final List<String> DIFF_OPTIONS = List.of("--no-color", "--no-ext-diff", "--no-textconv", "--binary",
-            "--no-renames", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers");
     private static final System.Logger LOG = System.getLogger(GitTextDifferProvider.class.getName());
 
     @Override public String id() {
@@ -56,7 +56,7 @@ public final class GitTextDifferProvider implements M3ToolProvider {
     }
 
     @Override public Set<M3ToolCapability> capabilities() {
-        return Set.of(M3ToolCapability.DIFFER);
+        return ToolArgs.kinds(() -> Set.of(M3ToolCapability.DIFFER));
     }
 
     @Override public Set<String> languages() {
@@ -66,44 +66,44 @@ public final class GitTextDifferProvider implements M3ToolProvider {
     @Override public List<String> command(M3ToolCapability capability, String language, TaskManifest.Task task,
             Path workspace) throws IOException {
         List<String> args = ToolArgs.count(task, 5, 1024, USAGE);
-        List<String> argv = new ArrayList<>(List.of(args.get(1)));
-        switch (args.get(0)) {
-            case "trees" -> argv.addAll(trees(args, task, workspace));
-            case "repo" -> argv.addAll(repo(args, task, workspace));
+        List<String> operands = switch (args.get(0)) {
+            case "trees" -> trees(args, task);
+            case "repo" -> repo(args, task, workspace);
             default -> throw new IOException("usage: " + USAGE);
-        }
+        };
+        String out = ToolArgs.absolute(workspace, task, args.get(4));
+        ToolArgs.nested(Stream.of(List.of(args.get(1)), operands, List.of(out)).flatMap(List::stream).toList());
+        List<String> argv = argv(args, operands, out);
         LOG.log(System.Logger.Level.DEBUG, "planned git differ: {0}", argv);
         return ToolArgs.launch(argv);
     }
 
-    private static List<String> trees(List<String> args, TaskManifest.Task task, Path workspace) throws IOException {
+    /** {@code java -cp <adapters> GitDiffMain <mode> <git>}, the first two operands, the patch, the pathspecs. */
+    private static List<String> argv(List<String> args, List<String> operands, String out) throws IOException {
+        int split = Math.min(2, operands.size());
+        return Stream.of(List.of(ToolArgs.java(), "-cp", ToolArgs.home(GitTextDifferProvider.class), MAIN, args.get(0),
+                args.get(1)), operands.subList(0, split), List.of(out), operands.subList(split, operands.size()))
+                .flatMap(List::stream).toList();
+    }
+
+    /** The two trees as given (patch headers keep them), each one a declared input. */
+    private static List<String> trees(List<String> args, TaskManifest.Task task) throws IOException {
         if (args.size() != 5) {
             throw new IOException("usage: " + USAGE);
         }
-        List<String> argv = new ArrayList<>(PINNED_CONFIG);
-        argv.addAll(List.of("diff", "--no-index"));
-        argv.addAll(DIFF_OPTIONS);
-        argv.add("--output=" + ToolArgs.absolute(workspace, task, args.get(4)));
-        argv.addAll(List.of("--", ToolArgs.operand(args.get(2), "before"), ToolArgs.operand(args.get(3), "after")));
-        return argv;
+        List<String> trees = List.of(ToolArgs.operand(args.get(2), "before"), ToolArgs.operand(args.get(3), "after"));
+        if (!trees.stream().map(tree -> ToolArgs.declared(task, tree)).allMatch(task.inputs()::contains)) {
+            throw new IOException("before and after must be declared inputs, so the engine checks they exist: " + trees);
+        }
+        return trees;
     }
 
+    /** Repository, revision, then the pathspecs. */
     private static List<String> repo(List<String> args, TaskManifest.Task task, Path workspace) throws IOException {
-        List<String> argv = new ArrayList<>(List.of("-C", ToolArgs.absolute(workspace, task, args.get(2))));
-        argv.addAll(PINNED_CONFIG);
-        argv.add("diff");
-        argv.addAll(DIFF_OPTIONS);
-        argv.add("--output=" + ToolArgs.absolute(workspace, task, args.get(4)));
-        argv.add(ToolArgs.operand(args.get(3), "revision"));
-        argv.add("--");
-        argv.addAll(args.subList(5, args.size()));
-        return argv;
-    }
-
-    /** {@code git diff --no-index} exits 1 when the trees differ; {@code git diff <revision>} exits 0 either way. */
-    @Override public Set<Integer> successExitCodes(M3ToolCapability capability, String language,
-            TaskManifest.Task task) {
-        return "trees".equals(task.arguments().get(0)) ? Set.of(0, 1) : Set.of(0);
+        List<String> operands = new ArrayList<>(List.of(ToolArgs.absolute(workspace, task, args.get(2)),
+                ToolArgs.operand(args.get(3), "revision")));
+        operands.addAll(args.subList(5, args.size()));
+        return operands;
     }
 
     @Override public List<M3Report> reports(M3ToolCapability capability, String language, TaskManifest.Task task) {

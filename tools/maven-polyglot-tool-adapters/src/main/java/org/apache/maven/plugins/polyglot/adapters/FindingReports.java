@@ -31,8 +31,9 @@ import java.util.stream.IntStream;
 
 /**
  * Writes the findings of one analyzer or linter run in the two formats the fork reads: SARIF 2.1.0 (one run, rules,
- * results located against the {@code SRCROOT} base) and build-events v1 {@code diagnostic} lines (the shape of
- * {@code org.apache.maven.agent.events.Diagnostic}; {@code tMs} is 0 because single diagnostics are not timed).
+ * results located against the {@code SRCROOT} base, or at an absolute URI outside it) and build-events v1
+ * {@code diagnostic} lines (the shape and vocabulary of {@code org.apache.maven.agent.events.Diagnostic}, see
+ * {@link EventVocabulary}; {@code tMs} is 0 because single diagnostics are not timed).
  * Findings are de-duplicated and sorted, so the same findings always give the same bytes. JDK only: the SARIF reader
  * of m3-analyzer-report-adapter reads this output back (its writer gap is recorded in FOSS_REUSE_DECISION.tsv).
  */
@@ -49,7 +50,7 @@ final class FindingReports {
     static void write(Path jsonl, Path sarif, Tool tool, Path root, List<Finding> findings, List<String> incomplete)
             throws IOException {
         List<Finding> sorted = findings.stream().distinct().sorted(Finding.ORDER).toList();
-        Files.writeString(parents(jsonl), events(tool, sorted), StandardCharsets.UTF_8);
+        Files.writeString(parents(jsonl), events(tool, root, sorted), StandardCharsets.UTF_8);
         Files.writeString(parents(sarif), sarif(tool, root, sorted, incomplete), StandardCharsets.UTF_8);
     }
 
@@ -65,16 +66,18 @@ final class FindingReports {
         return normal.startsWith(root) ? root.relativize(normal).toString().replace('\\', '/') : normal.toUri().toString();
     }
 
-    static String events(Tool tool, List<Finding> findings) {
-        return IntStream.range(0, findings.size()).mapToObj(i -> event(i + 1, tool, findings.get(i)) + "\n")
+    static String events(Tool tool, Path root, List<Finding> findings) {
+        return IntStream.range(0, findings.size()).mapToObj(i -> event(i + 1, tool, root, findings.get(i)) + "\n")
                 .collect(Collectors.joining());
     }
 
-    private static String event(int seq, Tool tool, Finding f) {
+    /** One line; an unknown rule is null and the message is cleaned and bounded, as the owner writes them. */
+    private static String event(int seq, Tool tool, Path root, Finding f) {
+        String rule = f.eventRule().isEmpty() ? "null" : quote(f.eventRule());
         return "{\"v\":1,\"seq\":" + seq + ",\"tMs\":0,\"type\":\"diagnostic\",\"project\":null,\"source\":"
                 + quote(tool.source()) + ",\"severity\":" + quote(f.level().severity()) + ",\"file\":" + quote(f.file())
-                + ",\"line\":" + number(f.line()) + ",\"column\":" + number(f.column()) + ",\"rule\":" + quote(f.rule())
-                + ",\"message\":" + quote(f.message()) + ",\"mojo\":null}";
+                + ",\"line\":" + number(f.line()) + ",\"column\":" + number(f.column()) + ",\"rule\":" + rule
+                + ",\"message\":" + quote(EventVocabulary.clean(f.eventMessage(), root)) + ",\"mojo\":null}";
     }
 
     static String sarif(Tool tool, Path root, List<Finding> findings, List<String> incomplete) {
@@ -104,7 +107,7 @@ final class FindingReports {
 
     private static String location(Finding f) {
         if (f.file().isEmpty()) return "";
-        boolean absolute = f.file().startsWith("file:");
+        boolean absolute = f.absolute();
         String artifact = "{\"uri\":" + quote(absolute ? f.file() : uri(f.file()))
                 + (absolute ? "" : ",\"uriBaseId\":\"" + ROOT_BASE + "\"") + "}";
         String region = f.line() == 0 ? "" : ",\"region\":{\"startLine\":" + f.line()

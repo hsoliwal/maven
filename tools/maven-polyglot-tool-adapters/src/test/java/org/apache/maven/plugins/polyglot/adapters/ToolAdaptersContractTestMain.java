@@ -27,7 +27,6 @@ import io.synexia.maven.polyglot.M3ToolProviders;
 import io.synexia.maven.polyglot.TaskManifest;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -70,9 +69,6 @@ public final class ToolAdaptersContractTestMain {
         codePatchApprovals(ws);
         javacPlugins(ws);
         lspLinter(ws);
-        reports(ws);
-        javacHostCompiles(ws);
-        javacHostReportsCrashedPlugin(ws);
     }
 
     private static void inventory() throws Exception {
@@ -89,11 +85,10 @@ public final class ToolAdaptersContractTestMain {
     private static void gitTrees(Path ws) throws Exception {
         var trees = plan(task("@m3:git:differ:text", List.of("trees", "git", "before", "after", "out/f.patch"),
                 List.of("before", "after"), List.of("out/f.patch")), ws, false);
-        require(trees.argv().get(0).equals("git") && trees.argv().contains("core.autocrlf=false")
-                && trees.argv().contains("--no-index") && trees.argv().contains("--output=" + ws.resolve("out/f.patch"))
-                && trees.argv().subList(trees.argv().size() - 3, trees.argv().size()).equals(List.of("--", "before", "after")),
+        require(trees.argv().get(3).equals(GitTextDifferProvider.MAIN) && trees.argv().subList(4, trees.argv().size())
+                .equals(List.of("trees", "git", "before", "after", ws.resolve("out/f.patch").toString())),
                 "trees argv: " + trees.argv());
-        require(trees.successExitCodes().equals(Set.of(0, 1)) && trees.effect() == M3ToolEffect.READS_SOURCES
+        require(trees.successExitCodes().equals(Set.of(0)) && trees.effect() == M3ToolEffect.READS_SOURCES
                 && trees.reports().equals(List.of(new M3Report("out/f.patch", M3ReportFormat.UNIFIED_DIFF))), "trees contract");
         refuses(() -> plan(task("@m3:git:differ:text", List.of("trees", "git", "before", "after", "out/f.patch"),
                 List.of("before", "after"), List.of("out/other.patch")), ws, false), "undeclared report");
@@ -103,9 +98,9 @@ public final class ToolAdaptersContractTestMain {
     private static void gitRepo(Path ws) throws Exception {
         var repo = plan(task("@m3:git:differ:text", List.of("repo", "git", "work", "HEAD", "out/r.patch", "src"),
                 List.of("work"), List.of("out/r.patch")), ws, false);
-        require(repo.argv().subList(1, 3).equals(List.of("-C", ws.resolve("work").toString()))
-                && repo.argv().subList(repo.argv().size() - 3, repo.argv().size()).equals(List.of("HEAD", "--", "src"))
-                && repo.successExitCodes().equals(Set.of(0)), "repo argv: " + repo.argv());
+        require(repo.argv().subList(4, repo.argv().size()).equals(List.of("repo", "git", ws.resolve("work").toString(),
+                "HEAD", ws.resolve("out/r.patch").toString(), "src")) && repo.successExitCodes().equals(Set.of(0)),
+                "repo argv: " + repo.argv());
         refuses(() -> plan(task("@m3:git:differ:text", List.of("repo", "git", "work", "--output=x", "out/r.patch"),
                 List.of("work"), List.of("out/r.patch")), ws, false), "revision read as an option");
         passed++;
@@ -143,10 +138,9 @@ public final class ToolAdaptersContractTestMain {
                 "-Dpatch.outputDirectory=" + ws.resolve("out/patch"), "-Dpatch.patches=" + ws.resolve("out/fix.patch")))
                 && planned.effect() == M3ToolEffect.READS_SOURCES, "plan argv: " + planned.argv());
         var verify = plan(patchTask(List.of("verify", "mvn", "0.1.0-SNAPSHOT", ".", "out/patch", "out/fix.patch",
-                "failOn=CHANGED", "expectPlan=" + ID), List.of("out/patch/PLAN.tsv", "out/patch/verify/" + ID + "/COMPARE.tsv")),
-                ws, false);
-        require(verify.argv().contains("-Dpatch.failOn=CHANGED") && verify.reports().size() == 2
-                && verify.reports().get(1).format() == M3ReportFormat.COMPARE_TSV, "verify contract: " + verify.reports());
+                "failOn=CHANGED"), List.of("out/patch/PLAN.tsv")), ws, false);
+        require(verify.argv().contains("-Dpatch.failOn=CHANGED") && verify.reports().size() == 1
+                && verify.reports().get(0).format() == M3ReportFormat.PLAN_TSV, "verify contract: " + verify.reports());
         passed++;
     }
 
@@ -172,6 +166,10 @@ public final class ToolAdaptersContractTestMain {
                 && approved.reports().get(0).format() == M3ReportFormat.RECEIPT_TSV, "approved apply: " + approved.argv());
         refuses(() -> plan(patchTask(List.of("apply", "mvn", "0.1.0-SNAPSHOT", ".", "out/patch", "out/fix.patch"),
                 List.of("out/patch/PLAN.tsv")), ws, true), "apply without a reviewed plan id");
+        codePatchRollback(ws);
+    }
+
+    private static void codePatchRollback(Path ws) throws Exception {
         var rollback = plan(patchTask(List.of("rollback", "mvn", "0.1.0-SNAPSHOT", ".", "out/patch", ID),
                 List.of("out/patch/receipts/" + ID + "/RECEIPT.tsv")), ws, true);
         require(rollback.argv().contains("-Dpatch.receipt=" + ID) && rollback.effect() == M3ToolEffect.WRITES_SOURCES,
@@ -182,9 +180,9 @@ public final class ToolAdaptersContractTestMain {
     }
 
     private static void javacPlugins(Path ws) throws Exception {
-        var host = plan(task("@m3:javac-plugins:static-analyzer:java", List.of("out/j.jsonl", "out/j.sarif", "pp=ep/a.jar",
-                "pp=ep/b.jar", "-Xplugin:ErrorProne", "-d", "out/classes", "src/A.java"), List.of("src"),
-                List.of("out/j.jsonl", "out/j.sarif")), ws, false);
+        var host = plan(task("@m3:javac-plugins:static-analyzer:java", List.of("out/j.jsonl", "out/j.sarif", "parse=second",
+                "pp=ep/a.jar", "pp=ep/b.jar", "-Xplugin:ErrorProne", "-d", "out/classes", "src/A.java"), List.of("src"),
+                List.of("out/j.jsonl", "out/j.sarif", "out/classes")), ws, false);
         List<String> argv = host.argv();
         int split = argv.indexOf("--");
         require(argv.containsAll(JavacPluginHostProvider.JVM_ACCESS) && argv.get(split - 4).equals(JavacPluginHostProvider.HOST)
@@ -198,12 +196,13 @@ public final class ToolAdaptersContractTestMain {
     }
 
     private static void javacLintOnly(Path ws) throws Exception {
-        var lint = plan(task("@m3:javac-plugins:static-analyzer:java", List.of("out/j.jsonl", "out/j.sarif", "-Xlint:all",
-                "src/A.java"), List.of("src"), List.of("out/j.jsonl", "out/j.sarif")), ws, false);
+        var lint = plan(task("@m3:javac-plugins:static-analyzer:java", List.of("out/j.jsonl", "out/j.sarif", "parse=second",
+                "-Xlint:all", "-d", "out/classes", "src/A.java"), List.of("src"), List.of("out/j.jsonl", "out/j.sarif",
+                "out/classes/A.class")), ws, false);
         require(!lint.argv().contains("-processorpath") && Collections.disjoint(lint.argv(),
                 JavacPluginHostProvider.ERROR_PRONE_JAVAC) && lint.reports().size() == 2, "javac lint only: " + lint.argv());
         require(new JavacPluginHostProvider().astStatus(M3ToolCapability.STATIC_ANALYZER, "java")
-                == M3AstStatus.COMPILER_PLUGIN, "analysis on the compiler's AST");
+                == M3AstStatus.COMPILER_FRONT_END, "a second javac parse next to the build's compile");
         passed++;
     }
 
@@ -214,7 +213,7 @@ public final class ToolAdaptersContractTestMain {
         List<String> argv = lint.argv();
         require(argv.get(2).equals(ToolArgs.home(LspLinterProvider.class) + File.pathSeparator + ws.resolve("lsp/a.jar")
                 + File.pathSeparator + ws.resolve("lsp/b.jar")) && argv.get(3).equals(LspLinterProvider.MAIN)
-                && argv.subList(7, argv.size()).equals(List.of("30000", "c", "/opt/llvm/bin/clangd", "--log=error", "--",
+                && argv.subList(7, argv.size()).equals(List.of("30000", "2000", "c", "/opt/llvm/bin/clangd", "--log=error", "--",
                 ws.resolve("src/a.c").toString())), "linter argv: " + argv);
         require(lint.reports().get(1).format() == M3ReportFormat.SARIF_2_1_0
                 && new LspLinterProvider().astStatus(M3ToolCapability.LINTER, "c") == M3AstStatus.LANGUAGE_SERVER, "contract");
@@ -237,69 +236,6 @@ public final class ToolAdaptersContractTestMain {
         broken.set(broken.indexOf(from), to);
         TaskManifest.Task task = task("@m3:lsp:linter:c", broken, List.of("src"), List.of("out/l.jsonl", "out/l.sarif"));
         refuses(() -> plan(task, ws, false), "linter with " + label);
-    }
-
-    private static void reports(Path ws) throws Exception {
-        Path root = ws.resolve("root dir");
-        List<Finding> findings = new ArrayList<>(List.of(
-                new Finding("src/a b.c", 3, 7, Finding.Level.WARNING, "-Wunused-variable", "unused \"x\"\n"),
-                new Finding(ws.resolve("elsewhere.c").toUri().toString(), 1, 0, Finding.Level.ERROR, "e1", "outside"),
-                new Finding("", 0, 0, Finding.Level.NOTE, "", "no location")));
-        var tool = new FindingReports.Tool("clangd", "22.1.0", "", "linter");
-        FindingReports.write(ws.resolve("r1.jsonl"), ws.resolve("r1.sarif"), tool, root, findings, List.of("a.c: no answer"));
-        Collections.reverse(findings);
-        FindingReports.write(ws.resolve("r2.jsonl"), ws.resolve("r2.sarif"), tool, root, findings, List.of("a.c: no answer"));
-        String sarif = Files.readString(ws.resolve("r1.sarif"), StandardCharsets.UTF_8);
-        require(sarif.equals(Files.readString(ws.resolve("r2.sarif"), StandardCharsets.UTF_8)) && Files.readString(
-                ws.resolve("r1.jsonl")).equals(Files.readString(ws.resolve("r2.jsonl"))), "order-independent bytes");
-        require(sarif.contains("\"uri\":\"src/a%20b.c\",\"uriBaseId\":\"SRCROOT\"") && sarif.contains("\"executionSuccessful\":false")
-                && sarif.contains("unused \\\"x\\\"\\n") && sarif.contains("\"ruleId\":\"unnamed\"")
-                && sarif.contains("\"startLine\":1}"), "SARIF shape: " + sarif);
-        require(Files.readAllLines(ws.resolve("r1.jsonl")).get(0).startsWith("{\"v\":1,\"seq\":1,\"tMs\":0,\"type\":\"diagnostic\""),
-                "build-events diagnostic line");
-        passed++;
-    }
-
-    /** One real compilation inside this JVM: javac's own lint is the analyzer, classes are written by the same parse. */
-    private static void javacHostCompiles(Path ws) throws Exception {
-        Path source = ws.resolve("host/src/demo/Raw.java");
-        Files.createDirectories(source.getParent());
-        Files.writeString(source, "package demo;\nimport java.util.*;\npublic class Raw {\n"
-                + "    public List names() { List list = new ArrayList(); list.add(\"x\"); return list; }\n}\n");
-        int exit = JavacPluginHost.run(List.of(ws.resolve("host").toString(), ws.resolve("host/out/d.jsonl").toString(),
-                ws.resolve("host/out/d.sarif").toString(), "--", "-Xlint:all", "-d", ws.resolve("host/classes").toString(),
-                source.toString()));
-        String sarif = Files.readString(ws.resolve("host/out/d.sarif"), StandardCharsets.UTF_8);
-        require(exit == 0 && Files.isRegularFile(ws.resolve("host/classes/demo/Raw.class"))
-                && sarif.contains("\"ruleId\":\"compiler.warn.raw.class.use\"") && sarif.contains("\"uri\":\"src/demo/Raw.java\""),
-                "one compile wrote classes and javac lint findings: exit " + exit + " " + sarif);
-        passed++;
-    }
-
-    /** A javac plug-in that throws in init: javac fails without an ERROR diagnostic; the host must not report clean. */
-    private static void javacHostReportsCrashedPlugin(Path ws) throws Exception {
-        Path plugin = crashPlugin(ws);
-        int exit = JavacPluginHost.run(List.of(ws.resolve("host").toString(), ws.resolve("crash/d.jsonl").toString(),
-                ws.resolve("crash/d.sarif").toString(), "--", "-processorpath", plugin.toString(), "-Xplugin:Crash", "-d",
-                ws.resolve("crash/classes").toString(), ws.resolve("host/src/demo/Raw.java").toString()));
-        require(exit == 2 && Files.readString(ws.resolve("crash/d.sarif")).contains("\"executionSuccessful\":false"),
-                "a crashed plug-in is an unsuccessful invocation, exit 2: " + exit);
-        passed++;
-    }
-
-    /** A processor path holding one javac plug-in, "Crash", whose init throws. */
-    private static Path crashPlugin(Path ws) throws IOException {
-        Path plugin = ws.resolve("crash/pp");
-        Path source = ws.resolve("crash/src/crash/CrashPlugin.java");
-        Files.createDirectories(source.getParent());
-        Files.writeString(source, "package crash;\npublic class CrashPlugin implements com.sun.source.util.Plugin {\n"
-                + "    public String getName() { return \"Crash\"; }\n    public void init(com.sun.source.util.JavacTask t,"
-                + " String... a) { throw new IllegalStateException(\"plug-in crash\"); }\n}\n");
-        require(javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", plugin.toString(),
-                source.toString()) == 0, "plug-in compiles");
-        Files.createDirectories(plugin.resolve("META-INF/services"));
-        Files.writeString(plugin.resolve("META-INF/services/com.sun.source.util.Plugin"), "crash.CrashPlugin\n");
-        return plugin;
     }
 
     private static M3ToolProviders.Planned plan(TaskManifest.Task task, Path ws, boolean approve) throws IOException {
@@ -331,7 +267,7 @@ public final class ToolAdaptersContractTestMain {
 
     private static void delete(Path root) throws IOException {
         try (var paths = Files.walk(root)) {
-            for (Path file : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+            paths.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
         }
     }
 }

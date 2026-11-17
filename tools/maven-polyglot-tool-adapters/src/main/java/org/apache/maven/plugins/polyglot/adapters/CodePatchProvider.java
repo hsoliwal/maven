@@ -37,20 +37,23 @@ import java.util.regex.Pattern;
  * {@code @m3:code-patch:patcher:text}: the code patch plugin's goals through Maven without a POM (the plugin has no
  * command-line main yet), offline and in batch mode. The only provider that writes sources.
  * <ul>
- *   <li>{@code plan|preview|verify <mvn> <version> <base-dir> <out-dir> <patch>... [failOn=S,...] [expectPlan=id]}:
- *   read sources, write {@code PLAN.tsv} and {@code PLAN_ID} (verify also {@code verify/<id>/COMPARE.tsv}).</li>
+ *   <li>{@code plan|preview|verify <mvn> <version> <base-dir> <out-dir> <patch>... [failOn=S,...]}: read sources,
+ *   write {@code PLAN.tsv} and {@code PLAN_ID} (verify also {@code verify/<id>/COMPARE.tsv}).</li>
  *   <li>{@code apply ... <patch>... approvedPlan=<id>}: promotes the reviewed plan with backups and a receipt.</li>
  *   <li>{@code rollback <mvn> <version> <base-dir> <out-dir> <receipt-id>}: restores from the receipt.</li>
  * </ul>
  * apply and rollback declare {@link M3ToolEffect#WRITES_SOURCES}; the registry refuses them without separate approval.
+ * There is no {@code expectPlan}: code-patch has no such check, so verify cannot be tied to a reviewed plan id, and a
+ * declared {@code verify/<id>/COMPARE.tsv} could be satisfied by a stale file of an earlier run. The reviewed plan id
+ * binds at apply ({@code approvedPlan}), which code-patch checks.
  */
 public final class CodePatchProvider implements M3ToolProvider {
     static final String PLUGIN = "org.apache.maven.plugins:maven-code-patch-plugin:";
     static final String USAGE = "plan|preview|verify|apply <mvn> <version> <base-dir> <out-dir> <patch>..."
-            + " [failOn=S,...] [expectPlan=<id>] [approvedPlan=<id>] | rollback <mvn> <version> <base-dir> <out-dir> <id>";
+            + " [failOn=S,...] [approvedPlan=<id>] | rollback <mvn> <version> <base-dir> <out-dir> <id>";
     static final List<String> MAVEN_FLAGS = List.of("--batch-mode", "--no-transfer-progress", "--offline");
     private static final Set<String> MODES = Set.of("plan", "preview", "verify", "apply", "rollback");
-    private static final List<String> OPTIONS = List.of("failOn", "expectPlan", "approvedPlan");
+    private static final List<String> OPTIONS = List.of("failOn", "approvedPlan");
     private static final Pattern ID = Pattern.compile("[0-9a-f]{64}");
     private static final Pattern STATES = Pattern.compile("[A-Z_]+(,[A-Z_]+)*");
     private static final System.Logger LOG = System.getLogger(CodePatchProvider.class.getName());
@@ -60,7 +63,7 @@ public final class CodePatchProvider implements M3ToolProvider {
     }
 
     @Override public Set<M3ToolCapability> capabilities() {
-        return Set.of(M3ToolCapability.PATCHER);
+        return ToolArgs.kinds(() -> Set.of(M3ToolCapability.PATCHER));
     }
 
     @Override public Set<String> languages() {
@@ -69,20 +72,30 @@ public final class CodePatchProvider implements M3ToolProvider {
 
     @Override public List<String> command(M3ToolCapability capability, String language, TaskManifest.Task task,
             Path workspace) throws IOException {
-        List<String> args = ToolArgs.positional(ToolArgs.count(task, 6, 1024, USAGE), OPTIONS);
+        List<String> args = positional(task);
         String mode = mode(task);
-        if (args.size() < 6) {
-            throw new IOException("usage: " + USAGE);
-        }
         List<String> argv = new ArrayList<>(List.of(args.get(1)));
         argv.addAll(MAVEN_FLAGS);
         argv.add(PLUGIN + ToolArgs.version(args.get(2)) + ":" + mode);
-        argv.add("-Dpatch.baseDirectory=" + ToolArgs.absolute(workspace, task, args.get(3)));
-        argv.add("-Dpatch.outputDirectory=" + ToolArgs.absolute(workspace, task, args.get(4)));
+        argv.addAll(directories(args, task, workspace));
         argv.addAll("rollback".equals(mode) ? rollback(args) : patches(args, task, workspace));
         argv.addAll(options(task.arguments(), mode));
         LOG.log(System.Logger.Level.DEBUG, "planned code-patch {0}: {1}", mode, argv);
         return ToolArgs.launch(argv);
+    }
+
+    private static List<String> positional(TaskManifest.Task task) throws IOException {
+        List<String> args = ToolArgs.positional(ToolArgs.count(task, 6, 1024, USAGE), OPTIONS);
+        if (args.size() < 6 || task.arguments().stream().anyMatch(a -> a.startsWith("expectPlan="))) {
+            throw new IOException("usage (code-patch has no expectPlan check; approvedPlan binds the plan at apply): "
+                    + USAGE);
+        }
+        return args;
+    }
+
+    private static List<String> directories(List<String> args, TaskManifest.Task task, Path workspace) {
+        return List.of("-Dpatch.baseDirectory=" + ToolArgs.absolute(workspace, task, args.get(3)),
+                "-Dpatch.outputDirectory=" + ToolArgs.absolute(workspace, task, args.get(4)));
     }
 
     private static String mode(TaskManifest.Task task) throws IOException {
@@ -113,11 +126,9 @@ public final class CodePatchProvider implements M3ToolProvider {
     private static List<String> options(List<String> args, String mode) throws IOException {
         Optional<String> failOn = ToolArgs.option(args, "failOn");
         Optional<String> approved = ToolArgs.option(args, "approvedPlan");
-        Optional<String> expected = ToolArgs.option(args, "expectPlan");
-        boolean misplaced = failOn.isPresent() && !"verify".equals(mode) || expected.isPresent() && !"verify".equals(mode)
-                || approved.isPresent() != "apply".equals(mode);
+        boolean misplaced = failOn.isPresent() && !"verify".equals(mode) || approved.isPresent() != "apply".equals(mode);
         if (misplaced || failOn.filter(s -> !STATES.matcher(s).matches()).isPresent()
-                || approved.or(() -> expected).filter(id -> !ID.matcher(id).matches()).isPresent()) {
+                || approved.filter(id -> !ID.matcher(id).matches()).isPresent()) {
             throw new IOException("invalid options for code-patch " + mode + " (apply needs approvedPlan=<id>): " + USAGE);
         }
         List<String> flags = new ArrayList<>();
@@ -141,12 +152,7 @@ public final class CodePatchProvider implements M3ToolProvider {
             return List.of(new M3Report(ToolArgs.declared(task, out + "receipts/" + id + "/RECEIPT.tsv"),
                     M3ReportFormat.RECEIPT_TSV));
         }
-        List<M3Report> reports = new ArrayList<>(List.of(
-                new M3Report(ToolArgs.declared(task, out + "PLAN.tsv"), M3ReportFormat.PLAN_TSV)));
-        all.stream().filter(a -> a.startsWith("expectPlan=")).map(a -> a.substring("expectPlan=".length()))
-                .forEach(id -> reports.add(new M3Report(ToolArgs.declared(task, out + "verify/" + id + "/COMPARE.tsv"),
-                        M3ReportFormat.COMPARE_TSV)));
-        return reports;
+        return List.of(new M3Report(ToolArgs.declared(task, out + "PLAN.tsv"), M3ReportFormat.PLAN_TSV));
     }
 
     private static String value(List<String> args, String key) {

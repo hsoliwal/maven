@@ -18,13 +18,15 @@
  */
 package org.apache.maven.plugins.polyglot.adapters;
 
+import io.synexia.maven.polyglot.M3ToolCapability;
 import io.synexia.maven.polyglot.TaskManifest;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 /**
@@ -32,8 +34,6 @@ import java.util.regex.Pattern;
  * the launcher check. Every adapter plans an argv only; nothing here starts a process or touches the workspace.
  */
 final class ToolArgs {
-    /** cmd.exe expands or splits on these even inside quotes, so a .cmd/.bat launcher must never receive them. */
-    private static final String CMD_METACHARACTERS = "%!^&|<>\"";
     private static final Pattern VERSION = Pattern.compile("[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}");
 
     private ToolArgs() { }
@@ -103,14 +103,31 @@ final class ToolArgs {
         return args.stream().filter(a -> keys.stream().noneMatch(k -> a.startsWith(k + "="))).toList();
     }
 
+    /**
+     * The adapter's capabilities. An engine older than the additive tool kinds lacks their enum constants, so reading
+     * one throws NoSuchFieldError; that becomes an IllegalStateException, which every engine's registry (also the
+     * first v1 one, which does not guard LinkageError) refuses as a provider that cannot load, naming the reason.
+     */
+    static Set<M3ToolCapability> kinds(Supplier<Set<M3ToolCapability>> kinds) {
+        try {
+            return kinds.get();
+        } catch (LinkageError olderEngine) {
+            throw new IllegalStateException("maven-polyglot-tool-adapters needs an m3-polyglot-maven-plugin engine with"
+                    + " the additive tool kinds (linter, static-analyzer, differ, patcher): " + olderEngine, olderEngine);
+        }
+    }
+
     /** Refuses a .cmd/.bat launcher when any argument holds a cmd.exe metacharacter (no shell ever interprets argv). */
     static List<String> launch(List<String> argv) throws IOException {
-        String launcher = argv.get(0).toLowerCase(Locale.ROOT);
-        boolean viaCmd = launcher.endsWith(".cmd") || launcher.endsWith(".bat");
-        if (viaCmd && argv.stream().anyMatch(a -> a.chars().anyMatch(c -> CMD_METACHARACTERS.indexOf(c) >= 0))) {
-            throw new IOException("a .cmd/.bat launcher cannot take cmd.exe metacharacters safely: " + argv.get(0));
-        }
-        return List.copyOf(argv);
+        return CmdLauncher.shellSafe(argv);
+    }
+
+    /**
+     * The same check for a command the tool process starts itself (a language server, git): the planned argv starts
+     * java, so the launcher and every value that reaches it are checked here as well as in the tool process.
+     */
+    static List<String> nested(List<String> command) throws IOException {
+        return CmdLauncher.shellSafe(command);
     }
 
     /** Refuses an output folder that lies inside (or equals) one of the folders the tool reads. */

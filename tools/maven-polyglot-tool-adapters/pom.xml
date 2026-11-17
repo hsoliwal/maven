@@ -77,6 +77,44 @@ under the License.
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
+          <execution>
+            <id>finding-reports-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.FindingReportsContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>tool-adapters-failure-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.ToolAdaptersFailureContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- Starts the git differ process with the real git program; prints NOT RUN without git on PATH. -->
+            <id>git-differ-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.GitDifferContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- The LSP collector against a fake language server in its own JVM (LSP4J from the provided scope). -->
+            <id>lsp-collector-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.LspCollectorContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
     </plugins>

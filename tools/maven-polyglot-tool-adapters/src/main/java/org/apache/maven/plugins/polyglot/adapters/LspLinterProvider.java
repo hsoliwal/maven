@@ -37,17 +37,21 @@ import java.util.stream.Stream;
  * {@code @m3:lsp:linter:<language>}: diagnostics a language server publishes for the given files, collected by
  * {@code LspDiagnosticsMain} in its own JVM (Eclipse LSP4J). Arguments:
  * {@code <out diagnostics.jsonl> <out findings.sarif> <deadline-ms> jar=<lsp4j jar>... server=<executable>
- * [server-arg=<arg>]... <file>...}. Each file is opened once at version 1; the run is COMPLETE when every file got a
- * diagnostics notification for that version before the deadline, otherwise PARTIAL (exit 4, task fails, reports kept).
+ * [server-arg=<arg>]... [settle=<ms>] <file>...}. Each file is opened once at version 1. The run is COMPLETE when
+ * every file was answered for that version, no work-done progress is open and nothing was published for
+ * {@code settle} ms (default {@value #DEFAULT_SETTLE}), all before the deadline; otherwise PARTIAL (exit 4) or, when
+ * the server could not start, exited or did not answer initialize, FAILED (exit 2). The task fails either way and
+ * both reports are kept. A .cmd/.bat server is refused when it or a {@code server-arg} holds a cmd.exe metacharacter.
  * The server parses on its own: one-AST status {@link M3AstStatus#LANGUAGE_SERVER}.
  */
 public final class LspLinterProvider implements M3ToolProvider {
     static final String MAIN = "org.apache.maven.plugins.polyglot.adapters.LspDiagnosticsMain";
+    static final String DEFAULT_SETTLE = "2000";
     static final String USAGE = "<out diagnostics.jsonl> <out findings.sarif> <deadline-ms> jar=<lsp4j jar>..."
-            + " server=<executable> [server-arg=<arg>]... <file>...";
+            + " server=<executable> [server-arg=<arg>]... [settle=<ms>] <file>...";
     /** Task language to LSP language identifier: clangd for C, C++ and Objective-C. */
     static final Map<String, String> LANGUAGE_IDS = Map.of("c", "c", "cpp", "cpp", "objc", "objective-c");
-    private static final List<String> OPTIONS = List.of("jar", "server", "server-arg");
+    private static final List<String> OPTIONS = List.of("jar", "server", "server-arg", "settle");
     private static final System.Logger LOG = System.getLogger(LspLinterProvider.class.getName());
 
     @Override public String id() {
@@ -55,7 +59,7 @@ public final class LspLinterProvider implements M3ToolProvider {
     }
 
     @Override public Set<M3ToolCapability> capabilities() {
-        return Set.of(M3ToolCapability.LINTER);
+        return ToolArgs.kinds(() -> Set.of(M3ToolCapability.LINTER));
     }
 
     @Override public Set<String> languages() {
@@ -66,27 +70,47 @@ public final class LspLinterProvider implements M3ToolProvider {
             Path workspace) throws IOException {
         List<String> all = ToolArgs.count(task, 6, 1024, USAGE);
         List<String> args = ToolArgs.positional(all, OPTIONS);
-        String server = ToolArgs.option(all, "server").orElseThrow(() -> new IOException("usage: " + USAGE));
-        if (args.size() < 4 || deadline(args.get(2)) < 1) throw new IOException("usage: " + USAGE);
+        if (args.size() < 4) throw new IOException("usage: " + USAGE);
+        long deadline = millis(args.get(2), "deadline", 1, 600_000);
+        long settle = millis(ToolArgs.option(all, "settle").orElse(DEFAULT_SETTLE), "settle", 0, deadline);
         List<String> argv = new ArrayList<>(List.of(ToolArgs.java(), "-cp", classpath(all, task, workspace), MAIN,
                 workspace.resolve(task.workingDir()).toAbsolutePath().normalize().toString(),
                 ToolArgs.absolute(workspace, task, args.get(0)), ToolArgs.absolute(workspace, task, args.get(1)),
-                args.get(2), LANGUAGE_IDS.get(language), server));
-        all.stream().filter(a -> a.startsWith("server-arg=")).map(a -> a.substring("server-arg=".length()))
-                .forEach(argv::add);
-        argv.add("--");
-        args.subList(3, args.size()).forEach(file -> argv.add(ToolArgs.absolute(workspace, task, file)));
-        LOG.log(System.Logger.Level.DEBUG, "planned LSP linter: {0}", argv);
-        return ToolArgs.launch(argv);
+                Long.toString(deadline), Long.toString(settle), LANGUAGE_IDS.get(language)));
+        return ToolArgs.launch(logged(files(argv, server(all), args.subList(3, args.size()), task, workspace)));
     }
 
-    private static long deadline(String text) throws IOException {
+    /** The planned head, the server command, "--" and the files as absolute paths. */
+    private static List<String> files(List<String> argv, List<String> server, List<String> files, TaskManifest.Task task,
+            Path workspace) {
+        argv.addAll(server);
+        argv.add("--");
+        files.forEach(file -> argv.add(ToolArgs.absolute(workspace, task, file)));
+        return argv;
+    }
+
+    /** The server command, checked as the launcher it is: the collector starts it, the engine never sees it. */
+    private static List<String> server(List<String> all) throws IOException {
+        String server = ToolArgs.option(all, "server").orElseThrow(() -> new IOException("usage: " + USAGE));
+        return ToolArgs.nested(Stream.concat(Stream.of(server), all.stream().filter(a -> a.startsWith("server-arg="))
+                .map(a -> a.substring("server-arg=".length()))).toList());
+    }
+
+    private static long millis(String text, String what, long min, long max) throws IOException {
         try {
             long value = Long.parseLong(text);
-            return value <= 600_000 ? value : -1;
-        } catch (NumberFormatException e) {
-            throw new IOException("the deadline must be milliseconds (1..600000): " + text, e);
+            if (value >= min && value <= max) {
+                return value;
+            }
+        } catch (NumberFormatException notANumber) {
+            // refused below with the accepted range
         }
+        throw new IOException("the " + what + " must be milliseconds (" + min + ".." + max + "): " + text);
+    }
+
+    private static List<String> logged(List<String> argv) {
+        LOG.log(System.Logger.Level.DEBUG, "planned LSP linter: {0}", argv);
+        return argv;
     }
 
     /** The adapter's own class path entry first, then the LSP4J jars named by the task. */
