@@ -44,6 +44,45 @@ plugin itself keeps its own bindings.
 mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true verify
 ```
 
+### Mavenizer: migrate a folder built by other tools
+
+`m3-polyglot:mavenize` needs no Maven project. It scans the folder (and sub-folders, four levels deep; build
+outputs, dependencies and hidden folders such as `node_modules`, `target`, `build`, `.git` are skipped) for the
+build descriptors also known to the fork's external-build service, and writes per project folder a `pom.xml`
+(packaging `pom`, its sub-projects as modules) and an `m3-build.tsv` whose targets `validate`, `compile`, `test`
+and `package` run the native commands:
+
+| Descriptor | Steps |
+| --- | --- |
+| `package.json` (npm, or pnpm / yarn / bun by lock file) | install (`npm ci` with a lock file); `run build` and `test` when the scripts define them (not npm's placeholder test) |
+| `Cargo.toml` | `cargo build`, `cargo test`, `cargo build --release` |
+| `go.mod` | `go build ./...`, `go test ./...` |
+| `Makefile` / `GNUmakefile` | `make`, `make test` when a `test:` target exists |
+| `CMakeLists.txt` | configure into `build/cmake`, build, `ctest` when testing is enabled |
+| `meson.build` | `meson setup/compile/test` in `build/meson` |
+| `pyproject.toml` / `setup.py` / `setup.cfg` | `compileall`; `pytest` when configured, else `unittest` over `tests/` |
+| `.sln` / `.slnx` / `.csproj` | `dotnet build`, `dotnet test` |
+| Gradle build or settings file | `assemble`, `test` (with `gradlew` when the wrapper is there) |
+| Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
+| `Package.swift` | `swift build`, `swift test` |
+| `build.xml` | `ant`, `ant test` when a `test` target exists |
+
+A folder with a hand-written `pom.xml` is a Maven project: listed as a module, never touched, not entered.
+Existing files are never overwritten; a run over an already mavenized tree reports `KEEP` lines, writes files for
+new sub-projects and names them `MISSING-MODULE` where the kept parent pom does not list them yet.
+`-Dm3.polyglot.dryRun=true` prints `PLAN` lines and writes nothing. Bare tool names in a manifest are looked up
+in the task's folder (wrappers) and on `PATH`, on Windows with the `PATHEXT` extensions (`npm.cmd`,
+`gradle.bat`). Generated manifests declare no inputs, so incremental mode never skips their tasks until inputs are
+added; a task without declared inputs always runs.
+
+```sh
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:mavenize -Dm3.polyglot.mavenize.groupId=org.example
+mvn -Dm3.polyglot.lifecycle=true verify
+```
+
+`src/it/test_mavenize.sh` proves it on a repository of a Node app, a Go module, a Python package, a Make project
+and a Rust crate, built and tested by their own tools through one `mvn verify`.
+
 Build with Maven 3.9+ (or a compatible Maven 4 fork) on JDK 17+:
 
 ```sh

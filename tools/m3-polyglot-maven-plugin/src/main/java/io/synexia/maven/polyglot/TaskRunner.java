@@ -104,7 +104,8 @@ public final class TaskRunner {
                     throw new IOException("missing declared input for " + task.name() + ": " + input);
                 }
             }
-            String stamp = incremental ? InputStamps.stamp(task, root) : null;
+            // Without declared inputs nothing proves a task current, so it always runs.
+            String stamp = incremental && !task.inputs().isEmpty() ? InputStamps.stamp(task, root) : null;
             if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
                 performed.add(task.name());
@@ -114,7 +115,7 @@ public final class TaskRunner {
             if (qualityCommand != null) {
                 command.addAll(qualityCommand);
             } else {
-                command.add(task.tool());
+                command.add(resolveTool(task.tool(), directory));
                 command.addAll(task.arguments());
             }
             ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -151,6 +152,43 @@ public final class TaskRunner {
             performed.add(task.name());
         }
         return List.copyOf(performed);
+    }
+
+    /**
+     * A bare tool name (no path separator) is looked up in the task's working directory first (wrappers such as
+     * gradlew), then on PATH; on Windows with the PATHEXT extensions, so a portable manifest can name npm or
+     * gradle and still start npm.cmd or gradle.bat. Anything else, or a name not found, is passed unchanged.
+     */
+    static String resolveTool(String tool, Path directory) {
+        if (tool.indexOf('/') >= 0 || tool.indexOf('\\') >= 0) return tool;
+        boolean windows = System.getProperty("os.name", "").startsWith("Windows");
+        // Windows starts only files with an executable extension (a bare "npm" next to npm.cmd is a shell script).
+        List<String> extensions = new ArrayList<>();
+        if (windows) {
+            for (String extension : System.getenv().getOrDefault("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")) {
+                if (!extension.isBlank()) extensions.add(extension.toLowerCase(java.util.Locale.ROOT));
+            }
+        } else {
+            extensions.add("");
+        }
+        List<Path> folders = new ArrayList<>();
+        folders.add(directory);
+        for (String entry : System.getenv().getOrDefault("PATH", "").split(java.io.File.pathSeparator)) {
+            if (!entry.isBlank()) {
+                try {
+                    folders.add(Path.of(entry));
+                } catch (java.nio.file.InvalidPathException ignored) {
+                    // An unusable PATH entry is skipped.
+                }
+            }
+        }
+        for (Path folder : folders) {
+            for (String extension : extensions) {
+                Path candidate = folder.resolve(tool + extension);
+                if (Files.isRegularFile(candidate) && (windows || Files.isExecutable(candidate))) return candidate.toString();
+            }
+        }
+        return tool;
     }
 
     /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */

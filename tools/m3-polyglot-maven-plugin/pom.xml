@@ -71,6 +71,15 @@
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
+          <execution>
+            <id>mavenizer-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.MavenizerContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
     </plugins>
