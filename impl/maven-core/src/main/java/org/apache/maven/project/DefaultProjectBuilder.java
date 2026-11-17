@@ -1072,9 +1072,11 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 }
             }
 
-            // remote repositories
+            // remote repositories, with the project realm selected so layouts from build extensions apply
             List<ArtifactRepository> remoteRepositories = request.getRemoteRepositories();
+            ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
             try {
+                projectBuildingHelper.selectProjectRealm(project);
                 remoteRepositories = projectBuildingHelper.createArtifactRepositories(
                         project.getModel().getRepositories(), remoteRepositories, request);
             } catch (Exception e) {
@@ -1087,6 +1089,8 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                                 -1,
                                 -1,
                                 e));
+            } finally {
+                Thread.currentThread().setContextClassLoader(contextClassLoader);
             }
             project.setRemoteArtifactRepositories(remoteRepositories);
         }
