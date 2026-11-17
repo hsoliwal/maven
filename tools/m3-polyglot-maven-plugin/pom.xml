@@ -81,6 +81,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>portable-provider-spi-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.ModuleStateProviderContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>jdbc-module-state-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>
