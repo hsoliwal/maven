@@ -30,6 +30,8 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
   src/main/java/io/synexia/maven/smart/RecipeCatalog.java \
   src/main/java/io/synexia/maven/smart/MachineEvidence.java \
+  src/main/java/io/synexia/maven/smart/MachineAtomInventory.java \
+  src/main/java/io/synexia/maven/smart/CompilerAttribution.java \
   src/main/java/io/synexia/maven/smart/MachineFingerprintMain.java \
   src/main/java/io/synexia/maven/smart/MachineRulebook.java \
   src/main/java/io/synexia/maven/smart/CodeAgentMain.java \
