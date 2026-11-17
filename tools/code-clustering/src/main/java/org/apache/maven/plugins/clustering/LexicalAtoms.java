@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.Lexer.Kind;
@@ -58,7 +57,7 @@ public final class LexicalAtoms {
     private LexicalAtoms() { }
 
     static boolean accepts(Path file) {
-        String ext = extension(file);
+        String ext = AtomFrontEnd.extension(file);
         return BRACE.contains(ext) || INDENTED.contains(ext);
     }
 
@@ -67,7 +66,7 @@ public final class LexicalAtoms {
         for (Path file : files) {
             String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
             String path = root.relativize(file).toString().replace('\\', '/');
-            boolean indented = INDENTED.contains(extension(file));
+            boolean indented = INDENTED.contains(AtomFrontEnd.extension(file));
             List<Token> tokens = Lexer.tokens(text, indented);
             if (indented) indentedAtoms(path, text, tokens, atoms);
             else braceAtoms(path, text, tokens, atoms);
@@ -344,9 +343,4 @@ public final class LexicalAtoms {
         return declared;
     }
 
-    private static String extension(Path file) {
-        String name = file.getFileName().toString();
-        int dot = name.lastIndexOf('.');
-        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
 }

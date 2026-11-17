@@ -26,7 +26,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -86,12 +85,12 @@ public final class LspFrontEnd implements AtomFrontEnd {
     }
 
     @Override public boolean accepts(Path file) {
-        return servers.containsKey(extension(file));
+        return servers.containsKey(AtomFrontEnd.extension(file));
     }
 
     @Override public List<Atom> atoms(Path root, List<Path> files) throws IOException {
         Map<LspServer, List<Path>> byServer = new LinkedHashMap<>();
-        files.forEach(f -> byServer.computeIfAbsent(servers.get(extension(f)), k -> new ArrayList<>()).add(f));
+        files.forEach(f -> byServer.computeIfAbsent(servers.get(AtomFrontEnd.extension(f)), k -> new ArrayList<>()).add(f));
         List<Atom> atoms = new ArrayList<>();
         for (Map.Entry<LspServer, List<Path>> e : byServer.entrySet()) atoms.addAll(serve(root, e.getKey(), e.getValue()));
         return atoms;
@@ -111,7 +110,7 @@ public final class LspFrontEnd implements AtomFrontEnd {
 
     private List<Atom> atomsOf(LspSession session, LspServer server, Path root, Path file) throws IOException {
         String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-        String languageId = server.languageId(extension(file));
+        String languageId = server.languageId(AtomFrontEnd.extension(file));
         return SymbolAtoms.atoms(session.symbols(file, text, languageId), relative(root, file), text,
                 languageId.equals("python"), SymbolMapping.forLanguage(languageId));
     }
@@ -143,9 +142,4 @@ public final class LspFrontEnd implements AtomFrontEnd {
         return root.relativize(file).toString().replace('\\', '/');
     }
 
-    private static String extension(Path file) {
-        String name = file.getFileName().toString();
-        int dot = name.lastIndexOf('.');
-        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
 }
