@@ -102,6 +102,8 @@ under the License.
     <module>api</module>
     <module>impl</module>
     <module>compat</module>
+    <!-- Built-in build advice: the smart builder's core extension, packaged into lib/ext of the distribution. -->
+    <module>tools/m3-smart-builder/extension</module>
     <module>apache-maven</module>
   </modules>
 

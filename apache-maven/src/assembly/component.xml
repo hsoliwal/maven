@@ -41,7 +41,16 @@ under the License.
       <excludes>
         <exclude>org.apache.maven:maven-classworlds</exclude>
         <exclude>org.jline:*</exclude>
+        <exclude>io.synexia:smart-maven-extension</exclude>
       </excludes>
+    </dependencySet>
+
+    <dependencySet>
+      <useProjectArtifact>false</useProjectArtifact>
+      <outputDirectory>lib/ext</outputDirectory>
+      <includes>
+        <include>io.synexia:smart-maven-extension</include>
+      </includes>
     </dependencySet>
   </dependencySets>
   <fileSets>
