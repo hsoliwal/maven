@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+ * SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
  * SPDX-License-Identifier: Apache-2.0
  */
 package io.synexia.maven.polyglot;
@@ -10,163 +10,149 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HexFormat;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
-import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
- * One persistent, module-local, content-verified build-state database.
+ * Shared module-local build-state facade for ordinary Maven and polyglot tasks.
+ * All backends have one lifetime lease, bounded sealed images, durable
+ * pre-execution revocation and generation-safe switching. The default embedded
+ * backend executes the original M3IndexDB implementation without an SDK jar.
  *
- * <p>"file" publishes a single atomic, sealed image; "m3db" publishes that same
- * image as one native MIndexDB artifact using its public artifact API. The latter
- * is an optional runtime integration, not a Maven-bootstrap dependency.
- *
- * <p>File stat reuse is permitted only with a stable file key and a POSIX change
- * timestamp (ctime). On other file systems, the contents are SHA-256 checked
- * every time. Size and mtime alone are never sufficient cache evidence.
+ * <p>The retained package-private task helpers preserve the earlier ctime and
+ * file-key optimization. They are filesystem-metadata hints, not a complete
+ * input proof; the production task/lifecycle admission paths hash content and
+ * pass independently verified input/output digests to this facade.
  */
-final class ModuleStateDb {
-    static final String FILE = ".m3/module-state-v1.bin";
-    static final String NATIVE_DIRECTORY = ".m3/maven-build-db";
-    private static final int MAGIC = 0x4d334253; // M3BS
-    private static final int VERSION = 1;
-    private static final int MAX_IMAGE = 32 * 1024 * 1024;
+public final class ModuleStateDb implements AutoCloseable {
+    public static final String FILE = M3DbModuleStore.FILE_BACKEND;
+    public static final String EMBEDDED_FILE = M3DbModuleStore.FILE;
+    public static final String NATIVE_DIRECTORY = M3DbModuleStore.NATIVE_DIRECTORY;
+    public static final String SQLITE_FILE = M3ModuleJdbcStorage.SQLITE_FILE;
+    public static final String H2_FILE = M3ModuleJdbcStorage.H2_FILE;
+    public static final String LOCK = M3DbModuleStore.LOCK;
+    public static final String MARKER = M3DbModuleStore.MARKER;
     private static final int MAX_ENTRIES = 250_000;
-    private static final String ARTIFACT = "maven-module-build-state-v1";
-    private static final String KIND = "maven-module-state";
+    private static final int MAX_FINGERPRINT_BYTES = 32 * 1024 * 1024 - 128 * 1024;
+    private static final int FILE_VERSION = 1;
 
-    private record FileState(long size, long mtime, long ctime, String fileKey, String sha256) {}
-    private record TaskState(String inputStamp, String outputStamp) {}
-    private record Attributes(long size, long mtime, long ctime, String fileKey) {
-        boolean reusable(FileState prior) {
-            return prior != null && ctime >= 0 && !fileKey.isEmpty()
-                    && size == prior.size && mtime == prior.mtime
-                    && ctime == prior.ctime && fileKey.equals(prior.fileKey);
-        }
-    }
-
-    private interface Storage {
-        byte[] read() throws IOException;
-        void write(byte[] bytes) throws IOException;
-    }
+    private record Attributes(long size, long mtime, long ctime, String fileKey) {}
 
     private final Path root;
-    private final Storage storage;
-    private final Map<String, FileState> files = new TreeMap<>();
-    private final Map<String, TaskState> tasks = new TreeMap<>();
+    private final M3DbModuleStore store;
+    private String[] fileNames = new String[16];
+    private String[] fileKeys = new String[16];
+    private String[] fileDigests = new String[16];
+    private long[] fileSizes = new long[16];
+    private long[] fileMtimes = new long[16];
+    private long[] fileCtimes = new long[16];
+    private int fileCount;
     private int digestedFiles;
 
-    private ModuleStateDb(Path root, Storage storage) {
+    private ModuleStateDb(Path root, M3DbModuleStore store) {
         this.root = root;
-        this.storage = storage;
+        this.store = store;
     }
 
-    static ModuleStateDb open(Path workspace, String backend) throws IOException {
-        Path root = workspace.toAbsolutePath().normalize();
-        Path stateDirectory = root.resolve(".m3");
-        if (Files.isSymbolicLink(stateDirectory) || Files.isSymbolicLink(root.resolve(NATIVE_DIRECTORY))) {
-            throw new IOException("module state directory must not be a symlink");
-        }
-        // Create the stable module-state parent before hashing an input directory
-        // that includes the project root, avoiding a spurious second build.
-        Files.createDirectories(stateDirectory);
-        Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
-            case "file" -> new FileStorage(root.resolve(FILE));
-            case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
-            case "sqlite", "h2" -> {
-                M3ModuleJdbcStorage jdbc = new M3ModuleJdbcStorage(root, backend);
-                yield new Storage() {
-                    @Override public byte[] read() throws IOException { return jdbc.read(); }
-                    @Override public void write(byte[] bytes) throws IOException { jdbc.write(bytes); }
-                };
-            }
-            default -> externalStorage(root, backend);
-        };
-        ModuleStateDb database = new ModuleStateDb(root, storage);
+    public static ModuleStateDb open(Path root, String backend) throws IOException {
+        return open(root, backend, true, ignored -> {});
+    }
+
+    public static ModuleStateDb open(Path root, String backend, Consumer<String> log) throws IOException {
+        return open(root, backend, true, log);
+    }
+
+    public static ModuleStateDb open(Path root, boolean create) throws IOException {
+        return open(root, "embedded", create, ignored -> {});
+    }
+
+    public static ModuleStateDb open(Path root, String backend, boolean create, Consumer<String> log)
+            throws IOException {
+        M3DbModuleStore store = M3DbModuleStore.open(root, backend, create, log);
         try {
-            byte[] image = storage.read();
-            if (image != null) database.decode(image);
-        } catch (IOException | IllegalArgumentException corrupt) {
-            // Untrusted/malformed cache state is a cache miss, never build authority.
-            database.files.clear();
-            database.tasks.clear();
-        }
-        return database;
-    }
-
-    int digestedFiles() {
-        return digestedFiles;
-    }
-
-    /**
-     * Revoke a task and all transitive consumers before starting any changed tool.
-     * Never permit a failed build to resurrect an earlier successful generation.
-     */
-    void invalidateTransitive(TaskManifest plan, String target) throws IOException {
-        java.util.Set<String> invalid = new java.util.HashSet<>();
-        invalid.add(target);
-        boolean changed;
-        do {
-            changed = false;
-            for (TaskManifest.Task task : plan.orderAll()) {
-                if (!invalid.contains(task.name())
-                        && task.prerequisites().stream().anyMatch(invalid::contains)) {
-                    changed |= invalid.add(task.name());
-                }
+            ModuleStateDb result = new ModuleStateDb(root.toRealPath(), store);
+            try {
+                result.decodeFiles(store.auxiliary());
+            } catch (IOException | IllegalArgumentException corrupt) {
+                store.invalidateAll();
+                result.fileCount = 0;
+                log.accept("M3DB cache miss: unsupported file fingerprint metadata");
             }
-        } while (changed);
-        boolean removed = false;
-        for (String name : invalid) removed |= tasks.remove(name) != null;
-        if (removed) storage.write(encode());
+            return result;
+        } catch (IOException | RuntimeException | Error failure) {
+            try { store.close(); } catch (IOException close) { failure.addSuppressed(close); }
+            throw failure;
+        }
     }
 
-    /** External providers are explicit, trusted plugin dependencies, never silent fallbacks. */
-    private static Storage externalStorage(Path root, String backend) throws IOException {
-        if (!backend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
-            throw new IllegalArgumentException("unknown module DB backend: " + backend);
-        }
-        M3ModuleDbBackendProvider selected = null;
-        try {
-            for (M3ModuleDbBackendProvider provider : ServiceLoader.load(M3ModuleDbBackendProvider.class)) {
-                String id = provider.id();
-                if (id == null || !id.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
-                    throw new IOException("invalid M3 portable DB provider identity");
-                }
-                if (backend.equals(id)) {
-                    if (selected != null) throw new IOException("duplicate M3 portable DB provider: " + id);
-                    selected = provider;
-                }
-            }
-        } catch (ServiceConfigurationError malformed) {
-            throw new IOException("M3 portable DB provider registration failed", malformed);
-        }
-        if (selected == null) throw new IOException("requested M3 portable DB provider is absent: " + backend);
-        M3ModuleDbBackendProvider provider = selected;
-        return new Storage() {
-            @Override public byte[] read() throws IOException { return provider.read(root); }
-            @Override public void write(byte[] image) throws IOException { provider.write(root, image); }
-        };
+    public static boolean statePath(String relative) {
+        return M3DbModuleStore.statePath(Objects.requireNonNull(relative, "relative"));
+    }
+
+    /** Identify only temporary internal JVM lease markers, never ordinary user properties. */
+    public static boolean isJvmLeaseProperty(String name) {
+        return M3ModuleDbRunLock.isJvmLeaseProperty(name);
+    }
+
+    /** Revoke one namespace in the active backend without switching other owners. */
+    public static void revokePrefix(Path root, String prefix, Consumer<String> log) throws IOException {
+        M3DbModuleStore.revokePrefix(root, prefix, log);
+    }
+
+    public synchronized String[] lookup(String key) { return store.lookup(key); }
+
+    public synchronized boolean hit(String key, String input, String output) {
+        String[] value = lookup(key);
+        return value != null && value[0].equals(input) && value[1].equals(output);
+    }
+
+    public synchronized String generation(String key) {
+        String[] value = lookup(key);
+        if (value == null) return null;
+        MessageDigest digest = sha256();
+        update(digest, "M3-MODULE-GENERATION-2");
+        update(digest, key);
+        update(digest, value[0]);
+        update(digest, value[1]);
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    public synchronized void invalidate(String key) throws IOException { store.invalidate(key); }
+    public synchronized void invalidate(Collection<String> keys) throws IOException { store.invalidate(keys); }
+    public synchronized void invalidateAll() throws IOException { store.invalidateAll(); }
+    public synchronized void invalidatePrefix(String prefix) throws IOException { store.invalidatePrefix(prefix); }
+
+    /** Caller supplies content-validated evidence only after original execution succeeds. */
+    public synchronized void record(String key, String input, String output) throws IOException {
+        if (fileCount != 0) store.auxiliary(encodeFiles());
+        store.record(key, input, output);
+    }
+
+    public synchronized void put(String key, String input, String output) throws IOException {
+        record(key, input, output);
+    }
+
+    public synchronized int digestedFiles() { return digestedFiles; }
+
+    @Override public synchronized void close() throws IOException { store.close(); }
+
+    private static String taskKey(String name) {
+        MessageDigest digest = sha256();
+        update(digest, "M3-COMPATIBILITY-TASK-1");
+        update(digest, name);
+        return "compat-" + HexFormat.of().formatHex(digest.digest());
     }
 
     String stamp(TaskManifest.Task task) throws IOException {
@@ -216,21 +202,34 @@ final class ModuleStateDb {
     }
 
     boolean upToDate(TaskManifest.Task task, String current) throws IOException {
-        TaskState prior = tasks.get(task.name());
-        return prior != null && !prior.outputStamp.isEmpty() && prior.inputStamp.equals(current)
-                && prior.outputStamp.equals(outputStamp(task));
+        String[] prior = lookup(taskKey(task.name()));
+        return prior != null && prior[0].equals(current)
+                && prior[1].equals(outputStamp(task));
     }
 
     void record(TaskManifest.Task task, String current) throws IOException {
         String outputs = outputStamp(task);
-        if (outputs.isEmpty()) throw new IOException("cannot record missing module outputs");
-        tasks.put(task.name(), new TaskState(current, outputs));
-        try {
-            storage.write(encode());
-        } catch (IOException failure) {
-            tasks.remove(task.name());
-            throw failure;
-        }
+        if (outputs.isEmpty()) throw new IOException("missing declared output from " + task.name());
+        if (!current.equals(stamp(task))) throw new IOException("task inputs changed before publication");
+        record(taskKey(task.name()), current, outputs);
+    }
+
+    /** Retained task-helper contract: revoke the producer and every transitive consumer atomically. */
+    void invalidateTransitive(TaskManifest plan, String target) throws IOException {
+        java.util.Set<String> invalid = new java.util.HashSet<>();
+        invalid.add(target);
+        boolean changed;
+        do {
+            changed = false;
+            for (TaskManifest.Task task : plan.orderAll()) {
+                if (!invalid.contains(task.name()) && task.prerequisites().stream().anyMatch(invalid::contains)) {
+                    changed |= invalid.add(task.name());
+                }
+            }
+        } while (changed);
+        java.util.List<String> keys = new ArrayList<>();
+        for (String name : invalid) keys.add(taskKey(name));
+        invalidate(keys);
     }
 
     private String outputStamp(TaskManifest.Task task) throws IOException {
@@ -268,23 +267,21 @@ final class ModuleStateDb {
         }
         try (Stream<Path> walk = Files.walk(path)) {
             ArrayList<Path> entries = new ArrayList<>();
-            for (Path entry : walk.sorted().toList()) {
+            var iterator = walk.iterator();
+            while (iterator.hasNext()) {
                 if (entries.size() >= MAX_ENTRIES) throw new IOException("too many module inputs/outputs");
-                entries.add(entry);
+                entries.add(iterator.next());
             }
+            entries.sort(null);
             for (Path entry : entries) addEntry(digest, entry);
         }
     }
 
     private void addEntry(MessageDigest digest, Path path) throws IOException {
         Path relative = root.relativize(path);
-        String name = relative.toString().replace('\\', '/');
-        // A declared .m3 input cannot recursively fingerprint the cache's own
-        // lock, database, SQLite journal or H2 lock/trace/temporary sidecars.
-        if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
-                || path.startsWith(root.resolve(NATIVE_DIRECTORY))
-                || name.startsWith(".m3/module-state."))) return;
+        if (statePath(relative.toString().replace('\\', '/'))) return;
         if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
+        String name = relative.toString().replace('\\', '/');
         update(digest, name);
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             update(digest, "directory");
@@ -297,8 +294,12 @@ final class ModuleStateDb {
 
     private String shaFile(Path path, String identity) throws IOException {
         Attributes before = attributes(path);
-        FileState prior = files.get(identity);
-        if (before.reusable(prior)) return prior.sha256;
+        int at = Arrays.binarySearch(fileNames, 0, fileCount, identity);
+        if (at >= 0 && before.ctime >= 0 && !before.fileKey.isEmpty()
+                && before.size == fileSizes[at] && before.mtime == fileMtimes[at]
+                && before.ctime == fileCtimes[at] && before.fileKey.equals(fileKeys[at])) {
+            return fileDigests[at];
+        }
         MessageDigest digest = sha256();
         byte[] buffer = new byte[65536];
         try (InputStream stream = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -307,7 +308,7 @@ final class ModuleStateDb {
         Attributes after = attributes(path);
         if (!before.equals(after)) throw new IOException("module file changed during hashing: " + path);
         String hash = HexFormat.of().formatHex(digest.digest());
-        files.put(identity, new FileState(after.size, after.mtime, after.ctime, after.fileKey, hash));
+        rememberFile(identity, after, hash);
         digestedFiles++;
         return hash;
     }
@@ -326,63 +327,91 @@ final class ModuleStateDb {
                 ctime, basic.fileKey() == null ? "" : basic.fileKey().toString());
     }
 
-    private byte[] encode() throws IOException {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        try (DataOutputStream data = new DataOutputStream(buffer)) {
-            data.writeInt(MAGIC);
-            data.writeInt(VERSION);
-            data.writeInt(files.size());
-            for (var entry : files.entrySet()) {
-                data.writeUTF(entry.getKey());
-                FileState f = entry.getValue();
-                data.writeLong(f.size); data.writeLong(f.mtime); data.writeLong(f.ctime);
-                data.writeUTF(f.fileKey); data.writeUTF(f.sha256);
-            }
-            data.writeInt(tasks.size());
-            for (var entry : tasks.entrySet()) {
-                data.writeUTF(entry.getKey());
-                data.writeUTF(entry.getValue().inputStamp);
-                data.writeUTF(entry.getValue().outputStamp);
-            }
+    private void rememberFile(String name, Attributes value, String digest) throws IOException {
+        if (name.isEmpty() || name.length() > 8192) throw new IOException("module file identity exceeds limit");
+        if (value.fileKey.length() > 4096) throw new IOException("module file key exceeds limit");
+        int at = Arrays.binarySearch(fileNames, 0, fileCount, name);
+        if (at < 0) {
+            if (fileCount == MAX_ENTRIES) return; // optional metadata eviction is always a content rehash
+            ensureCapacity(fileCount + 1);
+            at = -at - 1;
+            int remaining = fileCount - at;
+            System.arraycopy(fileNames, at, fileNames, at + 1, remaining);
+            System.arraycopy(fileKeys, at, fileKeys, at + 1, remaining);
+            System.arraycopy(fileDigests, at, fileDigests, at + 1, remaining);
+            System.arraycopy(fileSizes, at, fileSizes, at + 1, remaining);
+            System.arraycopy(fileMtimes, at, fileMtimes, at + 1, remaining);
+            System.arraycopy(fileCtimes, at, fileCtimes, at + 1, remaining);
+            fileCount++;
         }
-        byte[] body = buffer.toByteArray();
-        if (body.length + 32 > MAX_IMAGE) throw new IOException("module state image exceeds 32 MiB");
-        byte[] result = Arrays.copyOf(body, body.length + 32);
-        byte[] seal = sha256().digest(body);
-        System.arraycopy(seal, 0, result, body.length, seal.length);
-        return result;
+        fileNames[at] = name;
+        fileKeys[at] = value.fileKey;
+        fileDigests[at] = digest;
+        fileSizes[at] = value.size;
+        fileMtimes[at] = value.mtime;
+        fileCtimes[at] = value.ctime;
     }
 
-    private void decode(byte[] image) throws IOException {
-        if (image.length < 48 || image.length > MAX_IMAGE) return;
-        int end = image.length - 32;
-        byte[] actual = sha256().digest(Arrays.copyOf(image, end));
-        if (!MessageDigest.isEqual(actual, Arrays.copyOfRange(image, end, image.length))) return;
-        Map<String, FileState> readFiles = new TreeMap<>();
-        Map<String, TaskState> readTasks = new TreeMap<>();
-        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(image, 0, end))) {
-            if (data.readInt() != MAGIC || data.readInt() != VERSION) return;
-            int count = data.readInt();
-            if (count < 0 || count > MAX_ENTRIES) return;
-            for (int index = 0; index < count; index++) {
-                String path = data.readUTF();
-                FileState state = new FileState(data.readLong(), data.readLong(), data.readLong(),
-                        data.readUTF(), data.readUTF());
-                if (!state.sha256.matches("[0-9a-f]{64}") || readFiles.putIfAbsent(path, state) != null) return;
+    private void ensureCapacity(int desired) {
+        if (desired <= fileNames.length) return;
+        int capacity = Math.min(MAX_ENTRIES, Math.max(desired, fileNames.length * 2));
+        fileNames = Arrays.copyOf(fileNames, capacity);
+        fileKeys = Arrays.copyOf(fileKeys, capacity);
+        fileDigests = Arrays.copyOf(fileDigests, capacity);
+        fileSizes = Arrays.copyOf(fileSizes, capacity);
+        fileMtimes = Arrays.copyOf(fileMtimes, capacity);
+        fileCtimes = Arrays.copyOf(fileCtimes, capacity);
+    }
+
+    private byte[] encodeFiles() throws IOException {
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                DataOutputStream out = new DataOutputStream(bytes)) {
+            out.writeInt(FILE_VERSION);
+            out.writeInt(fileCount);
+            for (int i = 0; i < fileCount; i++) {
+                long maximumRow = 60L + 3L * (fileNames[i].length() + fileKeys[i].length());
+                if (bytes.size() + maximumRow > MAX_FINGERPRINT_BYTES) {
+                    throw new IOException("module fingerprint metadata exceeds limit");
+                }
+                out.writeUTF(fileNames[i]);
+                out.writeUTF(fileKeys[i]);
+                out.writeLong(fileSizes[i]);
+                out.writeLong(fileMtimes[i]);
+                out.writeLong(fileCtimes[i]);
+                out.write(HexFormat.of().parseHex(fileDigests[i]));
             }
-            count = data.readInt();
-            if (count < 0 || count > MAX_ENTRIES) return;
-            for (int index = 0; index < count; index++) {
-                String name = data.readUTF();
-                TaskState state = new TaskState(data.readUTF(), data.readUTF());
-                if (!state.inputStamp.matches("[0-9a-f]{64}")
-                        || (!state.outputStamp.isEmpty() && !state.outputStamp.matches("[0-9a-f]{64}"))
-                        || readTasks.putIfAbsent(name, state) != null) return;
-            }
-            if (data.available() != 0) return;
+            out.flush();
+            return bytes.toByteArray();
         }
-        files.putAll(readFiles);
-        tasks.putAll(readTasks);
+    }
+
+    private void decodeFiles(byte[] bytes) throws IOException {
+        if (bytes.length == 0) return;
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            if (in.readInt() != FILE_VERSION) throw new IOException("unsupported fingerprint schema");
+            int count = in.readInt();
+            if (count < 0 || count > MAX_ENTRIES) throw new IOException("module fingerprint count exceeds limit");
+            ensureCapacity(count);
+            byte[] digest = new byte[32];
+            for (int i = 0; i < count; i++) {
+                String name = in.readUTF();
+                if (name.isEmpty() || name.length() > 8192
+                        || i > 0 && fileNames[i - 1].compareTo(name) >= 0) {
+                    throw new IOException("noncanonical module file identity");
+                }
+                fileNames[i] = name;
+                fileKeys[i] = in.readUTF();
+                if (fileKeys[i].length() > 4096) throw new IOException("module file key exceeds limit");
+                fileSizes[i] = in.readLong();
+                fileMtimes[i] = in.readLong();
+                fileCtimes[i] = in.readLong();
+                if (fileSizes[i] < 0) throw new IOException("negative module file size");
+                in.readFully(digest);
+                fileDigests[i] = HexFormat.of().formatHex(digest);
+            }
+            if (in.read() != -1) throw new IOException("trailing file fingerprint data");
+            fileCount = count;
+        }
     }
 
     private static void update(MessageDigest digest, String value) {
@@ -397,77 +426,5 @@ final class ModuleStateDb {
     private static MessageDigest sha256() {
         try { return MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
-    }
-
-    private static final class FileStorage implements Storage {
-        private final Path file;
-        FileStorage(Path file) { this.file = file; }
-        @Override public byte[] read() throws IOException {
-            if (Files.isSymbolicLink(file)) throw new IOException("module cache is a symlink");
-            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return null;
-            if (Files.size(file) > MAX_IMAGE) return null;
-            return Files.readAllBytes(file);
-        }
-        // The FileLock is held for the try block only; javac -Xlint:try reports it as unused.
-        @Override @SuppressWarnings("try") public void write(byte[] bytes) throws IOException {
-            Path parent = file.getParent();
-            if (Files.isSymbolicLink(parent)) throw new IOException("module cache directory is a symlink");
-            Files.createDirectories(parent);
-            Path lockPath = parent.resolve("module-state.lock");
-            if (Files.isSymbolicLink(lockPath)) throw new IOException("module cache lock is a symlink");
-            try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock ignored = channel.lock()) {
-                Path tmp = Files.createTempFile(parent, "module-state-", ".tmp");
-                try {
-                    Files.write(tmp, bytes);
-                    try {
-                        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                    } catch (AtomicMoveNotSupportedException unsupported) {
-                        throw new IOException("module state needs atomic file replacement", unsupported);
-                    }
-                } finally {
-                    Files.deleteIfExists(tmp);
-                }
-            }
-        }
-    }
-
-    /** Adapt the canonical MIndexDB artifact API without making Maven depend on the SDK at bootstrap. */
-    private static final class NativeStorage implements Storage {
-        private final Path directory;
-        private final Method open;
-        private final Method read;
-        private final Method write;
-        NativeStorage(Path directory) throws IOException {
-            this.directory = directory;
-            try {
-                Class<?> type = Class.forName("com.synexia.mindex.db.MIndexDB");
-                open = type.getMethod("open", Path.class);
-                read = type.getMethod("findArtifact", CharSequence.class);
-                write = type.getMethod("putArtifact", CharSequence.class, CharSequence.class, int.class, byte[].class);
-            } catch (ReflectiveOperationException missing) {
-                throw new IOException("MIndexDB must be installed on the polyglot plugin classpath", missing);
-            }
-        }
-        @Override public byte[] read() throws IOException {
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, directory)) {
-                Object value = read.invoke(database, ARTIFACT);
-                if (!(value instanceof Optional<?> result) || result.isEmpty()) return null;
-                return (byte[]) result.get().getClass().getMethod("payload").invoke(result.get());
-            } catch (ReflectiveOperationException | ExceptionInInitializerError | RuntimeException error) {
-                throw new IOException("cannot read MIndexDB module artifact", error);
-            } catch (Exception error) {
-                throw new IOException("cannot close MIndexDB module artifact", error);
-            }
-        }
-        @Override public void write(byte[] bytes) throws IOException {
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, directory)) {
-                write.invoke(database, ARTIFACT, KIND, VERSION, bytes);
-            } catch (ReflectiveOperationException | RuntimeException error) {
-                throw new IOException("cannot publish MIndexDB module artifact", error);
-            } catch (Exception error) {
-                throw new IOException("cannot close MIndexDB module artifact", error);
-            }
-        }
     }
 }
