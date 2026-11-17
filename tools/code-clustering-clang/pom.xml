@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-code-clustering-clang</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>Apache Maven Code Clustering: Clang AST Front End</name>
+  <description>An AtomFrontEnd for maven-code-clustering-plugin that atomizes C, C++, Objective-C and Objective-C++
+    on the compiler's own syntax tree: clang -Xclang -ast-dump=json -fsyntax-only, run with each file's flags from
+    compile_commands.json. Function, method, constructor, destructor and Objective-C method definitions become METHOD
+    atoms and record, enum and Objective-C container definitions TYPE atoms, with names taken from the tree. Files
+    clang cannot parse go to the plugin's lexical front end. Add it as a dependency of the plugin.</description>
+  <licenses>
+    <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url></license>
+  </licenses>
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <jacksonVersion>2.22.4</jacksonVersion>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-code-clustering-plugin</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Jackson streaming parser, Apache-2.0: reads clang's JSON dump from the process pipe without holding it. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>${jacksonVersion}</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <compilerArgs><arg>-Xlint:all,-processing,-classfile</arg><arg>-Werror</arg></compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>clang-unit-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.clang.ClangUnitTests</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/clang-unit</argument></arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- Runs clang when it is installed (PATH, CLANG, or the default LLVM folders), else prints SKIP. -->
+            <id>clang-real-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.clang.ClangRealTests</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/clang-real</argument></arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
