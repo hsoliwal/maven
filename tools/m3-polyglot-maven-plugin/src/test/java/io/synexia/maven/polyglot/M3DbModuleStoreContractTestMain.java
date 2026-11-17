@@ -100,8 +100,10 @@ public final class M3DbModuleStoreContractTestMain {
                     "published artifact belongs to original M3IndexDB");
         }
         try (var entries = Files.list(root.resolve(".m3"))) {
-            check(entries.count() == 3, "one database, one lock and one recovery marker, no task stamp files");
+            check(entries.count() == 4, "one database, one lock, one recovery marker and one self-ignore file,"
+                    + " no task stamp files");
         }
+        check(Files.readString(root.resolve(".m3/.gitignore")).equals("*\n"), "the state directory ignores itself");
     }
 
     private static void revokesBeforeMutation(Path root) throws Exception {

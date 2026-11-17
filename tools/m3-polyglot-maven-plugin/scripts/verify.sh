@@ -22,6 +22,18 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbRunLock.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleJdbcStorage.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DbModuleStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/IndexStores.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LibraryIndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/PlatformIndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/DonorIndexStore.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/StateFiles.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ImageStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/DirectoryStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdbcStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ProviderStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateView.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDB.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDbArtifact.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDbSemanticCodec.java \
@@ -53,6 +65,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/BackendStateContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/BuildCacheContractTestMain.java \
@@ -73,6 +86,7 @@ java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.IndexStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.BackendStateContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.BuildCacheContractTestMain
