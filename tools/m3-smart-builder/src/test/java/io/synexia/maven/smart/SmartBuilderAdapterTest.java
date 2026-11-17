@@ -125,7 +125,21 @@ public final class SmartBuilderAdapterTest {
         }
         set(hook, "requireAtomPattern", false);
         set(hook, "atomPatternManifest", null);
-        int count = 6;
+        CodeAgentMojo codeAgent = new CodeAgentMojo();
+        set(codeAgent, "baseDir", project.toFile());
+        set(codeAgent, "buildDir", build.toFile());
+        set(codeAgent, "sourceRoot", source.toFile());
+        set(codeAgent, "preparationReport", project.resolve("absent-preparation.json").toFile());
+        set(codeAgent, "atomPatternManifest", project.resolve("absent-checkpoints.tsv").toFile());
+        set(codeAgent, "recipeCatalog", project.resolve("absent-catalog.tsv").toFile());
+        try {
+            codeAgent.execute();
+            throw new AssertionError("code-agent must require a source-bound producer receipt");
+        } catch (org.apache.maven.plugin.MojoExecutionException expected) {
+            require(Files.readString(build.resolve("m3-smart/code-agent.json")).contains("\"status\":\"refused\""),
+                    "Maven code-agent adapter refuses evidence before any model launch");
+        }
+        int count = 7;
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
             Path browser = Files.writeString(project.resolve("browser fixture"), "not an executable");
