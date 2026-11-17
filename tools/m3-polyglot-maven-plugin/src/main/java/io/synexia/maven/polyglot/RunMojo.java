@@ -35,7 +35,7 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
-    /** "legacy" (unchanged default), "file" (one image per module), or "m3db" (native MIndexDB). */
+    /** "legacy" default, "file", native "m3db", SQLite/H2 JDBC, or an opt-in ext-* provider. */
     @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "legacy")
     private String incrementalState;
 
