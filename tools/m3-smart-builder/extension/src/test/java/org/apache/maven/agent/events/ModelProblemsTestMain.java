@@ -106,6 +106,8 @@ public final class ModelProblemsTestMain {
         Check.that(summary.contains("ERROR b/pom.xml:12:17 " + MISSING), "summary:\n" + summary);
         String events = Files.readString(root.resolve("target/agent/build-events.jsonl"), StandardCharsets.UTF_8);
         Check.that(events.contains("\"source\":\"model\""), "model diagnostic event:\n" + events);
+        Check.that(events.lines().findFirst().orElse("").contains("\"type\":\"session-start\""),
+                "a build that failed before its session still starts with session-start:\n" + events);
     }
 
     private static ProjectBuildingResult result(Path pom) {

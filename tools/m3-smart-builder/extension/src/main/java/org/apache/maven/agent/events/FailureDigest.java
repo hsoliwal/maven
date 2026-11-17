@@ -25,8 +25,8 @@ import java.util.stream.Collectors;
 /**
  * What failed and how to rerun it, as {@code failure.json} and {@code failure.md} rendered from the same data:
  * failures in reactor order with their error diagnostics (each with its source lines), failed tests and a reproduce
- * command; skipped projects; advice, never trusted. No durations, timestamps or absolute paths, so a rerun of the
- * same failure writes the same bytes.
+ * command, and the launcher as each shell spells it; skipped projects; advice, never trusted. No durations,
+ * timestamps or absolute paths, so a rerun of the same failure writes the same bytes.
  */
 final class FailureDigest {
     /** A diagnostic with the source lines around it. */
@@ -75,15 +75,17 @@ final class FailureDigest {
 
     private final String outcome;
     private final List<String> goals;
+    private final MavenCommands.Launchers launchers;
     private final List<Failure> failures;
     private final List<String> skipped;
     private final Advice advice;
     private final Limits limits;
 
-    FailureDigest(String outcome, List<String> goals, List<Failure> failures, List<String> skipped, Advice advice,
-            Limits limits) {
+    FailureDigest(String outcome, List<String> goals, MavenCommands.Launchers launchers, List<Failure> failures,
+            List<String> skipped, Advice advice, Limits limits) {
         this.outcome = outcome;
         this.goals = List.copyOf(goals);
+        this.launchers = launchers;
         this.failures = List.copyOf(failures);
         this.skipped = List.copyOf(skipped);
         this.advice = advice;
@@ -97,6 +99,8 @@ final class FailureDigest {
     /** {@code failure.json}. */
     String json() {
         return new JsonText.Obj().put("v", 1).put("outcome", outcome).put("goals", goals)
+                .put("launcher", new JsonText.Obj().put("sh", launchers.sh()).put("powershell", launchers.powershell())
+                        .put("cmd", launchers.cmd()))
                 .put("failures", failures.stream().map(Failure::json).collect(Collectors.toList()))
                 .put("skippedProjects", skipped).put("advice", advice.json()).put("limits", limits.json()).text()
                 + "\n";
@@ -107,10 +111,10 @@ final class FailureDigest {
         StringBuilder md = new StringBuilder("# Build failure\n\n");
         md.append("Outcome: ").append(outcome).append(". Goals: ").append(String.join(" ", goals)).append(".\n");
         failures.forEach(failure -> failure(md, failure));
-        if (!skipped.isEmpty()) {
-            md.append("\n## Skipped projects\n\n");
-            skipped.forEach(id -> md.append("- ").append(id).append('\n'));
-        }
+        md.append(launchers.differ() ? "\nThe reproduce commands start with `" + launchers.sh() + "` as bash runs it; "
+                + launchers.otherShells() + ".\n" : "");
+        md.append(skipped.isEmpty() ? "" : skipped.stream().map(id -> "- " + id + "\n")
+                .collect(Collectors.joining("", "\n## Skipped projects\n\n", "")));
         md.append("\n## Advice\n\nStatus: ").append(advice.status()).append(" (never trusted).\n");
         if (!advice.text().isEmpty()) {
             md.append("\n").append(advice.text().strip()).append('\n');

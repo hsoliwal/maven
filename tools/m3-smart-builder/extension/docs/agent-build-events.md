@@ -30,11 +30,14 @@ are UTF-8 with LF line ends.
 | `summary.txt` | agent mode | the summary also printed on standard output |
 | `project.json` | `mvn agent:describe-project` (maven-agent-plugin) | modules, goals, commands |
 
-The event file is staged in `maven-build-events` under the temporary directory and moved into place when the
-session ends, so a `clean` in the same build never meets an open file. When a recorded build starts, the previous
+The event file is staged outside the build tree and moved into place when the session ends, so a `clean` in the
+same build never meets an open file. Each build stages in a new private directory `maven-build-events-<random>`
+(owner-only on POSIX) under `%LOCALAPPDATA%\Temp` on Windows and `java.io.tmpdir` elsewhere; no existing path is
+written to, so another user can neither stop nor forge the stream. When a recorded build starts, the previous
 build's event file and, in agent mode, its `failure.json`, `failure.md` and `summary.txt` are removed first: a build
 that is killed before its session end leaves no older file looking current, and no `summary.txt` means the build did
-not finish. Staged files of killed builds are removed after a day.
+not finish. Staging directories of killed builds that belong to the same user are removed after a day; nothing
+else in the temporary directory is touched and no link is followed.
 
 ## Recommended command line
 
@@ -71,14 +74,15 @@ Maven 4.0.0-rc-7 ignores it there and takes `"-Dmaven.ext.class.path=<jar>"` on 
 | `maven.agent.maxRepeat` | 3 | 1..1000 | diagnostics of one rule per project and severity before `repeat` |
 | `maven.agent.stackLines` | 12 | 1..200 | trimmed stack lines per test |
 | `maven.agent.context` | 2 | 0..10 | source lines before and after a diagnostic |
-| `maven.agent.messageChars` | 300 | 40..10000 | characters per message (longer ones end in `...`) |
+| `maven.agent.messageChars` | 300 | 40..10000 | characters per diagnostic or test message (longer ones end in `...`); a failure message keeps up to four times as many |
 | `maven.agent.summaryBytes` | 4000 | 200..1000000 | UTF-8 bytes of the summary |
 
 ## build-events.jsonl
 
 Every line starts with `{"v":1,"seq":<n>,"tMs":<ms since the build started>,"type":"<type>"`; the fields of the
 type follow in the order below. Unknown values are `null`. At most 20000 events are written; later ones are counted
-(`truncated` in `session-end`), and `session-end` is always the last line.
+(`truncated` in `session-end`). `session-start` is always the first line, also for a build that failed before its
+session started (a POM error; then `modules` is empty), and `session-end` is always the last.
 
 | Type | Fields |
 | --- | --- |
@@ -86,7 +90,7 @@ type follow in the order below. Unknown values are `null`. At most 20000 events 
 | `project-start` | `index`, `project` (`groupId:artifactId`), `path` |
 | `project-end` | `index`, `project`, `path`, `outcome` (`success`, `failure`, `skipped`), `durationMs` |
 | `mojo-start` | `project`, `mojo{plugin (g:a:v), goal, execution, phase}` |
-| `mojo-end` | `project`, `mojo{...}`, `outcome` (`success`, `failure`, `skipped`), `durationMs`, `error` (first message line) |
+| `mojo-end` | `project`, `mojo{...}`, `outcome` (`success`, `failure`, `skipped`), `durationMs`, `error` (the failure message: its non-blank lines joined by LF, cleaned as below, up to 4 x `maven.agent.messageChars` characters) |
 | `diagnostic` | `project`, `source` (`compiler`, `log`, `checkstyle`, `pmd`, `cpd`, `spotbugs`, `model`), `severity` (`ERROR`, `WARNING`, `INFO`), `file`, `line`, `column`, `rule` (rule id or javac `-Xlint` key), `message`, `mojo` (`prefix:goal`) |
 | `test` | `project`, `class`, `method`, `outcome` (`passed`, `failed`, `error`, `skipped`), `durationMs`, `exception`, `message`, `stack[]` (trimmed), `location{file, line}` |
 | `test-suite` | `project`, `class`, `tests`, `failures`, `errors`, `skipped`, `durationMs` |
@@ -102,17 +106,23 @@ Sources of the facts:
   javac `file:line: error: msg`, gcc/clang `file:line:col: warning: msg`. Diagnostics are deduplicated on file, line,
   rule and message; after `maven.agent.maxRepeat` of one rule (or one message) per project and severity the rest are
   counted in one `repeat` event. A POM or model failure (before any project ran) gives one `model` diagnostic per
-  located model problem: the POM file, line, column, severity and message.
+  located model problem: the POM file, line, column, severity and message. In a `-T` log, where the headers of
+  modules interleave, a diagnostic whose file belongs to a module takes that module's last `--- ... @ <artifactId>
+  ---` header as its mojo (and so its source `compiler` or `log`). U+0085, U+2028 and U+2029 end a line like LF, a
+  line is read up to 8192 characters, a failure message up to 64 KB, and every line pattern runs in linear time.
 - `test` and `test-suite`: the Surefire or Failsafe `TEST-*.xml` reports written during that mojo run, in the mojo's
   own `reportsDirectory`. Stacks keep the exception line, frames of the test's package root, `Caused by:` lines and
   the root cause; framework runs become `... n framework frames omitted`.
-- Messages lose `user:password@` of URLs and terminal colours, and the root's absolute path in every spelling. A long
-  message is clipped before it is redacted, and the redaction patterns run in linear time.
+- Messages lose `user:password@` of URLs and terminal colours; the root's absolute path in every spelling
+  (`/C:/r/`, `C:/r/`, `C:\r\`) is removed, the local repository (`maven.repo.local`, else `~/.m2/repository`)
+  becomes `<local-repo>` and the home directory (`user.home`) `~`, so no file names the user. A long message is
+  clipped before it is redacted, and the redaction patterns run in linear time.
 
 ## failure.json
 
 ```
-{"v":1, "outcome", "goals":[], "failures":[{"project", "path", "kind", "mojo", "message", "helpReference",
+{"v":1, "outcome", "goals":[], "launcher":{"sh", "powershell", "cmd"},
+ "failures":[{"project", "path", "kind", "mojo", "message", "helpReference",
   "diagnostics":[{"file", "line", "column", "severity", "rule", "message",
                   "context":{"startLine", "markLine", "lines":[]}}],
   "tests":[{"class", "method", "exception", "message", "stack":[]}], "reproduce"}],
@@ -122,22 +132,46 @@ Sources of the facts:
 
 - `failures` are in reactor order. `kind` comes from the failed mojo: `compile`, `testCompile` (compiler plugin),
   `test` (Surefire), `integration-test` (Failsafe), `model` (a POM or model failure, whose located problems are the
-  `diagnostics`), else `other`. `helpReference` is the `[Help]` link Maven's own
-  exception handler gives.
+  `diagnostics`), else `other`. `message` is the whole failure message, its non-blank lines joined by LF (a
+  dependency, plugin or rule failure keeps its reason), cleaned as above and bounded to 4 x
+  `maven.agent.messageChars`. `helpReference` is the `[Help]` link Maven's own exception handler gives; Maven 4's
+  bare page name (`MojoFailureException`) is written as the link Maven 3.9 prints
+  (`http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException`).
 - `diagnostics` are the project's ERROR diagnostics, each with `maven.agent.context` source lines around it (tabs as
   four spaces, 240 characters per line). `tests` are the failed tests.
 - `reproduce` reruns just that failure: `mvn -pl a -am compile` (or `test-compile` for a file under `src/test`),
   `mvn -pl b -am "-Dtest=fix.BTest#adds" "-Dsurefire.failIfNoSpecifiedTests=false" test`,
   `mvn -pl b -am "-Dit.test=..." "-Dfailsafe.failIfNoSpecifiedTests=false" "-Dtest=NoUnitTestSelected"
   "-Dsurefire.failIfNoSpecifiedTests=false" verify` (no unit test runs), `mvn validate` for a model failure, the
-  failed goal itself, with the user properties its parameters read, when it ran from the command line (execution
-  `default-cli`; for example `mvn -pl . -am "-Dagent.check=true"
-  org.apache.maven.plugins:maven-agent-plugin:0.1.0-SNAPSHOT:llms-txt`; properties with a secret-like name are left
-  out), or the failed mojo's phase. Every `-D` argument is double-quoted and a module path with white space is quoted;
-  a nested test class's `$` becomes `*`. `./mvnw` replaces `mvn` when the root has the wrapper.
+  failed goal itself when it ran from the command line (execution `default-cli`, for example `mvn -pl . -am
+  org.apache.maven.plugins:maven-agent-plugin:0.1.0-SNAPSHOT:llms-txt`), the failed mojo's phase, or the build's own
+  goals when no mojo failed (a mistyped phase: `mvn verfy`; in a failed project `mvn -pl . -am verfy`).
+  - Before `-pl` every command repeats the build's command line: `-f <pom>` when the build ran in another directory
+    or with another POM file name (the path is relative to the directory the build ran in, so run the command from
+    there; otherwise run it from the build root); `"-P<id>,-<id>"` with the active profiles not defined in the
+    settings (the settings activate their own) and the deactivated ones; `"-Dname=value"` with the user properties,
+    sorted. A user property is left out when a Maven configuration file sets it (`maven-user.properties` or
+    `maven.properties` in the installation's `conf/`, in `~/.m2` or in the project's `.mvn/`: Maven 4 copies their
+    entries, such as `aether.conflictResolver.impl` and `maven.cache.config`, into the user properties, and a rerun
+    reads them again); when it is an agent setting (`maven.agent*`, `maven.events.*`, `style.color`,
+    `maven.ext.class.path`, `chromellm.advice`) or a test selection the command sets itself (`test`, `it.test` and
+    their `failIfNoSpecifiedTests`); when its name holds `pass`, `pwd`, `secret`, `token`, `credential`, `cred`,
+    `auth`, `key`, `login`, `session`, `cookie` or `private`; when its value holds a credential URL or a
+    `password=`-like pair; when its value holds an absolute path; and when a shell would change its value.
+  - Every `-D` and `-P` argument is double-quoted and a module path with white space is quoted. Every argument holds
+    only characters that bash, cmd.exe and PowerShell all keep unchanged inside double quotes: a nested test class's
+    `$` becomes `*`; a test method with another character (a display name, a quote, a backtick) is selected by its
+    class; a test class with another character is left out; a module path with one is selected by its id.
+  - The launcher is `./mvnw` when the directory the build ran in has the Maven Wrapper, else `mvn`. `./mvnw` is how
+    bash (and PowerShell) starts the wrapper but no command in cmd.exe, so `launcher` gives each shell's spelling:
+    `{"sh":"./mvnw","powershell":".\\mvnw.cmd","cmd":".\\mvnw.cmd"}` (all three `mvn` without the wrapper; cmd.exe
+    gets `.\mvnw.cmd`, not `mvnw.cmd`, which it does not find when `NoDefaultCurrentDirectoryInExePath` is set). In
+    another shell replace the command's first word by that shell's spelling; `failure.md` says so too.
 - `advice`: `not-requested` unless the build ran with `-Dchromellm.advice=true`; then the build hook's post-build
-  phase runs once for the first failed project and gives `none` (no provider), `available` (with `text`), `failed`,
-  or `skipped` (Maven below Java 21, or the hook plugin not in the local repository). Advice is never trusted.
+  phase runs once for the first failed project and gives `none` (no provider), `available` (with `text`, at most
+  32 KB), `failed` (also for a report that is not valid JSON or larger than 4 MB), or `skipped` (Maven below Java 21,
+  or the hook plugin not in the local repository). The report is read with a linear JSON string reader, so no text
+  can exhaust the stack. Advice is never trusted.
 - No durations, timestamps or absolute paths: a rerun of the same failure writes the same bytes, and so does
   `failure.md`, which renders the same data.
 

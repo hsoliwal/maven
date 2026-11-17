@@ -51,7 +51,7 @@ public final class FailureDigestTestMain {
         TestResult result = new TestResult("fix:b", test, "expected:<3> but was:<4>",
                 List.of("java.lang.AssertionError: expected:<3> but was:<4>", "at fix.BTest.adds(BTest.java:9)"),
                 "b/src/test/java/fix/BTest.java", 9);
-        return new FailureDigest("failure", List.of("verify"), List.of(
+        return new FailureDigest("failure", List.of("verify"), MavenCommands.Launchers.of("mvn"), List.of(
                 new FailureDigest.Failure(1, "fix:a", "a", "compile", "compiler:compile", "Compilation failure", HELP,
                         List.of(item), List.of(), "mvn -pl a -am compile"),
                 new FailureDigest.Failure(2, "fix:b", "b", "test", "surefire:test", "There are test failures.", HELP,
@@ -61,7 +61,8 @@ public final class FailureDigestTestMain {
 
     private static void digest(Path root) {
         String json = sample(root).json();
-        Check.equal("{\"v\":1,\"outcome\":\"failure\",\"goals\":[\"verify\"],\"failures\":[{\"project\":\"fix:a\","
+        Check.equal("{\"v\":1,\"outcome\":\"failure\",\"goals\":[\"verify\"],\"launcher\":{\"sh\":\"mvn\","
+                + "\"powershell\":\"mvn\",\"cmd\":\"mvn\"},\"failures\":[{\"project\":\"fix:a\","
                 + "\"path\":\"a\",\"kind\":\"compile\",\"mojo\":\"compiler:compile\",\"message\":\"Compilation failure\","
                 + "\"helpReference\":\"" + HELP + "\",\"diagnostics\":[{\"file\":\"a/src/main/java/fix/Broken.java\","
                 + "\"line\":3,\"column\":9,\"severity\":\"ERROR\",\"rule\":null,\"message\":\"cannot find symbol; symbol: "
@@ -90,22 +91,37 @@ public final class FailureDigestTestMain {
         SurefireReports.TestCase subs = new SurefireReports.TestCase("fix.BTest", "subs(int)[2]", "error", 1, "", "", "");
         SurefireReports.TestCase other = new SurefireReports.TestCase("fix.CTest", "x", "failed", 1, "", "", "");
         Diagnostic testSource = new Diagnostic("fix:a", "compiler", "ERROR", "a/src/test/java/fix/T.java", 1, 1, "", "m", "");
-        Check.equal("mvn -pl a -am compile", ReproduceCommand.of("mvn", "compile", "a", List.of(), List.of(), "compile",
-                List.of()),
+        Check.equal("mvn -pl a -am compile", reproduce("mvn", "compile", "a", List.of(), List.of(), "compile"),
                 "compile failure");
-        Check.equal("./mvnw -pl a -am test-compile", ReproduceCommand.of("./mvnw", "compile", "a", List.of(testSource),
-                List.of(), "compile", List.of()), "a compile error in a test source reruns test-compile");
+        Check.equal("./mvnw -pl a -am test-compile", reproduce("./mvnw", "compile", "a", List.of(testSource), List.of(),
+                "compile"), "a compile error in a test source reruns test-compile");
         Check.equal("mvn -pl b -am \"-Dtest=fix.BTest#adds+subs,fix.CTest#x\" \"-Dsurefire.failIfNoSpecifiedTests=false\""
-                + " test", ReproduceCommand.of("mvn", "test", "b", List.of(), List.of(adds, subs, other), "test", List.of()),
+                + " test", reproduce("mvn", "test", "b", List.of(), List.of(adds, subs, other), "test"),
                 "failed tests grouped by class, parameter suffixes removed");
         Check.equal("mvn -pl b -am \"-Dit.test=fix.CTest#x\" \"-Dfailsafe.failIfNoSpecifiedTests=false\""
                 + " \"-Dtest=NoUnitTestSelected\" \"-Dsurefire.failIfNoSpecifiedTests=false\" verify",
-                ReproduceCommand.of("mvn", "integration-test", "b", List.of(), List.of(other), "integration-test",
-                        List.of()),
+                reproduce("mvn", "integration-test", "b", List.of(), List.of(other), "integration-test"),
                 "integration test");
-        Check.equal("mvn -pl . -am package", ReproduceCommand.of("mvn", "other", ".", List.of(), List.of(), "package",
-                List.of()),
+        Check.equal("mvn -pl . -am package", reproduce("mvn", "other", ".", List.of(), List.of(), "package"),
                 "another mojo reruns its phase");
+    }
+
+    private static String reproduce(String launcher, String kind, String module, List<Diagnostic> errors,
+            List<SurefireReports.TestCase> tests, String phase) {
+        return ReproduceCommand.of(new ReproduceCommand.Build(launcher, List.of(), List.of("verify")),
+                new ReproduceCommand.Failed(kind, module, errors, tests, phase, ""));
+    }
+
+    /** A symbolic link inside the root to a file outside it gives no window (needs the right to make links). */
+    private static void symlinkOutside(Path root) {
+        try {
+            Path outside = Files.createTempFile("outside-root", ".java");
+            Files.writeString(outside, "secret line\n", StandardCharsets.UTF_8);
+            Files.createSymbolicLink(root.resolve("a/link.java"), outside);
+            Check.equal(Optional.empty(), SourceWindow.read(root, "a/link.java", 1, 0), "no window through a link out");
+        } catch (java.io.IOException | UnsupportedOperationException | SecurityException noLinks) {
+            System.out.println("FailureDigestTestMain: symbolic link check NOT RUN: " + noLinks);
+        }
     }
 
     private static void windowsAndRedaction(Path root) {
@@ -114,6 +130,7 @@ public final class FailureDigestTestMain {
                 "a window at the first line starts at 1");
         Check.equal(Optional.empty(), SourceWindow.read(root, "../outside.java", 1, 2), "no file outside the root");
         Check.equal(Optional.empty(), SourceWindow.read(root, "a/src/main/java/fix/Broken.java", 99, 2), "no line 99");
+        symlinkOutside(root);
         Check.equal("get https://***@repo.example/x failed", Redact.secrets("get https://user:s3cret@repo.example/x failed"),
                 "credentials of a URL are removed");
         String forward = root.toString().replace('\\', '/');

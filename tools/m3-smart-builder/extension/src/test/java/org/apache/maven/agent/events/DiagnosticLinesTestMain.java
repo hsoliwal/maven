@@ -18,10 +18,29 @@
  */
 package org.apache.maven.agent.events;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.LongStream;
 
-/** Located diagnostics in compiler, Checkstyle, javac and gcc output and in mojo failure messages. */
+/**
+ * Located diagnostics in compiler, Checkstyle, javac and gcc output and in mojo failure messages; U+2028, U+2029 and
+ * U+0085 end a line like LF, and adversarial 1 MB lines of every format parse within a time bound; under {@code -T}
+ * a diagnostic takes the mojo of its own module's last header.
+ */
 public final class DiagnosticLinesTestMain {
+    /**
+     * Time bound of one parse of a 1 MB adversarial line (fastest of three tries). Linear parsing takes about 20 ms;
+     * the bound is generous for a loaded machine. The patterns this replaces needed over 60 s for such a line.
+     */
+    static final long BOUND_MILLIS = 1000;
+    private static final int MB = 1 << 20;
+    /** One unit of each line format, repeated to a megabyte before a line separator and a last character. */
+    private static final Map<String, String> SHAPES = Map.of("maven", "a.b:[1,2] x ", "javac", "a.java:1: error: x ",
+            "gcc", "a.c:1:2: warning: x ", "checkstyle", "a.b:1: ");
+    private static final List<String> ENDS = List.of(" x", " x", " x", "\u0085x");
+
     private DiagnosticLinesTestMain() {}
 
     public static void main(String[] args) {
@@ -29,7 +48,62 @@ public final class DiagnosticLinesTestMain {
         failureMessage();
         logContext();
         notDiagnostics();
+        separators();
+        interleaved();
+        SHAPES.forEach((name, unit) -> ENDS.forEach(end -> bounded(name, unit, end)));
+        manyLines();
         Check.done("DiagnosticLinesTestMain");
+    }
+
+    /** U+2028, U+2029 and U+0085 end a line, so two diagnostics joined by one are two diagnostics. */
+    private static void separators() {
+        List.of(" ", " ", "\u0085").forEach(separator -> {
+            List<DiagnosticLines.Raw> found = DiagnosticLines.parse("[ERROR] /p/A.java:[1,2] first" + separator
+                    + "[WARNING] /p/B.java:[3,4] second", DiagnosticLines.ERROR, "", "");
+            Check.equal(List.of("first", "second"), found.stream().map(DiagnosticLines.Raw::message)
+                    .collect(java.util.stream.Collectors.toList()), "split at U+" + Integer.toHexString(separator.charAt(0)));
+        });
+    }
+
+    /**
+     * Under {@code -T} the headers of two modules interleave: a diagnostic of module a takes a's last mojo, not the
+     * header printed last (b's), when its file belongs to a.
+     */
+    private static void interleaved() {
+        DiagnosticLines reader = new DiagnosticLines(DiagnosticLines.ERROR, "", "",
+                file -> file.startsWith("/r/a/") ? Optional.of("a") : Optional.empty());
+        List.of("[INFO] --- compiler:3.13.0:compile (default-compile) @ a ---",
+                "[INFO] --- surefire:3.2.5:test (default-test) @ b ---",
+                "[WARNING] /r/a/src/main/java/A.java:[3,29] old() in fix.Core has been deprecated",
+                "[WARNING] /r/x/X.java:[1,1] unowned").forEach(reader::accept);
+        List<DiagnosticLines.Raw> found = reader.found();
+        Check.equal(List.of("compiler:compile", "a"), List.of(found.get(0).mojo(), found.get(0).artifactId()),
+                "the module's own last header");
+        Check.equal(List.of("surefire:test", "b"), List.of(found.get(1).mojo(), found.get(1).artifactId()),
+                "a file of no module keeps the last header");
+    }
+
+    /** A 1 MB line of {@code unit}, then {@code end}, parses within {@link #BOUND_MILLIS}. */
+    private static void bounded(String name, String unit, String end) {
+        String line = (name.equals("checkstyle") ? "[WARN] " : "") + unit.repeat(MB / unit.length()) + end;
+        long millis = LongStream.range(0, 3).map(i -> millis(() -> DiagnosticLines.parse(line, DiagnosticLines.ERROR,
+                "", ""))).min().orElseThrow();
+        Check.that(millis < BOUND_MILLIS, name + " + U+" + Integer.toHexString(end.charAt(0)) + ": " + millis
+                + " ms (bound " + BOUND_MILLIS + " ms)");
+    }
+
+    /** A log of 128 adversarial 8 KB lines, the length real lines are clipped to, within the same bound. */
+    private static void manyLines() {
+        String log = String.join("\n", Collections.nCopies(128, "a.b:[1,2] x ".repeat(680) + " x"));
+        long millis = LongStream.range(0, 3).map(i -> millis(() -> DiagnosticLines.parse(log, DiagnosticLines.ERROR,
+                "", ""))).min().orElseThrow();
+        Check.that(millis < BOUND_MILLIS, "128 lines of 8 KB: " + millis + " ms (bound " + BOUND_MILLIS + " ms)");
+    }
+
+    private static long millis(Runnable work) {
+        long start = System.nanoTime();
+        work.run();
+        return (System.nanoTime() - start) / 1_000_000L;
     }
 
     private static DiagnosticLines.Raw one(String line) {

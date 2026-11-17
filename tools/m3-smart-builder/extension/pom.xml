@@ -123,6 +123,12 @@
             <configuration><mainClass>org.apache.maven.agent.events.SessionStartTestMain</mainClass></configuration></execution>
           <execution><id>model-problems-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>org.apache.maven.agent.events.ModelProblemsTestMain</mainClass></configuration></execution>
+          <execution><id>reproduce-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.ReproduceTestMain</mainClass></configuration></execution>
+          <execution><id>advice-bridge-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.AdviceBridgeTestMain</mainClass></configuration></execution>
+          <execution><id>staging-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.StagingTestMain</mainClass></configuration></execution>
         </executions>
       </plugin>
     </plugins>

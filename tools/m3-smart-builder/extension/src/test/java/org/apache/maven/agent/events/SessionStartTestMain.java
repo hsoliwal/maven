@@ -22,18 +22,14 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Properties;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 
 /**
  * A new build makes the previous build's agent files go away before it runs, so a build that is killed (and never
- * reaches its session end) cannot leave an older failure digest, summary or event stream looking current. Staged
- * streams of killed builds older than a day are removed from the staging directory; without the properties nothing
- * is touched.
+ * reaches its session end) cannot leave an older failure digest, summary or event stream looking current; without
+ * the properties nothing is touched. Staging itself is checked by {@code StagingTestMain}.
  */
 public final class SessionStartTestMain {
     private static final List<String> OUTPUTS = List.of("target/agent/failure.json", "target/agent/failure.md",
@@ -46,12 +42,8 @@ public final class SessionStartTestMain {
         stale(root);
         start(root, new Properties());
         Check.that(OUTPUTS.stream().allMatch(file -> Files.exists(root.resolve(file))), "no property: untouched");
-        Path oldStage = staged(Duration.ofDays(2));
-        Path freshStage = staged(Duration.ZERO);
         start(root, agent());
         Check.that(OUTPUTS.stream().noneMatch(file -> Files.exists(root.resolve(file))), "agent mode: removed");
-        Check.that(!Files.exists(oldStage) && Files.exists(freshStage), "stale staged stream removed, fresh one kept");
-        Files.deleteIfExists(freshStage);
         eventsOnly(root);
         Check.done("SessionStartTestMain");
     }
@@ -89,11 +81,5 @@ public final class SessionStartTestMain {
                 throw new UncheckedIOException(e);
             }
         });
-    }
-
-    private static Path staged(Duration age) throws IOException {
-        Path file = Files.createTempFile(Files.createDirectories(EventWriter.stagingDir()), "build-events-", ".jsonl");
-        Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(age)));
-        return file;
     }
 }

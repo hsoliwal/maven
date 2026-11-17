@@ -20,14 +20,19 @@ package org.apache.maven.agent.events;
 
 import java.util.Collection;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * JSON text of the agent files: string escaping, bounded strings and an ordered object builder. Writing only; the
- * files are read by agents and tools, never parsed back here.
+ * JSON text of the agent files: string escaping, bounded strings and an ordered object builder; the one reader is
+ * {@link #stringField}, for the string fields of the build hook's report.
  */
 public final class JsonText {
     /** Marker appended to a string cut by {@link #clip(String, int)}. */
     public static final String ELLIPSIS = "...";
+    /** One part of a JSON string after its opening quote: a plain run, an escape, or the closing quote. */
+    private static final Pattern STRING_PART =
+            Pattern.compile("\\G(?:([^\"\\\\\\p{Cntrl}]++)|\\\\(u[0-9a-fA-F]{4}|[\"\\\\/bfnrt])|(\"))");
 
     private JsonText() {}
 
@@ -72,6 +77,42 @@ public final class JsonText {
             end--;
         }
         return value.substring(0, end) + ELLIPSIS;
+    }
+
+    /**
+     * The value of the string field {@code name} in a JSON text (its first occurrence as a key, at any depth), at most
+     * {@code max} characters; empty when there is no such field. A JSON string never holds an unescaped quote, so the
+     * key cannot be matched inside another string. Read part by part with possessive patterns: linear, no recursion.
+     *
+     * @throws IllegalArgumentException when the value is not a complete JSON string
+     */
+    static Optional<String> stringField(String json, String name, int max) {
+        Matcher key = Pattern.compile(Pattern.quote(quote(name)) + "\\s*+:\\s*+\"").matcher(json);
+        return key.find() ? Optional.of(string(json, key.end(), max)) : Optional.empty();
+    }
+
+    private static String string(String json, int start, int max) {
+        Matcher part = STRING_PART.matcher(json).region(start, json.length());
+        StringBuilder out = new StringBuilder();
+        boolean[] closed = {false};
+        part.results().takeWhile(r -> !(closed[0] = r.group(3) != null)).filter(r -> out.length() <= max)
+                .forEach(r -> out.append(r.group(1) != null ? r.group(1) : unescape(r.group(2))));
+        if (!closed[0]) {
+            throw new IllegalArgumentException("not a complete JSON string at " + start);
+        }
+        return clip(out.toString(), max);
+    }
+
+    private static String unescape(String escape) {
+        return switch (escape.charAt(0)) {
+            case 'n' -> "\n";
+            case 't' -> "\t";
+            case 'r' -> "\r";
+            case 'b' -> "\b";
+            case 'f' -> "\f";
+            case 'u' -> String.valueOf((char) Integer.parseInt(escape.substring(1), 16));
+            default -> escape;
+        };
     }
 
     /** {@code value}, or {@code null} for an empty string, so unknown fields are written as JSON null. */

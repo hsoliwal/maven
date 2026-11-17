@@ -98,7 +98,7 @@ final class DiagnosticSink {
         Optional<ReactorIndex.Module> module = file.flatMap(index::owning).or(() -> fallbackProject)
                 .or(() -> Optional.ofNullable(raw.artifactId()).flatMap(index::byArtifactId));
         String relative = file.map(settings::relative).orElse(raw.file());
-        String message = Redact.clean(raw.message(), settings.root(), settings.messageChars());
+        String message = Redact.clean(raw.message(), settings.places(), settings.messageChars());
         String mojo = Optional.ofNullable(raw.mojo()).orElse("");
         return new Diagnostic(module.map(ReactorIndex.Module::id).orElse(""), source, raw.severity(), relative,
                 raw.line(), raw.column(), raw.rule(), message, mojo);

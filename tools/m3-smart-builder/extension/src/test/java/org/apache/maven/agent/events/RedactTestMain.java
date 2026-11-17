@@ -51,7 +51,7 @@ public final class RedactTestMain {
         Check.equal("mail a@b and https://h/x@y", Redact.secrets("mail a@b and https://h/x@y"), "no userinfo");
         Check.equal("red", Redact.secrets("\u001B[31mred\u001B[0m"), "colours");
         String forward = ROOT.toString().replace('\\', '/');
-        Check.equal("a/B.java:3", Redact.clean(forward + "/a/B.java:3", ROOT, 300), "root path");
+        Check.equal("a/B.java:3", Redact.clean(forward + "/a/B.java:3", Redact.Places.of(ROOT), 300), "root path");
         String token = "https://oauth2:" + "t".repeat(3000) + "@gitlab.example/x";
         Check.equal("https://***@gitlab.example/x", Redact.secrets(token), "long token");
     }
@@ -59,9 +59,10 @@ public final class RedactTestMain {
     /** A long message is clipped before it is redacted, and a credential near the start is still removed. */
     private static void clipsFirst() {
         String message = "see https://u:p@h/x " + "L".repeat(MB);
-        String cleaned = Redact.clean(message, ROOT, 300);
+        String cleaned = Redact.clean(message, Redact.Places.of(ROOT), 300);
         Check.that(cleaned.startsWith("see https://***@h/x LLL") && cleaned.length() <= 300, "clipped " + cleaned.length());
-        Check.that(Redact.firstLine("a\n" + "b".repeat(MB), ROOT, 300).equals("a"), "first line");
+        String whole = Redact.message("a\n \n\tb  \n" + "c".repeat(MB), Redact.Places.of(ROOT), 300);
+        Check.that(whole.startsWith("a\n\tb\nccc") && whole.length() <= 300, "every non-blank line, bounded: " + whole);
     }
 
     private static Map<String, String> adversarial() {
@@ -77,7 +78,8 @@ public final class RedactTestMain {
      * pattern meets by far and the old quadratic one (hours for a megabyte) never does.
      */
     private static void bounded(String name, String message) {
-        long cleanMillis = LongStream.range(0, 3).map(i -> millis(() -> Redact.clean(message, ROOT, 10_000))).min()
+        long cleanMillis = LongStream.range(0, 3).map(i -> millis(() -> Redact.clean(message, Redact.Places.of(ROOT),
+                10_000))).min()
                 .orElseThrow();
         long secretsMillis = millis(() -> Redact.secrets(message));
         Check.that(cleanMillis < BOUND_MILLIS, name + ": clean " + cleanMillis + " ms (bound " + BOUND_MILLIS + " ms)");

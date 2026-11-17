@@ -86,11 +86,11 @@ final class TestSink {
 
     private TestResult result(String id, MavenProject project, SurefireReports.TestCase test) {
         List<String> stack = StackTrimmer.trim(test.trace(), StackTrimmer.appPackage(test.className()),
-                settings.stackLines()).stream().map(line -> Redact.clean(line, settings.root(), settings.messageChars()))
+                settings.stackLines()).stream().map(line -> Redact.clean(line, settings.places(), settings.messageChars()))
                 .collect(Collectors.toList());
         Optional<Frame> frame = frame(test);
         String file = frame.flatMap(f -> source(project, test.className(), f.file())).map(settings::relative).orElse("");
-        return new TestResult(id, test, Redact.clean(test.message(), settings.root(), settings.messageChars()), stack,
+        return new TestResult(id, test, Redact.clean(test.message(), settings.places(), settings.messageChars()), stack,
                 file, frame.map(Frame::line).orElse(0));
     }
 

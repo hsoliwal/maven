@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -44,9 +45,12 @@ import org.apache.maven.project.MavenProject;
 final class BuildRecorder {
     /**
      * The first failure of a project: kind, mojo and phase of the failed step (empty when no mojo failed), the
-     * properties and {@code g:a:v:goal} of a failed goal run from the command line (else empty) and the cause.
+     * {@code g:a:v:goal} of a failed goal run from the command line (else empty) and the cause.
      */
-    record FailureNote(String project, String kind, String mojo, String phase, List<String> goal, Throwable cause) {}
+    record FailureNote(String project, String kind, String mojo, String phase, String goal, Throwable cause) {}
+
+    /** Characters of a mojo failure message that are searched for diagnostics. */
+    static final int MAX_PARSED_CHARS = 64 * 1024;
 
     private final AgentSettings settings;
     private final EventWriter writer;
@@ -61,6 +65,7 @@ final class BuildRecorder {
     private ReactorIndex index = ReactorIndex.empty();
     private Optional<MavenSession> session = Optional.empty();
     private boolean finished;
+    private boolean startWritten;
 
     BuildRecorder(AgentSettings settings, EventWriter writer, MavenExecutionRequest request) {
         this.settings = settings;
@@ -95,8 +100,19 @@ final class BuildRecorder {
     private void sessionStarted(MavenSession started) {
         session = Optional.of(started);
         index = ReactorIndex.of(started.getProjects(), settings);
-        writer.emit("session-start", new JsonText.Obj()
-                .put("maven", started.getSystemProperties().getProperty("maven.version", "unknown"))
+        emitSessionStart(started.getSystemProperties());
+    }
+
+    /** A build that failed before its session (a POM error) still starts its stream with session-start. */
+    void startIfNeeded() {
+        if (!startWritten) {
+            emitSessionStart(Optional.ofNullable(request.getSystemProperties()).orElseGet(Properties::new));
+        }
+    }
+
+    private void emitSessionStart(Properties system) {
+        startWritten = true;
+        writer.emit("session-start", new JsonText.Obj().put("maven", system.getProperty("maven.version", "unknown"))
                 .put("java", System.getProperty("java.version"))
                 .put("os", System.getProperty("os.name") + " " + System.getProperty("os.arch")).put("root", ".")
                 .put("goals", request.getGoals()).put("profiles", request.getActiveProfiles())
@@ -115,7 +131,7 @@ final class BuildRecorder {
         long millis = timeline.end(MojoTimeline.key(project)).map(MojoTimeline.Start::elapsedMillis).orElse(0L);
         outcomes.put(id, outcome);
         if ("failure".equals(outcome)) {
-            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", List.of(), cause));
+            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", "", cause));
         }
         writer.emit("project-end", projectFields(project).put("outcome", outcome).put("durationMs", millis));
     }
@@ -133,7 +149,8 @@ final class BuildRecorder {
         Optional<ReactorIndex.Module> module = index.find(project);
         return new JsonText.Obj().put("index", module.map(ReactorIndex.Module::index).orElse(null))
                 .put("project", ReactorIndex.id(project))
-                .put("path", module.map(ReactorIndex.Module::path).orElse(settings.relative(project.getBasedir().toPath())));
+                .put("path", module.map(ReactorIndex.Module::path).orElseGet(() -> Optional.ofNullable(project.getBasedir())
+                        .map(dir -> settings.relative(dir.toPath())).orElse(".")));
     }
 
     private void mojoStarted(MavenProject project, MojoExecution mojo) {
@@ -150,7 +167,7 @@ final class BuildRecorder {
         writer.emit("mojo-end", new JsonText.Obj().put("project", ReactorIndex.id(project)).put("mojo", MojoNames.json(mojo))
                 .put("outcome", outcome).put("durationMs", start.map(MojoTimeline.Start::elapsedMillis).orElse(0L))
                 .put("error", cause == null ? null
-                        : Redact.firstLine(message(unwrap(cause)), settings.root(), settings.messageChars())));
+                        : Redact.message(message(unwrap(cause)), settings.places(), settings.failureMessageChars())));
         if (cause != null) {
             mojoFailed(project, mojo, cause);
         }
@@ -162,10 +179,9 @@ final class BuildRecorder {
     private void mojoFailed(MavenProject project, MojoExecution mojo, Throwable cause) {
         String id = ReactorIndex.id(project);
         failures.putIfAbsent(id, new FailureNote(id, MojoNames.kind(mojo), MojoNames.name(mojo),
-                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""),
-                MojoNames.cliGoal(mojo, request.getUserProperties()), cause));
-        diagnostics.accept(DiagnosticLines.parse(message(cause), DiagnosticLines.ERROR, MojoNames.name(mojo),
-                project.getArtifactId()), index, index.find(project), MojoNames.source(mojo));
+                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""), MojoNames.cliGoal(mojo), cause));
+        diagnostics.accept(DiagnosticLines.parse(JsonText.clip(message(cause), MAX_PARSED_CHARS), DiagnosticLines.ERROR,
+                MojoNames.name(mojo), project.getArtifactId()), index, index.find(project), MojoNames.source(mojo));
     }
 
     /** The exception Maven wrapped in a {@link LifecycleExecutionException} ("Failed to execute goal..."). */
