@@ -37,11 +37,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * The charset Maven wrote its {@code -l} log in. Maven 3.9 points standard output at the log through a
- * {@code PrintStream} without a charset, which encodes with the JVM default charset: UTF-8 on Java 18 and newer, the
- * platform charset (such as Cp1252 on Windows) on Java 17. The extension runs in that JVM, so the candidates are
- * UTF-8, the JVM default charset and {@code native.encoding}; the first that decodes the log strictly wins, and the
- * JVM default is used when none does.
+ * The charset Maven wrote its {@code -l} log in. Maven 4 writes it with {@code Files.newBufferedWriter}, always UTF-8.
+ * Maven 3.9 points standard output at the log through a {@code PrintStream} without a charset, which encodes with the
+ * JVM default charset: UTF-8 on Java 18 and newer, the platform charset (such as Cp1252 on Windows) on Java 17. The
+ * extension runs in that JVM, so the candidates are UTF-8, the JVM default charset and {@code native.encoding}; the
+ * first that decodes the log strictly wins, and the JVM default is used when none does.
  */
 final class LogCharset {
     private LogCharset() {}

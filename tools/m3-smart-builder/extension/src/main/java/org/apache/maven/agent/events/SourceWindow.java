@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -49,18 +50,27 @@ final class SourceWindow {
     /** The window of root-relative {@code file} around {@code line}; empty when unreadable or outside the root. */
     static Optional<Window> read(Path root, String file, int line, int context) {
         Path base = root.toAbsolutePath().normalize();
-        Path source = base.resolve(file).normalize();
-        if (line < 1 || !source.startsWith(base) || !Files.isRegularFile(source)) {
+        Optional<Path> source = resolve(base, file).filter(path -> path.startsWith(base) && Files.isRegularFile(path));
+        if (line < 1 || source.isEmpty()) {
             return Optional.empty();
         }
         int around = Math.max(0, Math.min(MAX_CONTEXT, context));
         int start = Math.max(1, line - around);
         try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(Files.newInputStream(source), StandardCharsets.UTF_8))) {
+                new InputStreamReader(Files.newInputStream(source.get()), StandardCharsets.UTF_8))) {
             List<String> lines = reader.lines().skip(start - 1L).limit(line + around - start + 1L)
                     .map(text -> JsonText.clip(text.replace("\t", "    "), LINE_CHARS)).collect(Collectors.toList());
             return lines.size() < line - start + 1 ? Optional.empty() : Optional.of(new Window(start, line, lines));
         } catch (IOException | java.io.UncheckedIOException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /** {@code file} under {@code base}; empty when it is no path here, such as a model id or a URI on Windows. */
+    private static Optional<Path> resolve(Path base, String file) {
+        try {
+            return Optional.of(base.resolve(file).normalize());
+        } catch (InvalidPathException notAPath) {
             return Optional.empty();
         }
     }
