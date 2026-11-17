@@ -71,8 +71,8 @@ final class FrontEndTest {
         String js = "function sum(v) { let t = 0; for (const x of v) { t += x; } return t; }\n"
                 + "function add(w) { let s = 0; for (const y of w) { s += y; } return s; }\n";
         int split = js.indexOf("function add");
-        Atom r1 = LexicalAtoms.rangeAtom("r.js", js, 0, split - 1, "METHOD", "sum", "sum(1)", false);
-        Atom r2 = LexicalAtoms.rangeAtom("r.js", js, split, js.length() - 1, "METHOD", "add", "add(1)", false);
+        Atom r1 = LexicalAtoms.rangeAtom("r.js", js, 0, split - 1, "METHOD", "sum", "", false);
+        Atom r2 = LexicalAtoms.rangeAtom("r.js", js, split, js.length() - 1, "METHOD", "add", "", false);
         check("range atoms: renamed copy shares logic", r1.logic().equals(r2.logic()) && r1.symbol().equals("sum(1)"));
     }
 

@@ -268,21 +268,24 @@ public final class LexicalAtoms {
      * The atom of a range that another front end found, for example a document symbol reported by a language
      * server: the range's tokens go through the same plane rules as the lexical front end's own atoms.
      *
+     * The symbol is written as the lexical front end writes it: {@code Owner.name(parameterCount)} for a METHOD,
+     * {@code Owner.Name} for a TYPE.
+     *
      * @param indented true for indentation languages (comments start with {@code #})
      * @param name     the symbol's own name, declared first
-     * @param symbol   the symbol written to the atom table
+     * @param owner    the enclosing type names joined with {@code .}, or empty
      */
-    public static Atom rangeAtom(String path, String text, int from, int to, String kind, String name, String symbol,
+    public static Atom rangeAtom(String path, String text, int from, int to, String kind, String name, String owner,
             boolean indented) {
-        List<Token> span = Lexer.tokens(text.substring(from, to), indented);
-        if (span.isEmpty()) return AtomBuilder.atom(path, kind, symbol, text.substring(from, to)).build();
+        String source = text.substring(from, to);
+        List<Token> span = trim(Lexer.tokens(source, indented));
         int paren = -1;
         for (int i = 0; i + 1 < span.size() && paren < 0; i++) {
             if (span.get(i).text().equals(name) && span.get(i + 1).text().equals("(")) paren = i + 1;
         }
         Frame frame = new Frame(0, kind, name, paren < 0 ? List.of() : group(span, paren));
-        Atom atom = atom(path, text.substring(from, to), trim(span), frame, "");
-        return new Atom(path, kind, symbol, atom.tokens(), atom.exact(), atom.logic(), atom.structure(), atom.simhash());
+        if (span.isEmpty()) return AtomBuilder.atom(path, kind, (owner.isEmpty() ? "" : owner + ".") + name, source).build();
+        return atom(path, source, span, frame, owner);
     }
 
     private static int arity(List<Token> params) {
