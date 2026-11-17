@@ -70,17 +70,62 @@ public final class ModuleStateDbContractTestMain {
             Files.delete(output);
             require(!ModuleStateDb.open(module, "file").upToDate(task, changedStamp),
                     "deleted output always invalidates");
+            boolean missingOutputRefused = false;
+            try {
+                ModuleStateDb.open(module, "file").record(task, changedStamp);
+            } catch (java.io.IOException expected) {
+                missingOutputRefused = true;
+            }
+            require(missingOutputRefused, "missing outputs may never be recorded as successful");
 
             Files.write(database, new byte[] {1, 2, 3, 4});
             ModuleStateDb corrupt = ModuleStateDb.open(module, "file");
             require(!corrupt.upToDate(task, changedStamp), "malformed state is a safe cache miss");
+            verifiesTransitiveRevocation(root);
 
-            System.out.println("PASS: per-module state persistence, stat reuse, edits, outputs, args, corruption");
+            System.out.println("PASS: per-module persistence, edits, outputs, revocation, corruption");
         } finally {
             try (var walk = Files.walk(root)) {
                 for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
             }
         }
+    }
+
+    /** A failed producer must not leave a previous consumer success usable. */
+    private static void verifiesTransitiveRevocation(Path root) throws Exception {
+        Path module = Files.createDirectories(root.resolve("reactor-edges"));
+        Path tool = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
+        Files.writeString(module.resolve("source.txt"), "src");
+        Files.writeString(module.resolve("product.txt"), "build");
+        Files.writeString(module.resolve("consumer.txt"), "dependent");
+        String manifest = TaskManifest.MAGIC + "\n"
+                + "task\\tcompile\\t" + tool + "\\t.\\n"
+                + "arg\\tcompile\\t-version\\n"
+                + "input\\tcompile\\tsource.txt\\n"
+                + "output\\tcompile\\tproduct.txt\\n"
+                + "task\\tconsumer\\t" + tool + "\\t.\\n"
+                + "dep\\tconsumer\\tcompile\\n"
+                + "arg\\tconsumer\\t-version\\n"
+                + "input\\tconsumer\\tproduct.txt\\n"
+                + "output\\tconsumer\\tconsumer.txt\\n";
+        Path manifestPath = Files.writeString(module.resolve("m3-build.tsv"), manifest);
+        TaskManifest graph = TaskManifest.load(manifestPath);
+        TaskManifest.Task first = graph.orderAll().stream()
+                .filter(task -> "compile".equals(task.name())).findFirst().orElseThrow();
+        TaskManifest.Task dependent = graph.orderAll().stream()
+                .filter(task -> "consumer".equals(task.name())).findFirst().orElseThrow();
+        ModuleStateDb state = ModuleStateDb.open(module, "file");
+        String producer = state.stamp(first);
+        state.record(first, producer);
+        String consumer = state.stamp(dependent);
+        state.record(dependent, consumer);
+        require(state.upToDate(first, producer) && state.upToDate(dependent, consumer),
+                "producer and dependent cache records were established");
+        state.invalidateTransitive(graph, "compile");
+        ModuleStateDb reopened = ModuleStateDb.open(module, "file");
+        require(!reopened.upToDate(first, producer) && !reopened.upToDate(dependent, consumer),
+                "producer invalidation revokes transitive dependent records");
     }
 
     private static void require(boolean condition, String message) {
