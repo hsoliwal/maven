@@ -52,9 +52,10 @@ command line (or in `MAVEN_ARGS` or `.mvn/maven.config`); the agent files and `[
 The summary prints on standard output also under `-q`. With stock Maven, `-q` hides compiler warnings from every
 source the extension can read; to record them add `-l build.log -Dmaven.events.log=build.log` (then the summary goes
 into the log, like all output). The log is read in the charset Maven wrote it in: UTF-8 when it decodes strictly
-(Maven on Java 18 and newer), else the JVM default charset (Maven 3.9 on Java 17 writes the platform charset, such as
+(Maven 4 always, Maven 3.9 on Java 18 and newer), else the JVM default charset (Maven 3.9 on Java 17 writes the platform charset, such as
 Cp1252 on Windows), else `native.encoding`. The extension is loaded from `lib/ext` (the fork's distribution), from
-`.mvn/extensions.xml`, or with `MAVEN_OPTS=-Dmaven.ext.class.path=<smart-maven-extension.jar>`.
+`.mvn/extensions.xml`, or with `MAVEN_OPTS=-Dmaven.ext.class.path=<smart-maven-extension.jar>` (Maven 3.9; Apache
+Maven 4.0.0-rc-7 ignores it there and takes `"-Dmaven.ext.class.path=<jar>"` on the command line).
 
 ## Properties
 

@@ -51,7 +51,29 @@ public final class ModelProblemsTestMain {
         ProjectBuildingException failure = new ProjectBuildingException(List.of(result(pom)));
         unwrapped(failure, pom);
         digest(root, failure);
+        sources(root, pom);
         Check.done("ModelProblemsTestMain");
+    }
+
+    /**
+     * Maven 4 names the POM of a problem as a file URI, and a problem of a POM outside the reactor by its model id:
+     * the URI becomes a path, the id stays, and neither stops the digest (no source window for the id).
+     */
+    private static void sources(Path root, Path pom) throws IOException {
+        ModelProblem uri = new DefaultModelProblem(MISSING, ModelProblem.Severity.ERROR, ModelProblem.Version.V20,
+                pom.toUri().toString(), 2, 3, "fix:b:0.1", null);
+        ModelProblem id = new DefaultModelProblem("parent problem", ModelProblem.Severity.ERROR,
+                ModelProblem.Version.V20, "fix:parent:1", 4, 5, "fix:parent:1", null);
+        ProjectBuildingException failure =
+                new ProjectBuildingException(List.of(new Result(pom.toFile(), List.of(uri, id))));
+        List<DiagnosticLines.Raw> raws = ModelProblems.of(failure);
+        Check.equal(List.of(pom.toString(), "fix:parent:1"), List.of(raws.get(0).file(), raws.get(1).file()),
+                "sources");
+        Check.that(SourceWindow.read(root, "fix:parent:1", 4, 2).isEmpty()
+                && SourceWindow.read(root, "file:///C:/x/pom.xml", 1, 2).isEmpty(), "no window for a non-path");
+        String json = finish(root, failure);
+        Check.that(json.contains("\"file\":\"b/pom.xml\",\"line\":2,\"column\":3")
+                && json.contains("\"file\":\"fix:parent:1\",\"line\":4"), "digest of both sources: " + json);
     }
 
     private static void unwrapped(ProjectBuildingException failure, Path pom) {
@@ -64,7 +86,8 @@ public final class ModelProblemsTestMain {
         Check.that(ModelProblems.of(new IOException("not a model failure")).isEmpty(), "other failures");
     }
 
-    private static void digest(Path root, ProjectBuildingException failure) throws IOException {
+    /** Finishes a recorded agent build that failed with {@code failure}; returns failure.json. */
+    private static String finish(Path root, ProjectBuildingException failure) throws IOException {
         Properties user = new Properties();
         user.setProperty("maven.agent", "true");
         user.setProperty("maven.events.stdout", "none");
@@ -72,7 +95,11 @@ public final class ModelProblemsTestMain {
                 .setGoals(List.of("verify")).setUserProperties(user).setSystemProperties(new Properties());
         AgentSettings settings = AgentSettings.of(user, new Properties(), root);
         new BuildRecorder(settings, EventWriter.open(line -> {}), request).finish(List.of(failure));
-        String json = Files.readString(root.resolve("target/agent/failure.json"), StandardCharsets.UTF_8);
+        return Files.readString(root.resolve("target/agent/failure.json"), StandardCharsets.UTF_8);
+    }
+
+    private static void digest(Path root, ProjectBuildingException failure) throws IOException {
+        String json = finish(root, failure);
         Check.that(json.contains("\"kind\":\"model\"") && json.contains("\"file\":\"b/pom.xml\",\"line\":12,\"column\":17")
                 && json.contains(MISSING) && json.contains("\"reproduce\":\"mvn validate\""), "failure.json:\n" + json);
         String summary = Files.readString(root.resolve("target/agent/summary.txt"), StandardCharsets.UTF_8);

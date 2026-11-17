@@ -18,6 +18,9 @@
  */
 package org.apache.maven.agent.events;
 
+import java.net.URI;
+import java.nio.file.FileSystemNotFoundException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -54,11 +57,23 @@ final class ModelProblems {
                 ? ((ModelBuildingException) failure).getProblems().stream() : Stream.empty();
     }
 
+    /** A problem's POM: a file URI (Maven 4 gives one) as a path; a path or a model id as it is. */
+    static String source(String source) {
+        if (source == null || !source.startsWith("file:")) {
+            return source == null ? "" : source;
+        }
+        try {
+            return Path.of(URI.create(source)).toString();
+        } catch (IllegalArgumentException | FileSystemNotFoundException | SecurityException notAFile) {
+            return source;
+        }
+    }
+
     private static DiagnosticLines.Raw raw(ModelProblem problem) {
         String severity = problem.getSeverity() == ModelProblem.Severity.WARNING ? DiagnosticLines.WARNING
                 : DiagnosticLines.ERROR;
         String message = Optional.ofNullable(problem.getMessage()).orElse("model problem");
-        return new DiagnosticLines.Raw(severity, Optional.ofNullable(problem.getSource()).orElse(""),
+        return new DiagnosticLines.Raw(severity, source(problem.getSource()),
                 Math.max(0, problem.getLineNumber()), Math.max(0, problem.getColumnNumber()), "", message, "", null);
     }
 }
