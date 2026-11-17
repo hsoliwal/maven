@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 /** Mavenizer detection, project layout, file safety, and the runner rules it relies on. No build tool runs. */
 public final class MavenizerContractTestMain {
@@ -89,6 +90,30 @@ public final class MavenizerContractTestMain {
         require(web.getElementsByTagName("artifactId").item(0).getTextContent().equals("web")
                 && web.getElementsByTagName("groupId").item(0).getTextContent().equals("org.example")
                 && web.getElementsByTagName("packaging").item(0).getTextContent().equals("pom"), "module pom coordinates");
+        // A generated POM becomes an actual stock-Maven build only when the
+        // operator selects the profile; the default lifecycle remains unchanged.
+        require(web.getElementsByTagName("profile").getLength() == 1
+                && web.getElementsByTagName("id").item(0).getTextContent().equals("m3-polyglot"),
+                "native-language profile exists but is opt-in");
+        require(web.getElementsByTagName("activeByDefault").getLength() == 0,
+                "native-language execution is never active by default");
+        Element plugin = (Element) web.getElementsByTagName("plugin").item(0);
+        require(plugin != null
+                && plugin.getElementsByTagName("artifactId").item(0).getTextContent()
+                        .equals("m3-polyglot-maven-plugin"),
+                "generated executions delegate to the original Maven polyglot plugin");
+        List<String> bound = new ArrayList<>();
+        for (int i = 0; i < web.getElementsByTagName("execution").getLength(); i++) {
+            Element execution = (Element) web.getElementsByTagName("execution").item(i);
+            bound.add(execution.getElementsByTagName("phase").item(0).getTextContent() + "/"
+                    + execution.getElementsByTagName("target").item(0).getTextContent());
+        }
+        require(bound.equals(List.of("validate/validate", "test/test")),
+                "only native steps bind, in Maven lifecycle order: " + bound);
+        require(xml(root.resolve("pom.xml")).getElementsByTagName("execution").getLength() == 0,
+                "the root aggregator does not run duplicate native tasks");
+        require(xml(root.resolve("tools/pom.xml")).getElementsByTagName("execution").getLength() == 0,
+                "intermediate aggregators do not run duplicate native tasks");
         require(Files.readString(root.resolve("lib/pom.xml")).equals("<project/>"), "an existing Maven project is untouched");
         TaskManifest manifest = TaskManifest.load(root.resolve("web/m3-build.tsv"));
         require(names(manifest.order("test")).equals(List.of("npm-test", "test")), "phase target runs its own steps only");
