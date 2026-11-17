@@ -23,7 +23,7 @@ workflows and sources are kept here, one recipe per class, each with tests, so t
 this repository and on any other one.
 
 The module (`org.apache.maven.plugins:maven-code-recipes`, a plain jar) is built on the Apache-2.0 OpenRewrite core:
-`rewrite-core`, `rewrite-yaml`, `rewrite-xml` and `rewrite-maven` 8.89.0, in `provided` scope because the recipe
+`rewrite-core`, `rewrite-yaml`, `rewrite-xml`, `rewrite-maven` and `rewrite-java` 8.89.0, in `provided` scope because the recipe
 runner (rewrite-maven-plugin, the Gradle plugin) brings them. 8.89.0 is the version rewrite-maven-plugin 6.46.1
 runs recipes on. No module under the Moderne Source Available License is used; `FOSS_REUSE_DECISION.tsv` lists
 what was checked and why.
@@ -36,6 +36,7 @@ what was checked and why.
 | `org.apache.maven.recipes.FindSetupJavaVersionBelowMinimum` | search | `minimumJavaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.FindJavaLevelAboveMaximum` | search | `maximumJavaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.Jdk21Baseline` | composite (`META-INF/rewrite/jdk21.yml`) | the three above at 21 |
+| `org.apache.maven.recipes.CommandlineToProcessLauncher` | search (Java) | none |
 
 ### SetupJavaMinimumVersion
 
@@ -129,6 +130,16 @@ active. Only a key that none of these defines is read from the JVM that runs the
 
 Runs `SetupJavaMinimumVersion` with minimum 21, then `FindSetupJavaVersionBelowMinimum` with minimum 21 and
 `FindJavaLevelAboveMaximum` with maximum 21.
+
+### CommandlineToProcessLauncher
+
+In sources that use the Maven 4 API (`org.apache.maven.api`), marks each `Commandline` constructor and each
+`Commandline` and `CommandLineUtils` call of plexus-utils (`org.codehaus.plexus.util.cli`) and maven-shared-utils
+(`org.apache.maven.shared.utils.cli`) with the `ProcessLauncher` or `ProcessLaunchRequest` builder call that replaces
+it, for example `/*~~(ProcessLauncher.tokenize(String))~~>*/CommandLineUtils.translateCommandline(argLine)`.
+Maven 3 plugins, plugins already on `ProcessLauncher` and other classes named `Commandline` are left alone. It does
+not rewrite: a `Commandline` is built over several statements and its checked exceptions differ. The full mapping
+and the parity tables of the service are in `impl/maven-impl/src/site/markdown/process-launcher.md`.
 
 ## Running the recipes on any repository
 

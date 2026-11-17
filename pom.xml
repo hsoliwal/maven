@@ -899,6 +899,8 @@ under the License.
               <!-- FOSS reuse decision tables (tab-separated, no comment syntax); license attribution is in each
                    module's README and the project NOTICE. -->
               <exclude>tools/*/FOSS_REUSE_DECISION.tsv</exclude>
+              <exclude>impl/maven-impl/FOSS_REUSE_DECISION.tsv</exclude>
+              <exclude>FOSS_REUSE_DECISION.tsv</exclude>
               <!-- OSGi bundle manifest of the Eclipse bundle (the manifest format allows no comments). -->
               <exclude>tools/code-clustering-eclipse/META-INF/MANIFEST.MF</exclude>
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>
