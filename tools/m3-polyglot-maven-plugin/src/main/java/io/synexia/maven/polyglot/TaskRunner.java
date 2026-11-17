@@ -104,8 +104,13 @@ public final class TaskRunner {
                     throw new IOException("missing declared input for " + task.name() + ": " + input);
                 }
             }
-            // Without declared inputs nothing proves a task current, so it always runs.
-            String stamp = incremental && !task.inputs().isEmpty() ? InputStamps.stamp(task, root) : null;
+            // Only explicitly declared, ordinary tool actions with both inputs and outputs
+            // are candidates for this opt-in content-stamp shortcut. CodeQL databases and
+            // OpenRewrite recipes have provider-owned state and must execute normally.
+            // A path stamp never proves complete toolchain, environment or ABI inputs.
+            boolean stampCandidate = incremental && !task.inputs().isEmpty() && !task.outputs().isEmpty()
+                    && !QualityTaskCommands.supported(task.tool());
+            String stamp = stampCandidate ? InputStamps.stamp(task, root) : null;
             if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
                 performed.add(task.name());
