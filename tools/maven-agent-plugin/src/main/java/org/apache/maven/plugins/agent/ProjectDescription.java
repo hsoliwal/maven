@@ -30,7 +30,7 @@ import org.apache.maven.agent.events.JsonText;
  * @param name the top-level project's name
  * @param description the top-level project's description, "" when it has none (not written to project.json)
  * @param modules the modules in reactor order
- * @param commands build, agent, module and test command lines
+ * @param commands build, agent, module, test and integration-test command lines
  */
 record ProjectDescription(String name, String description, List<Module> modules, Commands commands) {
 
@@ -62,10 +62,14 @@ record ProjectDescription(String name, String description, List<Module> modules,
         }
     }
 
-    /** Command lines with {@code <path>} and {@code <Class>#<method>} placeholders. */
-    record Commands(String build, String agent, String module, String test) {
+    /**
+     * Command lines with {@code <path>} and {@code <Class>#<method>} placeholders, started by {@code launcher}
+     * ({@code mvn} or {@code ./mvnw}, not written to project.json: llms.txt gives its spelling per shell).
+     */
+    record Commands(String launcher, String build, String agent, String module, String test, String integrationTest) {
         JsonText.Obj json() {
-            return new JsonText.Obj().put("build", build).put("agent", agent).put("module", module).put("test", test);
+            return new JsonText.Obj().put("build", build).put("agent", agent).put("module", module).put("test", test)
+                    .put("integrationTest", integrationTest);
         }
     }
 

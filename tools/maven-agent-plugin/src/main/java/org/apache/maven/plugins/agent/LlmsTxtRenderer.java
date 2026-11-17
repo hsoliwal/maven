@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import org.apache.maven.agent.events.MavenCommands;
 
 /**
  * {@code llms.txt} (llmstxt.org layout) of a build: an H1 name, a blockquote summary, then Build, Test, Results,
@@ -67,13 +68,27 @@ final class LlmsTxtRenderer {
                 .append(" the options in the `MAVEN_ARGS` environment variable; keep `-B -ntp \"-Dstyle.color=never\"`, since")
                 .append(" `-Dmaven.agent=true` alone does not turn off colours or transfer progress\n");
         text.append("- One module and the modules it needs: `").append(commands.module()).append("`\n");
+        MavenCommands.Launchers launchers = MavenCommands.Launchers.of(commands.launcher());
+        if (launchers.differ()) {
+            text.append("- Launcher: `").append(launchers.sh()).append("` as bash runs it; ")
+                    .append(launchers.otherShells()).append("\n");
+        }
     }
 
     private static void test(StringBuilder text, ProjectDescription project) {
         text.append("\n## Test\n\n");
         text.append("- One test: `").append(project.commands().test()).append("`\n");
+        if (project.modules().stream().flatMap(m -> m.goals().stream()).anyMatch(LlmsTxtRenderer::failsafe)) {
+            text.append("- One integration test (Failsafe, no unit tests): `")
+                    .append(project.commands().integrationTest()).append("`\n");
+        }
         project.modules().stream().filter(m -> !m.testRoots().isEmpty()).forEach(m -> text.append("- Tests of ")
                 .append(m.id()).append(": ").append(String.join(", ", m.testRoots())).append('\n'));
+    }
+
+    /** Whether {@code goal} is Failsafe's integration-test goal. */
+    private static boolean failsafe(ProjectDescription.Goal goal) {
+        return goal.plugin().contains(":maven-failsafe-plugin:") && "integration-test".equals(goal.goal());
     }
 
     private static void results(StringBuilder text) {
