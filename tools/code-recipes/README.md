@@ -40,6 +40,29 @@ what was checked and why.
 | `org.apache.maven.recipes.FindWorkflowWithoutSetupJavaVersion` | search | `javaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.Jdk21CiLeg` | composite (`META-INF/rewrite/jdk21.yml`) | the two above at 21 |
 | `org.apache.maven.recipes.UseCoreResourceFilter` | search (Java) | none |
+| `org.apache.maven.recipes.BrowserlessChromeLLMAdvice` | change (XML + final comment rewrite) | none |
+
+### BrowserlessChromeLLMAdvice
+
+The `chromellm-advice` profile in Maven-derived POMs must not select the removed
+Chrome or bridge inference providers. This composite OpenRewrite recipe changes
+the legacy `chrome` default to local `cli`, removes Chrome-only profile/headless
+properties, conditional blocks and arguments from both lifecycle hooks, and
+updates the pinned profile marker to v3. It does not change the `validate` /
+`verify` phases, prompt construction, failure-is-advisory status semantics, or
+ordinary builds with the opt-in profile inactive.
+
+Select `-Dchromellm.backend.args="--llama-bin /path/to/llama-completion --model /path/to/model.gguf"`
+when enabling local CLI advice; the executable and licensed model remain
+operator-provided. `jni` may be selected explicitly with its required native
+runtime and model options. Browser-managed providers are no longer accepted.
+The recipe performs typed XML edits first and changes comment text last.
+
+The dependency-free postimage check is:
+
+```sh
+python3 tools/code-recipes/src/test/scripts/browserless_chromellm_pom.py pom.xml
+```
 
 ### SetupJavaMinimumVersion
 
