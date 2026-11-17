@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -69,9 +68,7 @@ public final class ClusterMojo extends AbstractMojo {
 
     @Override public void execute() throws MojoExecutionException {
         try {
-            List<Path> roots = sourceDirectories != null && !sourceDirectories.isEmpty()
-                    ? sourceDirectories.stream().map(File::toPath).collect(Collectors.toList())
-                    : sourceRoots.stream().map(Path::of).collect(Collectors.toList());
+            List<Path> roots = SnapshotMojo.roots(sourceDirectories, sourceRoots);
             Path out = outputDirectory.toPath();
             getLog().info(CodeClustering.cluster(out, roots, minTokens, radius, fileThreshold));
             if (against != null) {

@@ -83,6 +83,8 @@ public final class CodeClusteringTest {
         families(dir);
         LexicalAtomsTest.run(dir.resolve("lexical"));
         failures += LexicalAtomsTest.failures();
+        PlaneCompareTest.run(dir.resolve("compare"), src, B);
+        failures += PlaneCompareTest.failures();
         if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
         System.err.println("code clustering: all checks passed");
     }

@@ -58,6 +58,23 @@ finds.
    STRUCTURE, NEAR or ABSENT (`JOIN.tsv`). `COVERAGE.tsv` adds the results up per file of A:
    `ALL_IN_ONE_MATCH` (one file of B holds every atom), `ALL_SPREAD`, `MOSTLY_MATCHED` (80% or more) or `OWN_CODE`.
 
+6. **Compare.** `snapshot` writes the atom table as a baseline, for example before a refactoring. `compare`
+   gives each current atom a state against that baseline. Atoms are identified by path, kind and symbol.
+
+   | State | Meaning |
+   |---|---|
+   | UNCHANGED | same exact hash |
+   | REFORMATTED | same logic hash: only layout, comments or the names the atom declares changed |
+   | LITERALS_CHANGED | same structure hash: literals or outside names changed |
+   | CHANGED | no plane matches |
+   | MOVED | the identity is new, but a removed baseline atom has the same logic hash |
+   | ADDED / REMOVED | new atoms, and baseline atoms that are gone and did not move |
+   | ACCEPTED | a change whose `path#symbol` is listed in the receipts file (proven another way, for example by tests) |
+
+   `failOn` chooses the states that fail the build. As a refactoring gate, use
+   `-Dclustering.failOn=CHANGED,LITERALS_CHANGED,ADDED,REMOVED`: then only behaviour-keeping states and receipted
+   changes pass.
+
 Every cluster, family and coverage row is a proposal. Before you merge code, confirm the equivalence with a diff
 or a test.
 
@@ -78,6 +95,15 @@ mvn ...:cluster -Dclustering.against=../library/target/code-clustering/ATOM_HASH
 | sourceDirectories (directories to atomize instead of the compile source roots) | `clustering.sourceDirectories` (comma-separated) | compile source roots |
 
 For a project whose sources are not Java: `mvn ...:cluster -Dclustering.sourceDirectories=src/main/js,src/main/python`.
+
+```
+mvn ...:snapshot                       # writes ${project.basedir}/.code-clustering/ATOM_HASHES.tsv
+mvn ...:compare -Dclustering.failOn=CHANGED,LITERALS_CHANGED,ADDED,REMOVED -Dclustering.receipts=receipts.txt
+```
+
+`snapshot` and `compare` take `baseline` (`clustering.baseline`) and `sourceDirectories`. `compare` also takes
+`receipts` (`clustering.receipts`), `failOn` (`clustering.failOn`) and `outputDirectory`. Keep the baseline outside
+`target` if it has to survive `mvn clean`.
 
 Without Maven, from the plugin jar:
 
@@ -105,3 +131,4 @@ structure planes, and braces inside strings and comments.
 - `FILE_CLUSTERS.tsv`: family, files, members
 - `JOIN.tsv`: path, kind, symbol, plane, match_path, match_symbol
 - `COVERAGE.tsv`: path, atoms, exact, logic, structure, near, absent, top_match, top_share, proposal
+- `COMPARE.tsv`: state, path, kind, symbol, baseline_path, baseline_symbol

@@ -30,7 +30,10 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  * <pre>
  * CodeClustering cluster &lt;out-dir&gt; &lt;source-root&gt;...   atoms, planes and clusters of the sources
  * CodeClustering join &lt;A/ATOM_HASHES.tsv&gt; &lt;B/ATOM_HASHES.tsv&gt; &lt;out-dir&gt;   match A against B
+ * CodeClustering compare &lt;baseline.tsv&gt; &lt;out-dir&gt; &lt;source-root&gt;...   state of each atom against a baseline
  * </pre>
+ * {@code compare} writes COMPARE.tsv; it reads {@code clustering.failOn} (comma-separated states) and
+ * {@code clustering.receipts} (a file of {@code path#symbol} lines) and exits 3 when an atom is in a failing state.
  * {@code cluster} writes ATOM_HASHES.tsv, CLUSTERS.tsv, PLANE_SUMMARY.tsv, FILE_PAIRS.tsv and FILE_CLUSTERS.tsv;
  * {@code join} writes JOIN.tsv and COVERAGE.tsv. Options (system properties): {@code clustering.minTokens} (default
  * 12), {@code clustering.radius} (SimHash Hamming radius, default 3), {@code clustering.fileThreshold} (Jaccard
@@ -59,7 +62,17 @@ public final class CodeClustering {
                 out.println(PlaneJoin.join(a, b, Path.of(args[3]), RADIUS));
                 return 0;
             }
-            out.println("usage: CodeClustering cluster <out-dir> <source-root>... | join <A.tsv> <B.tsv> <out-dir>");
+            if (args.length >= 4 && args[0].equals("compare")) {
+                String receipts = System.getProperty("clustering.receipts");
+                PlaneCompare.Result result = PlaneCompare.compare(PlaneTables.readAtoms(Path.of(args[1])),
+                        AtomPlanes.scan(paths(args, 3)), PlaneCompare.readReceipts(receipts == null ? null : Path.of(receipts)),
+                        PlaneCompare.states(System.getProperty("clustering.failOn", "")), Path.of(args[2]));
+                out.println(result.summary());
+                result.failing().forEach(out::println);
+                return result.failing().isEmpty() ? 0 : 3;
+            }
+            out.println("usage: CodeClustering cluster <out-dir> <source-root>... | join <A.tsv> <B.tsv> <out-dir>"
+                    + " | compare <baseline.tsv> <out-dir> <source-root>...");
             return 2;
         } catch (IOException | RuntimeException e) {
             out.println("code clustering failed: " + e);
