@@ -36,6 +36,15 @@ mvn -Dchromellm.advice=true -Dm3.smart.llmBackend=bridge \
 `MAVEN_OPTS` set for the user makes every Maven build of that user able to take advice; the property keeps it
 off until asked for. Reports: `target/m3-smart/{pre-build,post-build}.json` in each project.
 
+The fork's own distribution carries the extension built in: the root reactor builds this module and
+`apache-maven` packages it into `lib/ext`, so the fork's `mvn` needs no `MAVEN_OPTS`, only
+`-Dchromellm.advice=true` (and `m3-smart-maven-plugin` installed). Maven 4 loads it through its compatibility
+layer; a second copy from `MAVEN_OPTS` does not bind the hook twice.
+
+```sh
+mvn -DskipTests install -pl apache-maven -am      # apache-maven/target/apache-maven-<version>-bin.zip
+```
+
 ## Test
 
 `src/it/test_extension.sh <extension.jar> <java-21-home> [<java-17-home>]` runs real offline Maven builds: the
