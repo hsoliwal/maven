@@ -54,6 +54,10 @@ public final class RealServersTest {
     public static void main(String[] args) throws Exception {
         Path dir = Path.of(args.length > 0 ? args[0] : "target/real-servers").toAbsolutePath();
         String root = System.getProperty("clustering.test.servers", "");
+        if (root.isEmpty() && !Boolean.getBoolean("clustering.test.realServers")) {
+            optedOut();
+            return;
+        }
         LSP4J.addHandler(new Handler() {
             @Override public void publish(LogRecord record) {
                 if (String.valueOf(record.getMessage()).contains("Unsupported notification")) UNSUPPORTED.incrementAndGet();
@@ -81,6 +85,18 @@ public final class RealServersTest {
         web(dir, root);
         run(dir, "rust", "rust", homes(root, Map.of("clustering.lsp.rust.home", "rust-analyzer")), "src/lib.rs", Fixtures.RUST,
                 List.of("TYPE#Point", "METHOD#dist(2)", "METHOD#distance(2)", "TYPE#Shape", "METHOD#Shape.area(1)"), List.of());
+        CHECKS.finish();
+    }
+
+    /**
+     * Real-server checks are opt-in: whatever language servers a machine happens to have on its PATH (a CI runner's
+     * rust-analyzer proxy, for example) must not decide the build. Without -Dclustering.test.servers=&lt;dir&gt; or
+     * -Dclustering.test.realServers=true every server is skipped with the reason.
+     */
+    private static void optedOut() {
+        String why = "opt-in: set -Dclustering.test.servers=<dir> or -Dclustering.test.realServers=true";
+        List.of("cdt", "jdt", "pydev (pylsp)", "pydev (pyright)", "wtp.xml", "wtp.html", "wtp.css", "wtp.json", "rust")
+                .forEach(label -> CHECKS.skip(label, why));
         CHECKS.finish();
     }
 
