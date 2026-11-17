@@ -59,6 +59,13 @@ and H2 are test-only Maven dependencies; production callers must explicitly
 supply their chosen runtime in the Maven plugin classloader. Derby is retained
 solely for migration compatibility, because it is retired upstream.
 
+A successful module DAG now stages all new task records in memory and issues
+**one module-level durable commit** after the entire selected graph succeeds.
+This borrows the batched-publication principle of RocksDB WriteBatch without
+copying its engine or depending on native libraries. A task failure/interrupt
+does not publish the partial batch. The existing individual `record` API
+keeps its immediate-publish behavior for standalone callers and tests.
+
 Every database-backed run takes an exclusive **module-wide file lease before
 opening state** and releases it after the whole task graph. A competing process
 fails closed instead of racing on cache entries or outputs. This is a
@@ -100,7 +107,15 @@ mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
     -Dm3.polyglot.incrementalState=sqlite verify
 ```
 
-From another build host use `--incremental --state-backend file|m3db|sqlite|h2|derby`.
+From another build host use `--incremental --state-backend file|m3db|sqlite|h2|derby|provider-id`.
+`M3BuildStateStoreProvider` is a Java 17 `ServiceLoader` SPI for explicitly
+installed and named embedded key/value engines (LMDB, RocksDB, LevelDB, MapDB,
+Xodus, etc.). A provider persists an already-sealed byte image and must
+commit or replace it atomically. The Java engine selects exactly one named
+provider; absent/duplicate/reserved provider IDs are rejected. This SPI does
+not mean these native engines are included, tested, or automatically installed.
+Custom adapters must supply their own licensing, native dependencies and
+durability tests.
 `scripts/verify.sh` exercises the JDK-only file backend; the Maven
 `verify` lifecycle additionally runs live embedded SQLite and H2
 transactions using test-scoped drivers. Maven Core, m2e, JDT and the original
@@ -224,7 +239,7 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 ```
 
 `--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only
-with `run --incremental` and accepts `legacy|file|m3db|sqlite|h2|derby`. `--incremental` and
+with `run --incremental` and accepts built-ins `legacy|file|m3db|sqlite|h2|derby` or a registered custom provider ID. `--incremental` and
 `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
