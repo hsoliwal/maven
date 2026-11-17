@@ -22,6 +22,16 @@ public final class PolyglotCli {
      * New flags are opt-in; the original four/five argument forms remain valid.
      */
     static List<String> execute(String[] args, Consumer<String> output) throws Exception {
+        if (args != null && args.length == 1 && "providers".equals(args[0])) {
+            output.accept("M3-POLYGLOT-PROVIDERS-V1");
+            var providers = M3ToolProviders.available();
+            for (M3ToolProviders.Descriptor provider : providers) {
+                output.accept("provider\t" + provider.id() + "\t"
+                        + String.join(",", provider.capabilities()) + "\t"
+                        + String.join(",", provider.languages()));
+            }
+            return providers.stream().map(M3ToolProviders.Descriptor::id).toList();
+        }
         if (args == null || args.length < 4 || !("plan".equals(args[0]) || "run".equals(args[0]))) {
             throw usage();
         }
@@ -60,7 +70,7 @@ public final class PolyglotCli {
     }
 
     private static IllegalArgumentException usage() {
-        return new IllegalArgumentException("usage: plan|run <workspace> <manifest.tsv> <target>"
+        return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
                 + " [--timeout-seconds 1..43200] [--incremental] [--approve-rewrite-apply]"
                 + " (the last two flags require run)");
     }

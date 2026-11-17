@@ -86,6 +86,8 @@ public final class TaskRunner {
             // Validate provider argument contracts even in a read-only plan.
             List<String> qualityCommand = QualityTaskCommands.supported(task.tool())
                     ? QualityTaskCommands.command(task, root, dryRun || allowRewriteApply) : null;
+            List<String> m3Command = task.tool().startsWith("@m3")
+                    ? M3ToolProviders.command(task, root) : null;
             if (dryRun) {
                 performed.add(task.name());
                 continue;
@@ -108,8 +110,9 @@ public final class TaskRunner {
             // are candidates for this opt-in content-stamp shortcut. CodeQL databases and
             // OpenRewrite recipes have provider-owned state and must execute normally.
             // A path stamp never proves complete toolchain, environment or ABI inputs.
+            // Pluggable providers own further hidden inputs, so never skip them.
             boolean stampCandidate = incremental && !task.inputs().isEmpty() && !task.outputs().isEmpty()
-                    && !QualityTaskCommands.supported(task.tool());
+                    && qualityCommand == null && m3Command == null;
             String stamp = stampCandidate ? InputStamps.stamp(task, root) : null;
             if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
@@ -119,6 +122,8 @@ public final class TaskRunner {
             List<String> command = new ArrayList<>(task.arguments().size() + 1);
             if (qualityCommand != null) {
                 command.addAll(qualityCommand);
+            } else if (m3Command != null) {
+                command.addAll(m3Command);
             } else {
                 command.add(resolveTool(task.tool(), directory));
                 command.addAll(task.arguments());

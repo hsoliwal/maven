@@ -72,6 +72,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>m3-provider-spi-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.M3ToolProvidersContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>mavenizer-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>
