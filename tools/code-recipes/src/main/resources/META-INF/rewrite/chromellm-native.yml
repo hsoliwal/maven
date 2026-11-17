@@ -1,0 +1,73 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: org.apache.maven.recipes.BrowserlessChromeLLMAdvice
+displayName: Remove browser providers from ChromeLLM Maven advice
+description: >-
+  Move the opt-in chromellm-advice Maven profile from the removed Chrome provider
+  to local llama.cpp CLI inference, preserving the advice lifecycle and status
+  contracts while removing Chrome profile and headless controls.
+recipeList:
+  - org.openrewrite.xml.ChangeTagValue:
+      elementName: "/project/profiles/profile[id='chromellm-advice']/properties/chromellm.backend"
+      oldValue: chrome
+      newValue: cli
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "/project/profiles/profile[id='chromellm-advice']/properties/chromellm.chrome.profile"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "/project/profiles/profile[id='chromellm-advice']/properties/chromellm.chrome.headless"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//condition[@property='chromellm.chrome.profile.default']"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//condition[@property='chromellm.chrome.headless.default']"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//arg[@value='--chrome-profile']"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//arg[@value='${chromellm.chrome.profile}']"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//arg[@value='--chrome-headless']"
+  - org.openrewrite.xml.RemoveXmlTag:
+      xPath: "//profile[id='chromellm-advice']//arg[@value='${chromellm.chrome.headless}']"
+  # Text replacement must run last because it converts the XML LST to plain text.
+  - org.openrewrite.text.FindAndReplace:
+      find: "The chrome provider (the default) uses the dedicated profile chromellm.chrome.profile and runs headless"
+      replace: "The local CLI backend (the default) requires a llama.cpp executable and licensed GGUF model"
+      caseSensitive: true
+      filePattern: pom.xml
+  - org.openrewrite.text.FindAndReplace:
+      find: "unless chromellm.chrome.headless is false. Further provider options go in chromellm.backend.args as"
+      replace: "supplied via llama-bin and model options in chromellm.backend.args. Other provider options go there as"
+      caseSensitive: true
+      filePattern: pom.xml
+  - org.openrewrite.text.FindAndReplace:
+      find: "option value pairs; an option named there replaces the default of the same name."
+      replace: "option value pairs; choose jni explicitly for native inference. No browser providers remain."
+      caseSensitive: true
+      filePattern: pom.xml
+  - org.openrewrite.text.FindAndReplace:
+      find: "BEGIN CHROMELLM-BUILD-ADVICE v2"
+      replace: "BEGIN CHROMELLM-BUILD-ADVICE v3"
+      caseSensitive: true
+      filePattern: pom.xml
+  - org.openrewrite.text.FindAndReplace:
+      find: "END CHROMELLM-BUILD-ADVICE v2"
+      replace: "END CHROMELLM-BUILD-ADVICE v3"
+      caseSensitive: true
+      filePattern: pom.xml

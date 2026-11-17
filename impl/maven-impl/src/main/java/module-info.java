@@ -82,6 +82,12 @@ open module org.apache.maven.impl {
             org.apache.maven.testing,
             org.apache.maven.compat,
             org.apache.maven.embedder;
+    exports org.apache.maven.impl.process to
+            org.apache.maven.core,
+            org.apache.maven.cling,
+            org.apache.maven.testing,
+            org.apache.maven.compat,
+            org.apache.maven.embedder;
     exports org.apache.maven.impl.resolver to
             org.apache.maven.core,
             org.apache.maven.cling,

@@ -19,7 +19,8 @@ import java.util.function.Consumer;
  * Sequential execution of a validated Ant/Make-like graph. Tasks invoke the
  * original compiler or build tool by argument vector, never through a shell.
  * There is deliberately no timestamp-only skipping or undeclared build cache; the opt-in incremental mode
- * compares content stamps of declared inputs only.
+ * compares content stamps of declared inputs only, and the opt-in build cache ({@link BuildCache}) restores
+ * declared outputs under the same kind of stamp.
  */
 public final class TaskRunner {
     private TaskRunner() {}
@@ -83,8 +84,45 @@ public final class TaskRunner {
             boolean incremental,
             String stateBackend,
             Consumer<String> log) throws IOException, InterruptedException {
-        if (stateBackend == null || !stateBackend.matches("[a-z][a-z0-9-]{0,31}")) {
-            throw new IllegalArgumentException("module state backend must be a lower-case provider id");
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, stateBackend,
+                null, log);
+    }
+
+    /**
+     * Opt-in local build cache: with a {@code buildCache} folder, a task that declares inputs and outputs and has
+     * no provider-owned state is looked up by its content stamp before it starts. On a hit its declared outputs are
+     * restored and the tool is not started; after a success its outputs are stored. {@code null} disables the
+     * cache. Independent of {@code incremental}; with both, the up-to-date check comes first.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, "legacy",
+                buildCache, log);
+    }
+
+    /** Both opt-ins together: a persistent state backend for incremental mode and a local build cache folder. */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Path buildCache,
+            Consumer<String> log) throws IOException, InterruptedException {
+        if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2").contains(stateBackend)
+                && (stateBackend == null || !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}"))) {
+            throw new IllegalArgumentException("unknown portable module state backend");
         }
         if (!incremental && !"legacy".equals(stateBackend)) {
             throw new IllegalArgumentException("module state DB requires incremental execution");
@@ -102,10 +140,14 @@ public final class TaskRunner {
             throw new IOException("polyglot workspace is not a directory: " + root);
         }
         List<TaskManifest.Task> tasks = plan.order(target);
-        try (ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
-                ? ModuleStateDb.open(root, stateBackend) : null) {
+        try (M3ModuleDbRunLock moduleLock = incremental && !dryRun && !"legacy".equals(stateBackend)
+                ? M3ModuleDbRunLock.acquire(root) : null) {
+            if (moduleLock != null) log.accept("M3DB module execution lock acquired");
+            ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
+                    ? ModuleStateDb.open(root, stateBackend) : null;
             List<String> performed = new ArrayList<>(tasks.size());
-            for (TaskManifest.Task task : tasks) {
+            BuildCache cache = buildCache == null || dryRun ? null : new BuildCache(buildCache);
+        for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
                     + " prerequisites=" + task.prerequisites().size()
                     + " inputs=" + task.inputs().size() + " outputs=" + task.outputs().size());
@@ -137,13 +179,20 @@ public final class TaskRunner {
             // OpenRewrite recipes have provider-owned state and must execute normally.
             // A path stamp never proves complete toolchain, environment or ABI inputs.
             // Pluggable providers own further hidden inputs, so never skip them.
-            boolean stampCandidate = incremental && !task.inputs().isEmpty() && !task.outputs().isEmpty()
+            boolean candidate = !task.inputs().isEmpty() && !task.outputs().isEmpty()
                     && qualityCommand == null && m3Command == null;
-            String stamp = !stampCandidate ? null : moduleState == null
+            String stamp = !(incremental && candidate) ? null : moduleState == null
                     ? InputStamps.stamp(task, root) : moduleState.stamp(task);
             if (stamp != null && (moduleState == null
                     ? InputStamps.upToDate(task, root, stamp) : moduleState.upToDate(task, stamp))) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
+                performed.add(task.name());
+                continue;
+            }
+            // The cache key always uses the relocatable InputStamps stamp, whatever the state backend.
+            String cacheStamp = cache == null || !candidate ? null
+                    : moduleState == null && stamp != null ? stamp : InputStamps.stamp(task, root);
+            if (restored(cache, plan, moduleState, task, root, cacheStamp, stamp, log)) {
                 performed.add(task.name());
                 continue;
             }
@@ -159,6 +208,9 @@ public final class TaskRunner {
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.directory(directory.toFile());
             processBuilder.inheritIO();
+            // Revoke the old task and all consumers before tool effects begin.
+            // Stale successful records cannot survive a failed or interrupted invocation.
+            if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
             final Process process;
             try {
                 process = processBuilder.start();
@@ -190,22 +242,51 @@ public final class TaskRunner {
                 if (moduleState == null) {
                     InputStamps.record(task, root, stamp);
                 } else {
-                    // Seqlock-style validation: a successful process is not
-                    // enough if the declared inputs/tool changed while it ran.
-                    String after = moduleState.stamp(task);
-                    if (!stamp.equals(after)) {
-                        throw new IOException("module inputs changed while task ran: " + task.name());
+                    try {
+                        String after = moduleState.stamp(task);
+                        if (stamp.equals(after)) {
+                            moduleState.record(task, stamp);
+                        } else {
+                            log.accept("UNCACHED " + task.name() + " (module inputs changed during execution)");
+                        }
+                    } catch (IOException unstable) {
+                        // A successful original tool is not reclassified as failure by optional cache recording.
+                        // Its old success was already durably revoked before starting the process.
+                        log.accept("UNCACHED " + task.name() + " (module state publication unavailable)");
                     }
-                    moduleState.recordPending(task, after);
                 }
             }
+            if (cacheStamp != null) store(cache, task, root, cacheStamp, log);
             performed.add(task.name());
-            }
-            // One durable commit for the entire successful module DAG.
-            // A failed/interrupting graph never publishes partially updated state.
-            if (moduleState != null) moduleState.commit();
-            return List.copyOf(performed);
         }
+        return List.copyOf(performed);
+        }
+    }
+
+    /**
+     * True when the build cache restored the task's declared outputs. As before a tool run, the task and its
+     * consumers are revoked in the module state first; after the restore the incremental stamp is recorded.
+     */
+    private static boolean restored(BuildCache cache, TaskManifest plan, ModuleStateDb moduleState,
+            TaskManifest.Task task, Path root, String cacheStamp, String stamp, Consumer<String> log)
+            throws IOException {
+        if (cache == null || cacheStamp == null || !Files.isRegularFile(cache.entry(BuildCache.key(cacheStamp)))) {
+            return false;
+        }
+        if (moduleState != null) moduleState.invalidateTransitive(plan, task.name());
+        if (!cache.restore(task, root, cacheStamp)) return false;
+        log.accept("FROM-CACHE " + task.name() + " (declared outputs restored, key "
+                + BuildCache.key(cacheStamp).substring(0, 12) + ")");
+        if (stamp != null && moduleState == null) InputStamps.record(task, root, stamp);
+        if (stamp != null && moduleState != null) moduleState.record(task, stamp);
+        return true;
+    }
+
+    private static void store(BuildCache cache, TaskManifest.Task task, Path root, String cacheStamp,
+            Consumer<String> log) throws IOException {
+        boolean stored = cache.store(task, root, cacheStamp);
+        log.accept((stored ? "CACHED " : "NOT-CACHED ") + task.name()
+                + (stored ? "" : " (an output is a link or special file, or exceeds the entry budget)"));
     }
 
     /**
@@ -246,7 +327,7 @@ public final class TaskRunner {
     }
 
     /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */
-    private static Path checked(Path root, String relative) throws IOException {
+    static Path checked(Path root, String relative) throws IOException {
         Path value = root.resolve(relative).normalize();
         if (!value.startsWith(root)) {
             throw new IOException("resource is outside polyglot project root: " + relative);

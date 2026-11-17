@@ -27,6 +27,9 @@ under the License.
   <body>
     <menu name="Overview">
       <item name="Introduction" href="index.html"/>
+      <item name="Resource Filter" href="resource-filter.html"/>
+      <item name="Artifact Matcher Factory" href="artifact-matcher-factory.html"/>
+      <item name="Process Launcher" href="process-launcher.html"/>
       <item name="Javadocs" href="apidocs/index.html"/>
       <item name="Source Xref" href="xref/index.html"/>
       <!--item name="FAQ" href="faq.html"/-->
