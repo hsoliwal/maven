@@ -63,25 +63,49 @@ javac plugin `CodeClustering` of `org.apache.maven.plugins:maven-code-clustering
 `tools/code-clustering/README.md`) to that execution's configuration. The POM model and the project's dependencies
 are not changed. Every compilation then writes the atom tables while it compiles:
 
-- main sources: `${project.build.directory}/code-clustering`;
-- test sources: `${project.build.directory}/code-clustering/test`.
+- main sources: `${project.build.directory}/code-clustering/inline`;
+- test sources: `${project.build.directory}/code-clustering/inline/test`;
+- other executions of the two goals (a multi-release `src/main/java9` execution, for example): an
+  `execution-<id>` directory below those, so two executions never merge into one table set;
+- sources that annotation processors generate: a `generated` directory below each, so the main tables hold the
+  hand-written sources only.
 
-No goal runs and no POM changes.
+`inline` keeps these tables apart from the `cluster` goal's `target/code-clustering`. No goal runs and no POM
+changes.
 
 | Property (user, POM or system) | Effect | Default |
 |---|---|---|
-| `clustering.inline` | `false` turns it off (a POM property turns off one module) | on |
-| `clustering.pluginJar` | the plugin jar to use | the plugin in the local repository |
+| `clustering.inline` | `false` in any letter case turns it off (a POM property turns off one module) | on |
+| `clustering.pluginJar` | the plugin jar to use; it must register the javac plugin | the plugin in the local repository |
 | `clustering.pluginVersion` | the version looked up in the local repository | `0.1.0-SNAPSHOT` |
 | `clustering.minTokens`, `clustering.radius`, `clustering.fileThreshold` | passed to the plugin | the plugin's |
 
+The plugin jar must hold `META-INF/services/com.sun.source.util.Plugin` listing
+`org.apache.maven.plugins.clustering.InlineClustering`, and that class: javac fails every compilation
+(`plug-in not found: CodeClustering`) when `-Xplugin` names a plugin its processor path does not register. A jar
+without them (a `0.1.0-SNAPSHOT` built from a tree without the javac plugin) is logged once and left out; the build
+runs as usual.
+
 How the plugin reaches javac: javac loads plugins from the annotation processor path.
 
-- With `annotationProcessorPaths` configured, the plugin's coordinates are added to them. This needs the plugin in
-  the local repository.
+- With `annotationProcessorPaths` configured, the plugin's coordinates are added to them. maven-compiler-plugin
+  resolves them through the reactor first, then the local repository. So the spy leaves such an execution alone,
+  with the reason logged, when the reactor builds `maven-code-clustering-plugin` (its module's output has no javac
+  registration), or when the local repository's jar does not register the plugin.
 - Otherwise javac would look for processors on the class path. The spy adds `--processor-path` with the plugin jar
-  followed by the execution's own class path, so javac finds the same processors as before. On Java 23 and newer,
-  a processor path switches processing on, so the spy adds `-proc:none` unless `proc` or `-proc:` is configured.
+  followed by the execution's own class path, so javac finds the same processors as before.
+- Modular sources (`module-info.java`) without `annotationProcessorPaths` get the plugin jar alone as processor path:
+  their class path holds module path entries too, whose processors did not run before. If a processor is named or a
+  class path element registers one, the execution is left alone.
+- On Java 23 and newer, a processor path switches processing on, so the spy adds `-proc:none` unless `proc` or
+  `-proc:` is configured or processors are named (`annotationProcessors`, `-processor`): named processors switch
+  processing on themselves and must keep running.
+
+The plugin gets the execution's source roots (`roots`) and generated sources directory (`generated`), all paths as
+file URIs, which hold no white space (javac splits the plugin argument at white space). It gets `full=true` unless
+`useIncrementalCompilation` is `false`: maven-compiler-plugin then compiles all sources or none, so the tables are
+replaced and a file no longer compiled (a new `<excludes>`) drops out. With `useIncrementalCompilation=false` it
+compiles stale sources only, and the plugin merges.
 
 It leaves an execution alone, logged at INFO with the reason, when the plugin cannot join it safely:
 
@@ -90,11 +114,12 @@ It leaves an execution alone, logged at INFO with the reason, when the plugin ca
   cases the javac version is unknown;
 - Maven running below Java 17;
 - a processor path given in `compilerArgs`;
-- `module-info.java` in the source roots (modular builds take processors from the module path);
-- `-Xplugin:CodeClustering` already configured.
+- `-Xplugin:CodeClustering` already configured;
+- `annotationProcessorPaths` that cannot name the plugin (see above);
+- modular sources with processors named or registered on the class path.
 
-Without the plugin jar, the build runs as usual and the spy logs why, once. Any failure in the spy is logged and
-leaves the execution as it was. The javac plugin itself never fails a compilation. Tables are written when javac
+Without a usable plugin jar, the build runs as usual and the spy logs why, once. Any failure in the spy is logged and
+leaves the execution as it was (only virtual machine errors other than `StackOverflowError` propagate). The javac plugin itself never fails a compilation. Tables are written when javac
 runs; a module that maven-compiler-plugin finds up to date keeps the tables it has. Direct goal calls such as
 `mvn compiler:compile` (`default-cli`) start through the same event and are wired too; that path is not tested.
 
@@ -106,17 +131,27 @@ projects with it, off without the property, a declared plugin left alone, a miss
 logged and skipped.
 
 `src/it/test_inline_clustering.sh <extension.jar> <plugin.jar> <java-home> [mvn] [local-repository]` builds a
-scratch reactor of four jar modules offline and checks the following:
+scratch reactor of ten jar modules offline, under a directory with two consecutive spaces, and checks the following:
 
-- `mvn compile` writes each module's `target/code-clustering` tables with no goal. They are identical to the
-  standalone `cluster` scan of `src/main/java` on the same JDK, and `JNI.tsv` holds the native method;
+- `mvn compile` writes each module's `target/code-clustering/inline` tables with no goal. They are identical to the
+  standalone `cluster` scan of `src/main/java` on the same JDK, also for a modular module and for default-package
+  files of the same name in two directories; `JNI.tsv` holds the native method;
 - a module with `-Xlint:all -Werror` stays green;
-- Lombok still runs, from the class path in one module and from `annotationProcessorPaths` in another;
-- `mvn test-compile` writes `target/code-clustering/test`;
-- a changed source reaches the tables;
-- `-Dclustering.inline=false`, and a POM property in one module, turn it off;
+- Lombok still runs, from the class path in one module and from `annotationProcessorPaths` in another; a processor
+  named in `annotationProcessors` and one found on the class path still run, and their generated sources are in
+  `inline/generated`, identical to the scan of `target/generated-sources/annotations`;
+- `mvn test-compile` writes `target/code-clustering/inline/test`;
+- a changed source reaches the tables, and a newly excluded source leaves them;
+- `-Dclustering.inline=false` (also `FALSE`), and a POM property in one module, turn it off;
 - an output path that is a file leaves the build green with a warning;
-- a missing plugin jar is logged;
-- the plugin is found in the local repository.
+- a missing plugin jar, and a jar without the javac registration (given, or in the local repository), are logged
+  and the build stays green;
+- the plugin is found in the local repository, also by coordinates; `-T 4` stays green;
+- a reactor that builds `maven-code-clustering-plugin` stays green: `annotationProcessorPaths` are left alone, with
+  the reason logged, other modules are wired, also with `-T 4`;
+- with `JDK23_HOME` set to a JDK 23 or newer: named and class-path processors still run, and no `-proc:none` is
+  added beside `-processor`.
 
-Set `KEEP_LOGS=<dir>` to keep the Maven logs.
+With a local repository, `REPO_TAIL=<repository>` chains another one behind it (`maven.repo.local.tail`), so the
+plugin can be installed in a scratch repository while the rest comes from the usual one. Set `KEEP_LOGS=<dir>` to
+keep the Maven logs.

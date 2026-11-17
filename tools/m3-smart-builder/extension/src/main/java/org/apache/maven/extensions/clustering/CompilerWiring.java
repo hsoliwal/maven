@@ -23,7 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -36,18 +38,28 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 /**
  * Adds the javac plugin to one maven-compiler-plugin execution by editing that execution's configuration only (the
- * POM model and the project's dependencies stay as they are): a {@code -Xplugin:CodeClustering out=...} argument,
- * and the plugin jar where javac looks for plugins, which is the annotation processor path.
+ * POM model and the project's dependencies stay as they are): a {@code -Xplugin:CodeClustering} argument, and the
+ * plugin jar where javac looks for plugins, which is the annotation processor path.
  * <ul>
- *   <li>With {@code annotationProcessorPaths} configured, the plugin's coordinates are added to them.</li>
+ *   <li>With {@code annotationProcessorPaths} configured, the plugin's coordinates are added to them (the spy checks
+ *       that they resolve to a jar that registers the plugin).</li>
  *   <li>Otherwise javac would discover processors on the class path; {@code --processor-path} becomes the plugin jar
- *       followed by the execution's own class path, so the same processors are found as before. On Java 23 and
- *       newer, where a processor path switches processing on, {@code -proc:none} keeps it off unless {@code proc}
- *       or {@code -proc:} is configured.</li>
+ *       followed by the execution's own class path, so the same processors are found as before. Modular sources take
+ *       the plugin jar alone, unless processors are named or a class path element registers one.</li>
+ *   <li>On Java 23 and newer, where a processor path switches processing on, {@code -proc:none} keeps it off unless
+ *       {@code proc} or {@code -proc:} is configured or processors are named ({@code annotationProcessors} or
+ *       {@code -processor}), which switch it on themselves.</li>
  * </ul>
+ * The plugin gets the execution's source roots ({@code roots}), its generated sources directory ({@code generated})
+ * and {@code full=true} unless {@code useIncrementalCompilation} is {@code false} (maven-compiler-plugin then compiles
+ * stale sources only; otherwise it compiles all of them or none), all paths as file URIs. Output:
+ * {@code target/code-clustering/inline} for {@code default-compile}, {@code inline/test} for
+ * {@code default-testCompile}, and an {@code execution-<id>} directory below those for other executions.
+ * <p>
  * Executions the plugin cannot join safely are left alone ({@link #blocked}): another compiler, a forked or
- * toolchain javac (its version is unknown), Maven below Java 17, a processor path set in {@code compilerArgs},
- * modular sources (their processors come from the module path), or the plugin already configured.
+ * toolchain javac (its version is unknown), Maven below Java 17, a processor path set in {@code compilerArgs}, the
+ * plugin already configured, annotationProcessorPaths that cannot name it, or modular sources whose processors come
+ * from the class path.
  */
 final class CompilerWiring {
     private static final String COMPILER = "maven-compiler-plugin";
@@ -72,21 +84,24 @@ final class CompilerWiring {
     }
 
     /**
-     * Why the execution is left alone; empty when it can take the plugin. {@code coordinates}: whether the plugin is
-     * in the local repository, which annotationProcessorPaths need.
+     * Why the execution is left alone; empty when it can take the plugin. {@code coordinates}: why
+     * annotationProcessorPaths cannot name the plugin, empty when they can.
      */
-    Optional<String> blocked(boolean coordinates) {
+    Optional<String> blocked(Optional<String> coordinates) {
         if (config == null) return Optional.of("no configuration");
+        return Stream.<Supplier<Optional<String>>>of(this::compilerBlocked, this::argumentsBlocked,
+                () -> processorPaths() != null ? coordinates : modularBlocked())
+                .map(Supplier::get).flatMap(Optional::stream).findFirst();
+    }
+
+    /** Another compiler, or a javac whose version is unknown. */
+    private Optional<String> compilerBlocked() {
         String compilerId = value("compilerId");
         if (Runtime.version().feature() < PLUGIN_JAVA) return Optional.of("Maven runs on Java " + Runtime.version().feature());
         if (compilerId != null && !"javac".equals(compilerId)) return Optional.of("compilerId " + compilerId);
         if ("true".equals(value("fork")) || value("executable") != null) return Optional.of("forked javac");
         if (config.getChild("jdkToolchain") != null || toolchains()) return Optional.of("toolchain javac");
-        if (modular()) return Optional.of("modular sources (module-info.java)");
-        if (processorPaths() != null && !coordinates) {
-            return Optional.of("annotationProcessorPaths need the plugin in the local repository");
-        }
-        return argumentsBlocked();
+        return Optional.empty();
     }
 
     /** The plugin configured already, or a processor path given as a compiler argument. */
@@ -97,33 +112,103 @@ final class CompilerWiring {
         return path ? Optional.of("processor path set in compilerArgs") : Optional.empty();
     }
 
+    /**
+     * Modular sources without annotationProcessorPaths: javac would find processors on the class path, which here holds
+     * module path entries too, so the plugin jar goes alone and only when no processor is named or registered there.
+     */
+    private Optional<String> modularBlocked() {
+        if (!modular()) return Optional.empty();
+        boolean processors = namedProcessors()
+                || classpath().stream().map(Path::of).anyMatch(PluginJar::registersProcessors);
+        return processors ? Optional.of("modular sources with annotation processors on the class path")
+                : Optional.empty();
+    }
+
     /** Adds the plugin to the execution's configuration. */
     void wire(Path jar, String version, String options) {
-        boolean test = "testCompile".equals(mojo.getGoal());
-        Path out = Path.of(project.getBuild().getDirectory(), "code-clustering");
-        List<String> added = new ArrayList<>(List.of("-Xplugin:" + NAME + " out=" + (test ? out.resolve("test") : out) + options));
+        List<String> added = new ArrayList<>(List.of(pluginArgument(options)));
         Xpp3Dom paths = processorPaths();
-        if (paths != null) {
-            paths.addChild(coordinates(version));
-        } else {
-            added.add("--processor-path");
-            added.add(processorPath(jar, test));
-            if (Runtime.version().feature() >= PROCESSOR_PATH_ENABLES && value("proc") == null
-                    && arguments().stream().noneMatch(a -> a.startsWith("-proc:"))) added.add("-proc:none");
-        }
+        if (paths != null) paths.addChild(coordinates(version));
+        else added.addAll(processorPathArguments(jar));
         Xpp3Dom args = child("compilerArgs");
         added.forEach(a -> args.addChild(element("arg", a)));
     }
 
+    /** {@code -Xplugin:CodeClustering out=... roots=... generated=... [full=true]} with every path a file URI. */
+    private String pluginArgument(String options) {
+        String roots = sourceRoots().stream().map(r -> " roots=" + r.toUri()).collect(Collectors.joining());
+        String generated = generatedSources().map(g -> " generated=" + g.toUri()).orElse("");
+        String full = full() ? " full=true" : "";
+        return "-Xplugin:" + NAME + " out=" + out().toUri() + roots + generated + full + options;
+    }
+
+    /** The processor path (the plugin jar, then the class path unless modular) and, if needed, {@code -proc:none}. */
+    private List<String> processorPathArguments(Path jar) {
+        String path = modular() ? jar.toString() : processorPath(jar);
+        List<String> added = new ArrayList<>(List.of("--processor-path", path));
+        if (Runtime.version().feature() >= PROCESSOR_PATH_ENABLES && !processingConfigured()) added.add("-proc:none");
+        return added;
+    }
+
+    /** Whether the configuration decides about annotation processing itself: proc, -proc:, or named processors. */
+    private boolean processingConfigured() {
+        return value("proc") != null || namedProcessors() || arguments().stream().anyMatch(a -> a.startsWith("-proc:"));
+    }
+
+    /** Processors named by {@code annotationProcessors} or a {@code -processor} argument. */
+    private boolean namedProcessors() {
+        Xpp3Dom named = config.getChild("annotationProcessors");
+        boolean configured = named != null && (named.getChildCount() > 0 || evaluate(named.getValue()) != null);
+        return configured || arguments().contains("-processor");
+    }
+
     /** The plugin jar, then the elements of the execution's class path that exist. */
-    private String processorPath(Path jar, boolean test) {
+    private String processorPath(Path jar) {
+        return Stream.concat(Stream.of(jar.toString()), classpath().stream().filter(e -> Files.exists(Path.of(e))))
+                .collect(Collectors.joining(File.pathSeparator));
+    }
+
+    private List<String> classpath() {
         try {
-            List<String> classpath = test ? project.getTestClasspathElements() : project.getCompileClasspathElements();
-            return Stream.concat(Stream.of(jar.toString()), classpath.stream().filter(e -> Files.exists(Path.of(e))))
-                    .collect(Collectors.joining(File.pathSeparator));
+            return test() ? project.getTestClasspathElements() : project.getCompileClasspathElements();
         } catch (DependencyResolutionRequiredException e) {
             throw new IllegalStateException("class path not resolved: " + e.getMessage(), e);
         }
+    }
+
+    /** {@code inline} for the default executions ({@code inline/test} for tests), else a directory per execution. */
+    private Path out() {
+        Path inline = Path.of(project.getBuild().getDirectory(), "code-clustering", "inline");
+        Path dir = test() ? inline.resolve("test") : inline;
+        String id = mojo.getExecutionId();
+        boolean usual = id == null || id.equals("default-" + mojo.getGoal()) || id.equals("default-cli");
+        return usual ? dir : dir.resolve("execution-" + id.replaceAll("[^A-Za-z0-9._-]", "_"));
+    }
+
+    /** The execution's {@code compileSourceRoots} when configured, else the project's, as absolute paths. */
+    private List<Path> sourceRoots() {
+        Xpp3Dom roots = config.getChild("compileSourceRoots");
+        List<String> given = roots != null && roots.getChildCount() > 0
+                ? Stream.of(roots.getChildren()).map(c -> evaluate(c.getValue())).filter(Objects::nonNull)
+                        .collect(Collectors.toList())
+                : test() ? project.getTestCompileSourceRoots() : project.getCompileSourceRoots();
+        return given.stream().map(r -> project.getBasedir().toPath().resolve(r).toAbsolutePath().normalize())
+                .distinct().collect(Collectors.toList());
+    }
+
+    private Optional<Path> generatedSources() {
+        return Optional.ofNullable(value(test() ? "generatedTestSourcesDirectory" : "generatedSourcesDirectory"))
+                .map(d -> project.getBasedir().toPath().resolve(d).toAbsolutePath().normalize());
+    }
+
+    /** maven-compiler-plugin compiles every source or none unless useIncrementalCompilation is false. */
+    private boolean full() {
+        return Optional.ofNullable(value("useIncrementalCompilation")).map(v -> !"false".equalsIgnoreCase(v.trim()))
+                .orElse(true);
+    }
+
+    private boolean test() {
+        return "testCompile".equals(mojo.getGoal());
     }
 
     private Xpp3Dom coordinates(String version) {
@@ -151,7 +236,7 @@ final class CompilerWiring {
     }
 
     private boolean modular() {
-        List<String> roots = "testCompile".equals(mojo.getGoal()) ? project.getTestCompileSourceRoots() : List.of();
+        List<String> roots = test() ? project.getTestCompileSourceRoots() : List.of();
         return Stream.concat(project.getCompileSourceRoots().stream(), roots.stream())
                 .anyMatch(r -> Files.isRegularFile(Path.of(r, "module-info.java")));
     }
