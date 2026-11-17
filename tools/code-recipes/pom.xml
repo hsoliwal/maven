@@ -27,7 +27,8 @@ under the License.
   <packaging>jar</packaging>
   <name>Apache Maven Code Recipes</name>
   <description>The fork's home for OpenRewrite recipes: build baseline changes (GitHub Actions setup-java levels)
-    and searches (POM Java levels a JDK cannot compile), runnable on any repository through rewrite-maven-plugin.
+    and searches (POM Java levels a JDK cannot compile, maven-filtering calls to move to the core ResourceFilter),
+    runnable on any repository through rewrite-maven-plugin.
   </description>
   <licenses>
     <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url></license>
@@ -82,6 +83,11 @@ under the License.
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>org.openrewrite</groupId>
+      <artifactId>rewrite-java</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>
       <version>${jacksonAnnotationsVersion}</version>
@@ -90,6 +96,12 @@ under the License.
     <dependency>
       <groupId>org.openrewrite</groupId>
       <artifactId>rewrite-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- parses the Java sources of the UseCoreResourceFilter tests on JDK 21 -->
+    <dependency>
+      <groupId>org.openrewrite</groupId>
+      <artifactId>rewrite-java-21</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -106,6 +118,9 @@ under the License.
         <version>3.14.1</version>
         <configuration>
           <parameters>true</parameters>
+          <!-- no processors are used; rewrite-java-21 brings Lombok's (through rewrite-java-lombok) onto the test
+               class path, and -Xlint:all would turn javac's implicit-processing note into a warning -->
+          <proc>none</proc>
           <compilerArgs><arg>-Xlint:all</arg><arg>-Werror</arg></compilerArgs>
         </configuration>
       </plugin>
