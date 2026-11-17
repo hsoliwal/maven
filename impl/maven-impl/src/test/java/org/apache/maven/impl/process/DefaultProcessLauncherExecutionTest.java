@@ -20,6 +20,7 @@ package org.apache.maven.impl.process;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -57,6 +58,10 @@ class DefaultProcessLauncherExecutionTest {
 
     private static final ProcessLauncher LAUNCHER = new DefaultProcessLauncher(new DefaultOsService());
 
+    /** The charset a JVM child writes to a pipe on any supported JDK: the platform encoding. */
+    private static final Charset NATIVE = Charset.forName(
+            System.getProperty("native.encoding", Charset.defaultCharset().name()));
+
     /** Arguments every shell must deliver unchanged. */
     private static final List<String> SAFE = List.of("plain", "a b", "x&y", "p|q", "(paren)", "caret^", "it's");
 
@@ -74,10 +79,21 @@ class DefaultProcessLauncherExecutionTest {
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void powerShellDeliversArgumentsUnchanged() {
-        List<String> arguments = List.of("plain", "a b", "it's", "$HOME", "x&y", "semi;colon");
+        List<String> arguments = List.of(
+                "plain",
+                "a b",
+                "it's",
+                "$HOME",
+                "x&y",
+                "semi;colon",
+                "x\u2019; Write-Output INJECTED; #",
+                "y\u2018; Write-Output INJECTED; #");
         assertEquals(
                 bracketed(arguments),
-                outputOf(fixture("args").arguments(arguments).shell(Shell.POWERSHELL)));
+                outputOf(fixture("args")
+                        .arguments(arguments)
+                        .shell(Shell.POWERSHELL)
+                        .charset(NATIVE)));
     }
 
     @Test

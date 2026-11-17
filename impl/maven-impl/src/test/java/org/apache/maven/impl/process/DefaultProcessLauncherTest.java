@@ -26,10 +26,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.maven.api.services.OsService;
 import org.apache.maven.api.services.ProcessLaunchRequest;
 import org.apache.maven.api.services.ProcessLaunchRequest.Shell;
 import org.apache.maven.api.services.ProcessLauncher;
 import org.apache.maven.api.services.ProcessLauncherException;
+import org.apache.maven.di.Injector;
 import org.apache.maven.impl.process.ProcessLauncherTesting.StubOs;
 import org.apache.maven.impl.process.ProcessLauncherTesting.StubToolchain;
 import org.junit.jupiter.api.Test;
@@ -39,7 +41,9 @@ import static org.apache.maven.impl.process.ProcessLauncherTesting.SESSION;
 import static org.apache.maven.impl.process.ProcessLauncherTesting.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,6 +66,20 @@ class DefaultProcessLauncherTest {
         assertThrows(
                 UnsupportedOperationException.class,
                 () -> request.getArguments().add("y"));
+    }
+
+    @Test
+    void mavenInjectorResolvesTheService() {
+        Injector injector = Injector.create();
+        try {
+            injector.bindInstance(OsService.class, new StubOs(false));
+            injector.bindImplicit(DefaultProcessLauncher.class);
+            ProcessLauncher service = injector.getInstance(ProcessLauncher.class);
+            assertInstanceOf(DefaultProcessLauncher.class, service);
+            assertSame(service, injector.getInstance(ProcessLauncher.class));
+        } finally {
+            injector.dispose();
+        }
     }
 
     @Test
@@ -177,6 +195,19 @@ class DefaultProcessLauncherTest {
                         "-Command",
                         "& '/usr/bin/echo' 'it''s' 'say \"hi\"' '$x'"),
                 POSIX.commandLine(request));
+    }
+
+    @Test
+    void powerShellDoublesTypographicSingleQuotesToo() {
+        ProcessLaunchRequest request = request()
+                .shell(Shell.POWERSHELL)
+                .executable("x")
+                .arguments("a\u2018b", "c\u2019; Write-Output INJECTED; #", "d\u201Ae\u201Bf")
+                .build();
+        String expected =
+                "& 'x' 'a\u2018\u2018b' 'c\u2019\u2019; Write-Output INJECTED; #' 'd\u201A\u201Ae\u201B\u201Bf'";
+        assertEquals(expected, POSIX.commandLine(request).get(4));
+        assertEquals(expected, WINDOWS.commandLine(request).get(4));
     }
 
     @Test

@@ -43,6 +43,9 @@ final class ShellCommandLines {
     /** Backslashes followed by a double quote, escaped for the Windows command line parser. */
     private static final Pattern WINDOWS_QUOTE = Pattern.compile("(\\\\*)\"");
 
+    /** The characters that open or close a PowerShell single-quoted string. */
+    private static final Pattern PS_SINGLE_QUOTE = Pattern.compile("(['\u2018\u2019\u201A\u201B])");
+
     private ShellCommandLines() {}
 
     /**
@@ -127,9 +130,12 @@ final class ShellCommandLines {
         return "'" + item.replace("'", "'\"'\"'") + "'";
     }
 
-    /** A PowerShell single-quoted string: a single quote is doubled, nothing else is special. */
+    /**
+     * A PowerShell single-quoted string: each character that PowerShell takes for a single quote, the ASCII
+     * {@code '} and the typographic U+2018, U+2019, U+201A and U+201B, is doubled; nothing else is special.
+     */
     static String psQuote(String item) {
-        return "'" + item.replace("'", "''") + "'";
+        return "'" + PS_SINGLE_QUOTE.matcher(item).replaceAll("$1$1") + "'";
     }
 
     /**

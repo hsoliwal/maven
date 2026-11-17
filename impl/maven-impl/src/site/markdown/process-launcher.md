@@ -75,10 +75,28 @@ when the request has none, are open to the caller through `process()`; `await()`
 | `DEFAULT` | `CMD` when `OsService.isWindows()`, otherwise `SH`, as `Commandline` does | |
 | `CMD` | `cmd.exe /X /C "<line>"` | `"..."` around an item with a space, tab or one of `& < > ( ) @ ^ \|`, unless it is already quoted |
 | `SH`, `BASH` | `/bin/sh -c '<line>'`, `/bin/bash -c '<line>'`; `cd '<dir>' && ` first with a working directory | `'...'` around every item, `'` written as `'"'"'` |
-| `POWERSHELL` | `powershell.exe` (`pwsh` off Windows) `-NoProfile -NonInteractive -Command & <line>` | `'...'` around every item, `'` doubled; on Windows `"` also gets a backslash for the `powershell.exe` command line |
+| `POWERSHELL` | `powershell.exe` (`pwsh` off Windows) `-NoProfile -NonInteractive -Command & <line>` | `'...'` around every item, each single quote doubled: the ASCII `'` and the typographic U+2018, U+2019, U+201A and U+201B, which also end a PowerShell single-quoted string; on Windows `"` also gets a backslash for the `powershell.exe` command line |
 
-Through a shell the executable gets the separators of the target OS, as `Shell.setExecutable` does. Without a shell
-on Windows, Java does not escape a `"` inside an argument; such arguments need the shell, or escaping by the caller.
+Through a shell the executable gets the separators of the target OS, as `Shell.setExecutable` does.
+
+### Limits of the shells
+
+A shell interprets the line, so some arguments do not arrive as given. Use `NONE` for values the build does not
+control. Observed on Windows with `cmd.exe` and Windows PowerShell 5.1:
+
+- No shell keeps a `"` inside an argument, `NONE` included, since Java does not escape it: `say "hi" there` arrives
+  as `say hi there`, and a lone `"` merges the argument with the next one. Such arguments need escaping by the caller.
+- `CMD` expands `%VAR%` (`%PATH%` became 60 arguments), drops empty arguments, and cuts the line at a newline, so
+  the arguments after it are lost without an error.
+- `CMD`: in `"my dir\"` the trailing backslash escapes the closing quote, so the item merges with the next argument.
+- `CMD`: an embedded `"` allows command injection: the argument `x"&echo INJECTED&"y` runs `echo`. maven-shared-utils
+  3.5.0 `CmdShell` does exactly the same.
+- `POWERSHELL` drops empty arguments.
+- `cmd.exe` refuses a line longer than about 8191 characters: exit code 1 and `The command line is too long.` on
+  standard error, with no exception. Above 32767 characters the launch throws `ProcessLauncherException` with the
+  `CreateProcess error=206` `IOException` as its cause.
+
+With `redirectErrorStream(true)` the error lines go to the output consumer, and the error consumer is not called.
 
 ## Parity with the code it replaces
 
