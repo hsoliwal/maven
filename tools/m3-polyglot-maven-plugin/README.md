@@ -105,6 +105,10 @@ mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true -Dm3.polyglot.in
 mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true -Dm3.polyglot.incrementalState=m3db verify
 ```
 
+To adopt it in a consuming POM, run the OpenRewrite recipe `io.synexia.maven.recipe.EnableM3ModuleDb`
+(`META-INF/rewrite/m3-module-db.yml`, carried from #144). It adds `m3.polyglot.incremental=true` and
+`m3.polyglot.incrementalState=m3db` and keeps any value the POM already sets.
+
 Add `.m3/module.m3db`, `.m3/module.m3db.lock` and `.m3/module-state-*/` to the consuming project's
 ignore rules. Removing the module database after builds have stopped forces new task execution;
 never remove the lock while another process is using the module.
