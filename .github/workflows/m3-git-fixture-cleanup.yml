@@ -41,7 +41,6 @@ jobs:
           out=target/m3-git-bootstrap-source-proof
           mkdir -p "$out"
           javac --release 17 -proc:none -encoding UTF-8 -Xlint:all -Werror -d "$out" \
-            impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java \
             impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java \
             impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
       - name: Real-Git fixture selftest, normal and interpreted modes
