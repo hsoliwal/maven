@@ -63,8 +63,12 @@ public final class M3ToolProviders {
         }
     }
 
+    /**
+     * The first v1 entry point: the planned argv, with the run contract checked as {@link #plan} checks it and source
+     * mutation never approved, so a host calling it directly (Gradle, m2e) cannot obtain a source-writing argv.
+     */
     public static List<String> command(TaskManifest.Task task, Path workspace) throws IOException {
-        return command(task, workspace, discover());
+        return plan(task, workspace, false).argv();
     }
 
     /** The argv plus the provider-declared run contract: success exit codes, stdout file, effect, reports. */

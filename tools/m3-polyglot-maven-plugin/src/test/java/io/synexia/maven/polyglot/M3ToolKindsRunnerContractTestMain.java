@@ -57,7 +57,8 @@ public final class M3ToolKindsRunnerContractTestMain {
         try {
             differExitOneIsSuccess(root);
             stdoutLandsInDeclaredOutput(root);
-            System.out.println("PASS: 2 M3 tool-kind runner cases (git)");
+            outputThroughLinkIsRefused(root);
+            System.out.println("PASS: 3 M3 tool-kind runner cases (git)");
         } finally {
             try (var paths = Files.walk(root)) {
                 for (Path file : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
@@ -85,6 +86,59 @@ public final class M3ToolKindsRunnerContractTestMain {
                 root, "version", false, Duration.ofSeconds(60), ignored -> {});
         require(Files.readString(root.resolve("out/version.txt")).startsWith("git version"),
                 "stdout redirected into the declared output");
+    }
+
+    /** A declared output folder that is a junction (Windows) or symlink out of the workspace: refused before the run. */
+    private static void outputThroughLinkIsRefused(Path root) throws Exception {
+        Path outside = Files.createTempDirectory("m3-tool-kinds-outside-");
+        Path link = root.resolve("linked");
+        try {
+            if (link(link, outside)) {
+                linkedOutputsAreRefused(root, outside);
+            }
+        } finally {
+            Files.deleteIfExists(link);
+            try (var paths = Files.walk(outside)) {
+                paths.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(java.io.File::delete);
+            }
+        }
+    }
+
+    private static void linkedOutputsAreRefused(Path root, Path outside) throws Exception {
+        refused(() -> TaskRunner.run(load(root, "linkdiff", "@m3:gitprobe:differ:text", List.of("git", "before",
+                "after", "linked/f.patch"), List.of("before", "after"), List.of("linked/f.patch")), root, "linkdiff",
+                false, Duration.ofSeconds(60), ignored -> {}), "a differ output through a link");
+        refused(() -> TaskRunner.run(load(root, "linkversion", "@m3:gitprobe:linter:text", List.of("git"),
+                List.of("before"), List.of("linked/version.txt")), root, "linkversion", false, Duration.ofSeconds(60),
+                ignored -> {}), "a stdout file through a link");
+        try (var written = Files.list(outside)) {
+            require(written.findAny().isEmpty(), "nothing written outside the workspace");
+        }
+    }
+
+    /** A junction on Windows (no privilege needed; NOT RUN printed when mklink fails), a symbolic link elsewhere. */
+    private static boolean link(Path link, Path target) throws Exception {
+        if (!System.getProperty("os.name", "").startsWith("Windows")) {
+            Files.createSymbolicLink(link, target);
+            return true;
+        }
+        Process mklink = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J", link.toString(), target.toString())
+                .redirectErrorStream(true).start();
+        mklink.getInputStream().readAllBytes();
+        boolean made = mklink.waitFor() == 0 && Files.isDirectory(link);
+        if (!made) System.out.println("NOT RUN: output through a junction (cannot create one here)");
+        return made;
+    }
+
+    @FunctionalInterface private interface Run { void run() throws Exception; }
+
+    private static void refused(Run run, String label) throws Exception {
+        try {
+            run.run();
+        } catch (IOException expected) {
+            return;
+        }
+        throw new AssertionError("must refuse " + label);
     }
 
     private static TaskManifest load(Path root, String name, String tool, List<String> args,

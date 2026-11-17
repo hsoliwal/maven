@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * Sequential execution of a validated Ant/Make-like graph. Tasks invoke the
@@ -379,6 +380,15 @@ public final class TaskRunner {
         } catch (IOException failure) {
             throw new IOException("cannot start tool for target " + task.name() + ": " + task.tool(), failure);
         }
+        awaitExit(task, process, timeout);
+        if (!succeeded(m3, process.exitValue())) {
+            throw new IOException("polyglot tool failed: " + task.name() + " (exit " + process.exitValue() + ")");
+        }
+    }
+
+    /** Waits for the tool within the timeout; on timeout or interrupt the process tree is stopped. */
+    private static void awaitExit(TaskManifest.Task task, Process process, Duration timeout)
+            throws IOException, InterruptedException {
         final boolean finished;
         try {
             finished = process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
@@ -390,9 +400,6 @@ public final class TaskRunner {
         if (!finished) {
             stop(process);
             throw new IOException("polyglot target timed out: " + task.name());
-        }
-        if (!succeeded(m3, process.exitValue())) {
-            throw new IOException("polyglot tool failed: " + task.name() + " (exit " + process.exitValue() + ")");
         }
     }
 
@@ -441,9 +448,19 @@ public final class TaskRunner {
         return m3 == null ? exit == 0 : m3.successExitCodes().contains(exit);
     }
 
-    /** Rejects lexical escapes and existing symlinks in the path to a declared input/output. */
+    /**
+     * Rejects lexical escapes and existing symlinks in the path to a declared input/output, and any existing part of
+     * it that resolves outside the (real) project root: a Windows junction or other reparse point is no symlink to
+     * {@link Files#isSymbolicLink}, but its real path tells. Checked before a tool starts and after it ends.
+     */
     static Path checked(Path root, String relative) throws IOException {
-        return InputStamps.checked(root, relative);
+        Path value = InputStamps.checked(root, relative);
+        Path existing = Stream.iterate(value, Objects::nonNull, Path::getParent)
+                .filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS)).findFirst().orElse(root);
+        if (!existing.toRealPath().startsWith(root.toRealPath())) {
+            throw new IOException("polyglot declared path leaves the project root through a link or junction: " + relative);
+        }
+        return value;
     }
 
     private static void stop(Process process) {

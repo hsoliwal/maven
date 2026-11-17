@@ -438,7 +438,11 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 The kinds from `linter` on are additive v1 constants: the five original
 constants keep their order and slugs, `API_VERSION` stays 1, and consumers of
-the provider listing must ignore slugs they do not know.
+the provider listing must ignore slugs they do not know. Binary compatibility
+has one gap: Java code compiled against the first v1 enum with an exhaustive
+`switch` over `M3ToolCapability` (no `default` branch) fails at run time with
+`IncompatibleClassChangeError` when it meets one of the new constants. Java
+consumers need a `default` branch, or switch on `slug()`.
 
 The manifest `task` tool value is `@m3:<provider-id>:<capability>:<language>`.
 All names are lowercase, validated and unambiguous. The registry fails closed on
@@ -593,7 +597,7 @@ default, so providers compiled against the first v1 interface link unchanged:
 
 | Method | Default | Checked by the registry (`M3ToolProviders.plan`) |
 | --- | --- | --- |
-| `effect` | `READS_SOURCES` | `WRITES_SOURCES` is refused unless source mutation is approved; the runner approves only in a dry run (`plan`) until an approval flag exists |
+| `effect` | `READS_SOURCES` | `WRITES_SOURCES` is refused unless source mutation is approved; the runner approves only in a dry run (`plan`) until an approval flag exists, and the first v1 entry point `M3ToolProviders.command(task, workspace)` never approves (it returns `plan(task, workspace, false).argv()`) |
 | `successExitCodes` | `{0}` | must contain 0, at most 8 codes within 0..255 (a differ's 1 = differences found) |
 | `stdoutOutput` | none | must be a declared output; the runner redirects the tool's standard output into it |
 | `reports` | none | each report path must be a declared output; formats are `M3ReportFormat` slugs (SARIF 2.1.0, M3-STATIC-ANALYSIS-V1, build-events lines, ATOM_HASHES.tsv, COMPARE.tsv, PLAN.tsv, RECEIPT.tsv, unified diff, JUnit XML) |
@@ -601,6 +605,10 @@ default, so providers compiled against the first v1 interface link unchanged:
 
 Findings stay files: a provider names the outputs holding findings, diffs,
 plans or test results, and conversion between report formats is its own task.
+Every declared input, output and stdout file is checked before the tool starts
+and again after it ends: no `..` escape, no symlink, and no existing part that
+resolves outside the real project root (a Windows junction is not a symlink to
+Java, but its real path leaves the root).
 Providers for these kinds (git and clustering differs, the code-patch patcher,
 a javac plug-in host and an LSP linter) live in the opt-in
 `tools/maven-polyglot-tool-adapters` jar; nothing tool-specific is built in.
