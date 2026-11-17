@@ -24,18 +24,22 @@ import static org.apache.maven.plugins.clustering.InlinePluginTest.sameAsScan;
 import static org.apache.maven.plugins.clustering.InlinePluginTest.sources;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The review findings on the javac plugin, each reproduced before its fix: rows kept by source file (a package change
  * leaves one file's rows once), {@code full=true} replacing the tables (a file no longer compiled drops out), table
  * paths that collide (default-package files in different directories: kept apart, and identical to the scan with
  * {@code roots}), arguments given as file URIs (two consecutive spaces in a path), generated sources in their own
- * tables, and failure isolation for errors such as {@link StackOverflowError}. Run from {@link InlinePluginTest}.
+ * tables, failure isolation for errors such as {@link StackOverflowError}, and a plugin jar that misses a class (one
+ * warning, javac green). Run from {@link InlinePluginTest}.
  */
 final class InlineRegressionTest {
     private static final String SUM = "    int sum(int[] values) {\n        int total = 0;\n"
@@ -50,6 +54,63 @@ final class InlineRegressionTest {
         uris(dir.resolve("uris"));
         generated(dir.resolve("generated"));
         guarded();
+        linkage(dir.resolve("linkage"));
+    }
+
+    /**
+     * A plugin jar that misses one of its classes (a partial copy, or a jar replaced while javac runs): javac in a new
+     * process stays green; without {@code InlineOptions} the plugin logs once that it is disabled, without
+     * {@code PlaneTokens} (needed after every PARSE) it logs one warning for the first unit and then stays off.
+     */
+    private static void linkage(Path dir) throws Exception {
+        List<Path> files = List.of(dir.resolve("src/p/A.java"), dir.resolve("src/p/B.java"), dir.resolve("src/p/C.java"));
+        files.forEach(f -> write(f, "package p;\n\nclass " + f.getFileName().toString().replace(".java", "") + " {\n" + SUM + "}\n"));
+        check("linkage: init LinkageError, javac green, one warning",
+                warnings(javacWithout(dir, "InlineOptions", files), "plugin disabled") == 1);
+        check("linkage: PARSE LinkageError, javac green, one warning for three units",
+                warnings(javacWithout(dir, "PlaneTokens", files), "code clustering") == 1);
+    }
+
+    /** The output of the JDK's javac run in a new process with the plugin's classes less {@code missing}; null when red. */
+    private static String javacWithout(Path dir, String missing, List<Path> files) throws Exception {
+        Path plugin = pluginWithout(dir.resolve("plugin-" + missing), missing);
+        List<String> command = new ArrayList<>(List.of(javac(), "-d", dir.resolve("c-" + missing).toString(),
+                "-processorpath", plugin.toString(), "-Xplugin:CodeClustering out=" + dir.resolve("out-" + missing).toUri()));
+        files.forEach(f -> command.add(f.toString()));
+        Process javac = new ProcessBuilder(command).redirectErrorStream(true).start();
+        String log = new String(javac.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        System.err.print(log);
+        return javac.waitFor() == 0 ? log : null;
+    }
+
+    /** The plugin's classes and registration in {@code plugin}, less the class file {@code missing}. */
+    private static Path pluginWithout(Path plugin, String missing) throws IOException {
+        Path classes = Path.of(InlinePluginTest.location(InlineClustering.class));
+        try (Stream<Path> walk = Files.walk(classes)) {
+            walk.filter(Files::isRegularFile).filter(p -> !p.getFileName().toString().equals(missing + ".class"))
+                    .forEach(p -> copy(p, plugin.resolve(classes.relativize(p))));
+        }
+        write(plugin.resolve("META-INF/services/com.sun.source.util.Plugin"), InlineClustering.class.getName() + "\n");
+        return plugin;
+    }
+
+    /** The lines of a javac log that mention {@code text}; -1 for a red javac. */
+    private static long warnings(String log, String text) {
+        return log == null ? -1 : log.lines().filter(l -> l.contains(text)).count();
+    }
+
+    private static String javac() {
+        boolean windows = System.getProperty("os.name").startsWith("Windows");
+        return Path.of(System.getProperty("java.home"), "bin", windows ? "javac.exe" : "javac").toString();
+    }
+
+    private static void copy(Path from, Path to) {
+        try {
+            Files.createDirectories(to.getParent());
+            Files.copy(from, to);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** The same file compiled under package p, then under package q: its rows are filed once, under the new path. */
@@ -174,8 +235,12 @@ final class InlineRegressionTest {
         return Files.isRegularFile(table) ? Files.readAllLines(table, StandardCharsets.UTF_8) : List.of();
     }
 
-    private static void write(Path file, String text) throws IOException {
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, text, StandardCharsets.UTF_8);
+    static void write(Path file, String text) {
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, text, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }

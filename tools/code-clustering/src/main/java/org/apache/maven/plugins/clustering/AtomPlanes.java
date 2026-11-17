@@ -70,7 +70,7 @@ public final class AtomPlanes {
     /**
      * Atomizes every source file under the roots with the {@link AtomFrontEnd front ends}: discovered ones first, then
      * javac for {@code .java} and the lexical front end for the brace and indentation languages. Returns the atoms in
-     * path order.
+     * path order across all roots (a path held by two roots: the first root's atoms first).
      */
     public static List<Atom> scan(List<Path> roots) throws IOException {
         return scan(roots, AtomFrontEnd.all());
@@ -86,33 +86,57 @@ public final class AtomPlanes {
                 frontEnds.stream().filter(f -> f.accepts(file)).findFirst()
                         .ifPresent(f -> assigned.computeIfAbsent(f, k -> new ArrayList<>()).add(file));
             }
-            List<Atom> found = new ArrayList<>();
-            for (Map.Entry<AtomFrontEnd, List<Path>> e : assigned.entrySet()) found.addAll(e.getKey().atoms(root, e.getValue()));
-            found.sort(Comparator.comparing(Atom::path));
-            atoms.addAll(found);
+            for (Map.Entry<AtomFrontEnd, List<Path>> e : assigned.entrySet()) atoms.addAll(e.getKey().atoms(root, e.getValue()));
         }
+        atoms.sort(Comparator.comparing(Atom::path));
         return atoms;
     }
 
-    /** Files under the root that a front end accepts, skipping build output, dependency caches and version control. */
+    /**
+     * Files under the root that a front end accepts, skipping version control, caches and the output and dependency
+     * directories of a project ({@link #skipped}).
+     */
     static List<Path> sourceFiles(Path root, List<AtomFrontEnd> frontEnds) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
+        Map<Path, Boolean> skippedDirs = new java.util.HashMap<>();
         try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(p -> Files.isRegularFile(p) && !skipped(root.relativize(p)))
+            return walk.filter(p -> Files.isRegularFile(p) && !skipped(root, p.getParent(), skippedDirs))
                     .filter(p -> frontEnds.stream().anyMatch(f -> f.accepts(p))).sorted()
                     .collect(Collectors.toList());
         }
     }
 
-    private static boolean skipped(Path relative) {
-        for (Path part : relative) {
-            if (SKIPPED.contains(part.toString())) return true;
-        }
-        return false;
+    /**
+     * Whether the directory or one above it, below the root, is skipped (decided once per directory): a name of
+     * {@link #ALWAYS_SKIPPED} anywhere; a name of {@link #PROJECT_OUTPUT} only beside a build descriptor
+     * ({@link #DESCRIPTORS}: {@code target} next to {@code pom.xml}) or, for a virtual environment, holding
+     * {@code pyvenv.cfg}. A package directory of such a name inside a source root ({@code src/main/java/p/build}) is not
+     * skipped, so the scan holds what javac compiles.
+     */
+    private static boolean skipped(Path root, Path dir, Map<Path, Boolean> known) {
+        if (dir == null || dir.equals(root) || !dir.startsWith(root)) return false;
+        Boolean decided = known.get(dir);
+        if (decided != null) return decided;
+        String name = dir.getFileName().toString();
+        boolean skip = ALWAYS_SKIPPED.contains(name) || PROJECT_OUTPUT.contains(name) && projectOutput(dir)
+                || skipped(root, dir.getParent(), known);
+        known.put(dir, skip);
+        return skip;
     }
 
-    private static final java.util.Set<String> SKIPPED = java.util.Set.of("node_modules", ".git", "target", "build",
-            "dist", "out", "vendor", "__pycache__", ".venv", "venv", ".gradle", ".idea");
+    private static boolean projectOutput(Path dir) {
+        return Files.isRegularFile(dir.resolve("pyvenv.cfg"))
+                || DESCRIPTORS.stream().anyMatch(d -> Files.exists(dir.resolveSibling(d)));
+    }
+
+    private static final java.util.Set<String> ALWAYS_SKIPPED = java.util.Set.of(".git", "__pycache__", ".venv",
+            ".gradle", ".idea");
+    private static final java.util.Set<String> PROJECT_OUTPUT = java.util.Set.of("node_modules", "target", "build",
+            "dist", "out", "vendor", "venv");
+    private static final List<String> DESCRIPTORS = List.of("pom.xml", "build.gradle", "build.gradle.kts",
+            "settings.gradle", "settings.gradle.kts", "build.xml", "package.json", "pyproject.toml", "setup.py",
+            "setup.cfg", "requirements.txt", "Cargo.toml", "go.mod", "composer.json", "Gemfile", "CMakeLists.txt",
+            "Makefile", "meson.build", "build.sbt", ".git");
 
     static List<Atom> parse(Path root, List<Path> files) throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();

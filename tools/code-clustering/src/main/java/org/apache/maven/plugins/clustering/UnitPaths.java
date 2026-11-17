@@ -42,9 +42,13 @@ final class UnitPaths {
 
     /** The file relative to the longest given root that holds it, else to its package root. */
     static String relative(Path file, CompilationUnitTree unit, List<Path> roots) {
-        Path root = roots.stream().filter(file::startsWith).max(Comparator.comparingInt(Path::getNameCount))
-                .orElseGet(() -> packageRoot(file, unit.getPackageName()));
+        Path root = root(file, roots).orElseGet(() -> packageRoot(file, unit.getPackageName()));
         return root.relativize(file).toString().replace('\\', '/');
+    }
+
+    /** The longest given root that holds the file. */
+    static Optional<Path> root(Path file, List<Path> roots) {
+        return roots.stream().filter(file::startsWith).max(Comparator.comparingInt(Path::getNameCount));
     }
 
     /**

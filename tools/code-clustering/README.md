@@ -174,8 +174,11 @@ run of spaces or a tab becomes one space. A URI has no white space, so the core 
   That is the path `cluster` gives when it scans that root. Sources under `generated` (the ones annotation
   processors write) get their own tables in `out/generated`, filed relative to that directory, so the main tables
   hold the hand-written sources only. Without `generated`, generated sources are filed under their package root
-  in the main tables. Two files of one compilation that would share a table path (default-package files of the same
-  name in two directories, without `roots`) are each filed under their absolute path, with a warning.
+  in the main tables. Files that would share a table path (default-package files of the same name in two roots)
+  are each filed under `@<n>/<path>`, `n` the position of the file's root in `roots` from 0, or, for a file under
+  no root, under its path relative to the tables' directory, with a warning. The decision covers the compiled files
+  and the kept ones together, so a table path does not depend on which compilation wrote it, and holds no machine
+  path.
 - **Tables.** The plugin writes the five tables of `cluster` (`ATOM_HASHES.tsv`, `CLUSTERS.tsv`, `PLANE_SUMMARY.tsv`,
   `FILE_PAIRS.tsv`, `FILE_CLUSTERS.tsv`). It also writes:
   - `JNI.tsv`: path, symbol (the atom symbol), class_name (binary name in internal form: `p/Outer$Inner`, also for
@@ -183,25 +186,46 @@ run of spaces or a tab becomes one space. A URI has no white space, so the core 
     `Ljava/lang/String;[I`; a type javac could not resolve is `L?;`). Attribution makes these exact. They are the
     Java side a JNI linker matches against native functions; the build has no native atoms, so the plugin links
     nothing itself.
-  - `ATOM_SOURCES.tsv`: path, source file.
+  - `ATOM_SOURCES.tsv`: path (the table path), source (the source file relative to the tables' directory, so a
+    moved workspace keeps its rows), root_path (the file's path relative to its root). Tables written with only the
+    first two columns (absolute sources) are still read.
 - **Full and incremental compilations.** With `full=true` the compilation's units replace the tables (and a full
   compilation without generated sources removes the `generated` tables). Otherwise the compilation may compile only
   some files: its units replace the rows of their source files. The rows of other source files (from
-  `ATOM_SOURCES.tsv`) are kept while the file exists, so the rows of a deleted file are dropped. Rows are kept by
-  source file, not by table path: a file whose package declaration changed is filed once, under its new path. A kept
-  file whose path a compiled file now takes is filed under its absolute path. Then the clusters and file families
-  are computed again over the merged atoms. Merging cannot tell that an existing file is no longer compiled (a new
-  `<excludes>`); only a full compilation drops it. A table written by `cluster` (it has no `ATOM_SOURCES.tsv`) is
-  replaced, not merged. A module that javac does not compile because it is up to date keeps its tables as they are.
+  `ATOM_SOURCES.tsv`) are kept while the file exists, so the rows of a deleted file are dropped at the next
+  compilation that runs javac. Rows are kept by source file, not by table path: a file whose package declaration
+  changed is filed once, under its new path. Then the clusters and file families are computed again over the merged
+  atoms. Merging cannot tell that an existing file is no longer compiled (a new `<excludes>`); only a full
+  compilation drops it. A table written by `cluster` (it has no `ATOM_SOURCES.tsv`) is replaced, not merged. A
+  module that javac does not compile because it is up to date keeps its tables as they are.
+- **Prune.** `InlineClustering.prune(String...)` takes the plugin's arguments and drops the rows of deleted sources
+  from `out` (and `out/generated`) without a compilation; tables whose sources all exist are not written. The core
+  extension calls it, from a class loader of the plugin jar, before a maven-compiler-plugin execution that compiles
+  stale sources only (`useIncrementalCompilation=false`), which finds nothing stale after a file was deleted.
 - **Identity.** For the same sources and the same JDK, the tables equal those of `cluster` byte for byte (tested on
   fixtures and on this plugin's own sources). LOGIC and STRUCTURE depend on the tree shapes of the JDK's javac: for
   example, JDK 21 gives arrow `case` labels nodes that JDK 17 does not have. Compare tables made with the same JDK
-  only. EXACT is taken from the text javac read, in the build's `-encoding`.
+  only. EXACT is taken from the text javac read, in the build's `-encoding`. Both order atoms by path across all
+  roots. The scan skips `.git`, `__pycache__`, `.venv`, `.gradle` and `.idea` anywhere, but `target`, `build`,
+  `dist`, `out`, `vendor`, `venv` and `node_modules` only as a project's output or dependency directory: beside a
+  build descriptor (`pom.xml`, `build.gradle`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `.git` and
+  others) or, for a virtual environment, holding `pyvenv.cfg`. A package directory of such a name inside a source
+  root (`src/main/java/p/build`) is scanned, as javac compiles it. Files that share a table path (above) are the
+  one case where the tables differ from the scan, which files both under the same path.
 - **Never fails a compilation.** Bad arguments disable the plugin. Any other failure (an output path that is a file,
   for example), errors such as `StackOverflowError` and `AssertionError` from the tree walks included, is logged as
   one warning through `System.Logger` (java.util.logging unless configured otherwise), and the step's atoms are
-  dropped. Only virtual machine errors other than `StackOverflowError` (out of memory, internal errors) propagate.
-  The compilation's result is unchanged.
+  dropped. A `LinkageError` (a plugin jar missing a class, or replaced while javac runs) during `init` disables the
+  plugin with one warning; during a later step it turns the plugin off for the rest of the compilation, with one
+  warning and no tables written. Only virtual machine errors other than `StackOverflowError` (out of memory,
+  internal errors) propagate. The compilation's result is unchanged.
+- **Heap.** The plugin keeps the atoms of the compilation (strings of the four planes, about half a kilobyte per
+  atom) and clusters them when the compilation ends, while javac still holds its trees; the atom table is written
+  row by row. On 4,000 small classes (1.1 MB of source, 12,000 atoms; javac through `javax.tools` with a
+  diagnostic listener, as maven-compiler-plugin runs it, JDK 17.0.19, 2026-11-18) javac's heap floor was above
+  40 MB and at most 48 MB alone, and above 56 MB and at most 64 MB with the plugin; the out of memory error at 56 MB
+  came from the clustering (`PlaneTables.groups`). The core extension leaves a module alone when its sources would
+  need more than its share of the heap at 64 bytes per source byte.
 - **Registration.** `META-INF/services/com.sun.source.util.Plugin` is in the jar only, never in `target/classes`.
   javac reads the plugin registrations of its class path even without `-Xplugin`, and stops with
   `ServiceConfigurationError` when a registered class is missing. A class is missing while this module compiles, and
@@ -266,7 +290,17 @@ lines. `InlinePluginTest` compiles fixtures with `-Xplugin:CodeClustering` and c
 filed once; `full=true` drops a file no longer compiled (merging keeps it); default-package files of the same name
 in two directories are kept apart, and equal the scan with `roots`; `out` and `roots` as URIs of a directory with two
 consecutive spaces; generated sources in `out/generated`, both table sets equal to their scans, removed by a full
-compilation without them; `StackOverflowError` and `AssertionError` logged, `OutOfMemoryError` propagated.
+compilation without them; `StackOverflowError` and `AssertionError` logged, `OutOfMemoryError` propagated; javac in a
+new process with the plugin's classes less `InlineOptions` (a `LinkageError` in `init`) or less `PlaneTokens` (one
+after every PARSE) stays green with exactly one warning.
+
+`InlineFilingTest` reproduces the second review's findings, each failing before its fix: default-package files of
+the same name in two roots, compiled full, one, the other, full again, keep the same table paths `@0/Util.java` and
+`@1/Util.java`, and `ATOM_SOURCES.tsv` holds no absolute source; a workspace moved after a full compile keeps the
+other file's rows in a partial compile; two roots whose files interleave equal the scan of both; packages named
+`build`, `target`, `out`, `dist`, `vendor`, `venv` and `node_modules` equal the scan; the scan still skips a
+project's `target`, `node_modules`, `venv` (with `pyvenv.cfg`), Gradle `build` and `.git`; `prune` (called
+reflectively, as the extension does) drops a deleted file's rows and leaves tables without one untouched.
 
 ## Report columns
 
@@ -281,4 +315,4 @@ compilation without them; `StackOverflowError` and `AssertionError` logged, `Out
 - `COVERAGE.tsv`: path, atoms, exact, logic, structure, near, absent, top_match, top_share, proposal
 - `COMPARE.tsv`: state, path, kind, symbol, baseline_path, baseline_symbol
 - `JNI.tsv` (javac plugin): path, symbol, class_name, method, arguments
-- `ATOM_SOURCES.tsv` (javac plugin): path, source
+- `ATOM_SOURCES.tsv` (javac plugin): path, source, root_path

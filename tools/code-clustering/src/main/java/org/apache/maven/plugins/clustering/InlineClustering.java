@@ -50,8 +50,10 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  *       {@code generated} get their own tables in {@code out/generated}.</li>
  * </ul>
  * The plugin never fails a compilation: bad arguments disable it and any failure, errors such as a stack overflow
- * included, is logged as a warning through {@link System.Logger} (java.util.logging by default); only virtual machine
- * errors other than {@link StackOverflowError} propagate. Arguments: {@link InlineOptions}.
+ * included, is logged as a warning through {@link System.Logger} (java.util.logging by default); a
+ * {@link LinkageError} (a class missing from the plugin jar) turns it off after one warning. Only virtual machine
+ * errors other than {@link StackOverflowError} propagate. Arguments: {@link InlineOptions}. {@link #prune} drops the
+ * rows of deleted sources without a compilation.
  */
 public final class InlineClustering implements Plugin {
     static final String NAME = "CodeClustering";
@@ -75,50 +77,97 @@ public final class InlineClustering implements Plugin {
      * other than {@link StackOverflowError} (out of memory, an internal error) is rethrown.
      */
     static boolean guarded(String what, Step step) {
+        Optional<Throwable> failure = attempt(step);
+        failure.ifPresent(f -> warn(what + " not recorded: " + f, f));
+        return failure.isPresent();
+    }
+
+    /** Runs the step and returns what it threw, empty when it did not; rethrows {@link #fatal} errors. */
+    static Optional<Throwable> attempt(Step step) {
         try {
             step.run();
-            return false;
+            return Optional.empty();
         } catch (Throwable failure) {
-            if (failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError)) throw (Error) failure;
-            LOG.log(Level.WARNING, "code clustering: " + what + " not recorded: " + failure);
-            LOG.log(Level.DEBUG, "code clustering failure", failure);
-            return true;
+            if (fatal(failure)) throw (Error) failure;
+            return Optional.of(failure);
         }
     }
 
+    /** A virtual machine error other than {@link StackOverflowError}: out of memory, an internal error. */
+    static boolean fatal(Throwable failure) {
+        return failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError);
+    }
+
+    private static void warn(String message, Throwable failure) {
+        LOG.log(Level.WARNING, "code clustering: " + message);
+        LOG.log(Level.DEBUG, "code clustering failure", failure);
+    }
+
+    /**
+     * Adds the listener. Bad arguments, and a plugin jar that misses a class ({@link LinkageError}), disable the
+     * plugin with one warning.
+     */
     @Override
     public void init(JavacTask task, String... args) {
-        try {
-            task.addTaskListener(new Listener(task, InlineOptions.parse(args)));
-        } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "code clustering plugin disabled: " + e.getMessage());
-        }
+        attempt(() -> task.addTaskListener(new Listener(task, InlineOptions.parse(args))))
+                .ifPresent(f -> LOG.log(Level.WARNING, "code clustering plugin disabled: " + f));
     }
 
-    /** Collects the atoms after PARSE and the native methods after ANALYZE; writes the tables at the end. */
+    /**
+     * Drops the rows of source files that no longer exist from the tables that the plugin arguments name ({@code out},
+     * and {@code out/generated} with {@code generated}), without a compilation: for a build that compiles stale
+     * sources only and found nothing stale after a file was deleted. Tables without such rows stay as they are.
+     * Returns a summary line. The core extension calls it reflectively, from a class loader of the plugin jar.
+     */
+    public static String prune(String... args) throws IOException {
+        InlineOptions options = InlineOptions.parse(args);
+        String main = InlineTables.prune(options, options.out(), options.roots()).orElse("no source deleted");
+        if (options.generated().isEmpty()) return main;
+        Path gen = options.out().resolve(GENERATED);
+        return main + " | generated: " + InlineTables.prune(options, gen, List.of(options.generated().get()))
+                .orElse("no source deleted");
+    }
+
+    /**
+     * Collects the atoms after PARSE and the native methods after ANALYZE; writes the tables at the end. The first
+     * {@link LinkageError} (the plugin jar misses a class, or was replaced while javac runs) turns it off for the rest
+     * of the compilation, with one warning and no tables written.
+     */
     private static final class Listener implements TaskListener {
         private final InlineOptions options;
         private final JavacTask task;
         private final Trees trees;
-        private final InlineTables.Units units = new InlineTables.Units();
-        private final InlineTables.Units generated = new InlineTables.Units();
+        private final InlineTables.Units units;
+        private final InlineTables.Units generated;
+        private boolean off;
 
         Listener(JavacTask task, InlineOptions options) {
             this.options = options;
             this.task = task;
             this.trees = Trees.instance(task);
+            this.units = new InlineTables.Units(options.roots());
+            this.generated = new InlineTables.Units(options.generated().map(List::of).orElse(List.of()));
         }
 
         @Override
         public void finished(TaskEvent event) {
-            guarded(event.getKind().toString(), () -> {
-                switch (event.getKind()) {
-                    case PARSE -> parsed(event.getCompilationUnit());
-                    case ANALYZE -> analyzed(event.getCompilationUnit(), event.getTypeElement());
-                    case COMPILATION -> written();
-                    default -> { }
-                }
-            });
+            if (off) return;
+            attempt(() -> step(event)).ifPresent(f -> failed(event, f));
+        }
+
+        private void step(TaskEvent event) throws IOException {
+            switch (event.getKind()) {
+                case PARSE -> parsed(event.getCompilationUnit());
+                case ANALYZE -> analyzed(event.getCompilationUnit(), event.getTypeElement());
+                case COMPILATION -> written();
+                default -> { }
+            }
+        }
+
+        private void failed(TaskEvent event, Throwable failure) {
+            off = failure instanceof LinkageError;
+            String effect = off ? "; plugin off for this compilation, tables not written (incomplete plugin jar?)" : "";
+            warn(event.getKind() + " not recorded: " + failure + effect, failure);
         }
 
         private void parsed(CompilationUnitTree unit) throws IOException {

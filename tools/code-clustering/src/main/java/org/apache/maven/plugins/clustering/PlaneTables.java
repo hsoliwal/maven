@@ -19,6 +19,7 @@
 package org.apache.maven.plugins.clustering;
 
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -47,15 +48,17 @@ public final class PlaneTables {
 
     private PlaneTables() { }
 
+    /** Writes the atom table row by row (the javac plugin writes it while javac still holds its trees). */
     public static void writeAtoms(Path file, List<Atom> atoms) throws IOException {
-        StringBuilder out = new StringBuilder(HEADER).append('\n');
-        for (Atom a : atoms) {
-            out.append(String.join("\t", a.path(), a.kind(), a.symbol(), Integer.toString(a.tokens()), a.exact(),
-                    a.logic(), a.structure(), a.simhash(), Integer.toString(a.line()), Integer.toString(a.endLine())))
-                    .append('\n');
-        }
         Files.createDirectories(file.toAbsolutePath().getParent());
-        Files.writeString(file, out, StandardCharsets.UTF_8);
+        try (BufferedWriter out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+            out.write(HEADER + '\n');
+            for (Atom a : atoms) {
+                out.write(String.join("\t", a.path(), a.kind(), a.symbol(), Integer.toString(a.tokens()), a.exact(),
+                        a.logic(), a.structure(), a.simhash(), Integer.toString(a.line()), Integer.toString(a.endLine()))
+                        + '\n');
+            }
+        }
     }
 
     /** Reads an atom table; a table without the line columns (8 columns) gives atoms with lines 0. */
