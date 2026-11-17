@@ -33,6 +33,60 @@ source owners and M3JDK/M3FS evidence services.
   outputs always executes; CodeQL and OpenRewrite providers always execute, even in incremental mode.
   Stamps do **not** certify complete inputs, external tool versions, environment or ABI compatibility.
 
+### M3DB-backed persistent state for each module (new, opt-in)
+
+The existing `-Dm3.polyglot.incremental=true` behavior remains backward compatible.
+To persist a **single module-wide build-state image** instead of one stamp per
+task, add `-Dm3.polyglot.incrementalState=file`. To use the canonical **native
+MIndexDB artifact store**, set `-Dm3.polyglot.incrementalState=m3db` and put
+`com.synexia.mindex.db.MIndexDB` plus its runtime dependencies on the Maven
+plugin's runtime classpath. The native backend calls `MIndexDB.open(Path)`,
+`findArtifact`, and `putArtifact` through its real public API; Maven's
+bootstrap classpath does not require Synexia.
+
+```sh
+# Immediately usable standalone module-state file, one per project/module:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=file verify
+
+# Canonical M3DB, when the MIndexDB implementation is available in the plugin realm:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=m3db verify
+```
+
+- `file` stores `.m3/module-state-v1.bin` under **each module** and
+  atomically replaces a SHA-256-sealed binary image.
+- `m3db` stores the same versioned payload as a single native MIndexDB
+  artifact under `.m3/maven-build-db/` of that module. The exact native
+  artifact filename is owned by MIndexDB.
+- The database retains previous per-file SHA-256 digests, file identities,
+  sizes, modification/change times, per-task input stamps and successful
+  output stamps. A stable POSIX `ctime` **and** stable file key plus
+  unchanged size/mtime permit reuse without rereading bytes. Other file
+  systems conservatively rehash contents. All new or changed files are
+  SHA-256 checked; deleted/added files, output drift, task configuration,
+  POM changes, manifest changes, resolved tool binary and basic runtime
+  identity change the state.
+- State publication happens only after the native tool reports success and
+  declared outputs exist. An absent, unsupported or corrupt state image
+  is a cache miss. A requested missing MIndexDB runtime is an error, not a
+  silent backend substitution. The default remains the legacy per-task
+  stamp model, and no cache applies to tasks without declared input/output
+  edges or to CodeQL/OpenRewrite/opaque M3 tool providers.
+- As with any declared-input cache, environment variables other than the
+  explicitly captured runtime/PATH/JAVA_HOME values, external services,
+  dynamically discovered files and plugin-specific hidden inputs are **not**
+  verified. Such tasks must not opt into skipping. This is **not yet** a
+  Maven Core Java-compiler/reactor-wide skip engine: Maven Resolver, Java
+  compiler invalidation and ordinary Maven plugin lifecycle remain intact.
+  Maven's official build-cache extension is the appropriate complementary
+  mechanism for full Maven lifecycle artifact restoration.
+
+CLI/other hosts can use
+`--incremental --state-backend file` or
+`--incremental --state-backend m3db`. The standalone verification suite
+includes `ModuleStateDbContractTestMain`.
+
 ### Any language through Maven's own phases
 
 With the Maven fork's core extension (`io.synexia:smart-maven-extension`, built into the fork's distribution,
@@ -135,10 +189,10 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 java -cp /verified/m3-polyglot-maven-plugin.jar \
   io.synexia.maven.polyglot.PolyglotCli \
   run /work/project /work/project/m3-build.tsv all \
-  --timeout-seconds 900 --incremental
+  --timeout-seconds 900 --incremental --state-backend file
 ```
 
-`--timeout-seconds` accepts 1–43200 (default 900). `--incremental` and
+`--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only\nwith `run --incremental` and accepts `legacy|file|m3db`. `--incremental` and
 `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
