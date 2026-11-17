@@ -164,6 +164,8 @@ public final class CodeAgentMain {
                 .append("then exact structure, then near SimHash. Contract-signature mismatches are risk cues, ")
                 .append("not permission to replace code. staticCues count unattributed AST branches, loops, calls, ")
                 .append("writes, allocations and monitors; calls are unresolved, not proof of effects or purity. ")
+                .append("When attributionFacts.available is true, resolvedCallSites are only statically resolved ")
+                .append("compiler symbols: dynamic dispatch, reflection, aliases and runtime effects remain unproven. ")
                 .append("If these cues cannot justify an applicable reviewed recipe, leave typed residue unresolved. ")
                 .append("Atom=").append(atom.json()).append("; machine=")
                 .append(machine == null ? "no-producer-ledger" : machine.json())

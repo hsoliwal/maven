@@ -35,8 +35,6 @@ ordinary, non-symlinked files inside the project checkout.
 The canonical producer and the operator must provide these receipts. The Maven
 consumer does not invent source preparation, file atomization or proof roots.
 
-### Machine-Oriented Programming fingerprints (optional)
-
 CI can make these fingerprints a mandatory admission prerequisite for
 `m3:code-agent` by setting `-Dm3.smart.requireMachineEvidence=true` together
 with `-Dm3.smart.machineEvidence=<path-to-generated-ledger>`. With this
@@ -45,6 +43,8 @@ unsorted or incomplete ledger refuses nomination **before model inference**.
 The default remains `false` for existing consumers. This check establishes
 current-source binding and syntactic coverage, not behavioral equivalence;
 the producer's AST/logic/contract cues remain untrusted candidate evidence.
+
+### Machine-Oriented Programming fingerprints (optional)
 
 For an existing AST/atom producer that also emits structural, normalized logic
 and SimHash fingerprints, pass `-Dm3.smart.machineEvidence=.reports/machine.tsv`.
@@ -56,6 +56,10 @@ For additive source-level static-analysis cues, a producer may append exactly
 two columns: `control_flow_mask<TAB>effect_cue_mask`. Both are four-digit
 lowercase hex masks with strictly checked, versioned bit assignments. The
 seven-column form remains accepted without inventing missing analysis.
+For explicitly compiler-attributed work, four further columns are appended:
+`resolved_call_sites<TAB>unresolved_call_sites<TAB>attributed_type_sha256<TAB>call_targets_sha256`.
+The seven-, nine- and thirteen-column ledgers are all independently validated;
+no consumer invents absent compiler facts.
 
 Paths are relative to `sourceRoot`, `source_sha256` binds each row to the current
 whole Java file, and every selected source file must have at least one atom
@@ -94,6 +98,25 @@ mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
   -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv \
   -Dm3.smart.requireMachineEvidence=true
 ```
+
+For a Java-21-only source root that resolves against **the platform modules
+and its own selected Java files**, an opt-in compiler pass can be requested by
+adding `-Dm3.smart.attributeTypes=true` to `m3:machine-fingerprints`. The
+default remains `false`. The pass uses the JDK compiler `parse()` and
+`analyze()` APIs with annotation processing disabled, a deliberately empty
+external classpath, and a 256-file/8-MiB attribution budget. It freezes atom
+identities **before** analysis, because javac may inject synthetic constructors.
+Missing dependencies, compiler errors and divergent syntax/attributed atoms
+refuse the run and invalidate any previously successful generated ledger.
+There is no automated model download or Java source edit.
+
+The opt-in thirteen-column ledger binds each atom to a SHA-256 of its
+compiler-reported type and of its statically resolved method-call targets,
+plus resolved/unresolved invocation counts. These are *static compiler
+symbols*, not a complete call graph: virtual dispatch, reflection, class
+loading, JNI effects, aliasing and runtime behavior remain unproven. On JDK 21
+the pass selects source level 21; on newer JDKs it uses `--release 21` to
+avoid targeting newer platform APIs.
 
 The producer inventories every selected Java file, uses the compiler AST
 instead of text regex to isolate method, lambda and initializer candidates,
@@ -137,8 +160,8 @@ This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
 the LLM is a constrained speculative operator, while the machine owns evidence,
 recipes, verification, and canonical promotion.
 
-The 18 required M3 laws and four additional reviewed static-analysis/ranking
-rules (22 in the current packet) are materialized as the packaged resource
+The 18 required M3 laws and five additional reviewed analysis/ranking rules
+(23 in the current packet) are materialized as the packaged resource
 `src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
 `rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
 complete required set, bounded syntax, and an exact schema before any model

@@ -20,6 +20,8 @@ import java.util.TreeSet;
 final class MachineEvidence {
     static final String HEADER = "source_path\tsource_sha256\tatom_id\tstructural_sha256\tlogic_sha256\tsimhash64\tcontract_sha256";
     static final String EXTENDED_HEADER = HEADER + "\tcontrol_flow_mask\teffect_cue_mask";
+    static final String ATTRIBUTED_HEADER = EXTENDED_HEADER
+            + "\tresolved_call_sites\tunresolved_call_sites\tattributed_type_sha256\tcall_targets_sha256";
     static final int FLOW_CONDITIONAL = 0x001;
     static final int FLOW_LOOP = 0x002;
     static final int FLOW_SWITCH = 0x004;
@@ -36,13 +38,14 @@ final class MachineEvidence {
     private static final int ALL_FLOW = 0x0ff;
     private static final int ALL_EFFECT = 0x01f;
     private static final int MAX_ROWS = 4096;
+    private static final int MAX_CALLS_PER_ATOM = 4096;
     private static final int MAX_CANDIDATES = 24;
     private static final int NEAR_DISTANCE = 3;
 
     private MachineEvidence() { }
 
     private record Atom(String path, String id, String structure, String logic, long simHash,
-                        String contract, int flow, int effect) { }
+                        String contract, int flow, int effect, int resolvedCalls, int unresolvedCalls) { }
 
     private enum Pattern { LOGIC_EXACT, STRUCTURE_EXACT, SIMHASH_NEAR }
 
@@ -79,8 +82,17 @@ final class MachineEvidence {
         }
     }
 
+    record Attribution(boolean available, int resolvedCalls, int unresolvedCalls) {
+        String json() {
+            return "{\"available\":" + available + ",\"resolvedCallSites\":" + resolvedCalls
+                    + ",\"unresolvedCallSites\":" + unresolvedCalls
+                    + ",\"compilerAttributionExecuted\":" + available
+                    + ",\"dynamicDispatchProven\":false,\"effectProofAuthenticated\":false}";
+        }
+    }
+
     record Summary(String inputSha256, int files, int atoms, int structuralGroups,
-                   int logicGroups, long similarPairs, Cues cues, long patternPairs,
+                   int logicGroups, long similarPairs, Cues cues, Attribution attribution, long patternPairs,
                    List<Candidate> candidates) {
         String json() {
             StringBuilder json = new StringBuilder("{\"schema\":\"m3.smart.machine-evidence.v1\",\"inputSha256\":")
@@ -91,6 +103,7 @@ final class MachineEvidence {
                     .append(",\"logicDuplicateGroups\":").append(logicGroups)
                     .append(",\"simHashNearPairs\":").append(similarPairs)
                     .append(",\"staticCues\":").append(cues.json())
+                    .append(",\"attributionFacts\":").append(attribution.json())
                     .append(",\"patternCandidatePairs\":").append(patternPairs)
                     .append(",\"patternCandidatesTruncated\":").append(patternPairs > candidates.size())
                     .append(",\"patternCandidates\":[");
@@ -108,9 +121,11 @@ final class MachineEvidence {
             throw new IOException("invalid machine fingerprint ledger encoding");
         String[] rows = text.substring(0, text.length() - 1).split("\n", -1);
         if (rows.length < 2 || rows.length > MAX_ROWS + 1
-                || !(HEADER.equals(rows[0]) || EXTENDED_HEADER.equals(rows[0])))
+                || !(HEADER.equals(rows[0]) || EXTENDED_HEADER.equals(rows[0])
+                || ATTRIBUTED_HEADER.equals(rows[0])))
             throw new IOException("invalid machine fingerprint ledger schema");
-        boolean extended = EXTENDED_HEADER.equals(rows[0]);
+        boolean attributed = ATTRIBUTED_HEADER.equals(rows[0]);
+        boolean extended = attributed || EXTENDED_HEADER.equals(rows[0]);
         var selected = SourceInventory.inspectSelected(base, sourceRoot);
         Map<String, String> sources = new HashMap<>();
         for (SourceInventory.FileFact source : selected.files())
@@ -122,7 +137,7 @@ final class MachineEvidence {
         String previous = "";
         for (int i = 1; i < rows.length; i++) {
             String[] parts = rows[i].split("\t", -1);
-            if (parts.length != (extended ? 9 : 7)
+            if (parts.length != (attributed ? 13 : extended ? 9 : 7)
                     || !parts[0].endsWith(".java") || !sources.containsKey(parts[0])
                     || !parts[1].matches("[0-9a-f]{64}") || !parts[2].matches("[a-zA-Z0-9_$#.:/-]{1,128}")
                     || !parts[3].matches("[0-9a-f]{64}") || !parts[4].matches("[0-9a-f]{64}")
@@ -130,10 +145,17 @@ final class MachineEvidence {
                 throw new IOException("invalid fingerprint row");
             if (extended && (!parts[7].matches("[0-9a-f]{4}") || !parts[8].matches("[0-9a-f]{4}")))
                 throw new IOException("invalid static-cue masks");
+            if (attributed && (!parts[9].matches("[0-9]{1,5}") || !parts[10].matches("[0-9]{1,5}")
+                    || !parts[11].matches("[0-9a-f]{64}") || !parts[12].matches("[0-9a-f]{64}")))
+                throw new IOException("invalid compiler attribution row");
             int flow = extended ? Integer.parseInt(parts[7], 16) : 0;
             int effect = extended ? Integer.parseInt(parts[8], 16) : 0;
+            int resolved = attributed ? Integer.parseInt(parts[9]) : 0;
+            int unresolved = attributed ? Integer.parseInt(parts[10]) : 0;
             if ((flow & ~ALL_FLOW) != 0 || (effect & ~ALL_EFFECT) != 0)
                 throw new IOException("unsupported static-cue mask bits");
+            if (resolved > MAX_CALLS_PER_ATOM || unresolved > MAX_CALLS_PER_ATOM)
+                throw new IOException("unbounded compiler invocation facts");
             String key = parts[0] + "\t" + parts[2];
             if (key.compareTo(previous) <= 0 || !parts[1].equals(sources.get(parts[0])))
                 throw new IOException("fingerprint ordering or source binding refused");
@@ -142,7 +164,7 @@ final class MachineEvidence {
             structural.merge(parts[3], 1, Integer::sum);
             logic.merge(parts[4], 1, Integer::sum);
             atoms.add(new Atom(parts[0], parts[2], parts[3], parts[4],
-                    Long.parseUnsignedLong(parts[5], 16), parts[6], flow, effect));
+                    Long.parseUnsignedLong(parts[5], 16), parts[6], flow, effect, resolved, unresolved));
         }
         if (!covered.equals(sources.keySet())) throw new IOException("incomplete machine source coverage");
         long near = 0;
@@ -171,7 +193,7 @@ final class MachineEvidence {
         if (!selected.summary().digest().equals(SourceInventory.inspectSelected(base, sourceRoot).summary().digest()))
             throw new IOException("source changed during fingerprint examination");
         return new Summary(Hashes.sha256(bytes), covered.size(), atoms.size(), structures, logics, near,
-                cues(atoms, extended), patterns, List.copyOf(best));
+                cues(atoms, extended), attribution(atoms, attributed), patterns, List.copyOf(best));
     }
 
     private static Cues cues(List<Atom> atoms, boolean available) {
@@ -186,5 +208,14 @@ final class MachineEvidence {
             if ((atom.effect() & EFFECT_SYNCHRONIZATION) != 0) synchronizedBlocks++;
         }
         return new Cues(available, branches, loops, exceptions, calls, writes, allocations, synchronizedBlocks);
+    }
+
+    private static Attribution attribution(List<Atom> atoms, boolean available) {
+        int resolved = 0, unresolved = 0;
+        for (Atom atom : atoms) {
+            resolved += atom.resolvedCalls();
+            unresolved += atom.unresolvedCalls();
+        }
+        return new Attribution(available, resolved, unresolved);
     }
 }

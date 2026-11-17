@@ -126,6 +126,68 @@ public final class MachineFingerprintTest {
                 && number(effectCues.get("allocationAtoms")) == 1
                 && number(effectCues.get("synchronizedAtoms")) == 2,
                 "potential writes, allocations, synchronized blocks and synchronized methods stay advisory");
+
+        Fixture attributed = fixture("class Example { int f(int n) { return Math.abs(n) + 1; } }\n",
+                "Example.java", false);
+        require(attributed.run(2, true) == 0, "opt-in Java21 compiler symbol attribution succeeds for a resolved fixture");
+        require(attributed.tsv().startsWith(MachineEvidence.ATTRIBUTED_HEADER + "\n"),
+                "compiler-resolved rows extend the existing syntax-ledger schema additively");
+        Map<?, ?> compiled = object(TinyJson.parse(MachineEvidence.inspect(attributed.base, attributed.source,
+                attributed.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        Map<?, ?> calls = object(compiled.get("attributionFacts"));
+        require(Boolean.TRUE.equals(calls.get("available"))
+                && number(calls.get("resolvedCallSites")) == 1
+                && number(calls.get("unresolvedCallSites")) == 0,
+                "compiler-resolved method calls are counted without inventing unresolved targets");
+        require(Boolean.FALSE.equals(calls.get("dynamicDispatchProven"))
+                && Boolean.FALSE.equals(calls.get("effectProofAuthenticated"))
+                && Boolean.TRUE.equals(attributed.receipt().get("typeAttributionExecuted"))
+                && "statically-attributed".equals(attributed.receipt().get("status")),
+                "type attribution cannot imply dynamic dispatch or effect proof");
+        String attributedFirst = attributed.tsv();
+        require(attributed.run(1, true) == 0 && attributedFirst.equals(attributed.tsv()),
+                "compiler attribution remains deterministic when AST worker count changes");
+        Files.writeString(attributed.base.resolve("recipes.tsv"), RecipeCatalog.HEADER
+                + "\niteration-loop\tITERATION\tFILE\tcom.synexia.rewrite.IterationLoop\t" + "a".repeat(64) + "\n");
+        List<String> attributedNomination = List.of("--project-dir", attributed.base.toString(),
+                "--build-dir", "target", "--source-root", "src",
+                "--preparation-report", "receipts/preparation.json",
+                "--atom-pattern-manifest", "synthetic-checkpoints.tsv", "--recipe-catalog", "recipes.tsv",
+                "--machine-evidence", "target/m3-smart/machine-evidence.tsv");
+        require(CodeAgentMain.run(attributedNomination.toArray(String[]::new),
+                new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream())) == 0,
+                "compiler-resolved evidence reaches the existing Maven coding agent without model inference");
+        Map<?, ?> attributedReport = object(TinyJson.parse(Files.readString(
+                attributed.base.resolve("target/m3-smart/code-agent.json"))));
+        require(Boolean.TRUE.equals(object(object(attributedReport.get("machineEvidenceFacts"))
+                .get("attributionFacts")).get("available")),
+                "type and method-call evidence is bound to the code-agent nomination receipt");
+        Fixture crossFile = fixture("class Example { int f(int n) { return new Extra().f(n); } }\n",
+                "Example.java", true);
+        require(crossFile.run(4, true) == 0, "attribution resolves symbols across the selected Java source files");
+        Map<?, ?> crossSummary = object(TinyJson.parse(MachineEvidence.inspect(crossFile.base, crossFile.source,
+                crossFile.base.resolve("target/m3-smart/machine-evidence.tsv")).json()));
+        require(number(object(crossSummary.get("attributionFacts")).get("resolvedCallSites")) == 1,
+                "compiler resolves a same-project method call without an external classpath");
+        String[] attributedRows = attributed.tsv().split("\n", -1);
+        String[] forgedCalls = attributedRows[1].split("\t", -1);
+        forgedCalls[9] = "99999";
+        attributedRows[1] = String.join("\t", forgedCalls);
+        Files.writeString(attributed.base.resolve("target/m3-smart/machine-evidence.tsv"),
+                String.join("\n", attributedRows));
+        boolean rejectedCalls = false;
+        try {
+            MachineEvidence.inspect(attributed.base, attributed.source,
+                    attributed.base.resolve("target/m3-smart/machine-evidence.tsv"));
+        } catch (java.io.IOException expected) { rejectedCalls = true; }
+        require(rejectedCalls, "out-of-budget compiler call counts fail closed");
+        Fixture unresolved = fixture("class Example { MissingType f(MissingType x) { return x; } }\n",
+                "Example.java", false);
+        require(unresolved.run(1) == 0 && unresolved.run(1, true) == 2
+                && "refused".equals(unresolved.receipt().get("status"))
+                && unresolved.tsv().equals("# m3.machine-evidence.refused\n"),
+                "unknown dependencies allow syntax guidance but refuse an attributed evidence claim");
+
         String[] malformed = effects.tsv().split("\n", -1);
         String[] mask = malformed[1].split("\t", -1);
         mask[7] = "ffff";
@@ -171,7 +233,7 @@ public final class MachineFingerprintTest {
         Fixture invalid = fixture("class Example { int f( { return 1; } }\n", "Example.java", false);
         require(invalid.run(1) == 2 && "refused".equals(invalid.receipt().get("status")),
                 "Java parser diagnostics refuse a misleading partial AST ledger");
-        System.out.println("MACHINE FINGERPRINT TESTS PASS: " + checks + " (syntax-only)");
+        System.out.println("MACHINE FINGERPRINT TESTS PASS: " + checks + " (no semantic proof)");
     }
 
     private static String column(Fixture fixture, int index) throws Exception {
@@ -195,11 +257,15 @@ public final class MachineFingerprintTest {
 
     private record Fixture(Path base, Path source) {
         int run(int workers) {
+            return run(workers, false);
+        }
+        int run(int workers, boolean attributeTypes) {
             List<String> args = new ArrayList<>(List.of("--project-dir", base.toString(),
                     "--build-dir", "target", "--source-root", "src",
                     "--preparation-report", "receipts/preparation.json",
                     "--atom-pattern-manifest", "synthetic-checkpoints.tsv",
-                    "--workers", Integer.toString(workers)));
+                    "--workers", Integer.toString(workers),
+                    "--attribute-types", Boolean.toString(attributeTypes)));
             return MachineFingerprintMain.run(args.toArray(String[]::new),
                     new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream()));
         }

@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.synexia.maven.smart;
 
-import com.sun.source.tree.BlockTree;
-import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
@@ -17,7 +14,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -38,10 +34,10 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
-/** JDK 21 AST-only atom fingerprint producer; no type attribution, refactoring, or behavior proof. */
+/** JDK 21 AST fingerprint producer with optional isolated javac attribution; never behavior proof. */
 public final class MachineFingerprintMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
-            "--preparation-report", "--atom-pattern-manifest", "--workers");
+            "--preparation-report", "--atom-pattern-manifest", "--workers", "--attribute-types");
     private static final int MAX_ATOMS = 4096;
 
     private MachineFingerprintMain() { }
@@ -67,25 +63,34 @@ public final class MachineFingerprintMain {
                 throw new IOException("fingerprint producer requires a Java-only selected source root");
             int workers = Integer.parseInt(options.getOrDefault("--workers", "1"));
             if (workers < 1 || workers > 8) throw new IOException("worker count outside 1..8");
+            String attributeFlag = options.getOrDefault("--attribute-types", "false");
+            if (!Set.of("true", "false").contains(attributeFlag))
+                throw new IOException("compiler attribution must be explicitly true or false");
+            boolean attributed = Boolean.parseBoolean(attributeFlag);
             List<String> lines = produce(source, before, workers);
             if (lines.size() > MAX_ATOMS) throw new IOException("fingerprint row budget exceeded");
+            if (attributed) lines = CompilerAttribution.augment(base, source, before, lines);
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, prepFile))
                     || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
                     || !before.equals(SourceInventory.inspectSelected(base, source)))
                 throw new IOException("source or canonical evidence changed during AST fingerprinting");
-            StringBuilder tsv = new StringBuilder(MachineEvidence.EXTENDED_HEADER).append('\n');
+            StringBuilder tsv = new StringBuilder(attributed ? MachineEvidence.ATTRIBUTED_HEADER
+                    : MachineEvidence.EXTENDED_HEADER).append('\n');
             for (String line : lines) tsv.append(line).append('\n');
             SafeBuildOutput.write(destination, "machine-evidence.tsv", tsv.toString());
             MachineEvidence.Summary accepted = MachineEvidence.inspect(base, source, destination.resolve("machine-evidence.tsv"));
             if (accepted.atoms() != lines.size()) throw new IOException("AST fingerprint output did not revalidate");
             String receipt = "{\"schema\":\"m3.smart.machine-fingerprint-producer.v1\","
-                    + "\"status\":\"syntax-only\",\"implementation\":\"JDK21_JAVAC_AST\","
+                    + "\"status\":" + TinyJson.quote(attributed ? "statically-attributed" : "syntax-only")
+                    + ",\"implementation\":" + TinyJson.quote(attributed ? "JDK21_JAVAC_AST_ANALYZE" : "JDK21_JAVAC_AST")
+                    + ","
                     + "\"sourceDigest\":" + TinyJson.quote(before.summary().digest())
                     + ",\"preparationFacts\":" + preparation
                     + ",\"atomPatternFacts\":" + atom.json()
                     + ",\"fingerprints\":" + accepted.json()
                     + ",\"workers\":" + workers
-                    + ",\"typeAttributionExecuted\":false,\"physicalAtomizationExecuted\":false,"
+                    + ",\"typeAttributionExecuted\":" + attributed
+                    + ",\"dynamicDispatchProven\":false,\"physicalAtomizationExecuted\":false,"
                     + "\"semanticProofAuthenticated\":false,\"promotionAuthority\":false}\n";
             SafeBuildOutput.write(destination, "machine-fingerprints.json", receipt);
             out.println("M3 AST machine fingerprints: " + destination.resolve("machine-evidence.tsv"));
@@ -97,8 +102,6 @@ public final class MachineFingerprintMain {
             return refused(destination, refused.getClass().getSimpleName(), err);
         }
     }
-
-    private record Atom(Tree tree, String signature) { }
 
     private static List<String> produce(Path source, SourceInventory.Selected inventory, int workers)
             throws IOException, InterruptedException {
@@ -126,30 +129,13 @@ public final class MachineFingerprintMain {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) throw new IOException("JDK compiler AST API unavailable");
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<Atom> atoms = new ArrayList<>();
+        List<MachineAtomInventory.Atom> atoms = new ArrayList<>();
         try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, Locale.ROOT,
                 StandardCharsets.UTF_8)) {
             var task = (JavacTask) compiler.getTask(null, files, diagnostics, List.of("-proc:none", "-source", "21"),
                     null, files.getJavaFileObjectsFromPaths(List.of(path)));
-            for (CompilationUnitTree unit : task.parse()) {
-                new TreeScanner<Void, Void>() {
-                    @Override public Void visitMethod(MethodTree method, Void ignored) {
-                        atoms.add(new Atom(method, signature(method)));
-                        return super.visitMethod(method, ignored);
-                    }
-                    @Override public Void visitLambdaExpression(LambdaExpressionTree lambda, Void ignored) {
-                        atoms.add(new Atom(lambda, "lambda:" + lambda.getParameters().size()));
-                        return super.visitLambdaExpression(lambda, ignored);
-                    }
-                    @Override public Void visitClass(ClassTree type, Void ignored) {
-                        for (Tree member : type.getMembers())
-                            if (member instanceof BlockTree block)
-                                atoms.add(new Atom(block, "initializer:" + block.isStatic()));
-                        return super.visitClass(type, ignored);
-                    }
-                }.scan(unit, null);
-                if (atoms.isEmpty()) atoms.add(new Atom(unit, "unit:" + source.path()));
-            }
+            for (CompilationUnitTree unit : task.parse())
+                atoms.addAll(MachineAtomInventory.collect(unit, source.path()));
         }
         if (diagnostics.getDiagnostics().stream().anyMatch(d -> d.getKind() == Diagnostic.Kind.ERROR)
                 || atoms.isEmpty()) throw new IOException("Java syntax cannot be fingerprinted");
@@ -158,25 +144,15 @@ public final class MachineFingerprintMain {
         List<String> rows = new ArrayList<>();
         for (int i = 0; i < atoms.size(); i++) {
             Fingerprint fp = Fingerprint.of(atoms.get(i).tree());
-            String id = String.format(Locale.ROOT, "a%06d", i + 1);
+            String id = MachineAtomInventory.atomId(i);
             rows.add(source.path() + "\t" + source.sha256() + "\t" + id
                     + "\t" + fp.structural() + "\t" + fp.logic() + "\t" + fp.simHash()
-                    + "\t" + Hashes.sha256(atoms.get(i).signature().getBytes(StandardCharsets.UTF_8))
+                    + "\t" + atoms.get(i).contractSha256()
                     + "\t" + String.format(Locale.ROOT, "%04x", fp.flow())
                     + "\t" + String.format(Locale.ROOT, "%04x", fp.effect()));
         }
         rows.sort(Comparator.naturalOrder());
         return rows;
-    }
-
-    private static String signature(MethodTree method) {
-        StringBuilder result = new StringBuilder("method:").append(method.getName())
-                .append(':').append(method.getReturnType() == null ? "constructor" : method.getReturnType())
-                .append(":modifiers:");
-        method.getModifiers().getFlags().stream().map(Object::toString).sorted().forEach(flag -> result.append(flag).append(','));
-        for (var parameter : method.getParameters()) result.append(":parameter:").append(parameter.getType());
-        for (var thrown : method.getThrows()) result.append(":throws:").append(thrown);
-        return result.toString();
     }
 
     private record Fingerprint(String structural, String logic, String simHash, int flow, int effect) {

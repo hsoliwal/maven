@@ -24,6 +24,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
     private File atomPatternManifest;
     @Parameter(property = "m3.smart.machineWorkers", defaultValue = "1")
     private int machineWorkers = 1;
+    @Parameter(property = "m3.smart.attributeTypes", defaultValue = "false")
+    private boolean attributeTypes;
 
     @Override public void execute() throws MojoExecutionException {
         if (baseDir == null || buildDir == null || sourceRoot == null || preparationReport == null
@@ -33,7 +35,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
                 "--build-dir", buildDir.toString(), "--source-root", sourceRoot.toString(),
                 "--preparation-report", preparationReport.toString(),
                 "--atom-pattern-manifest", atomPatternManifest.toString(),
-                "--workers", Integer.toString(machineWorkers)).toArray(String[]::new), System.out, System.err);
+                "--workers", Integer.toString(machineWorkers),
+                "--attribute-types", Boolean.toString(attributeTypes)).toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 AST fingerprint generation refused (" + status + ")");
     }
 }
