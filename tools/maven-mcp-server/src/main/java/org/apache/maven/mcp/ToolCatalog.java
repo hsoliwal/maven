@@ -54,11 +54,19 @@ final class ToolCatalog {
 
     private static final System.Logger LOG = System.getLogger(ToolCatalog.class.getName());
 
-    /** Runs Maven and writes a run directory. */
-    private static final ToolAnnotations RUN = new ToolAnnotations(null, false, false, false, true, null);
-    /** Runs Maven to compute a view; may download plugins. */
-    private static final ToolAnnotations QUERY = new ToolAnnotations(null, true, false, true, true, null);
-    /** Reads files only. */
+    /**
+     * build and test: run any phase or plugin goal the client names with its properties, which is arbitrary process
+     * execution in the project (a plugin can run any program, {@code clean} deletes files), and remove the oldest run
+     * directories beyond the kept count. Not read-only, destructive, not idempotent, open world (downloads).
+     */
+    private static final ToolAnnotations RUN = new ToolAnnotations(null, false, true, false, true, null);
+    /**
+     * effective_pom, dependency_tree, describe_goal: run one fixed help or dependency goal that writes only the
+     * server's query directory (replacing the previous query's output) and may download plugins and dependencies into
+     * the local repository. Not read-only, not destructive, idempotent, open world.
+     */
+    private static final ToolAnnotations QUERY = new ToolAnnotations(null, false, false, true, true, null);
+    /** list_modules, explain_failure, build_events: read files only. Read-only, idempotent, closed world. */
     private static final ToolAnnotations READ = new ToolAnnotations(null, true, false, true, false, null);
 
     private ToolCatalog() {}

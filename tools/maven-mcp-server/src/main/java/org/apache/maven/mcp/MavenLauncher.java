@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -35,13 +36,20 @@ import java.util.concurrent.TimeUnit;
  * Runs Maven as a child process of the distribution's own launcher script ({@code bin/mvn}, or {@code bin/mvn.cmd}
  * on Windows), so the distribution keeps ownership of how Maven starts (class path, jvm.config, core extensions in
  * lib/ext). The command is an argument vector given to {@link ProcessBuilder}; nothing is joined into a shell command
- * line, and every client value has passed {@link ArgumentGuard}. The child's output goes to files in the run
+ * line, every client value has passed {@link ArgumentGuard}, and a {@code .cmd} launcher's vector passes
+ * {@link CmdArguments}. The child's output goes to files in the run
  * directory, never to this server's stdout, which carries the MCP protocol.
  */
 final class MavenLauncher {
 
     /** The launcher script and how it was found: --maven-home, mvnw, MAVEN_HOME or PATH. */
-    record Launcher(Path script, String source) {}
+    record Launcher(Path script, String source) {
+        /** Whether Java starts the script through cmd.exe ({@code mvn.cmd}, {@code mvnw.cmd}, any .cmd or .bat). */
+        boolean cmd() {
+            String name = script.getFileName().toString().toLowerCase(Locale.ROOT);
+            return name.endsWith(".cmd") || name.endsWith(".bat");
+        }
+    }
 
     /** The outcome of one Maven process. */
     record MavenRun(
@@ -105,7 +113,7 @@ final class MavenLauncher {
     private ProcessBuilder processBuilder(Launcher launcher, Path dir, List<String> args) {
         List<String> command = new ArrayList<>();
         command.add(launcher.script().toString());
-        command.addAll(args);
+        command.addAll(launcher.cmd() ? CmdArguments.check(args) : args);
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(settings.root().toFile())
                 .redirectErrorStream(true)

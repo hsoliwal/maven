@@ -86,10 +86,10 @@ final class RunResults {
 
     /** One page of the event stream, filtered by event types and project. */
     static ObjectNode events(Path dir, Set<String> types, String project, int offset, int limit) throws IOException {
-        Path file = dir.resolve(MavenCommands.EVENTS);
+        Path file = dir.resolve(ServerArguments.EVENTS);
         ObjectNode out = CompactJson.object().put("run", RunStore.number(dir)).put("file", file.toString());
         if (!Files.isRegularFile(file)) {
-            return out.put("available", false).put("reason", eventsAbsent(file));
+            return out.put("available", false).put("reason", eventsAbsent(dir));
         }
         List<JsonNode> matches = readEvents(file).events().stream()
                 .filter(event -> types.isEmpty() || types.contains(event.path("type").asText()))
@@ -104,7 +104,7 @@ final class RunResults {
 
     /** The failure digest of a run, or why there is none plus the log's first error lines. */
     static ObjectNode failure(Path dir) throws IOException {
-        Path file = dir.resolve(MavenCommands.FAILURE);
+        Path file = dir.resolve(ServerArguments.FAILURE);
         String outcome = RunStore.summary(dir).map(run -> run.path("outcome").asText()).orElse("unknown");
         ObjectNode out = CompactJson.object().put("run", RunStore.number(dir)).put("outcome", outcome);
         if (!Files.isRegularFile(file)) {
@@ -121,8 +121,8 @@ final class RunResults {
 
     /** The first {@value #PRINT_LIMIT} non-empty {@code [ERROR]} lines of the log, before Maven's help footer. */
     static ArrayNode logErrors(Path dir) throws IOException {
-        Path log = Files.isRegularFile(dir.resolve(MavenCommands.LOG))
-                ? dir.resolve(MavenCommands.LOG)
+        Path log = Files.isRegularFile(dir.resolve(ServerArguments.LOG))
+                ? dir.resolve(ServerArguments.LOG)
                 : dir.resolve(MavenLauncher.CONSOLE);
         ArrayNode errors = CompactJson.array();
         if (Files.isRegularFile(log)) {
@@ -147,10 +147,10 @@ final class RunResults {
     }
 
     private static ObjectNode eventSummary(Path dir) throws IOException {
-        Path file = dir.resolve(MavenCommands.EVENTS);
+        Path file = dir.resolve(ServerArguments.EVENTS);
         ObjectNode out = CompactJson.object().put("file", file.toString());
         if (!Files.isRegularFile(file)) {
-            return out.put("available", false).put("reason", eventsAbsent(file));
+            return out.put("available", false).put("reason", eventsAbsent(dir));
         }
         EventLines lines = readEvents(file);
         out.put("available", true).put("count", lines.events().size());
@@ -176,8 +176,8 @@ final class RunResults {
         return copy;
     }
 
-    private static ObjectNode digest(Path dir, String outcome) {
-        Path file = dir.resolve(MavenCommands.FAILURE);
+    private static ObjectNode digest(Path dir, String outcome) throws IOException {
+        Path file = dir.resolve(ServerArguments.FAILURE);
         ObjectNode out = CompactJson.object().put("file", file.toString());
         if (!Files.isRegularFile(file)) {
             return out.put("available", false).put("reason", failureAbsent(dir, outcome));
@@ -191,30 +191,37 @@ final class RunResults {
     private static ObjectNode files(Path dir) {
         ObjectNode files = CompactJson.object()
                 .put("dir", dir.toString())
-                .put("log", dir.resolve(MavenCommands.LOG).toString())
+                .put("log", dir.resolve(ServerArguments.LOG).toString())
                 .put("console", dir.resolve(MavenLauncher.CONSOLE).toString());
-        Optional.of(dir.resolve(MavenCommands.SUMMARY))
+        Optional.of(dir.resolve(ServerArguments.SUMMARY))
                 .filter(Files::isRegularFile)
                 .ifPresent(summary -> files.put("summary", summary.toString()));
         return files;
     }
 
-    private static String eventsAbsent(Path file) {
-        return file.getFileName() + " was not written: no build-events extension ran in this build (start the server"
-                + " with --extension <jar>, or use a Maven distribution that has the extension in lib/ext)";
+    /** Why a run has no event stream: stopped at the time limit (run.json says so), else no extension ran. */
+    private static String eventsAbsent(Path dir) throws IOException {
+        Optional<JsonNode> run = RunStore.summary(dir);
+        if (run.map(summary -> "timeout".equals(summary.path("outcome").asText())).orElse(false)) {
+            return ServerArguments.EVENTS + " was not written: Maven was stopped at the time limit after "
+                    + run.get().path("durationMs").asLong() / 1000 + " s, before the build-events extension published"
+                    + " its files at the end of the build (raise timeoutSeconds)";
+        }
+        return ServerArguments.EVENTS + " was not written: no build-events extension ran in this build (start the"
+                + " server with --extension <jar>, or use a Maven distribution that has the extension in lib/ext)";
     }
 
-    private static String failureAbsent(Path dir, String outcome) {
+    private static String failureAbsent(Path dir, String outcome) throws IOException {
         if ("success".equals(outcome)) {
             return "the run succeeded, so there is no failure digest";
         }
-        return Files.isRegularFile(dir.resolve(MavenCommands.EVENTS))
-                ? MavenCommands.FAILURE + " was not written by the build-events extension"
-                : eventsAbsent(dir.resolve(MavenCommands.EVENTS));
+        return Files.isRegularFile(dir.resolve(ServerArguments.EVENTS))
+                ? ServerArguments.FAILURE + " was not written by the build-events extension"
+                : eventsAbsent(dir);
     }
 
     private static Optional<Path> markdown(Path dir) {
-        return Optional.of(dir.resolve(MavenCommands.FAILURE_MD)).filter(Files::isRegularFile);
+        return Optional.of(dir.resolve(ServerArguments.FAILURE_MD)).filter(Files::isRegularFile);
     }
 
     private static Stream<JsonNode> ofType(EventLines lines, String type) {

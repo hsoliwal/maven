@@ -53,13 +53,14 @@ public final class ResultReadersTest {
         digest(checks, failed);
         absent(checks, store.allocate(), store.allocate());
         rotation(checks, store);
+        timedOut(checks, new RunStore(work.resolve("runs-timeout"), 2).allocate());
         views(checks, work);
         checks.finish();
     }
 
     private static void writeEventRun(Path dir) throws IOException {
-        Files.write(dir.resolve(MavenCommands.EVENTS), eventLines(), StandardCharsets.UTF_8);
-        Files.writeString(dir.resolve(MavenCommands.FAILURE), "{\"v\":1,\"outcome\":\"failure\",\"failures\":"
+        Files.write(dir.resolve(ServerArguments.EVENTS), eventLines(), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve(ServerArguments.FAILURE), "{\"v\":1,\"outcome\":\"failure\",\"failures\":"
                 + "[{\"project\":\"fix:c\",\"kind\":\"compile\",\"reproduce\":\"mvn -pl c -am compile\"}]}");
         RunStore.record(dir, CompactJson.object().put("tool", "build").put("outcome", "failure"));
     }
@@ -132,8 +133,8 @@ public final class ResultReadersTest {
         IntStream.range(0, 30).forEach(n -> log.add("[ERROR] problem " + n));
         log.add("[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.");
         log.add("[ERROR] after footer");
-        Files.write(dir.resolve(MavenCommands.LOG), log, StandardCharsets.UTF_8);
-        Files.write(dir.resolve(MavenCommands.LOG), new byte[] {'[', 'E', 'R', 'R', 'O', 'R', ']', ' ', (byte) 0xFF,
+        Files.write(dir.resolve(ServerArguments.LOG), log, StandardCharsets.UTF_8);
+        Files.write(dir.resolve(ServerArguments.LOG), new byte[] {'[', 'E', 'R', 'R', 'O', 'R', ']', ' ', (byte) 0xFF,
                 '\n'}, java.nio.file.StandardOpenOption.APPEND);
     }
 
@@ -152,6 +153,20 @@ public final class ResultReadersTest {
                 .contains("succeeded"));
     }
 
+    /** A run stopped at its time limit says so, rather than that no extension ran. */
+    private static void timedOut(Checks checks, Path dir) throws IOException {
+        MavenLauncher.MavenRun run = new MavenLauncher.MavenRun(-1, true, 45_210, List.of("verify"),
+                new MavenLauncher.Launcher(Path.of("mvn"), "PATH"), Path.of("jdk"));
+        RunStore.record(dir, CompactJson.object().put("outcome", RunResults.outcome(run)).put("durationMs", 45_210));
+        String reason = RunResults.summary(dir, run).path("events").path("reason").asText();
+        checks.that("timeout: the stop is reported", reason.contains("stopped at the time limit after 45 s")
+                && !reason.contains("no build-events extension"), reason);
+        String digest = RunResults.failure(dir).path("reason").asText();
+        checks.that("timeout: explain_failure reports the stop", digest.contains("stopped at the time limit"), digest);
+        String page = RunResults.events(dir, Set.of(), "", 0, 10).path("reason").asText();
+        checks.that("timeout: build_events reports the stop", page.contains("stopped at the time limit"), page);
+    }
+
     private static void rotation(Checks checks, RunStore store) throws IOException {
         List<String> names = Files.list(store.runsDir()).map(path -> path.getFileName().toString()).sorted()
                 .collect(Collectors.toList());
@@ -168,6 +183,8 @@ public final class ResultReadersTest {
         JsonNode modules = ModuleScan.list(fixture);
         checks.that("pom scan finds 4 modules", modules.path("count").asInt() == 4, modules.toString());
         checks.that("b depends on a", "fix:a".equals(modules.path("modules").get(2).path("dependsOn").get(0).asText()));
+        checks.that("module index starts at 1, as in the events and project.json", indexes(modules).equals(
+                List.of(1, 2, 3, 4)), modules.toString());
         Path loop = Files.createDirectories(work.resolve("loop"));
         Files.writeString(loop.resolve("pom.xml"), "<project><groupId>g</groupId><artifactId>loop</artifactId>"
                 + "<modules><module>.</module><module>pom.xml</module></modules></project>");
@@ -177,6 +194,11 @@ public final class ResultReadersTest {
         checks.that("first sentence without tags", PluginDescriptors.firstSentence(
                 "<p>Compiles <b>application</b> sources.  More &amp; more.</p>")
                 .equals("Compiles application sources."));
+    }
+
+    private static List<Integer> indexes(JsonNode modules) {
+        return java.util.stream.StreamSupport.stream(modules.path("modules").spliterator(), false)
+                .map(module -> module.path("index").asInt()).collect(Collectors.toList());
     }
 
     private static void effectivePom(Checks checks, Path work) throws IOException {

@@ -2,7 +2,7 @@
   {
     "name": "build",
     "hints": "run",
-    "description": "Run Maven on the project with the given lifecycle phases or plugin goals, for example [\"verify\"] or [\"clean\",\"install\"]. Returns compact JSON: outcome, exit code, duration, the Maven command, the session-end event, the first diagnostics and failed tests from the build event stream, whether a failure digest exists (read it with explain_failure), and the paths of the run's files. When no build-events extension ran, it says so and returns the first [ERROR] lines of the log instead. Values cannot start with '-' and cannot hold white space or shell characters.",
+    "description": "Run Maven on the project with the given lifecycle phases or plugin goals, for example [\"verify\"] or [\"clean\",\"install\"]. Returns compact JSON: outcome, exit code, duration, the Maven command, the session-end event, the first diagnostics and failed tests from the build event stream, whether a failure digest exists (read it with explain_failure), and the paths of the run's files. When no build-events extension ran, or Maven was stopped at the time limit, it says so and returns the first [ERROR] lines of the log instead. Any plugin goal runs with the given properties, so this can run programs and delete files (clean). Values cannot start with '-' and cannot hold white space or shell characters; on Windows, where Maven starts through mvn.cmd, property values also cannot hold '=' or ','.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -20,11 +20,11 @@
   {
     "name": "test",
     "hints": "run",
-    "description": "Run one test selection with Surefire (-Dtest), or with Failsafe (-Dit.test, phase verify) when it is true, optionally in one module and the modules it depends on. A selection is a class, Class#method, a pattern with *, or a comma-separated list. Returns the same JSON as build plus the selection.",
+    "description": "Run one test selection with Surefire (-Dtest), or with Failsafe (-Dit.test, phase verify) when it is true, optionally in one module and the modules it depends on. A selection is a class, Class#method, Class#a+b, a pattern with *, or a comma-separated list (not on Windows, where Maven starts through mvn.cmd: use a pattern or Class#a+b there). Integration tests run without the unit tests. Returns the same JSON as build plus the selection.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "selection": {"type": "string", "description": "Test class, Class#method, a pattern with * or a comma-separated list."},
+        "selection": {"type": "string", "description": "Test class, Class#method, Class#a+b, a pattern with * or a comma-separated list (no comma on Windows)."},
         "project": {"type": "string", "description": "The module that holds the test; built with -pl <project> -am."},
         "it": {"type": "boolean", "description": "Run an integration test with Failsafe instead of a unit test."},
         "offline": {"type": "boolean", "description": "Work offline (-o)."},
