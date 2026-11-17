@@ -264,7 +264,7 @@ and `package` run the native commands:
 | `CMakeLists.txt` | configure into `build/cmake`, build, `ctest` when testing is enabled |
 | `meson.build` | `meson setup/compile/test` in `build/meson` |
 | `pyproject.toml` / `setup.py` / `setup.cfg` | `compileall`; `pytest` when configured, else `unittest` over `tests/` |
-| `.sln` / `.slnx` / `.csproj` | `dotnet build`, `dotnet test` |
+| `.sln` / `.slnx` / `.csproj` / `.fsproj` / `.vbproj` | `dotnet restore` (`--locked-mode` next to `packages.lock.json`), `dotnet build`, `dotnet test` with TRX results turned into surefire reports, `dotnet pack` into `target/nuget` (see [.NET](#net-test-reports-and-nuget-packages)) |
 | Gradle build or settings file | `assemble`, `test` (with `gradlew` when the wrapper is there) |
 | Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
 | `Package.swift` | `swift build`, `swift test` |
@@ -396,9 +396,9 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
-| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler` |
-| `interpreter` | Original interpreter argv, possibly with no output | SPI only; provider required |
-| `transpiler` | Source-to-source translation argv | SPI only; provider required |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)) |
+| `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results |
+| `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
 | `patternizer` | Structural, logic and pattern-evidence argv | SPI only; provider required |
 
@@ -464,6 +464,84 @@ providers should exchange qualified IDs/digests and reference original source
 owners. The `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite
 recipe opt-in registers this Maven plugin in a consuming POM without binding
 any goal to the default lifecycle.
+
+### ECJ, the Eclipse Compiler for Java
+
+`@m3:ecj:compiler:java` compiles Java with ECJ's own batch compiler (`org.eclipse.jdt.internal.compiler.batch.Main`)
+on the running JDK, the compiler JDT uses in Eclipse. ECJ is EPL-2.0: this plugin never bundles, copies or
+downloads it. The build names the jar, first found:
+
+1. a `--m3-ecj-jar=<path>` task argument, relative to the project;
+2. the `m3.polyglot.ecj.jar` system property (also for the portable CLI);
+3. ECJ on this plugin's own class path, as a plugin dependency, the way maven-compiler-plugin gets it for
+   `compilerId=eclipse`:
+
+```xml
+<plugin>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-polyglot-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <dependencies>
+    <dependency><groupId>org.eclipse.jdt</groupId><artifactId>ecj</artifactId><version>3.45.0</version></dependency>
+  </dependencies>
+</plugin>
+```
+
+`--m3-ecj-sha256=<hex>` pins the jar's bytes; a mismatch fails the plan. Task arguments are javac's, mapped as
+plexus-compiler-eclipse maps maven-compiler-plugin settings:
+
+| javac | ECJ |
+| --- | --- |
+| `-Werror` | `-failOnWarning` |
+| `-g` | `-g -preserveAllLocals` |
+| `-nowarn`, `-Xlint:none` | `-warn:none` |
+| `-Xlint:deprecation,-unchecked,rawtypes` | `-warn:+deprecation,-unchecked,+raw` (also `serial`, `fallthrough`, `finally`, `static`; other keys keep ECJ's defaults) |
+| `-proceedOnError` | `-proceedOnError:Fatal` |
+| `-Xmaxerrs <n>` | `-maxProblems <n>` |
+| `--class-path`, `--source-path`, `--source`, `--target`, `--processor-path` | `-classpath`, `-sourcepath`, `-source`, `-target`, `-processorpath` |
+| `-properties <file>` (JDT `org.eclipse.jdt.core.prefs`) | the same; the file must exist |
+| `-Xdoclint*`, `-Xdiags:*`, `-Xmaxwarns <n>` | dropped: they shape diagnostics only |
+| `-XD*`, `-implicit:*`, `-Xpkginfo:*`, `-Xprefer:*`, `-J*` | refused: no ECJ equivalent |
+
+Every other argument (`-d`, `-cp`, `--release`, `-encoding`, `-parameters`, `-proc:*`, `--module-path`, ECJ's own
+`-log`, `-warn:...`) passes unchanged. ECJ cannot load javac plugins, so the inline atomizer (`-Xplugin:M3AST`)
+fails the plan under ECJ unless the task also says `--m3-atomizer=skip`, which drops it explicitly; compile with
+`@m3:jdk:compiler:java` to run it. Atomizing the same sources with the code clustering plugin does not depend on the
+compiler. ECJ's `-log <file>.xml` keeps its diagnostics; the analyzer report adapter's `ECJ` format turns them
+into the same report rows as javac's (`JAVAC` format). A failing compile fails the task with ECJ's exit status.
+
+```text
+task	compile	@m3:ecj:compiler:java	.
+arg	compile	--release
+arg	compile	17
+arg	compile	-d
+arg	compile	target/classes
+arg	compile	-log
+arg	compile	target/ecj.xml
+arg	compile	src/main/java/demo/Ok.java
+input	compile	src/main/java/demo/Ok.java
+output	compile	target/classes/demo/Ok.class
+```
+
+### .NET: test reports and NuGet packages
+
+A mavenized .NET folder runs `dotnet test --logger trx --results-directory target/dotnet-test-results` through
+`@m3:surefire:interpreter:trx`. That provider removes old `*.trx` files from the results folder, runs the tool,
+converts the TRX files it wrote into `target/surefire-reports/TEST-<class>.xml`, and ends with the tool's exit
+status: failing tests fail the build and still leave their reports, as with surefire. A TRX `UnitTestResult` is
+one test case of its `TestMethod`'s class; `Passed` passes, `Failed` fails, `Error`/`Timeout`/`Aborted` are errors,
+`NotExecuted` and other outcomes are skipped; MSTest data rows (`InnerResults`) are not separate cases. A TRX file
+with a document type declaration is refused. `@m3:surefire:transpiler:trx <results> <reports>` only converts.
+
+`dotnet pack --output target/nuget` runs in `package`. The `m3-polyglot:attach` goal attaches every `.nupkg` and
+`.snupkg` there to the project (type `nupkg`/`snupkg`, classifier the package id read from its `.nuspec`), so
+`install` and `deploy` carry them with the POM; two packages of one id fail the goal. The generated profile binds
+`attach` after the package run. The fork's lifecycle extension binds only `run` targets, not `attach`.
+
+Limits: each folder with a project file is its own Maven project, so a solution folder and the project folders
+below it build and test the same projects more than once. Projects on Microsoft.Testing.Platform need
+`--report-trx` instead of `--logger trx`. `--locked-mode` is added only when the folder itself holds
+`packages.lock.json`.
 
 ## Strict manifest v1
 
