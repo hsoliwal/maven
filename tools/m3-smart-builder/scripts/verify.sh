@@ -20,10 +20,13 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/SafeBuildOutput.java \
   src/main/java/io/synexia/maven/smart/DiagnoseEngine.java \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
+  src/main/java/io/synexia/maven/smart/RecipeCatalog.java \
+  src/main/java/io/synexia/maven/smart/CodeAgentMain.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderTest.java \
   src/test/java/io/synexia/maven/smart/BuildHookTest.java \
   src/test/java/io/synexia/maven/smart/AtomPatternEvidenceTest.java \
-  src/test/java/io/synexia/maven/smart/CanonicalPreparationEvidenceTestMain.java
+  src/test/java/io/synexia/maven/smart/CanonicalPreparationEvidenceTestMain.java \
+  src/test/java/io/synexia/maven/smart/CodeAgentTest.java
 # Canon gate: the hard run contract, compiled and tested without any Maven API.
 mkdir -p target/canon-only
 javac -encoding UTF-8 -Xlint:all -Werror -d target/canon-only \
@@ -46,6 +49,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -cp "target/jdk-only${sep}target/canon-
   src/main/java/io/synexia/maven/smart/ProvisionMojo.java \
   src/main/java/io/synexia/maven/smart/DiagnoseMojo.java \
   src/main/java/io/synexia/maven/smart/BuildHookMojo.java \
+  src/main/java/io/synexia/maven/smart/CodeAgentMojo.java \
   src/main/java/io/synexia/maven/smart/CanonMojo.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java
 mkdir -p target/mcp-fixture
@@ -69,8 +73,10 @@ done
 java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaagent:target/syntax-agent.jar \
   -cp target/syntax-only io.synexia.maven.smart.ast.SyntaxTreeAtomicFailureContract
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
+java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp "target/jdk-only${sep}target/adapter-only" io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
+java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest

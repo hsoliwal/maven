@@ -30,6 +30,7 @@ Status: experimental. This project lives **outside the upstream Maven reactor** 
 - No root or home writes are performed implicitly. The output/build directory must resolve within the explicitly invoked project checkout, under Maven's normal build directory. A cache directory must already exist and be operator approved. Plan/receipt filenames are fixed; no AI-controlled path, command or URL is accepted.
 - GitHub native assets or model weights must be independently licensed and immutable SHA-256 pinned. A repository tag alone is not a digest. The manifest provisioner does not extract archives or execute downloads. The explicit Chrome provider delegates its own model provisioning to Chrome; it never extracts browser-managed model bytes.
 - LLM advisory text is untrusted. No automated patch, Maven module selection, build invocation or API change is derived from it.
+- `m3:code-agent` extends the advisory pipeline with **source-bound recipe nomination**: it requires both canonical Java atom/pattern receipts and the OpenRewrite preparation report, a strictly sorted operator-approved SHA-pinned recipe catalogue, and optionally a ChromeLLM candidate. It only proposes an applicable, catalogued recipe; source mutation, recipe approval and verification remain separate. See [code-agent contract](docs/CODE_AGENT.md).
 - The canon gate (`sh m3-build.sh canon <packet.tsv> <run-dir>` or `mvn m3:canon`) is the hard M3-SCALE run contract: task packet, fixed stage order diff, atom_pattern, lint, compile, test, runtime, scope locks, mandatory atomization and patternization of every changed file, idempotence and the output contract; any violation fails. See [the canon gate contract](docs/CANON_GATE.md).
 - Build hooks can require canonical Java atomization/patternization checkpoint manifests before inference using `m3.smart.requireAtomPattern=true` and `m3.smart.atomPatternManifest`. The gate validates current Java scope coverage and ordered digest binding; non-Java files remain assigned to their existing lanes. It does not authenticate host semantic/JIT proof execution. See [the receipt contract](docs/CHROME_BUILD_HOOKS.md#require-canonical-java-atomization-and-patternization-receipts).
 
@@ -99,3 +100,25 @@ failure preservation and the distinct synthetic/live qualification lanes.
 endpoint in front of an already provisioned Chrome model), an operator-chosen CPU
 summarizer whose lines join the facts, and `failOnError=false` for binding the hook
 into a POM's lifecycle without letting advice change the build result.
+
+## Chrome AI coding agent — pinned OpenRewrite recipes
+
+`m3:code-agent` reuses the already installed ChromeLLM provider and existing
+Java preparation/atom checkpoint verifiers. Without a provider it emits a
+deterministic list of applicable catalogued recipes. With a provider it accepts
+only an exact JSON nomination bound to the current evidence and recipe digest,
+never model-generated code or executable commands. The output is review-only.
+
+```sh
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=.reports/preparation.json \
+  -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
+  -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
+  -Dm3.smart.llmBackend=chrome \
+  -Dm3.smart.chromeLlmJar=/approved/chromellm-standalone.jar \
+  -Dm3.smart.chromeBin=/approved/chrome \
+  -Dm3.smart.chromeProfile=/approved/dedicated-profile
+```
+
+See [the complete input, replay and promotion contract](docs/CODE_AGENT.md).
