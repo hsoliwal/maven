@@ -19,63 +19,89 @@
 package org.apache.maven.plugins.clustering;
 
 import java.io.File;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The arguments of the javac plugin, {@code key=value} words after its name:
  * <ul>
  *   <li>{@code out}: the directory of the tables (required);</li>
  *   <li>{@code minTokens}, {@code radius}, {@code fileThreshold}: as for {@link CodeClustering} (same defaults);</li>
- *   <li>{@code roots}: source roots separated by the platform path separator. A file's table path is relative to the
- *       longest root that holds it; without one, to the directory its package declaration names (the usual source
- *       root), else to its own directory.</li>
+ *   <li>{@code roots}: source roots separated by the platform path separator; the key may repeat. A file's table path
+ *       is relative to the longest root that holds it; without one, to the directory its package declaration names
+ *       (the usual source root), else to its own directory;</li>
+ *   <li>{@code generated}: the directory annotation processors write sources to; its files get their own tables in
+ *       {@code out/generated}, with paths relative to it;</li>
+ *   <li>{@code full}: {@code true} when the compilation compiles every source of the root, so the tables are replaced
+ *       instead of merged (see {@link InlineTables}).</li>
  * </ul>
- * javac splits the plugin argument at white space, so a word that does not start with one of these keys and
- * {@code =} continues the previous value after one space: {@code out=C:/My Builds/x} keeps its space.
+ * A path value may be a {@code file:} URI, which holds no white space ({@link Path#toUri()}); a {@code roots} value
+ * that is a URI names one root. javac splits the plugin argument at white space, so a word that does not start with
+ * one of the keys and {@code =} continues the previous value after one space: {@code out=C:/My Builds/x} keeps its
+ * space, but runs of white space become one space; give such paths as URIs.
  */
-record InlineOptions(Path out, int minTokens, int radius, double fileThreshold, List<Path> roots) {
-    private static final Set<String> KEYS = Set.of("out", "minTokens", "radius", "fileThreshold", "roots");
+record InlineOptions(Path out, int minTokens, int radius, double fileThreshold, List<Path> roots,
+        Optional<Path> generated, boolean full) {
+    private static final Set<String> KEYS = Set.of("out", "minTokens", "radius", "fileThreshold", "roots", "generated",
+            "full");
+    private static final String URI_SCHEME = "file:";
 
     /** Parses the words; throws {@link IllegalArgumentException} without {@code out}, or for an unknown word. */
     static InlineOptions parse(String... args) {
-        Map<String, String> values = values(args);
-        String out = values.get("out");
-        if (out == null || out.isBlank()) throw new IllegalArgumentException("no out=<directory> argument");
-        return new InlineOptions(Path.of(out).toAbsolutePath().normalize(),
-                Integer.parseInt(values.getOrDefault("minTokens", Integer.toString(CodeClustering.MIN_TOKENS))),
-                Integer.parseInt(values.getOrDefault("radius", Integer.toString(CodeClustering.RADIUS))),
-                Double.parseDouble(values.getOrDefault("fileThreshold", Double.toString(CodeClustering.FILE_THRESHOLD))),
-                roots(values.getOrDefault("roots", "")));
+        Map<String, List<String>> values = values(args);
+        Path out = last(values, "out").filter(v -> !v.isBlank()).map(InlineOptions::path)
+                .orElseThrow(() -> new IllegalArgumentException("no out=<directory> argument"));
+        return new InlineOptions(out,
+                Integer.parseInt(last(values, "minTokens").orElse(Integer.toString(CodeClustering.MIN_TOKENS))),
+                Integer.parseInt(last(values, "radius").orElse(Integer.toString(CodeClustering.RADIUS))),
+                Double.parseDouble(last(values, "fileThreshold").orElse(Double.toString(CodeClustering.FILE_THRESHOLD))),
+                roots(values.getOrDefault("roots", List.of())), last(values, "generated").map(InlineOptions::path),
+                last(values, "full").map(Boolean::parseBoolean).orElse(false));
     }
 
-    static Map<String, String> values(String... args) {
-        Map<String, String> values = new LinkedHashMap<>();
-        String key = null;
+    /** Every value of every key, in order; a continuation word is added to the last value after one space. */
+    static Map<String, List<String>> values(String... args) {
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        List<String> current = null;
         for (String word : args) {
-            int eq = word.indexOf('=');
-            String named = eq > 0 ? word.substring(0, eq) : "";
-            if (KEYS.contains(named)) {
-                key = named;
-                values.put(key, word.substring(eq + 1));
-            } else if (key != null) {
-                values.merge(key, " " + word, String::concat);
+            Optional<String> key = key(word);
+            if (key.isEmpty() && current == null) throw new IllegalArgumentException("unknown argument " + word);
+            if (key.isPresent()) {
+                current = values.computeIfAbsent(key.get(), k -> new ArrayList<>());
+                current.add(word.substring(key.get().length() + 1));
             } else {
-                throw new IllegalArgumentException("unknown argument " + word);
+                current.set(current.size() - 1, current.get(current.size() - 1) + " " + word);
             }
         }
         return values;
     }
 
-    private static List<Path> roots(String value) {
-        List<Path> roots = new ArrayList<>();
-        for (String root : value.split(File.pathSeparator)) {
-            if (!root.isBlank()) roots.add(Path.of(root).toAbsolutePath().normalize());
-        }
-        return roots;
+    private static Optional<String> key(String word) {
+        int eq = word.indexOf('=');
+        return eq > 0 && KEYS.contains(word.substring(0, eq)) ? Optional.of(word.substring(0, eq)) : Optional.empty();
+    }
+
+    private static Optional<String> last(Map<String, List<String>> values, String key) {
+        List<String> given = values.getOrDefault(key, List.of());
+        return given.isEmpty() ? Optional.empty() : Optional.of(given.get(given.size() - 1));
+    }
+
+    private static List<Path> roots(List<String> values) {
+        return values.stream().flatMap(v -> v.startsWith(URI_SCHEME) ? Stream.of(v) : Stream.of(v.split(File.pathSeparator)))
+                .filter(root -> !root.isBlank()).map(InlineOptions::path).collect(Collectors.toList());
+    }
+
+    /** A file path, or a {@code file:} URI, made absolute and normalized. */
+    static Path path(String value) {
+        Path path = value.startsWith(URI_SCHEME) ? Path.of(URI.create(value)) : Path.of(value);
+        return path.toAbsolutePath().normalize();
     }
 }

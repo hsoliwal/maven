@@ -79,6 +79,7 @@ final class InlinePluginTest {
         incremental(dir, src, classes, out);
         robustness(dir, src);
         ownSources(dir);
+        InlineRegressionTest.run(dir.resolve("regression"));
     }
 
     /** JNI.tsv: binary names (nested, anonymous), erased descriptors, varargs, overloads; symbols are atom symbols. */
@@ -146,7 +147,7 @@ final class InlinePluginTest {
         check("own sources: tables identical to the standalone scan", sameAsScan(dir, main, out, "own-cli"));
     }
 
-    private static boolean sameAsScan(Path dir, Path src, Path inline, String name) throws IOException {
+    static boolean sameAsScan(Path dir, Path src, Path inline, String name) throws IOException {
         Path cli = dir.resolve(name);
         String line = CodeClustering.cluster(cli, List.of(src), 12, 3, 0.5);
         boolean same = Stream.of(TABLES).allMatch(t -> mismatch(inline.resolve(t), cli.resolve(t)) == -1L);
@@ -213,7 +214,7 @@ final class InlinePluginTest {
         Files.writeString(file, text, StandardCharsets.UTF_8);
     }
 
-    private static void check(String name, boolean ok) {
+    static void check(String name, boolean ok) {
         if (!ok) failures++;
         System.err.println((ok ? "PASS " : "FAIL ") + "inline " + name);
     }

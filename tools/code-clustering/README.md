@@ -152,7 +152,14 @@ javac -processorpath maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar \
 |---|---|---|
 | `out` | directory of the tables (required) | none: the plugin stays off |
 | `minTokens`, `radius`, `fileThreshold` | as for `cluster` | 12, 3, 0.5 (or the `clustering.*` system properties) |
-| `roots` | source roots, separated by the platform path separator | each file's package root |
+| `roots` | source roots, separated by the platform path separator; may repeat | each file's package root |
+| `generated` | the directory annotation processors write sources to (javac `-s`) | none |
+| `full` | `true`: the compilation compiles every source of its roots, so the tables are replaced, not merged | `false` |
+
+A path may be given as a `file:` URI (`Path.toUri()`). javac splits the plugin argument at white space; the plugin
+joins a word that is not `key=...` to the previous value with one space, so a plain path keeps single spaces but a
+run of spaces or a tab becomes one space. A URI has no white space, so the core extension passes `out`, `roots` and
+`generated` as URIs. A `roots` value that is a URI names one root.
 
 - **When.** After PARSE, each compilation unit goes through the atom collection of the `cluster` scan
   (`AtomPlanes.collect`, the same `Collector`, `PlaneTokens` and `AtomBuilder`). The tree is still the parser's at
@@ -161,8 +168,11 @@ javac -processorpath maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar \
   ends, the tables are written.
 - **Paths.** A file's table path is relative to the longest `roots` entry that holds it. Without one, it is relative
   to the directory its package declaration names (`src/main/java` for `src/main/java/p/A.java` in package `p`).
-  That is the path `cluster` gives when it scans that root. Sources that annotation processors generate are
-  compiled units too, so their atoms are in the tables, filed under their own package root.
+  That is the path `cluster` gives when it scans that root. Sources under `generated` (the ones annotation
+  processors write) get their own tables in `out/generated`, filed relative to that directory, so the main tables
+  hold the hand-written sources only. Without `generated`, generated sources are filed under their package root
+  in the main tables. Two files of one compilation that would share a table path (default-package files of the same
+  name in two directories, without `roots`) are each filed under their absolute path, with a warning.
 - **Tables.** The plugin writes the five tables of `cluster` (`ATOM_HASHES.tsv`, `CLUSTERS.tsv`, `PLANE_SUMMARY.tsv`,
   `FILE_PAIRS.tsv`, `FILE_CLUSTERS.tsv`). It also writes:
   - `JNI.tsv`: path, symbol (the atom symbol), class_name (binary name in internal form: `p/Outer$Inner`, also for
@@ -171,17 +181,23 @@ javac -processorpath maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar \
     Java side a JNI linker matches against native functions; the build has no native atoms, so the plugin links
     nothing itself.
   - `ATOM_SOURCES.tsv`: path, source file.
-- **Incremental compilations.** A compilation may compile only some files. Its units replace the rows of their
-  paths. Rows of other paths are kept while their source file (from `ATOM_SOURCES.tsv`) exists. Rows of deleted
-  files are dropped. Then the clusters and file families are computed again over the merged atoms. A table written
-  by `cluster` (it has no `ATOM_SOURCES.tsv`) is replaced, not merged. A module that javac does not compile because
-  it is up to date keeps its tables as they are.
+- **Full and incremental compilations.** With `full=true` the compilation's units replace the tables (and a full
+  compilation without generated sources removes the `generated` tables). Otherwise the compilation may compile only
+  some files: its units replace the rows of their source files. The rows of other source files (from
+  `ATOM_SOURCES.tsv`) are kept while the file exists, so the rows of a deleted file are dropped. Rows are kept by
+  source file, not by table path: a file whose package declaration changed is filed once, under its new path. A kept
+  file whose path a compiled file now takes is filed under its absolute path. Then the clusters and file families
+  are computed again over the merged atoms. Merging cannot tell that an existing file is no longer compiled (a new
+  `<excludes>`); only a full compilation drops it. A table written by `cluster` (it has no `ATOM_SOURCES.tsv`) is
+  replaced, not merged. A module that javac does not compile because it is up to date keeps its tables as they are.
 - **Identity.** For the same sources and the same JDK, the tables equal those of `cluster` byte for byte (tested on
   fixtures and on this plugin's own sources). LOGIC and STRUCTURE depend on the tree shapes of the JDK's javac: for
   example, JDK 21 gives arrow `case` labels nodes that JDK 17 does not have. Compare tables made with the same JDK
   only. EXACT is taken from the text javac read, in the build's `-encoding`.
 - **Never fails a compilation.** Bad arguments disable the plugin. Any other failure (an output path that is a file,
-  for example) is logged as one warning through `System.Logger` (java.util.logging unless configured otherwise).
+  for example), errors such as `StackOverflowError` and `AssertionError` from the tree walks included, is logged as
+  one warning through `System.Logger` (java.util.logging unless configured otherwise), and the step's atoms are
+  dropped. Only virtual machine errors other than `StackOverflowError` (out of memory, internal errors) propagate.
   The compilation's result is unchanged.
 - **Registration.** `META-INF/services/com.sun.source.util.Plugin` is in the jar only, never in `target/classes`.
   javac reads the plugin registrations of its class path even without `-Xplugin`, and stops with
@@ -190,8 +206,9 @@ javac -processorpath maven-code-clustering-plugin-0.1.0-SNAPSHOT.jar \
   jar is made from `target/jar`, a copy of `target/classes` plus the registration.
 
 In the fork, the core extension (`tools/m3-smart-builder/extension`, `InlineClusteringSpy`) adds the plugin to every
-maven-compiler-plugin execution. The output is `target/code-clustering` for main sources and
-`target/code-clustering/test` for test sources. `-Dclustering.inline=false` turns it off; see that README.
+maven-compiler-plugin execution. The output is `target/code-clustering/inline` for main sources and
+`target/code-clustering/inline/test` for test sources, apart from the `cluster` goal's `target/code-clustering`, so
+the two producers never overwrite each other's tables. `-Dclustering.inline=false` turns it off; see that README.
 
 `src/it/inline_timing.sh <java-home> <runs> <source-root> [javac argument...]` compares compile cost with and
 without the plugin (`InlineTiming`, test scope). It runs in one JVM: a warm-up, then pairs in alternating order with
@@ -228,6 +245,12 @@ lines. `InlinePluginTest` compiles fixtures with `-Xplugin:CodeClustering` and c
 - a space in `out=`;
 - a compilation stays green when the output is a file, a number is bad, or `out` is missing;
 - the plugin's own sources against `cluster` of `src/main/java`.
+
+`InlineRegressionTest` reproduces the review findings, each failing before its fix: a file whose package changed is
+filed once; `full=true` drops a file no longer compiled (merging keeps it); default-package files of the same name
+in two directories are kept apart, and equal the scan with `roots`; `out` and `roots` as URIs of a directory with two
+consecutive spaces; generated sources in `out/generated`, both table sets equal to their scans, removed by a full
+compilation without them; `StackOverflowError` and `AssertionError` logged, `OutOfMemoryError` propagated.
 
 ## Report columns
 

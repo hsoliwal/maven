@@ -45,19 +45,45 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  *       is still the parser's: javac adds default constructors and record members only later, in ENTER);</li>
  *   <li>after ANALYZE, the methods declared {@code native} of each attributed class are recorded with their binary
  *       class names and argument descriptors ({@link NativeMethods});</li>
- *   <li>when the compilation ends, the units of this run are merged into the tables already in {@code out} and every
- *       table is written again ({@link InlineTables}).</li>
+ *   <li>when the compilation ends, the units of this run are merged into the tables already in {@code out} (replace
+ *       them with {@code full=true}) and every table is written again ({@link InlineTables}). Sources under
+ *       {@code generated} get their own tables in {@code out/generated}.</li>
  * </ul>
- * The plugin never fails a compilation: bad arguments disable it and any failure is logged as a warning through
- * {@link System.Logger} (java.util.logging by default). Arguments: {@link InlineOptions}.
+ * The plugin never fails a compilation: bad arguments disable it and any failure, errors such as a stack overflow
+ * included, is logged as a warning through {@link System.Logger} (java.util.logging by default); only virtual machine
+ * errors other than {@link StackOverflowError} propagate. Arguments: {@link InlineOptions}.
  */
 public final class InlineClustering implements Plugin {
     static final String NAME = "CodeClustering";
+    /** The directory under {@code out} of the tables of generated sources. */
+    static final String GENERATED = "generated";
     private static final System.Logger LOG = System.getLogger(InlineClustering.class.getName());
 
     @Override
     public String getName() {
         return NAME;
+    }
+
+    /** One step of the listener. */
+    @FunctionalInterface
+    interface Step {
+        void run() throws IOException;
+    }
+
+    /**
+     * Runs the step; logs its failure as one warning and returns {@code true} when it failed. A virtual machine error
+     * other than {@link StackOverflowError} (out of memory, an internal error) is rethrown.
+     */
+    static boolean guarded(String what, Step step) {
+        try {
+            step.run();
+            return false;
+        } catch (Throwable failure) {
+            if (failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError)) throw (Error) failure;
+            LOG.log(Level.WARNING, "code clustering: " + what + " not recorded: " + failure);
+            LOG.log(Level.DEBUG, "code clustering failure", failure);
+            return true;
+        }
     }
 
     @Override
@@ -75,6 +101,7 @@ public final class InlineClustering implements Plugin {
         private final JavacTask task;
         private final Trees trees;
         private final InlineTables.Units units = new InlineTables.Units();
+        private final InlineTables.Units generated = new InlineTables.Units();
 
         Listener(JavacTask task, InlineOptions options) {
             this.options = options;
@@ -84,40 +111,52 @@ public final class InlineClustering implements Plugin {
 
         @Override
         public void finished(TaskEvent event) {
-            try {
+            guarded(event.getKind().toString(), () -> {
                 switch (event.getKind()) {
                     case PARSE -> parsed(event.getCompilationUnit());
                     case ANALYZE -> analyzed(event.getCompilationUnit(), event.getTypeElement());
                     case COMPILATION -> written();
                     default -> { }
                 }
-            } catch (IOException | RuntimeException | LinkageError e) {
-                LOG.log(Level.WARNING, "code clustering: " + event.getKind() + " not recorded: " + e);
-                LOG.log(Level.DEBUG, "code clustering failure", e);
-            }
+            });
         }
 
         private void parsed(CompilationUnitTree unit) throws IOException {
             Optional<Path> file = UnitPaths.file(unit);
             if (file.isEmpty()) return;
-            String path = UnitPaths.relative(file.get(), unit, options.roots());
+            String path = UnitPaths.relative(file.get(), unit, roots(file.get()));
             List<Atom> atoms = new ArrayList<>();
             AtomPlanes.collect(unit, trees.getSourcePositions(), path, atoms);
-            units.parsed(path, file.get(), atoms);
+            units(file.get()).parsed(path, file.get(), atoms);
         }
 
         private void analyzed(CompilationUnitTree unit, TypeElement type) {
             Optional<Path> file = unit == null ? Optional.empty() : UnitPaths.file(unit);
             TreePath tree = type == null ? null : trees.getPath(type);
             if (file.isEmpty() || tree == null) return;
-            String path = UnitPaths.relative(file.get(), unit, options.roots());
-            units.natives(path, NativeMethods.of(trees, task.getElements(), task.getTypes(), tree, path));
+            String path = UnitPaths.relative(file.get(), unit, roots(file.get()));
+            units(file.get()).natives(file.get(), NativeMethods.of(trees, task.getElements(), task.getTypes(), tree, path));
         }
 
+        /** Writes the tables; a full compilation without generated sources removes the generated tables. */
         private void written() throws IOException {
-            if (units.isEmpty()) return;
-            String summary = InlineTables.write(options, units);
-            LOG.log(Level.DEBUG, () -> "code clustering: " + summary + " in " + options.out());
+            Path out = options.out();
+            if (!units.isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, out, units));
+            Path gen = out.resolve(GENERATED);
+            if (!generated.isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, gen, generated));
+            else if (options.full() && options.generated().isPresent()) InlineTables.clear(gen);
+        }
+
+        private boolean isGenerated(Path file) {
+            return options.generated().filter(file::startsWith).isPresent();
+        }
+
+        private List<Path> roots(Path file) {
+            return isGenerated(file) ? List.of(options.generated().orElseThrow()) : options.roots();
+        }
+
+        private InlineTables.Units units(Path file) {
+            return isGenerated(file) ? generated : units;
         }
     }
 }
