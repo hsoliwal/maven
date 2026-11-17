@@ -57,6 +57,10 @@ when enabling local CLI advice; the executable and licensed model remain
 operator-provided. `jni` may be selected explicitly with its required native
 runtime and model options. Browser-managed providers are no longer accepted.
 The recipe performs typed XML edits first and changes comment text last.
+`BrowserlessChromeLLMAdviceTest` exercises the recipe's target profile,
+unrelated-profile protection, and lifecycle preservation using `RewriteTest`.
+The full recipe test requires Maven dependencies; the postimage check below
+works without downloading any dependencies.
 
 The dependency-free postimage check is:
 
