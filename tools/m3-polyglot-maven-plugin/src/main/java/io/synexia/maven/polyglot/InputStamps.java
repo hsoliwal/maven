@@ -80,6 +80,20 @@ final class InputStamps {
         return root.resolve(DIRECTORY).resolve(task.name() + ".sha256");
     }
 
+    /** SHA-256 over length-prefixed values, framed like {@link #stamp}. */
+    static String digest(String... values) {
+        MessageDigest digest = sha256();
+        for (String value : values) update(digest, value);
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    /** SHA-256 of the bytes of one file, as hex. */
+    static String fileSha256(Path file) throws IOException {
+        MessageDigest digest = sha256();
+        content(digest, file);
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
     private static void content(MessageDigest digest, Path file) throws IOException {
         byte[] buffer = new byte[65536];
         try (InputStream in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
