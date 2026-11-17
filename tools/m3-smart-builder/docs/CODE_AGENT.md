@@ -37,6 +37,15 @@ consumer does not invent source preparation, file atomization or proof roots.
 
 ### Machine-Oriented Programming fingerprints (optional)
 
+CI can make these fingerprints a mandatory admission prerequisite for
+`m3:code-agent` by setting `-Dm3.smart.requireMachineEvidence=true` together
+with `-Dm3.smart.machineEvidence=<path-to-generated-ledger>`. With this
+explicit opt-in, a missing ledger, an invalid boolean setting, or a stale,
+unsorted or incomplete ledger refuses nomination **before model inference**.
+The default remains `false` for existing consumers. This check establishes
+current-source binding and syntactic coverage, not behavioral equivalence;
+the producer's AST/logic/contract cues remain untrusted candidate evidence.
+
 For an existing AST/atom producer that also emits structural, normalized logic
 and SimHash fingerprints, pass `-Dm3.smart.machineEvidence=.reports/machine.tsv`.
 Its exact, sorted UTF-8 TSV schema is:
@@ -72,7 +81,8 @@ mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
   -Dm3.smart.preparationReport=.reports/preparation.json \
   -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
   -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
-  -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv
+  -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv \
+  -Dm3.smart.requireMachineEvidence=true
 ```
 
 The producer inventories every selected Java file, uses the compiler AST
