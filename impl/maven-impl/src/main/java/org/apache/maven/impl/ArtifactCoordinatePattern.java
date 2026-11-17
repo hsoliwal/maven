@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import org.apache.maven.api.VersionConstraint;
 import org.apache.maven.api.services.VersionParser;
@@ -47,6 +48,9 @@ import static org.apache.maven.impl.ArtifactView.Field.TYPE;
  */
 final class ArtifactCoordinatePattern {
     private static final String ANY = "*";
+
+    /** One restriction of a version range with two bounds: opening bracket, lower bound, upper bound, closing one. */
+    private static final Pattern RESTRICTION = Pattern.compile("([\\[(])([^,\\[\\]()]*),([^,\\[\\]()]*)([\\])])");
 
     private final String source;
 
@@ -166,10 +170,29 @@ final class ArtifactCoordinatePattern {
     private static Predicate<String> versionRange(String token, VersionParser parser) {
         try {
             VersionConstraint range = parser.parseVersionConstraint(token);
+            if (holdsNoVersion(token, parser)) {
+                throw new IllegalArgumentException("Wrong version spec: " + token);
+            }
             return value -> value != null && range.contains(parser.parseVersion(value));
         } catch (VersionParserException e) {
             throw new IllegalArgumentException("Wrong version spec: " + token, e);
         }
+    }
+
+    /**
+     * Whether a restriction of the range has two equal bounds and excludes one of them, as {@code [1.0,1.0)} or
+     * {@code (1.0,1.0.0.Final]}: the Maven 4 parser takes it for an empty range, while the Maven 3
+     * {@code VersionRange} rejects it as a range that defies version ordering.
+     */
+    private static boolean holdsNoVersion(String token, VersionParser parser) {
+        return RESTRICTION
+                .matcher(token)
+                .results()
+                .filter(m -> !m.group(2).isBlank() && !m.group(3).isBlank())
+                .filter(m -> m.group(1).equals("(") || m.group(4).equals(")"))
+                .anyMatch(m -> parser.parseVersion(m.group(2).trim())
+                                .compareTo(parser.parseVersion(m.group(3).trim()))
+                        == 0);
     }
 
     /**
