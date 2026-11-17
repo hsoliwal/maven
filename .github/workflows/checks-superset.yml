@@ -23,6 +23,7 @@ on:
       - 'm3/PATCH_RECIPE_BOOT.md'
       - '.github/workflows/m3-native-pr-patch-bootstrap.yml'
       - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-smart-builder/extension/**'
       - '.github/workflows/m3-polyglot-verify.yml'
       - 'tools/m3-smart-builder/**'
       - '.github/workflows/m3-smart-builder.yml'
@@ -35,6 +36,7 @@ on:
       - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
       - '.github/workflows/m3-git-fixture-cleanup.yml'
       - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-smart-builder/extension/**'
       - '.github/workflows/m3-polyglot-verify.yml'
       - '.github/workflows/checks-superset.yml'
   workflow_dispatch:
@@ -137,7 +139,7 @@ jobs:
              "git-fixture-cleanup": {"workflow": "M3 Maven Git fixture Windows cleanup proof", "file": ".github/workflows/m3-git-fixture-cleanup.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}, "push": {"branches": ["fix/m3-patch-git-fixture-windows-cleanup-20261027"], "paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}}},
              "ide-assess-goal": {"workflow": "M3 Native Maven IDE Assessment Goal", "file": ".github/workflows/m3-ide-assess-goal.yml", "triggers": {"pull_request": {"paths": ["tools/m3-ide-bridge/maven-plugin/**", ".github/workflows/m3-ide-assess-goal.yml"]}}},
              "native-pr-patch-bootstrap": {"workflow": "M3 Native GitHub Patch Bootstrap", "file": ".github/workflows/m3-native-pr-patch-bootstrap.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java", "impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java", "impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*", "m3/PATCH_RECIPE_BOOT.md", ".github/workflows/m3-native-pr-patch-bootstrap.yml"]}}},
-             "polyglot-verify": {"workflow": "M3 Polyglot Maven Plugin", "file": ".github/workflows/m3-polyglot-verify.yml", "triggers": {"pull_request": {"paths": ["tools/m3-polyglot-maven-plugin/**", ".github/workflows/m3-polyglot-verify.yml"]}, "push": {"branches": ["master"], "paths": ["tools/m3-polyglot-maven-plugin/**", ".github/workflows/m3-polyglot-verify.yml"]}}},
+             "polyglot-verify": {"workflow": "M3 Polyglot Maven Plugin", "file": ".github/workflows/m3-polyglot-verify.yml", "triggers": {"pull_request": {"paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}, "push": {"branches": ["master"], "paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}}},
              "smart-builder": {"workflow": "M3 Smart Maven Builder", "file": ".github/workflows/m3-smart-builder.yml", "triggers": {"pull_request": {"paths": ["tools/m3-smart-builder/**", ".github/workflows/m3-smart-builder.yml"]}}}
             }
         run: |
@@ -388,7 +390,7 @@ jobs:
             impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
           java -cp "$work" org.apache.maven.cling.M3GitHubPatchBootstrapSelfTest
 
-  # Former workflow 'M3 Polyglot Maven Plugin' (.github/workflows/m3-polyglot-verify.yml): job and steps verbatim.
+  # Polyglot and ordinary lifecycle module-state gates share the Java 17/21 matrix.
   contract-and-plugin:
     needs: changes
     if: needs.changes.outputs.polyglot-verify == 'true'
@@ -406,7 +408,49 @@ jobs:
       - name: Source contract and provider argv tests
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
       - name: Maven plugin descriptor, compile and contract verification
-        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml verify
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: Core extension compile and lifecycle admission contracts
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
+      - name: Prepare pinned authentic JDBC test runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/m3-jdbc"
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar" \
+            https://github.com/xerial/sqlite-jdbc/releases/download/3.54.1.0/sqlite-jdbc-3.54.1.0.jar
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar" \
+            https://github.com/h2database/h2database/releases/download/version-2.5.252/h2-2.5.252.jar
+          cd "$RUNNER_TEMP/m3-jdbc"
+          sha256sum --check <<'SHA256'
+          f8dce420a6016278497f4f0560f65602b9db858de141b541cf91a4644ebe4639  sqlite-jdbc-3.54.1.0.jar
+          90b11dc413da82070ef15fc943282c1408e6ffd34fa68998335fea8603b5ff20  h2-2.5.252.jar
+          SHA256
+      - name: Actual JDBC rollback, interrupted-write and context-realm contracts
+        shell: bash
+        run: >-
+          java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes
+          io.synexia.maven.polyglot.M3JdbcDbContractTestMain
+          --driver-classpath "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar:$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar:$HOME/.m2/repository/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar"
+          h2 sqlite
+      - name: Real Maven module database acceptance
+        shell: bash
+        run: >-
+          python3 tools/m3-smart-builder/extension/src/it/verify_module_state.py
+          --maven "$(command -v mvn)" --repository "$HOME/.m2/repository"
+          --extension-jar tools/m3-smart-builder/extension/target/smart-maven-extension-0.1.0-SNAPSHOT.jar
+          --state-jar tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          --sqlite-jar "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar"
+          --h2-jar "$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar"
+          --work tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance --prime-repository
+      - name: Retain lifecycle acceptance logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-lifecycle-java-${{ matrix.java }}
+          path: |
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/logs/*.log
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/results.json
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/acceptance.json
 
   # Former workflow 'M3 Smart Maven Builder' (.github/workflows/m3-smart-builder.yml): job and steps verbatim.
   verify:

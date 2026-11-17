@@ -31,15 +31,15 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.approveRewriteApply", defaultValue = "false")
     private boolean approveRewriteApply;
 
-    /** Skip a task whose declared inputs and definition are unchanged since its last success (content stamps). */
+    /** Reuse a success only after input, context, prerequisite and output contents are verified. */
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
-    /** "legacy" default, "file", native "m3db", SQLite/H2 JDBC, or an opt-in ext-* provider. */
-    @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "legacy")
+    /** Embedded M3IndexDB by default; file/native, SQLite/H2, and explicit ext-* providers remain available. */
+    @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "embedded")
     private String incrementalState;
 
-    /** Local build cache folder: restore the declared outputs of unchanged tasks, store them after a run. Unset: off. */
+    /** Explicit cache directory for restoring and storing declared, relocatable task outputs. */
     @Parameter(property = "m3.polyglot.buildCache")
     private File buildCache;
 
@@ -56,7 +56,8 @@ public final class RunMojo extends AbstractMojo {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
                     Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
-                    buildCache == null ? null : buildCache.toPath(), message -> getLog().info(message));
+                    buildCache == null ? null : buildCache.toPath(),
+                    message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("M3 polyglot tool execution interrupted", interruption);

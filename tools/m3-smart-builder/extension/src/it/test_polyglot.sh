@@ -38,13 +38,14 @@ built, log = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 scope = {}
 exec(built.read_text(), scope)
 with log.open("a") as f: f.write("test\n")
-sys.exit(0 if scope["greet"]("maven") == "hello maven" else 3)
+if scope["greet"]("maven") != "hello maven": sys.exit(3)
+built.with_name("test.ok").write_text("PASS\n")
 PY
 { printf 'M3-POLYGLOT-TASKS-V1\n'
   printf 'task\tcompile\t%s\t.\narg\tcompile\ttools/build.py\narg\tcompile\tsrc/app.py\narg\tcompile\tbuild/app.py\narg\tcompile\truns.log\n' "$PY"
   printf 'input\tcompile\tsrc\ninput\tcompile\ttools/build.py\noutput\tcompile\tbuild/app.py\n'
   printf 'task\ttest\t%s\t.\narg\ttest\ttools/check.py\narg\ttest\tbuild/app.py\narg\ttest\truns.log\n' "$PY"
-  printf 'dep\ttest\tcompile\ninput\ttest\tbuild/app.py\ninput\ttest\ttools/check.py\n'; } > "$R/native/m3-build.tsv"
+  printf 'dep\ttest\tcompile\ninput\ttest\tbuild/app.py\ninput\ttest\ttools/check.py\noutput\ttest\tbuild/test.ok\n'; } > "$R/native/m3-build.tsv"
 mvnx() { local log=$1; shift; (cd "$R" && JAVA_HOME="$JH" MAVEN_OPTS="-Dmaven.ext.class.path=$EXT" "$MVN" -o -B -ntp -s "$T/settings.xml" "$@") > "$T/$log" 2>&1; }
 runs() { [ -f "$R/native/runs.log" ] && tr -d '\r' < "$R/native/runs.log" | tr '\n' ' ' || true; }
 

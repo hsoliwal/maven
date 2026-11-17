@@ -6,7 +6,6 @@ package io.synexia.maven.polyglot;
 
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -36,12 +35,11 @@ public final class PolyglotCli {
         if (args == null || args.length < 4 || !("plan".equals(args[0]) || "run".equals(args[0]))) {
             throw usage();
         }
-        Path buildCache = buildCache(args);
-        args = withoutBuildCache(args);
         boolean approveRewriteApply = false;
         boolean incremental = false;
-        String stateBackend = "legacy";
+        String stateBackend = "embedded";
         boolean stateBackendSupplied = false;
+        Path buildCache = null;
         boolean timeoutSupplied = false;
         int timeoutSeconds = 900;
         for (int index = 4; index < args.length; index++) {
@@ -58,11 +56,14 @@ public final class PolyglotCli {
                     if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
                     stateBackendSupplied = true;
                     stateBackend = args[index];
-                    if (!("legacy".equals(stateBackend) || "file".equals(stateBackend)
-                            || "m3db".equals(stateBackend) || "sqlite".equals(stateBackend)
-                            || "h2".equals(stateBackend) || stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}"))) {
-                        throw usage();
-                    }
+                    if (!java.util.Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2")
+                            .contains(stateBackend)
+                            && !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) throw usage();
+                }
+                case "--build-cache" -> {
+                    if (buildCache != null || !"run".equals(args[0]) || ++index == args.length
+                            || args[index].startsWith("--")) throw usage();
+                    buildCache = Path.of(args[index]);
                 }
                 case "--timeout-seconds" -> {
                     if (timeoutSupplied || ++index == args.length) throw usage();
@@ -85,30 +86,10 @@ public final class PolyglotCli {
         return done;
     }
 
-    /** The folder of the single optional {@code --build-cache <dir>} after the four positional arguments, or null. */
-    private static Path buildCache(String[] args) {
-        List<String> all = List.of(args);
-        int index = all.indexOf("--build-cache");
-        if (index < 0) return null;
-        if (index < 4 || index + 1 >= args.length || args[index + 1].startsWith("--")
-                || all.lastIndexOf("--build-cache") != index || !"run".equals(args[0])) {
-            throw usage();
-        }
-        return Path.of(args[index + 1]);
-    }
-
-    private static String[] withoutBuildCache(String[] args) {
-        int index = List.of(args).indexOf("--build-cache");
-        if (index < 0) return args;
-        List<String> rest = new ArrayList<>(List.of(args));
-        rest.subList(index, index + 2).clear();
-        return rest.toArray(String[]::new);
-    }
-
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db|sqlite|h2|ext-id]"
-                + " [--build-cache <dir>] [--approve-rewrite-apply]"
-                + " (--state-backend needs --incremental; it, --build-cache and the last flag require run)");
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|ext-id] [--approve-rewrite-apply]"
+                + " [--build-cache <dir>]"
+                + " (incremental, build-cache and approval require run; state-backend also requires incremental)");
     }
 }
