@@ -141,6 +141,12 @@ public class DefaultModelBuilder implements ModelBuilder {
     private static final String PARENT_EXTERNAL = "parent-external";
     private static final String MODEL = "model";
 
+    /**
+     * User property that turns an explicit {@code parent.relativePath} pointing at no POM back into a
+     * FATAL problem. By default Maven warns and resolves the parent from the repositories, as Maven 3 did.
+     */
+    static final String STRICT_PARENT_RELATIVE_PATH = "maven.model.parentRelativePath.strict";
+
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private final ModelProcessor modelProcessor;
@@ -1323,7 +1329,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                 if (parentPath != null && !parentPath.isEmpty()) {
                     candidateSource = request.getSource().resolve(modelProcessor::locateExistingPom, parentPath);
                     if (candidateSource == null) {
-                        wrongParentRelativePath(childModel);
+                        missingParentRelativePath(childModel);
                         return null;
                     }
                 } else if (isParentOrSimpleMixin) {
@@ -1433,6 +1439,26 @@ public class DefaultModelBuilder implements ModelBuilder {
         }
 
         private void wrongParentRelativePath(Model childModel) {
+            wrongParentRelativePath(childModel, Severity.FATAL, "");
+        }
+
+        /**
+         * An explicit {@code parent.relativePath} with no POM behind it. Maven 3 warned and resolved
+         * the parent from the repositories; standalone checkouts of multi-repository builds (Eclipse
+         * platform repositories use {@code ../eclipse-platform-parent}, a sibling that exists only in
+         * the aggregator checkout) depend on that. The same holds here unless
+         * {@value DefaultModelBuilder#STRICT_PARENT_RELATIVE_PATH} is {@code true}, which restores the FATAL problem.
+         */
+        private void missingParentRelativePath(Model childModel) {
+            if (Boolean.parseBoolean(request.getUserProperties().get(STRICT_PARENT_RELATIVE_PATH))) {
+                wrongParentRelativePath(childModel);
+            } else {
+                wrongParentRelativePath(
+                        childModel, Severity.WARNING, "; resolving the parent from the repositories instead");
+            }
+        }
+
+        private void wrongParentRelativePath(Model childModel, Severity severity, String outcome) {
             Parent parent = childModel.getParent();
             String parentPath = parent.getRelativePath();
             StringBuilder buffer = new StringBuilder(256);
@@ -1442,9 +1468,10 @@ public class DefaultModelBuilder implements ModelBuilder {
             }
             buffer.append(" points at '").append(parentPath);
             buffer.append("' but no POM could be found, please verify your project structure");
+            buffer.append(outcome);
 
             setSource(childModel);
-            add(Severity.FATAL, Version.BASE, buffer.toString(), parent.getLocation(""));
+            add(severity, Version.BASE, buffer.toString(), parent.getLocation(""));
         }
 
         Model resolveAndReadParentExternally(
