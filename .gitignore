@@ -27,3 +27,8 @@
 **/.m3/module-state-v1.bin
 **/.m3/module-state.lock
 **/.m3/maven-build-db/
+
+# Portable M3DB donor backends (all state remains module-local)
+**/.m3/module-state.sqlite*
+**/.m3/module-state-h2.*
+**/.m3/module-state-derby/
