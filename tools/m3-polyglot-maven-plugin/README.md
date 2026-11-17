@@ -159,6 +159,11 @@ The phase-binding command in the next section additionally requires the smart co
 the installed plugin and phase-named manifest targets. The shipped provider example is a
 reviewable CodeQL/OpenRewrite plan; its providers deliberately do not demonstrate cache hits.
 
+To adopt this in a consuming POM, run the OpenRewrite recipe `io.synexia.maven.recipe.EnableM3ModuleDb`
+(`META-INF/rewrite/m3-module-db.yml`, carried from #144; see `docs/M3-MODULE-DB.md`). It adds
+`m3.polyglot.incremental=true` and `m3.polyglot.incrementalState=embedded` and keeps any value the
+POM already sets.
+
 Ignore `.m3/module.m3db`, `.m3/module.m3db.lock`, `.m3/module.m3db.state`,
 `.m3/module-state-v1.bin`, `.m3/module-state-*`, `.m3/module-state.*` and
 `.m3/maven-build-db/` in the consuming project.

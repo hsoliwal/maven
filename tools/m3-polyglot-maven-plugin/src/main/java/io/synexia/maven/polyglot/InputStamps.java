@@ -101,7 +101,7 @@ final class InputStamps {
         Path tool = Path.of(command.get(0));
         if (!tool.isAbsolute()) tool = root.resolve(task.workingDir()).resolve(tool);
         // Installed tool launchers commonly use symlinks. Bind the actual target and bytes.
-        tool = tool.toRealPath();
+        tool = launchTarget(tool).toRealPath();
         update(digest, "executable");
         update(digest, portable && tool.startsWith(root) ? "module:" + relative(root, tool) : tool.toString());
         file(digest, tool, new Budget());
@@ -122,6 +122,18 @@ final class InputStamps {
         try (InputStream bytes = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
             return content(bytes, new Budget());
         }
+    }
+
+    /**
+     * Windows starts {@code name.exe} for a tool path whose file name has no extension (for example
+     * {@code .../bin/java}); fingerprint that file instead of failing on the extensionless spelling.
+     */
+    private static Path launchTarget(Path tool) {
+        if (!System.getProperty("os.name", "").startsWith("Windows")
+                || Files.exists(tool, LinkOption.NOFOLLOW_LINKS)) return tool;
+        Path name = tool.getFileName();
+        if (name == null || name.toString().indexOf('.') >= 0) return tool;
+        return tool.resolveSibling(name + ".exe");
     }
 
     /** Exact declared output tree identity, including empty directories and added files. */
