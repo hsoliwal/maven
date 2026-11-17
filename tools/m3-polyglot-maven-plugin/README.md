@@ -192,7 +192,8 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
   --timeout-seconds 900 --incremental --state-backend file
 ```
 
-`--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only\nwith `run --incremental` and accepts `legacy|file|m3db`. `--incremental` and
+`--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only
+with `run --incremental` and accepts `legacy|file|m3db`. `--incremental` and
 `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
