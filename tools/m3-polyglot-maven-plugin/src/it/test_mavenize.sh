@@ -32,6 +32,8 @@ printf '[package]\nname = "math"\nversion = "0.1.0"\nedition = "2021"\n' > "$R/c
 printf 'pub fn twice(x: i32) -> i32 { x * 2 }\n\n#[cfg(test)]\nmod tests { #[test] fn t() { assert_eq!(super::twice(2), 4); } }\n' > "$R/crates/math/src/lib.rs"
 
 mvnx() { local dir=$1 log=$2; shift 2; (cd "$dir" && JAVA_HOME="$JH" MAVEN_OPTS="-Dmaven.ext.class.path=$EXT" "$MVN" -B -ntp -s "$T/settings.xml" "$@") > "$T/$log" 2>&1; }
+# Do not load the fork extension: test the generated opt-in profile under ordinary Maven.
+mvnx_stock() { local dir=$1 log=$2; shift 2; (cd "$dir" && JAVA_HOME="$JH" MAVEN_OPTS="" "$MVN" -B -ntp -s "$T/settings.xml" "$@") > "$T/$log" 2>&1; }
 
 mvnx "$R" plan.log "$PLUGIN:mavenize" -Dm3.polyglot.dryRun=true || fail "plan: $(grep ERROR "$T/plan.log" | head -2)"
 [ -f "$R/pom.xml" ] && fail "plan: a dry run wrote files"
@@ -46,6 +48,10 @@ grep -q 'Polyglot lifecycle: web runs m3-build.tsv targets \[validate, test\]' "
 grep -q 'Polyglot lifecycle: math runs m3-build.tsv targets \[compile, test, package\]' "$T/verify.log" || fail "verify: math binding"
 [ -f "$R/apps/web/node-test.ok" ] || fail "verify: the Node test did not run"
 [ -f "$R/native/calc/make-test.ok" ] || fail "verify: the Make test did not run"
+# Stock Maven also uses the same native task manifests through generated profile bindings.
+mvnx_stock "$R" stock.log -o -Pm3-polyglot verify || fail "stock Maven: $(grep -E 'ERROR|FAIL' "$T/stock.log" | head -4)"
+grep -q 'TASK go-test' "$T/stock.log" && grep -q 'TASK python-test' "$T/stock.log" && grep -q 'TASK cargo-test' "$T/stock.log" \
+    || fail "stock Maven: Go, Python or Cargo were not executed"
 grep -q 'TASK go-test' "$T/verify.log" && grep -q 'TASK python-test' "$T/verify.log" && grep -q 'TASK cargo-test' "$T/verify.log" \
     || fail "verify: go, python or cargo tests not run"
 printf 'package api\n\nimport "testing"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 4 { t.Fatal("add") } }\n' > "$R/services/api/api_test.go"
