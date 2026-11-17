@@ -21,6 +21,8 @@ package org.apache.maven.plugins.clustering.lsp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.LexicalAtoms;
@@ -41,6 +43,8 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either;
  * as Java string indices.
  */
 final class SymbolAtoms {
+    /** gopls's method name: the receiver type in parentheses (pointer star and type arguments dropped), a dot, the name. */
+    private static final Pattern GO_RECEIVER = Pattern.compile("\\(\\*?([A-Za-z_][A-Za-z0-9_]*)(?:\\[[^)]*])?\\)\\.(\\w+)");
     private final String path;
     private final String text;
     private final boolean indented;
@@ -101,10 +105,12 @@ final class SymbolAtoms {
 
     /**
      * {@code Point::norm} under owner {@code ""} becomes owner {@code Point}, name {@code norm}. A qualifier that
-     * repeats the enclosing owner ({@code Bag::size} inside {@code Bag}) is not added twice.
+     * repeats the enclosing owner ({@code Bag::size} inside {@code Bag}) is not added twice. A Go method as gopls names
+     * it, {@code (Point).Norm}, {@code (*Point).Norm} or {@code (*List[T]).Push}, is owned by its receiver type.
      */
     private static String[] qualified(String owner, String name) {
-        String plain = name.replace("::", ".");
+        Matcher receiver = GO_RECEIVER.matcher(name);
+        String plain = receiver.matches() ? receiver.group(1) + "." + receiver.group(2) : name.replace("::", ".");
         int paren = plain.indexOf('(');
         if (paren > 0) plain = plain.substring(0, paren);
         int dot = plain.lastIndexOf('.');

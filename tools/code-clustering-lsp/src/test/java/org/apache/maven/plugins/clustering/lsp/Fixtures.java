@@ -208,6 +208,143 @@ final class Fixtures {
               "files": ["dist", "lib"]
             }
             """;
+    static final String GO_MOD = """
+            module example.com/geo
+
+            go 1.21
+            """;
+    static final String GO = """
+            package geo
+
+            import "math"
+
+            type Point struct {
+                X float64
+                Y float64
+            }
+
+            func (p Point) Norm() float64 {
+                return math.Sqrt(p.X*p.X + p.Y*p.Y)
+            }
+
+            func Dist(a, b Point) float64 {
+                dx := a.X - b.X
+                dy := a.Y - b.Y
+                return math.Sqrt(dx*dx + dy*dy)
+            }
+
+            func Distance(p, q Point) float64 {
+                ex := p.X - q.X
+                ey := p.Y - q.Y
+                return math.Sqrt(ex*ex + ey*ey)
+            }
+
+            type Shape interface {
+                Area() float64
+            }
+            """;
+    static final String TYPESCRIPT = """
+            export class Point {
+                constructor(public x: number, public y: number) {}
+
+                norm(): number {
+                    return Math.sqrt(this.x * this.x + this.y * this.y);
+                }
+            }
+
+            export function dist(a: Point, b: Point): number {
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            export function distance(p: Point, q: Point): number {
+                const ex = p.x - q.x;
+                const ey = p.y - q.y;
+                return Math.sqrt(ex * ex + ey * ey);
+            }
+
+            export interface Shape {
+                area(): number;
+            }
+
+            export enum Mode {
+                Fast,
+                Slow,
+            }
+            """;
+    static final String CSPROJ = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """;
+    static final String CSHARP = """
+            namespace Demo;
+
+            public class Calc
+            {
+                private int total;
+
+                public Calc(int start)
+                {
+                    total = start;
+                }
+
+                public int Sum(int[] values)
+                {
+                    int s = 0;
+                    foreach (int v in values) s += v;
+                    return s + total;
+                }
+
+                public int Add(int[] items)
+                {
+                    int t = 0;
+                    foreach (int i in items) t += i;
+                    return t + total;
+                }
+
+                public interface IOp
+                {
+                    int Apply(int a, int b);
+                }
+
+                public enum Mode { Fast, Slow }
+            }
+            """;
+    static final String SWIFT = """
+            struct Point {
+                var x: Double
+                var y: Double
+
+                func norm() -> Double {
+                    return (x * x + y * y).squareRoot()
+                }
+            }
+
+            func dist(_ a: Point, _ b: Point) -> Double {
+                let dx = a.x - b.x
+                let dy = a.y - b.y
+                return (dx * dx + dy * dy).squareRoot()
+            }
+
+            func distance(_ p: Point, _ q: Point) -> Double {
+                let ex = p.x - q.x
+                let ey = p.y - q.y
+                return (ex * ex + ey * ey).squareRoot()
+            }
+
+            protocol Shape {
+                func area() -> Double
+            }
+
+            enum Mode {
+                case fast
+                case slow
+            }
+            """;
 
     private Fixtures() { }
 }

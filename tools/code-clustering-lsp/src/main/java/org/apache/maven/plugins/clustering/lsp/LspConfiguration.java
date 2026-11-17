@@ -40,9 +40,11 @@ final class LspConfiguration {
             Map.entry("cc", "cpp"), Map.entry("cpp", "cpp"), Map.entry("cxx", "cpp"), Map.entry("hpp", "cpp"),
             Map.entry("hh", "cpp"), Map.entry("rs", "rust"), Map.entry("py", "python"), Map.entry("java", "java"),
             Map.entry("js", "javascript"), Map.entry("jsx", "javascriptreact"), Map.entry("ts", "typescript"),
-            Map.entry("tsx", "typescriptreact"), Map.entry("go", "go"), Map.entry("kt", "kotlin"),
-            Map.entry("cs", "csharp"), Map.entry("xml", "xml"), Map.entry("html", "html"), Map.entry("htm", "html"),
-            Map.entry("css", "css"), Map.entry("scss", "scss"), Map.entry("less", "less"), Map.entry("json", "json"));
+            Map.entry("tsx", "typescriptreact"), Map.entry("mjs", "javascript"), Map.entry("cjs", "javascript"),
+            Map.entry("mts", "typescript"), Map.entry("cts", "typescript"), Map.entry("go", "go"), Map.entry("kt", "kotlin"),
+            Map.entry("cs", "csharp"), Map.entry("csx", "csharp"), Map.entry("swift", "swift"), Map.entry("xml", "xml"),
+            Map.entry("html", "html"), Map.entry("htm", "html"), Map.entry("css", "css"), Map.entry("scss", "scss"),
+            Map.entry("less", "less"), Map.entry("json", "json"));
 
     private LspConfiguration() { }
 
