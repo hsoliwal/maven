@@ -24,6 +24,25 @@ source owners and M3JDK/M3FS evidence services.
 - `-Dm3.polyglot.skip=true` explicitly skips the run goal.
 - `-Dm3.polyglot.dryRun=true` plans instead of executing.
 - `-Dm3.polyglot.approveRewriteApply=true` separately authorizes mutating OpenRewrite recipes.
+- `-Dm3.polyglot.incremental=true` skips a task whose content stamp is unchanged since its last success: the
+  SHA-256 of its definition (tool, working directory, arguments, outputs) and of the bytes of its declared inputs,
+  folders included file by file, recorded in `.m3/polyglot-stamps/<task>.sha256`. A task whose declared outputs are
+  missing runs again. No timestamps and nothing undeclared take part; declare an upstream task's outputs as this
+  task's inputs to have its changes re-run this task. Off by default.
+
+### Any language through Maven's own phases
+
+With the Maven fork's core extension (`io.synexia:smart-maven-extension`, built into the fork's distribution,
+or loaded with `-Dmaven.ext.class.path`), `-Dm3.polyglot.lifecycle=true` binds this goal into every project that
+has an `m3-build.tsv`: a target named `validate`, `compile`, `test`, `package` or `verify` runs in that phase as
+execution `polyglot-<phase>`. `mvn verify` then builds a reactor that mixes Java modules with modules built by
+their own tools (Python, Make, Cargo, Go, CodeQL tasks, ...), and a failing native task fails the build. The
+property stays explicit because a nested Maven task would otherwise bind again. A project that declares this
+plugin itself keeps its own bindings.
+
+```sh
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true verify
+```
 
 Build with Maven 3.9+ (or a compatible Maven 4 fork) on JDK 17+:
 

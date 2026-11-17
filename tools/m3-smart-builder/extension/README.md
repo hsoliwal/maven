@@ -1,10 +1,18 @@
 <!-- SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Smart Maven core extension: build advice in every project, no POM change
+# Smart Maven core extension: build advice and any-language builds in every project, no POM change
 
-`io.synexia:smart-maven-extension` is a Maven core extension with one lifecycle participant. When a build
-runs with `-Dchromellm.advice=true`, it binds `m3:build-hook` of `io.synexia:m3-smart-maven-plugin` to every
-project of the build:
+`io.synexia:smart-maven-extension` is a Maven core extension with two lifecycle participants:
+
+- `PolyglotLifecycleParticipant`: with `-Dm3.polyglot.lifecycle=true`, every project that has an `m3-build.tsv`
+  runs its targets named `validate`, `compile`, `test`, `package` or `verify` in that Maven phase through
+  `io.synexia:m3-polyglot-maven-plugin` (execution `polyglot-<phase>`), so one `mvn verify` builds Java and
+  non-Java modules alike with their own tools; see the polyglot plugin's README for `m3.polyglot.incremental`.
+  `src/it/test_polyglot.sh` proves it with a reactor of a Java module and a Python-built module.
+- `AdviceLifecycleParticipant`, below.
+
+When a build runs with `-Dchromellm.advice=true`, the advice participant binds `m3:build-hook` of
+`io.synexia:m3-smart-maven-plugin` to every project of the build:
 
 | Execution | Lifecycle phase | Hook phase |
 | --- | --- | --- |

@@ -18,7 +18,8 @@ import java.util.function.Consumer;
 /**
  * Sequential execution of a validated Ant/Make-like graph. Tasks invoke the
  * original compiler or build tool by argument vector, never through a shell.
- * There is deliberately no timestamp-only skipping or undeclared build cache.
+ * There is deliberately no timestamp-only skipping or undeclared build cache; the opt-in incremental mode
+ * compares content stamps of declared inputs only.
  */
 public final class TaskRunner {
     private TaskRunner() {}
@@ -46,6 +47,23 @@ public final class TaskRunner {
             boolean dryRun,
             Duration timeoutPerTask,
             boolean allowRewriteApply,
+            Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, false, log);
+    }
+
+    /**
+     * Opt-in incremental execution: a task whose content stamp (its definition and the bytes of its declared
+     * inputs, see {@link InputStamps}) equals the one recorded at its last success, and whose declared outputs
+     * exist, is not started again. Declare an upstream task's outputs as inputs to have its changes re-run this one.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
             Consumer<String> log) throws IOException, InterruptedException {
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(workspace, "workspace");
@@ -86,6 +104,12 @@ public final class TaskRunner {
                     throw new IOException("missing declared input for " + task.name() + ": " + input);
                 }
             }
+            String stamp = incremental ? InputStamps.stamp(task, root) : null;
+            if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
+                log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
+                performed.add(task.name());
+                continue;
+            }
             List<String> command = new ArrayList<>(task.arguments().size() + 1);
             if (qualityCommand != null) {
                 command.addAll(qualityCommand);
@@ -123,6 +147,7 @@ public final class TaskRunner {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
                 }
             }
+            if (stamp != null) InputStamps.record(task, root, stamp);
             performed.add(task.name());
         }
         return List.copyOf(performed);

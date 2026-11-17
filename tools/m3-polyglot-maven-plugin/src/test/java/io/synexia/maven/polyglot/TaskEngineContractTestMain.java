@@ -26,6 +26,7 @@ public final class TaskEngineContractTestMain {
             refusesDuplicateOutputsAndTraversal(temp);
             preservesArgumentsAndNoShell(temp);
             checksInputsOutputsWithoutSkipping(temp);
+            skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp);
             checksInvalidUTF8(temp);
             checksSymlinkRefusal(temp);
             System.out.println("PASS: " + passed + " M3 polyglot contract cases");
@@ -103,6 +104,64 @@ public final class TaskEngineContractTestMain {
         expectFailure(() -> TaskRunner.run(manifest, workspace, "first", false,
                 Duration.ofSeconds(10), ignored -> {}));
         passed++;
+    }
+
+    private static void skipsOnlyUnchangedDeclaredInputsWhenIncremental(Path workspace) throws Exception {
+        Path project = Files.createDirectories(workspace.resolve("incremental"));
+        String jdk = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        // The "native tool": copies its input file and every file of its input folder, and logs each start.
+        Files.writeString(project.resolve("Copy.java"), "import java.nio.file.*;\n"
+                + "public class Copy { public static void main(String[] a) throws Exception {\n"
+                + "  StringBuilder all = new StringBuilder(Files.readString(Path.of(a[0])));\n"
+                + "  try (var s = Files.list(Path.of(a[1]))) { for (Path p : s.sorted().toList()) all.append(Files.readString(p)); }\n"
+                + "  Files.writeString(Path.of(a[2]), all);\n"
+                + "  Files.writeString(Path.of(a[3]), \"run\\n\", StandardOpenOption.CREATE, StandardOpenOption.APPEND); } }\n",
+                StandardCharsets.UTF_8);
+        Files.writeString(project.resolve("in.txt"), "one", StandardCharsets.UTF_8);
+        Files.createDirectories(project.resolve("src/nested"));
+        Files.writeString(project.resolve("src/nested/b.txt"), "b", StandardCharsets.UTF_8);
+        String definition = "task\tcopy\t" + jdk + "\t.\n" + "arg\tcopy\tCopy.java\n" + "arg\tcopy\tin.txt\n"
+                + "arg\tcopy\tsrc/nested\n" + "arg\tcopy\tout.txt\n" + "arg\tcopy\truns.log\n"
+                + "input\tcopy\tCopy.java\n" + "input\tcopy\tin.txt\n" + "input\tcopy\tsrc\n" + "output\tcopy\tout.txt\n";
+        TaskManifest manifest = TaskManifest.load(manifestFile(project, definition));
+        List<String> log = new ArrayList<>();
+        incremental(manifest, project, log);
+        require(runs(project) == 1, "first incremental run starts the tool");
+        require(Files.isRegularFile(project.resolve(InputStamps.DIRECTORY).resolve("copy.sha256")), "stamp recorded");
+        log.clear();
+        require(incremental(manifest, project, log).equals(List.of("copy")), "an up-to-date task still counts as satisfied");
+        require(runs(project) == 1 && log.stream().anyMatch(row -> row.startsWith("UP-TO-DATE copy")),
+                "unchanged declared inputs skip the tool");
+        Files.writeString(project.resolve("in.txt"), "two", StandardCharsets.UTF_8);
+        incremental(manifest, project, log);
+        require(runs(project) == 2, "a changed input file runs the tool again");
+        Files.writeString(project.resolve("src/nested/b.txt"), "B", StandardCharsets.UTF_8);
+        incremental(manifest, project, log);
+        require(runs(project) == 3 && Files.readString(project.resolve("out.txt")).equals("twoB"),
+                "a changed file inside an input folder runs the tool again");
+        Files.delete(project.resolve("out.txt"));
+        incremental(manifest, project, log);
+        require(runs(project) == 4, "a missing declared output runs the tool again");
+        TaskManifest changed = TaskManifest.load(manifestFile(project, definition.replace("arg\tcopy\truns.log\n",
+                "arg\tcopy\truns.log\narg\tcopy\textra\n")));
+        incremental(changed, project, log);
+        require(runs(project) == 5, "a changed task definition runs the tool again");
+        TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, ignored -> {});
+        require(runs(project) == 6, "without incremental mode the tool always runs");
+        passed++;
+    }
+
+    private static List<String> incremental(TaskManifest manifest, Path project, List<String> log) throws Exception {
+        return TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, true, log::add);
+    }
+
+    private static Path manifestFile(Path project, String body) throws IOException {
+        return Files.writeString(project.resolve("m3-build.tsv"), TaskManifest.MAGIC + "\n" + body, StandardCharsets.UTF_8);
+    }
+
+    private static int runs(Path project) throws IOException {
+        Path log = project.resolve("runs.log");
+        return Files.exists(log) ? Files.readAllLines(log, StandardCharsets.UTF_8).size() : 0;
     }
 
     private static void checksInvalidUTF8(Path workspace) throws Exception {
