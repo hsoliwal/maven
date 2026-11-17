@@ -22,6 +22,9 @@ final class MachineEvidence {
     static final String EXTENDED_HEADER = HEADER + "\tcontrol_flow_mask\teffect_cue_mask";
     static final String ATTRIBUTED_HEADER = EXTENDED_HEADER
             + "\tresolved_call_sites\tunresolved_call_sites\tattributed_type_sha256\tcall_targets_sha256";
+    static final String FLOW_HEADER = ATTRIBUTED_HEADER
+            + "\tcfg_nodes\tcfg_edges\tcfg_sha256\tlocal_read_sites\tlocal_write_sites"
+            + "\treaching_def_links\tdef_use_sha256\tflow_incomplete_mask";
     static final int FLOW_CONDITIONAL = 0x001;
     static final int FLOW_LOOP = 0x002;
     static final int FLOW_SWITCH = 0x004;
@@ -45,11 +48,16 @@ final class MachineEvidence {
     private MachineEvidence() { }
 
     private record Atom(String path, String id, String structure, String logic, long simHash,
-                        String contract, int flow, int effect, int resolvedCalls, int unresolvedCalls) { }
+                        String contract, int flow, int effect, int resolvedCalls, int unresolvedCalls,
+                        int cfgNodes, int cfgEdges, String cfgHash, int localReads, int localWrites, int reachingLinks,
+                        String defUseHash, int incomplete) { }
 
     private enum Pattern { LOGIC_EXACT, STRUCTURE_EXACT, SIMHASH_NEAR }
 
     private record Candidate(Pattern kind, Atom left, Atom right, int distance, boolean contractMatch) {
+        boolean flowCompared() { return left.cfgHash() != null && right.cfgHash() != null; }
+        boolean flowMatches() { return flowCompared() && left.cfgHash().equals(right.cfgHash()); }
+        boolean defUseMatches() { return flowCompared() && left.defUseHash().equals(right.defUseHash()); }
         String json() {
             return "{\"kind\":" + TinyJson.quote(kind.name())
                     + ",\"leftPath\":" + TinyJson.quote(left.path())
@@ -58,6 +66,10 @@ final class MachineEvidence {
                     + ",\"rightAtom\":" + TinyJson.quote(right.id())
                     + ",\"simHashDistance\":" + distance
                     + ",\"contractSignatureMatches\":" + contractMatch
+                    + ",\"mayFlowCompared\":" + flowCompared()
+                    + ",\"mayFlowFingerprintMatches\":" + flowMatches()
+                    + ",\"localDefUseFingerprintMatches\":" + defUseMatches()
+                    + ",\"flowIncompleteMaskUnion\":" + (left.incomplete() | right.incomplete())
                     + ",\"authority\":\"REVIEW_ONLY\"}";
         }
     }
@@ -65,6 +77,8 @@ final class MachineEvidence {
     private static final Comparator<Candidate> CANDIDATE_ORDER = Comparator
             .comparingInt((Candidate c) -> c.kind().ordinal())
             .thenComparing(c -> !c.contractMatch())
+            .thenComparing(c -> c.flowCompared() && !c.flowMatches())
+            .thenComparing(c -> c.flowCompared() && !c.defUseMatches())
             .thenComparingInt(Candidate::distance)
             .thenComparing(c -> c.left().path()).thenComparing(c -> c.left().id())
             .thenComparing(c -> c.right().path()).thenComparing(c -> c.right().id());
@@ -91,8 +105,21 @@ final class MachineEvidence {
         }
     }
 
+    record Flow(boolean available, int cfgNodes, int cfgEdges, int localReadSites,
+                int localWriteSites, int reachingDefinitionLinks, int incompleteAtoms) {
+        String json() {
+            return "{\"available\":" + available + ",\"cfgNodes\":" + cfgNodes
+                    + ",\"cfgEdges\":" + cfgEdges + ",\"localReadSites\":" + localReadSites
+                    + ",\"localWriteSites\":" + localWriteSites
+                    + ",\"mayReachingDefinitionLinks\":" + reachingDefinitionLinks
+                    + ",\"incompleteAtoms\":" + incompleteAtoms
+                    + ",\"cfgIsComplete\":false,\"aliasEffectsProven\":false,"
+                    + "\"reachingDefinitionsAreProof\":false}";
+        }
+    }
+
     record Summary(String inputSha256, int files, int atoms, int structuralGroups,
-                   int logicGroups, long similarPairs, Cues cues, Attribution attribution, long patternPairs,
+                   int logicGroups, long similarPairs, Cues cues, Attribution attribution, Flow flow, long patternPairs,
                    List<Candidate> candidates) {
         String json() {
             StringBuilder json = new StringBuilder("{\"schema\":\"m3.smart.machine-evidence.v1\",\"inputSha256\":")
@@ -104,6 +131,7 @@ final class MachineEvidence {
                     .append(",\"simHashNearPairs\":").append(similarPairs)
                     .append(",\"staticCues\":").append(cues.json())
                     .append(",\"attributionFacts\":").append(attribution.json())
+                    .append(",\"flowFacts\":").append(flow.json())
                     .append(",\"patternCandidatePairs\":").append(patternPairs)
                     .append(",\"patternCandidatesTruncated\":").append(patternPairs > candidates.size())
                     .append(",\"patternCandidates\":[");
@@ -122,9 +150,10 @@ final class MachineEvidence {
         String[] rows = text.substring(0, text.length() - 1).split("\n", -1);
         if (rows.length < 2 || rows.length > MAX_ROWS + 1
                 || !(HEADER.equals(rows[0]) || EXTENDED_HEADER.equals(rows[0])
-                || ATTRIBUTED_HEADER.equals(rows[0])))
+                || ATTRIBUTED_HEADER.equals(rows[0]) || FLOW_HEADER.equals(rows[0])))
             throw new IOException("invalid machine fingerprint ledger schema");
-        boolean attributed = ATTRIBUTED_HEADER.equals(rows[0]);
+        boolean hasFlow = FLOW_HEADER.equals(rows[0]);
+        boolean attributed = hasFlow || ATTRIBUTED_HEADER.equals(rows[0]);
         boolean extended = attributed || EXTENDED_HEADER.equals(rows[0]);
         var selected = SourceInventory.inspectSelected(base, sourceRoot);
         Map<String, String> sources = new HashMap<>();
@@ -137,7 +166,7 @@ final class MachineEvidence {
         String previous = "";
         for (int i = 1; i < rows.length; i++) {
             String[] parts = rows[i].split("\t", -1);
-            if (parts.length != (attributed ? 13 : extended ? 9 : 7)
+            if (parts.length != (hasFlow ? 21 : attributed ? 13 : extended ? 9 : 7)
                     || !parts[0].endsWith(".java") || !sources.containsKey(parts[0])
                     || !parts[1].matches("[0-9a-f]{64}") || !parts[2].matches("[a-zA-Z0-9_$#.:/-]{1,128}")
                     || !parts[3].matches("[0-9a-f]{64}") || !parts[4].matches("[0-9a-f]{64}")
@@ -148,6 +177,11 @@ final class MachineEvidence {
             if (attributed && (!parts[9].matches("[0-9]{1,5}") || !parts[10].matches("[0-9]{1,5}")
                     || !parts[11].matches("[0-9a-f]{64}") || !parts[12].matches("[0-9a-f]{64}")))
                 throw new IOException("invalid compiler attribution row");
+            if (hasFlow && (!parts[13].matches("[0-9]{1,3}") || !parts[14].matches("[0-9]{1,4}")
+                    || !parts[15].matches("[0-9a-f]{64}") || !parts[16].matches("[0-9]{1,4}")
+                    || !parts[17].matches("[0-9]{1,4}") || !parts[18].matches("[0-9]{1,4}")
+                    || !parts[19].matches("[0-9a-f]{64}") || !parts[20].matches("[0-9a-f]{4}")))
+                throw new IOException("invalid flow analysis row");
             int flow = extended ? Integer.parseInt(parts[7], 16) : 0;
             int effect = extended ? Integer.parseInt(parts[8], 16) : 0;
             int resolved = attributed ? Integer.parseInt(parts[9]) : 0;
@@ -156,6 +190,17 @@ final class MachineEvidence {
                 throw new IOException("unsupported static-cue mask bits");
             if (resolved > MAX_CALLS_PER_ATOM || unresolved > MAX_CALLS_PER_ATOM)
                 throw new IOException("unbounded compiler invocation facts");
+            int nodes = hasFlow ? Integer.parseInt(parts[13]) : 0;
+            int edges = hasFlow ? Integer.parseInt(parts[14]) : 0;
+            int reads = hasFlow ? Integer.parseInt(parts[16]) : 0;
+            int writes = hasFlow ? Integer.parseInt(parts[17]) : 0;
+            int links = hasFlow ? Integer.parseInt(parts[18]) : 0;
+            int incomplete = hasFlow ? Integer.parseInt(parts[20], 16) : 0;
+            if (hasFlow && (nodes < 2 || nodes > MachineFlowAnalysis.MAX_NODES
+                    || edges < 1 || edges > MachineFlowAnalysis.MAX_EDGES
+                    || reads > 4096 || writes > 4096 || links > MachineFlowAnalysis.MAX_LINKS
+                    || (incomplete & ~MachineFlowAnalysis.ALL_INCOMPLETE) != 0))
+                throw new IOException("out-of-budget or unsupported flow facts");
             String key = parts[0] + "\t" + parts[2];
             if (key.compareTo(previous) <= 0 || !parts[1].equals(sources.get(parts[0])))
                 throw new IOException("fingerprint ordering or source binding refused");
@@ -164,7 +209,9 @@ final class MachineEvidence {
             structural.merge(parts[3], 1, Integer::sum);
             logic.merge(parts[4], 1, Integer::sum);
             atoms.add(new Atom(parts[0], parts[2], parts[3], parts[4],
-                    Long.parseUnsignedLong(parts[5], 16), parts[6], flow, effect, resolved, unresolved));
+                    Long.parseUnsignedLong(parts[5], 16), parts[6], flow, effect, resolved, unresolved,
+                    nodes, edges, hasFlow ? parts[15] : null, reads, writes, links,
+                    hasFlow ? parts[19] : null, incomplete));
         }
         if (!covered.equals(sources.keySet())) throw new IOException("incomplete machine source coverage");
         long near = 0;
@@ -193,7 +240,7 @@ final class MachineEvidence {
         if (!selected.summary().digest().equals(SourceInventory.inspectSelected(base, sourceRoot).summary().digest()))
             throw new IOException("source changed during fingerprint examination");
         return new Summary(Hashes.sha256(bytes), covered.size(), atoms.size(), structures, logics, near,
-                cues(atoms, extended), attribution(atoms, attributed), patterns, List.copyOf(best));
+                cues(atoms, extended), attribution(atoms, attributed), flow(atoms, hasFlow), patterns, List.copyOf(best));
     }
 
     private static Cues cues(List<Atom> atoms, boolean available) {
@@ -217,5 +264,18 @@ final class MachineEvidence {
             unresolved += atom.unresolvedCalls();
         }
         return new Attribution(available, resolved, unresolved);
+    }
+
+    private static Flow flow(List<Atom> atoms, boolean available) {
+        int nodes = 0, edges = 0, reads = 0, writes = 0, links = 0, incomplete = 0;
+        for (Atom atom : atoms) {
+            nodes += atom.cfgNodes();
+            edges += atom.cfgEdges();
+            reads += atom.localReads();
+            writes += atom.localWrites();
+            links += atom.reachingLinks();
+            if (atom.incomplete() != 0) incomplete++;
+        }
+        return new Flow(available, nodes, edges, reads, writes, links, incomplete);
     }
 }

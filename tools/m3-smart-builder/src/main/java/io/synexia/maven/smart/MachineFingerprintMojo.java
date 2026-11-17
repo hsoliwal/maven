@@ -9,7 +9,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
-/** Optional JDK21 AST fingerprint generation; no source edits, no LLM, and no semantic proof. */
+/** Optional JDK21 AST/attributed may-flow evidence; no source edits, LLM, or semantic proof. */
 @Mojo(name = "machine-fingerprints", threadSafe = true, requiresProject = true)
 public final class MachineFingerprintMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.basedir}", readonly = true, required = true)
@@ -26,6 +26,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
     private int machineWorkers = 1;
     @Parameter(property = "m3.smart.attributeTypes", defaultValue = "false")
     private boolean attributeTypes;
+    @Parameter(property = "m3.smart.analyzeFlow", defaultValue = "false")
+    private boolean analyzeFlow;
 
     @Override public void execute() throws MojoExecutionException {
         if (baseDir == null || buildDir == null || sourceRoot == null || preparationReport == null
@@ -36,7 +38,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
                 "--preparation-report", preparationReport.toString(),
                 "--atom-pattern-manifest", atomPatternManifest.toString(),
                 "--workers", Integer.toString(machineWorkers),
-                "--attribute-types", Boolean.toString(attributeTypes)).toArray(String[]::new), System.out, System.err);
+                "--attribute-types", Boolean.toString(attributeTypes),
+                "--analyze-flow", Boolean.toString(analyzeFlow)).toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 AST fingerprint generation refused (" + status + ")");
     }
 }

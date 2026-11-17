@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Explicit, additive configuration recipe; does not attach or run a Maven goal.
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.synexia.maven.smart.EnableMachineMayFlowEvidence
+displayName: Enable bounded compiler-symbol may-flow analysis in M3 Maven
+description: >-
+  Opt in to compiler attribution and bounded advisory control/dataflow facts
+  when m3:machine-fingerprints is explicitly invoked. It does not run Maven,
+  download a model, rewrite Java source, or establish semantic equivalence.
+recipeList:
+  - org.openrewrite.maven.AddProperty:
+      key: m3.smart.attributeTypes
+      value: "true"
+      preserveExistingValue: false
+  - org.openrewrite.maven.AddProperty:
+      key: m3.smart.analyzeFlow
+      value: "true"
+      preserveExistingValue: false
