@@ -1,0 +1,77 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.surefire.api.booter;
+
+/**
+ * @author Kristian Rosenvold
+ */
+public class ProviderParameterNames {
+    public static final String EXCLUDEDGROUPS_PROP = "excludegroups";
+
+    public static final String GROUPS_PROP = "groups";
+
+    public static final String INCLUDE_JUNIT5_ENGINES_PROP = "includejunit5engines";
+
+    public static final String EXCLUDE_JUNIT5_ENGINES_PROP = "excludejunit5engines";
+
+    public static final String THREADCOUNT_PROP = "threadcount";
+
+    public static final String PARALLEL_PROP = "parallel";
+
+    public static final String THREADCOUNTSUITES_PROP = "threadcountsuites";
+
+    public static final String THREADCOUNTCLASSES_PROP = "threadcountclasses";
+
+    public static final String THREADCOUNTMETHODS_PROP = "threadcountmethods";
+
+    public static final String PARALLEL_TIMEOUT_PROP = "paralleltimeout";
+
+    public static final String PARALLEL_TIMEOUTFORCED_PROP = "paralleltimeoutforced";
+
+    public static final String PARALLEL_OPTIMIZE_PROP = "paralleloptimization";
+
+    public static final String ENABLE_OUT_ERR_ELEMENTS_PROP = "enableouterrelements";
+
+    public static final String JUNIT_VINTAGE_DETECTED = "junit.vintage.engine.detected";
+
+    /**
+     * Set when the project only has JUnit 3 or 4 tests.
+     */
+    public static final String JUNIT4_ONLY_DETECTED = "junit4.only.detected";
+
+    public static final String INCLUDES_SCAN_LIST = "junit.includes.scan.list";
+
+    public static final String EXCLUDES_SCAN_LIST = "junit.excludes.scan.list";
+
+    public static final String RUN_ORDER_PROP = "runOrder";
+
+    public static final String RUN_ORDER_RANDOM_SEED_PROP = "runOrderRandomSeed";
+
+    /**
+     * Additional package prefixes to filter from stack traces.
+     * @since 3.6.0
+     */
+    public static final String STACK_TRACE_FILTER_PREFIXES = "stackTraceFilterPrefixes";
+
+    /**
+     * Maximum number of stack trace frames to capture.
+     * @since 3.6.0
+     */
+    public static final String STACK_TRACE_MAX_FRAMES = "stackTraceMaxFrames";
+}

@@ -1,0 +1,650 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.plugin.surefire.report;
+
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Queue;
+
+import org.apache.maven.plugin.surefire.StartupReportConfiguration;
+import org.apache.maven.plugin.surefire.extensions.SurefireConsoleOutputReporter;
+import org.apache.maven.plugin.surefire.extensions.SurefireStatelessReporter;
+import org.apache.maven.plugin.surefire.extensions.SurefireStatelessTestsetInfoReporter;
+import org.apache.maven.plugin.surefire.log.api.ConsoleLogger;
+import org.apache.maven.plugin.surefire.report.DefaultReporterFactory.TestResultType;
+import org.apache.maven.surefire.api.report.ReporterFactoryOptions;
+import org.apache.maven.surefire.api.report.SafeThrowable;
+import org.apache.maven.surefire.api.report.StackTraceWriter;
+import org.apache.maven.surefire.api.report.TestOutputReportEntry;
+import org.apache.maven.surefire.api.report.TestReportListener;
+import org.apache.maven.surefire.api.suite.RunResult;
+import org.apache.maven.surefire.report.RunStatistics;
+import org.apache.maven.surefire.shared.utils.logging.MessageUtils;
+import org.junit.jupiter.api.Test;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static org.apache.maven.plugin.surefire.report.DefaultReporterFactory.getTestResultType;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/**
+ *
+ */
+public class DefaultReporterFactoryTest {
+    private static final String TEST_ONE = "testOne";
+
+    private static final String TEST_TWO = "testTwo";
+
+    private static final String TEST_THREE = "testThree";
+
+    private static final String TEST_FOUR = "testFour";
+
+    private static final String TEST_FIVE = "testFive";
+
+    private static final String ASSERTION_FAIL = "assertionFail";
+
+    private static final String ERROR = "error";
+
+    private static final String TEST_BEFORE_ALL_FLAKE = "com.example.FlakyClass";
+
+    private static final String TEST_BEFORE_ALL_ERROR = "com.example.AlwaysFailClass";
+
+    private static final String TEST_ERROR_SUFFIX = "-- Time elapsed: 292.2 s <<< ERROR!";
+
+    @Test
+    public void testMergeTestHistoryResult() throws Exception {
+        MessageUtils.setColorEnabled(false);
+        File target = new File(System.getProperty("user.dir"), "target");
+        File reportsDirectory = new File(target, "tmp5");
+        StartupReportConfiguration reportConfig = new StartupReportConfiguration(
+                true,
+                true,
+                "PLAIN",
+                false,
+                reportsDirectory,
+                false,
+                null,
+                new File(reportsDirectory, "TESTHASH"),
+                false,
+                1,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                new SurefireStatelessReporter(),
+                new SurefireConsoleOutputReporter(),
+                new SurefireStatelessTestsetInfoReporter(),
+                new ReporterFactoryOptions());
+
+        DummyTestReporter reporter = new DummyTestReporter();
+
+        DefaultReporterFactory factory = new DefaultReporterFactory(reportConfig, reporter);
+
+        // First run, four tests failed and one passed, plus @BeforeAll failure
+        Queue<TestMethodStats> firstRunStats = new ArrayDeque<>();
+        firstRunStats.add(new TestMethodStats(TEST_ONE, ReportEntryType.ERROR, new DummyStackTraceWriter(ERROR)));
+        firstRunStats.add(new TestMethodStats(TEST_TWO, ReportEntryType.ERROR, new DummyStackTraceWriter(ERROR)));
+        firstRunStats.add(
+                new TestMethodStats(TEST_THREE, ReportEntryType.FAILURE, new DummyStackTraceWriter(ASSERTION_FAIL)));
+        firstRunStats.add(
+                new TestMethodStats(TEST_FOUR, ReportEntryType.FAILURE, new DummyStackTraceWriter(ASSERTION_FAIL)));
+        firstRunStats.add(new TestMethodStats(TEST_FIVE, ReportEntryType.SUCCESS, null));
+        // @BeforeAll failure for a test class that will eventually succeed
+        firstRunStats.add(new TestMethodStats(
+                TEST_BEFORE_ALL_FLAKE + ".null",
+                ReportEntryType.ERROR,
+                new DummyStackTraceWriter(TEST_BEFORE_ALL_FLAKE + ".null " + TEST_ERROR_SUFFIX)));
+
+        // Second run, two tests passed
+        Queue<TestMethodStats> secondRunStats = new ArrayDeque<>();
+        secondRunStats.add(
+                new TestMethodStats(TEST_ONE, ReportEntryType.FAILURE, new DummyStackTraceWriter(ASSERTION_FAIL)));
+        secondRunStats.add(new TestMethodStats(TEST_TWO, ReportEntryType.SUCCESS, null));
+        secondRunStats.add(new TestMethodStats(TEST_THREE, ReportEntryType.ERROR, new DummyStackTraceWriter(ERROR)));
+        secondRunStats.add(new TestMethodStats(TEST_FOUR, ReportEntryType.SUCCESS, null));
+        // Successful test from the class that had @BeforeAll failure
+        secondRunStats.add(new TestMethodStats(TEST_BEFORE_ALL_FLAKE + ".testSucceed", ReportEntryType.SUCCESS, null));
+        // @BeforeAll failure for a different class that will stay as error
+        secondRunStats.add(new TestMethodStats(
+                TEST_BEFORE_ALL_ERROR + ".null",
+                ReportEntryType.ERROR,
+                new DummyStackTraceWriter(TEST_BEFORE_ALL_ERROR + ".null " + TEST_ERROR_SUFFIX)));
+
+        // Third run, another test passed
+        Queue<TestMethodStats> thirdRunStats = new ArrayDeque<>();
+        thirdRunStats.add(new TestMethodStats(TEST_ONE, ReportEntryType.SUCCESS, null));
+        thirdRunStats.add(new TestMethodStats(TEST_THREE, ReportEntryType.ERROR, new DummyStackTraceWriter(ERROR)));
+        // Another @BeforeAll failure for the always-failing class
+        thirdRunStats.add(new TestMethodStats(
+                TEST_BEFORE_ALL_ERROR + ".null",
+                ReportEntryType.ERROR,
+                new DummyStackTraceWriter(TEST_BEFORE_ALL_ERROR + ".null")));
+
+        TestSetRunListener firstRunListener = mock(TestSetRunListener.class);
+        TestSetRunListener secondRunListener = mock(TestSetRunListener.class);
+        TestSetRunListener thirdRunListener = mock(TestSetRunListener.class);
+        when(firstRunListener.getTestMethodStats()).thenReturn(firstRunStats);
+        when(secondRunListener.getTestMethodStats()).thenReturn(secondRunStats);
+        when(thirdRunListener.getTestMethodStats()).thenReturn(thirdRunStats);
+
+        factory.addListener(firstRunListener);
+        factory.addListener(secondRunListener);
+        factory.addListener(thirdRunListener);
+
+        invokeMethod(factory, "mergeTestHistoryResult");
+        RunStatistics mergedStatistics = factory.getGlobalRunStatistics();
+
+        // TEST_THREE and AlwaysFailClass.null are failing tests, regular tests + FlakyClass.null are flaky
+        assertEquals(7, mergedStatistics.getCompletedCount());
+        assertEquals(2, mergedStatistics.getErrors());
+        assertEquals(0, mergedStatistics.getFailures());
+        assertEquals(4, mergedStatistics.getFlakes());
+        assertEquals(0, mergedStatistics.getSkipped());
+
+        // Now test the result will be printed out correctly
+        factory.printTestFailures(TestResultType.FLAKE);
+        String[] expectedFlakeOutput = {
+            "Flakes: ",
+            TEST_BEFORE_ALL_FLAKE + ".<beforeAll>",
+            "  Run 1: " + TEST_BEFORE_ALL_FLAKE + ".null " + TEST_ERROR_SUFFIX,
+            "  Run 2: PASS",
+            "",
+            TEST_FOUR,
+            "  Run 1: " + ASSERTION_FAIL,
+            "  Run 2: PASS",
+            "",
+            TEST_ONE,
+            "  Run 1: " + ERROR,
+            "  Run 2: " + ASSERTION_FAIL,
+            "  Run 3: PASS",
+            "",
+            TEST_TWO,
+            "  Run 1: " + ERROR,
+            "  Run 2: PASS",
+            ""
+        };
+        assertEquals(asList(expectedFlakeOutput), reporter.getMessages());
+
+        reporter.reset();
+        factory.printTestFailures(TestResultType.ERROR);
+        String[] expectedFailureOutput = {
+            "Errors: ",
+            TEST_BEFORE_ALL_ERROR + ".<beforeAll>",
+            "  Run 1: " + TEST_BEFORE_ALL_ERROR + ".null " + TEST_ERROR_SUFFIX,
+            "  Run 2: " + TEST_BEFORE_ALL_ERROR + ".null",
+            "",
+            TEST_THREE,
+            "  Run 1: " + ASSERTION_FAIL,
+            "  Run 2: " + ERROR,
+            "  Run 3: " + ERROR,
+            ""
+        };
+        assertEquals(asList(expectedFailureOutput), reporter.getMessages());
+
+        reporter.reset();
+        factory.printTestFailures(TestResultType.FAILURE);
+        assertEquals(emptyList(), reporter.getMessages());
+    }
+
+    /**
+     * AfterAll/AfterClass failures are reported as {@code Class.executionError}. They must count as
+     * errors (not flakes) even when test methods in the same class succeeded and rerun is enabled
+     * (#3412).
+     */
+    @Test
+    public void testAfterAllFailureRemainsErrorNotFlake() throws Exception {
+        MessageUtils.setColorEnabled(false);
+        File target = new File(System.getProperty("user.dir"), "target");
+        File reportsDirectory = new File(target, "tmp-afterall-3412");
+        StartupReportConfiguration reportConfig = new StartupReportConfiguration(
+                true,
+                true,
+                "PLAIN",
+                false,
+                reportsDirectory,
+                false,
+                null,
+                new File(reportsDirectory, "TESTHASH"),
+                false,
+                2,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                new SurefireStatelessReporter(),
+                new SurefireConsoleOutputReporter(),
+                new SurefireStatelessTestsetInfoReporter(),
+                new ReporterFactoryOptions());
+
+        DummyTestReporter reporter = new DummyTestReporter();
+        DefaultReporterFactory factory = new DefaultReporterFactory(reportConfig, reporter);
+
+        String afterAllClass = "com.example.AfterAllFailClass";
+        Queue<TestMethodStats> runStats = new ArrayDeque<>();
+        runStats.add(new TestMethodStats(afterAllClass + ".testOne", ReportEntryType.SUCCESS, null));
+        runStats.add(new TestMethodStats(afterAllClass + ".testTwo", ReportEntryType.SUCCESS, null));
+        runStats.add(new TestMethodStats(
+                afterAllClass + ".executionError",
+                ReportEntryType.ERROR,
+                new DummyStackTraceWriter(afterAllClass + ".executionError " + TEST_ERROR_SUFFIX)));
+
+        TestSetRunListener runListener = mock(TestSetRunListener.class);
+        when(runListener.getTestMethodStats()).thenReturn(runStats);
+        factory.addListener(runListener);
+
+        invokeMethod(factory, "mergeTestHistoryResult");
+        RunStatistics mergedStatistics = factory.getGlobalRunStatistics();
+
+        assertEquals(3, mergedStatistics.getCompletedCount());
+        assertEquals(1, mergedStatistics.getErrors());
+        assertEquals(0, mergedStatistics.getFailures());
+        assertEquals(0, mergedStatistics.getFlakes());
+        assertEquals(0, mergedStatistics.getSkipped());
+
+        factory.printTestFailures(TestResultType.ERROR);
+        assertEquals(
+                asList("Errors: ", "  " + afterAllClass + ".executionError " + TEST_ERROR_SUFFIX),
+                reporter.getMessages());
+
+        reporter.reset();
+        factory.printTestFailures(TestResultType.FLAKE);
+        assertEquals(emptyList(), reporter.getMessages());
+    }
+
+    @Test
+    public void testIdenticalNamesWithDistinctIdsRemainSeparate() {
+        File reportsDirectory = new File(new File(System.getProperty("user.dir"), "target"), "tmpIdentity");
+        StartupReportConfiguration reportConfig = new StartupReportConfiguration(
+                true,
+                true,
+                "PLAIN",
+                false,
+                reportsDirectory,
+                false,
+                null,
+                new File(reportsDirectory, "TESTHASH"),
+                false,
+                1,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                new SurefireStatelessReporter(),
+                new SurefireConsoleOutputReporter(),
+                new SurefireStatelessTestsetInfoReporter(),
+                new ReporterFactoryOptions());
+        DefaultReporterFactory factory = new DefaultReporterFactory(reportConfig, new DummyTestReporter());
+
+        String identicalName = "com.example.Test.identical name";
+        Queue<TestMethodStats> runStats = new ArrayDeque<>();
+        runStats.add(new TestMethodStats(identicalName, 1L, ReportEntryType.SKIPPED, null));
+        runStats.add(new TestMethodStats(
+                identicalName, 2L, ReportEntryType.FAILURE, new DummyStackTraceWriter(ASSERTION_FAIL)));
+        runStats.add(new TestMethodStats(identicalName, 3L, ReportEntryType.SUCCESS, null));
+        runStats.add(new TestMethodStats(
+                identicalName, 2L, ReportEntryType.FAILURE, new DummyStackTraceWriter(ASSERTION_FAIL)));
+
+        TestSetRunListener runListener = mock(TestSetRunListener.class);
+        when(runListener.getTestMethodStats()).thenReturn(runStats);
+        factory.addListener(runListener);
+
+        RunStatistics mergedStatistics = factory.getGlobalRunStatistics();
+        assertEquals(3, mergedStatistics.getCompletedCount());
+        assertEquals(0, mergedStatistics.getErrors());
+        assertEquals(1, mergedStatistics.getFailures());
+        assertEquals(0, mergedStatistics.getFlakes());
+        assertEquals(1, mergedStatistics.getSkipped());
+    }
+
+    static final class DummyTestReporter implements ConsoleLogger {
+        private final List<String> messages = new ArrayList<>();
+
+        @Override
+        public boolean isDebugEnabled() {
+            return true;
+        }
+
+        @Override
+        public void debug(String message) {
+            messages.add(message);
+        }
+
+        @Override
+        public boolean isInfoEnabled() {
+            return true;
+        }
+
+        @Override
+        public void info(String message) {
+            messages.add(message);
+        }
+
+        @Override
+        public boolean isWarnEnabled() {
+            return true;
+        }
+
+        @Override
+        public void warning(String message) {
+            messages.add(message);
+        }
+
+        @Override
+        public boolean isErrorEnabled() {
+            return true;
+        }
+
+        @Override
+        public void error(String message) {
+            messages.add(message);
+        }
+
+        @Override
+        public void error(String message, Throwable t) {
+            messages.add(message + " " + t.getLocalizedMessage());
+        }
+
+        @Override
+        public void error(Throwable t) {
+            messages.add(t.getLocalizedMessage());
+        }
+
+        List<String> getMessages() {
+            return messages;
+        }
+
+        void reset() {
+            messages.clear();
+        }
+    }
+
+    @Test
+    public void testGetTestResultType() {
+        List<ReportEntryType> emptyList = new ArrayList<>();
+        assertEquals(TestResultType.UNKNOWN, getTestResultType(emptyList, 1));
+
+        List<ReportEntryType> successList = new ArrayList<>();
+        successList.add(ReportEntryType.SUCCESS);
+        successList.add(ReportEntryType.SUCCESS);
+        assertEquals(TestResultType.SUCCESS, getTestResultType(successList, 1));
+
+        List<ReportEntryType> failureErrorList = new ArrayList<>();
+        failureErrorList.add(ReportEntryType.FAILURE);
+        failureErrorList.add(ReportEntryType.ERROR);
+        assertEquals(TestResultType.ERROR, getTestResultType(failureErrorList, 1));
+
+        List<ReportEntryType> errorFailureList = new ArrayList<>();
+        errorFailureList.add(ReportEntryType.ERROR);
+        errorFailureList.add(ReportEntryType.FAILURE);
+        assertEquals(TestResultType.ERROR, getTestResultType(errorFailureList, 1));
+
+        List<ReportEntryType> flakeList = new ArrayList<>();
+        flakeList.add(ReportEntryType.SUCCESS);
+        flakeList.add(ReportEntryType.FAILURE);
+        assertEquals(TestResultType.FLAKE, getTestResultType(flakeList, 1));
+
+        assertEquals(TestResultType.FAILURE, getTestResultType(flakeList, 0));
+
+        flakeList = new ArrayList<>();
+        flakeList.add(ReportEntryType.ERROR);
+        flakeList.add(ReportEntryType.SUCCESS);
+        flakeList.add(ReportEntryType.FAILURE);
+        assertEquals(TestResultType.FLAKE, getTestResultType(flakeList, 1));
+
+        assertEquals(TestResultType.ERROR, getTestResultType(flakeList, 0));
+
+        List<ReportEntryType> skippedList = new ArrayList<>();
+        skippedList.add(ReportEntryType.SKIPPED);
+        assertEquals(TestResultType.SKIPPED, getTestResultType(skippedList, 1));
+    }
+
+    @Test
+    public void testLogger() {
+        MessageUtils.setColorEnabled(false);
+        File target = new File(System.getProperty("user.dir"), "target");
+        File reportsDirectory = new File(target, "tmp6");
+        StartupReportConfiguration reportConfig = new StartupReportConfiguration(
+                true,
+                true,
+                "PLAIN",
+                false,
+                reportsDirectory,
+                false,
+                null,
+                new File(reportsDirectory, "TESTHASH"),
+                false,
+                1,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                new SurefireStatelessReporter(),
+                new SurefireConsoleOutputReporter(),
+                new SurefireStatelessTestsetInfoReporter(),
+                new ReporterFactoryOptions());
+
+        DummyTestReporter reporter = new DummyTestReporter();
+
+        DefaultReporterFactory factory = new DefaultReporterFactory(reportConfig, reporter);
+
+        TestReportListener<TestOutputReportEntry> runListener = factory.createTestReportListener();
+
+        assertTrue(runListener.isDebugEnabled());
+        assertTrue(runListener.isInfoEnabled());
+        assertTrue(runListener.isWarnEnabled());
+        assertTrue(runListener.isErrorEnabled());
+
+        runListener.debug("msg");
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("msg", reporter.getMessages().get(0));
+        reporter.reset();
+
+        runListener.info("msg\n");
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("msg", reporter.getMessages().get(0));
+        reporter.reset();
+
+        runListener.warning("msg\r\n");
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("msg", reporter.getMessages().get(0));
+        reporter.reset();
+
+        runListener.error("msg");
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("msg", reporter.getMessages().get(0));
+        reporter.reset();
+
+        runListener.error("msg\n", new Exception("e"));
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("msg e", reporter.getMessages().get(0));
+        reporter.reset();
+
+        runListener.error(new Exception("e"));
+        assertEquals(1, reporter.getMessages().size());
+        assertEquals("e", reporter.getMessages().get(0));
+        reporter.reset();
+    }
+
+    @Test
+    public void testCreateReporterWithZeroStatistics() {
+        MessageUtils.setColorEnabled(false);
+        File target = new File(System.getProperty("user.dir"), "target");
+        File reportsDirectory = new File(target, "tmp7");
+        StartupReportConfiguration reportConfig = new StartupReportConfiguration(
+                true,
+                true,
+                "PLAIN",
+                false,
+                reportsDirectory,
+                false,
+                null,
+                new File(reportsDirectory, "TESTHASH"),
+                false,
+                0,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                new SurefireStatelessReporter(),
+                new SurefireConsoleOutputReporter(),
+                new SurefireStatelessTestsetInfoReporter(),
+                new ReporterFactoryOptions());
+
+        assertTrue(reportConfig.isUseFile());
+        assertTrue(reportConfig.isPrintSummary());
+        assertEquals("PLAIN", reportConfig.getReportFormat());
+        assertFalse(reportConfig.isRedirectTestOutputToFile());
+        assertEquals(reportsDirectory, reportConfig.getReportsDirectory());
+        assertFalse(reportConfig.isTrimStackTrace());
+        assertNull(reportConfig.getReportNameSuffix());
+        assertEquals(new File(reportsDirectory, "TESTHASH"), reportConfig.getStatisticsFile());
+        assertFalse(reportConfig.isRequiresRunHistory());
+        assertEquals(0, reportConfig.getRerunFailingTestsCount());
+        assertNull(reportConfig.getXsdSchemaLocation());
+        assertEquals(UTF_8, reportConfig.getEncoding());
+        assertFalse(reportConfig.isForking());
+        assertNotNull(reportConfig.getXmlReporter());
+        assertNotNull(reportConfig.getConsoleOutputReporter());
+        assertNotNull(reportConfig.getTestsetReporter());
+        assertNull(reportConfig.getStatisticsReporter());
+
+        DummyTestReporter reporter = new DummyTestReporter();
+
+        DefaultReporterFactory factory = new DefaultReporterFactory(reportConfig, reporter);
+        assertEquals(reportsDirectory, factory.getReportsDirectory());
+
+        TestSetRunListener runListener = (TestSetRunListener) factory.createTestReportListener();
+        Collection listeners = getInternalState(factory, "listeners");
+        assertEquals(1, listeners.size());
+        assertTrue(listeners.contains(runListener));
+
+        assertNotNull(runListener.getTestMethodStats());
+
+        factory.runStarting();
+
+        factory.close();
+
+        RunStatistics statistics = factory.getGlobalRunStatistics();
+        assertEquals(0, statistics.getCompletedCount());
+        assertEquals(new RunResult(0, 0, 0, 0), statistics.getRunResult());
+        assertEquals(0, statistics.getFailures());
+        assertEquals(0, statistics.getErrors());
+        assertEquals(0, statistics.getSkipped());
+        assertEquals(0, statistics.getFlakes());
+        assertEquals("Tests run: 0, Failures: 0, Errors: 0, Skipped: 0", statistics.getSummary());
+        assertEquals(0, statistics.getCompletedCount());
+
+        List<String> messages = reporter.getMessages();
+        assertEquals("", messages.get(0));
+        assertEquals("-------------------------------------------------------", messages.get(1));
+        assertEquals(" T E S T S", messages.get(2));
+        assertEquals("-------------------------------------------------------", messages.get(3));
+        assertEquals("", messages.get(4));
+        assertEquals("Results:", messages.get(5));
+        assertEquals("", messages.get(6));
+        assertEquals("Tests run: 0, Failures: 0, Errors: 0, Skipped: 0", messages.get(7));
+        assertEquals("", messages.get(8));
+        assertEquals(9, messages.size());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T getInternalState(Object target, String fieldName) {
+        try {
+            Class<?> clazz = target.getClass();
+            while (clazz != null) {
+                try {
+                    Field field = clazz.getDeclaredField(fieldName);
+                    field.setAccessible(true);
+                    return (T) field.get(target);
+                } catch (NoSuchFieldException e) {
+                    clazz = clazz.getSuperclass();
+                }
+            }
+            throw new NoSuchFieldException(fieldName);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T invokeMethod(Object target, String methodName, Object... args) throws Exception {
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (method.getName().equals(methodName) && method.getParameterCount() == args.length) {
+                    method.setAccessible(true);
+                    return (T) method.invoke(target, args);
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        throw new NoSuchMethodException(methodName);
+    }
+
+    static class DummyStackTraceWriter implements StackTraceWriter {
+
+        private final String stackTrace;
+
+        DummyStackTraceWriter(String stackTrace) {
+            this.stackTrace = stackTrace;
+        }
+
+        @Override
+        public String writeTraceToString() {
+            return "";
+        }
+
+        @Override
+        public String writeTrimmedTraceToString() {
+            return "";
+        }
+
+        @Override
+        public String smartTrimmedStackTrace() {
+            return stackTrace;
+        }
+
+        @Override
+        public SafeThrowable getThrowable() {
+            return null;
+        }
+    }
+}
