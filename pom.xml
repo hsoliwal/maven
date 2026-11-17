@@ -885,6 +885,9 @@ under the License.
                    syntax). License attribution is in the adjacent Apache-licensed sources and project NOTICE.
                    Exact single-file exception. -->
               <exclude>tools/m3-analyzer-report-adapter/src/test/resources/sarif/basic.sarif</exclude>
+              <!-- Sisu component index read by the container (one class name per line, no comment syntax),
+                   like the META-INF/services exclusion above. Exact single-file exception. -->
+              <exclude>tools/m3-smart-builder/extension/src/main/resources/META-INF/sisu/javax.inject.Named</exclude>
               <exclude>tools/m3-smart-builder/verification/10-toolchain.log</exclude>
               <exclude>tools/m3-smart-builder/verification/11-lint.log</exclude>
               <exclude>tools/m3-smart-builder/verification/12-compile-test-runtime.log</exclude>
