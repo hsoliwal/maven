@@ -31,7 +31,7 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.approveRewriteApply", defaultValue = "false")
     private boolean approveRewriteApply;
 
-    /** Skip a task whose declared inputs and definition are unchanged since its last success (content stamps). */
+    /** Reuse M3DB task state only after verifying declared inputs, context and output content. */
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 

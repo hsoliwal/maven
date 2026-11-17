@@ -10,8 +10,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -29,7 +27,6 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -37,8 +34,8 @@ import java.util.stream.Stream;
  * One persistent, module-local, content-verified build-state database.
  *
  * <p>"file" publishes a single atomic, sealed image; "m3db" publishes that same
- * image as one native MIndexDB artifact using its public artifact API. The latter
- * is an optional runtime integration, not a Maven-bootstrap dependency.
+ * image as one M3IndexDB artifact through {@link IndexStore} (the {@code jdk.m3.indexdb}
+ * module on M3jdk21, the library form of the same source otherwise).
  *
  * <p>File stat reuse is permitted only with a stable file key and a POSIX change
  * timestamp (ctime). On other file systems, the contents are SHA-256 checked
@@ -108,6 +105,13 @@ final class ModuleStateDb {
 
     int digestedFiles() {
         return digestedFiles;
+    }
+
+    /** Read-only copy of the recorded task states as {task, input stamp, output stamp}, in task order. */
+    java.util.List<String[]> taskStates() {
+        return tasks.entrySet().stream()
+                .map(row -> new String[] {row.getKey(), row.getValue().inputStamp, row.getValue().outputStamp})
+                .toList();
     }
 
     String stamp(TaskManifest.Task task) throws IOException {
@@ -348,7 +352,8 @@ final class ModuleStateDb {
             Path lockPath = parent.resolve("module-state.lock");
             if (Files.isSymbolicLink(lockPath)) throw new IOException("module cache lock is a symlink");
             try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock ignored = channel.lock()) {
+                    FileLock held = channel.lock()) {
+                if (!held.isValid()) throw new IOException("module state lock not acquired");
                 Path tmp = Files.createTempFile(parent, "module-state-", ".tmp");
                 try {
                     Files.write(tmp, bytes);
@@ -364,41 +369,23 @@ final class ModuleStateDb {
         }
     }
 
-    /** Adapt the canonical MIndexDB artifact API without making Maven depend on the SDK at bootstrap. */
+    /**
+     * The "m3db" backend publishes the same sealed image as one artifact through {@link IndexStore}, the one
+     * storage owner: the {@code jdk.m3.indexdb} module on M3jdk21, its library form on a stock JDK.
+     */
     private static final class NativeStorage implements Storage {
         private final Path directory;
-        private final Method open;
-        private final Method read;
-        private final Method write;
-        NativeStorage(Path directory) throws IOException {
+        NativeStorage(Path directory) {
             this.directory = directory;
-            try {
-                Class<?> type = Class.forName("com.synexia.mindex.db.MIndexDB");
-                open = type.getMethod("open", Path.class);
-                read = type.getMethod("findArtifact", CharSequence.class);
-                write = type.getMethod("putArtifact", CharSequence.class, CharSequence.class, int.class, byte[].class);
-            } catch (ReflectiveOperationException missing) {
-                throw new IOException("MIndexDB must be installed on the polyglot plugin classpath", missing);
-            }
         }
         @Override public byte[] read() throws IOException {
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, directory)) {
-                Object value = read.invoke(database, ARTIFACT);
-                if (!(value instanceof Optional<?> result) || result.isEmpty()) return null;
-                return (byte[]) result.get().getClass().getMethod("payload").invoke(result.get());
-            } catch (ReflectiveOperationException | ExceptionInInitializerError | RuntimeException error) {
-                throw new IOException("cannot read MIndexDB module artifact", error);
-            } catch (Exception error) {
-                throw new IOException("cannot close MIndexDB module artifact", error);
+            try (IndexStore store = IndexStore.open(directory)) {
+                return store.contains(ARTIFACT) ? store.read(ARTIFACT).payload() : null;
             }
         }
         @Override public void write(byte[] bytes) throws IOException {
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, directory)) {
-                write.invoke(database, ARTIFACT, KIND, VERSION, bytes);
-            } catch (ReflectiveOperationException | RuntimeException error) {
-                throw new IOException("cannot publish MIndexDB module artifact", error);
-            } catch (Exception error) {
-                throw new IOException("cannot close MIndexDB module artifact", error);
+            try (IndexStore store = IndexStore.open(directory)) {
+                store.write(ARTIFACT, KIND, VERSION, bytes);
             }
         }
     }

@@ -13,10 +13,10 @@ The original compiler/build tool remains the authority for compiling each langua
 The universal task graph provides deterministic Ant-style targets and Make-style
 prerequisites. **This version does not implement Make's incremental timestamp
 semantics:** by default tasks execute after their dependencies every time. Explicit
-incremental mode can reuse a declared-input content stamp, with the limitations below. It does not
-flatten source inputs, automatically download toolchains, or skip goals using
-unverified data. More sophisticated incremental verification belongs to the
-source owners and M3JDK/M3FS evidence services.
+incremental mode stores successful task state in a persistent **M3IndexDB file per Maven module**.
+A later Maven process can reuse that state after checking the declared inputs, build context,
+prerequisite generations and exact output contents. Source owners still declare the complete
+inputs of each cacheable task; this is not whole-reactor or arbitrary Mojo caching.
 
 ## Goals and explicit lifecycle activation
 
@@ -25,13 +25,76 @@ source owners and M3JDK/M3FS evidence services.
 - `-Dm3.polyglot.skip=true` explicitly skips the run goal.
 - `-Dm3.polyglot.dryRun=true` plans instead of executing.
 - `-Dm3.polyglot.approveRewriteApply=true` separately authorizes mutating OpenRewrite recipes.
-- `-Dm3.polyglot.incremental=true` skips a task whose content stamp is unchanged since its last success: the
-  SHA-256 of its definition (tool, working directory, arguments, outputs) and of the bytes of its declared inputs,
-  folders included file by file, recorded in `.m3/polyglot-stamps/<task>.sha256`. A task whose declared outputs are
-  missing runs again. No timestamps and nothing undeclared take part; declare an upstream task's outputs as this
-  task's inputs to have its changes re-run this task. Off by default. A task without both declared inputs and
-  outputs always executes; CodeQL and OpenRewrite providers always execute, even in incremental mode.
-  Stamps do **not** certify complete inputs, external tool versions, environment or ABI compatibility.
+- `-Dm3.polyglot.incremental=true` enables module database reuse. It is off by default.
+  A task needs separate declared input and output paths and verified prerequisite generations.
+  CodeQL, OpenRewrite and pluggable M3 providers always execute, as do their unverified dependents.
+
+### Persistent module database
+
+Each module owns one `.m3/module.m3db` file. The archive contains the **original M3IndexDB**
+content-addressed blob/ref format, with a versioned `successful-tasks` artifact; it is not a renamed
+stamp file or a replacement database engine. The Apache-2.0 M3IndexDB implementation is received
+from a pinned public M3JDK21 source revision, with its original package and exact source closure.
+The plugin carries those classes, their license and provenance, so consumers need no separate
+M3DB dependency. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for the donor seal.
+
+| Reuse condition | Evidence checked on every lookup |
+| --- | --- |
+| Same module | Canonical module directory identity |
+| Same task and prerequisites | Tool, arguments, working directory, output declarations and successful dependency generations, including aggregation targets |
+| Same input generation | Sorted, separately framed file digests, paths, sizes and kinds; directories include added/deleted files and empty directories |
+| Same execution context | Resolved executable bytes/path, full inherited process environment digest, OS/JVM properties and plugin/database implementation identity |
+| Same local Maven configuration | Module and ancestor POMs, plus `.mvn/maven.config`, `jvm.config`, `extensions.xml` and `toolchains.xml` |
+| Outputs remain valid | Exact file and directory content digests, including missing, added or modified output files |
+
+Environment values are hashed in memory; database records contain only task names and input/output
+digests, never the environment values or source/output payloads. A relocated module, incompatible
+schema or corrupt archive starts with a cache miss. Legacy `.m3/polyglot-stamps/*.sha256` files are
+not accepted as successful M3DB evidence; the first new run establishes the stronger baseline.
+
+Before launching a task, Maven durably revokes its earlier record and the records of its transitive
+dependents. A failed, interrupted, timed-out or nonincremental run cannot expose an older success.
+After a successful process, inputs/context are checked again before publishing its output digest.
+If they changed during execution, the successful command is reported `UNCACHED` and later runs
+execute it again. Independent unchanged tasks retain their records.
+
+A stable sibling `.m3/module.m3db.lock` covers validation, execution and publication. A second
+process using the same module is refused with an explicit `already in use` error; different module
+roots have independent locks. Every update creates a fresh temporary archive, closes and forces it,
+then atomically replaces the module file. A filesystem without atomic replacement cannot publish
+reusable state. The lock file is coordination only, not a second database. Dry runs create neither
+file; a nonincremental real run can create the lock but creates no database unless it must revoke
+existing state. The database and lock paths are reserved from declared task outputs.
+
+**Declaration contract.** Use this mode for deterministic tasks whose relevant file inputs and
+outputs are fully declared. Declare dependency JARs, compiler libraries, native headers, external
+settings, processor inputs, parent POMs outside the directory ancestry, lock files and other tool
+resources when the command uses them. Database persistence does not infer undeclared dependencies,
+network state, time/randomness or non-file effects. In-place input/output tasks, tasks whose output trees overlap another task's outputs, and tasks
+with unknown provider dependencies remain uncached. Inputs must be stable while the original tool runs.
+
+Content validation still reads the declared files; the saved work is the original process's
+compilation/generation, not an unverified timestamp shortcut. This change does not skip ordinary
+Java lifecycle Mojos, restore deleted outputs from a remote cache, replace M3File/M3AST ownership,
+or remove the watcher's existing conservative clean-build fallback.
+
+The module artifact holds at most 256 successful task records in sorted parallel arrays. On capacity,
+the first task by lexical name is evicted and can execute again. Input/output fingerprinting has a
+262,144-path and 16-GiB streamed-content budget per tree pass; no source payload is retained.
+The persisted receipt is bounded to 128 KiB and the archive to 256 KiB. Nested symlinks and special
+files are rejected in reusable file trees. Cache corruption is never a reason to skip work.
+
+For a project with complete declarations, the same commands work across separate Maven processes:
+
+```sh
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true verify
+# Second process: verified unchanged tasks report UP-TO-DATE.
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true verify
+```
+
+Add `.m3/module.m3db`, `.m3/module.m3db.lock` and `.m3/module-state-*/` to the consuming project's
+ignore rules. Removing the module database after builds have stopped forces new task execution;
+never remove the lock while another process is using the module.
 
 ### M3DB-backed persistent state for each module (new, opt-in)
 
@@ -260,8 +323,8 @@ All names are lowercase, validated and unambiguous. The registry fails closed on
 unknown or duplicate IDs, unsupported capabilities/languages, incompatible SPI
 versions, malformed service descriptors and invalid argv. The `plan` command
 validates provider resolution without starting a subprocess. Provider tasks are
-**never** skipped by the lightweight incremental stamp heuristic, which does
-not model provider classpaths, ABI or environment.
+**never** skipped by module database reuse: provider-owned hidden inputs, classpaths and ABI
+need their own complete execution evidence.
 
 Only the `interpreter` operation may omit output declarations. The others need
 separate declared inputs and outputs, and overlapping source/output paths are

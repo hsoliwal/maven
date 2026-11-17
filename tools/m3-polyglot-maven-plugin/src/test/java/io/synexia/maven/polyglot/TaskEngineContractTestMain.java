@@ -128,6 +128,7 @@ public final class TaskEngineContractTestMain {
         incremental(manifest, project, log);
         require(runs(project) == 1, "first incremental run starts the tool");
         require(Files.isRegularFile(project.resolve(InputStamps.DIRECTORY).resolve("copy.sha256")), "stamp recorded");
+        require(!Files.exists(project.resolve(".m3/module.m3db")), "the default backend records no module database");
         log.clear();
         require(incremental(manifest, project, log).equals(List.of("copy")), "an up-to-date task still counts as satisfied");
         require(runs(project) == 1 && log.stream().anyMatch(row -> row.startsWith("UP-TO-DATE copy")),

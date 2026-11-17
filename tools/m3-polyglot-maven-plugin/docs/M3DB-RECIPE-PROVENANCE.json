@@ -1,0 +1,21 @@
+{
+  "schema": "m3.maven.module.db.result-provenance.v1",
+  "recipe_id": "com.synexia.m3.MavenModuleDb20261117",
+  "canonical_recipe_repository": "hsoliwal/com.synexia",
+  "canonical_recipe_path": "synexia-openrewrite-recipes/recipe-crates/m3-maven-module-db-20261117",
+  "recipe_engine_source_revision": "2d6aee4768fd71e9488d6a1a01eaf41cab33aecb",
+  "recipe_engine_source_revision_role": "Exact source pin of the existing canonical engines, not a claim that the new task crate already existed at this revision.",
+  "target_repository": "hsoliwal/maven",
+  "target_base_revision": "981eaaab6f046d49912fed7c81b677de7e485caa",
+  "donor_repository": "hsoliwal/M3JDK21",
+  "donor_revision": "3dedac2b342a37d964a1ce93a2b497008a6fb6cf",
+  "donor_manifest": "src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv",
+  "license": "Apache-2.0; original donor headers and notice retained",
+  "result_materialization": "Existing canonical OpenRewrite Java/text snapshot engines; shared SDK tests and strict receiver; task qualification receipts are retained with the canonical recipe and linked from the pull request.",
+  "scope": "Existing m3-polyglot run goal and portable TaskRunner incremental mode. Maven core lifecycle and arbitrary goal skipping are unchanged.",
+  "claims_excluded": [
+    "Universal hidden-input completeness",
+    "General performance speedup",
+    "All-platform Maven release qualification"
+  ]
+}
