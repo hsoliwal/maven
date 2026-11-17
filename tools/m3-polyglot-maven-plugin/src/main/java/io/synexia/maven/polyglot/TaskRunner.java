@@ -83,8 +83,9 @@ public final class TaskRunner {
             boolean incremental,
             String stateBackend,
             Consumer<String> log) throws IOException, InterruptedException {
-        if (!java.util.Set.of("legacy", "file", "m3db").contains(stateBackend)) {
-            throw new IllegalArgumentException("state backend must be legacy, file or m3db");
+        if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2").contains(stateBackend)
+                && (stateBackend == null || !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}"))) {
+            throw new IllegalArgumentException("unknown portable module state backend");
         }
         if (!incremental && !"legacy".equals(stateBackend)) {
             throw new IllegalArgumentException("module state DB requires incremental execution");
