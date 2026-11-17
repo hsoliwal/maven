@@ -1,0 +1,117 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="ba4fb97a-ca62-4e69-8203-7d3729216fc9" name="builder@BUILDHOST 2026-11-17 22:27:12" runUser="BUILDHOST\builder" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-17T22:27:12.1857534+05:30" queuing="2026-11-17T22:27:12.1857544+05:30" start="2026-11-17T22:26:51.0160271+05:30" finish="2026-11-17T22:27:13.1125751+05:30" />
+  <TestSettings name="default" id="38a33147-9afe-4bfa-ad21-25326f163736">
+    <Deployment runDeploymentRoot="builder_BUILDHOST_2026-11-17_22_27_12" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="b4f48cef-5d3d-4dde-8fa0-8d9c76ae2e3a" testId="100e7646-4c3e-31bb-606f-aacbdcf784ca" testName="Calc.Tests.CalculatorTests.Adds" computerName="BUILDHOST" duration="00:00:00.0032908" startTime="2026-11-17T22:27:12.2347967+05:30" endTime="2026-11-17T22:27:12.2347978+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b4f48cef-5d3d-4dde-8fa0-8d9c76ae2e3a">
+      <Output>
+        <StdOut>adding 2 and 3</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="1e50536a-7e6b-4e8d-ba2f-c8dd7d4eebe8" testId="7f14577a-910a-46e0-6a2b-eeeae10ffef0" testName="Calc.Tests.CalculatorTests.AddsCases(a: 2, b: 2, sum: 5)" computerName="BUILDHOST" duration="00:00:02.1175314" startTime="2026-11-17T22:27:12.1944393+05:30" endTime="2026-11-17T22:27:12.1944401+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1e50536a-7e6b-4e8d-ba2f-c8dd7d4eebe8">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: 5&#xD;
+Actual:   4</Message>
+          <StackTrace>   at Calc.Tests.CalculatorTests.AddsCases(Int32 a, Int32 b, Int32 sum) in C:\work\probe\tests\Calc.Tests\CalculatorTests.cs:line 28&#xD;
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="2e5dede7-0907-4e05-b44c-e1ee424398d2" testId="8d64a334-7417-069f-7a73-5a1c2e661aed" testName="Calc.Tests.CalculatorTests.AddsCases(a: 1, b: 1, sum: 2)" computerName="BUILDHOST" duration="00:00:00.0087826" startTime="2026-11-17T22:27:12.2083864+05:30" endTime="2026-11-17T22:27:12.2083868+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2e5dede7-0907-4e05-b44c-e1ee424398d2" />
+    <UnitTestResult executionId="0a82c37e-e78f-46e5-8504-cb8a7d800736" testId="d8acd070-a7c0-9e9f-4955-097be63c185a" testName="Calc.Tests.CalculatorTests.Skipped" computerName="BUILDHOST" duration="00:00:00.0010000" startTime="2026-11-17T22:27:10.4627397+05:30" endTime="2026-11-17T22:27:10.4630591+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="NotExecuted" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0a82c37e-e78f-46e5-8504-cb8a7d800736">
+      <Output>
+        <ErrorInfo>
+          <Message>not ready</Message>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="9f2155ef-3f33-451d-9f34-6d0902ebc4f8" testId="6e36dd51-be4c-5276-5f61-7ed841958bf0" testName="Calc.Tests.CalculatorTests.FailsOnPurpose" computerName="BUILDHOST" duration="00:00:00.0006539" startTime="2026-11-17T22:27:12.2487463+05:30" endTime="2026-11-17T22:27:12.2487468+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9f2155ef-3f33-451d-9f34-6d0902ebc4f8">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: 4&#xD;
+Actual:   5</Message>
+          <StackTrace>   at Calc.Tests.CalculatorTests.FailsOnPurpose() in C:\work\probe\tests\Calc.Tests\CalculatorTests.cs:line 20&#xD;
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Calc.Tests.CalculatorTests.FailsOnPurpose" storage="c:\work\probe\tests\calc.tests\bin\debug\net10.0\calc.tests.dll" id="6e36dd51-be4c-5276-5f61-7ed841958bf0">
+      <Execution id="9f2155ef-3f33-451d-9f34-6d0902ebc4f8" />
+      <TestMethod codeBase="C:\work\probe\tests\Calc.Tests\bin\Debug\net10.0\Calc.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Calc.Tests.CalculatorTests" name="FailsOnPurpose" />
+    </UnitTest>
+    <UnitTest name="Calc.Tests.CalculatorTests.AddsCases(a: 2, b: 2, sum: 5)" storage="c:\work\probe\tests\calc.tests\bin\debug\net10.0\calc.tests.dll" id="7f14577a-910a-46e0-6a2b-eeeae10ffef0">
+      <Execution id="1e50536a-7e6b-4e8d-ba2f-c8dd7d4eebe8" />
+      <TestMethod codeBase="C:\work\probe\tests\Calc.Tests\bin\Debug\net10.0\Calc.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Calc.Tests.CalculatorTests" name="AddsCases" />
+    </UnitTest>
+    <UnitTest name="Calc.Tests.CalculatorTests.Adds" storage="c:\work\probe\tests\calc.tests\bin\debug\net10.0\calc.tests.dll" id="100e7646-4c3e-31bb-606f-aacbdcf784ca">
+      <Execution id="b4f48cef-5d3d-4dde-8fa0-8d9c76ae2e3a" />
+      <TestMethod codeBase="C:\work\probe\tests\Calc.Tests\bin\Debug\net10.0\Calc.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Calc.Tests.CalculatorTests" name="Adds" />
+    </UnitTest>
+    <UnitTest name="Calc.Tests.CalculatorTests.Skipped" storage="c:\work\probe\tests\calc.tests\bin\debug\net10.0\calc.tests.dll" id="d8acd070-a7c0-9e9f-4955-097be63c185a">
+      <Execution id="0a82c37e-e78f-46e5-8504-cb8a7d800736" />
+      <TestMethod codeBase="C:\work\probe\tests\Calc.Tests\bin\Debug\net10.0\Calc.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Calc.Tests.CalculatorTests" name="Skipped" />
+    </UnitTest>
+    <UnitTest name="Calc.Tests.CalculatorTests.AddsCases(a: 1, b: 1, sum: 2)" storage="c:\work\probe\tests\calc.tests\bin\debug\net10.0\calc.tests.dll" id="8d64a334-7417-069f-7a73-5a1c2e661aed">
+      <Execution id="2e5dede7-0907-4e05-b44c-e1ee424398d2" />
+      <TestMethod codeBase="C:\work\probe\tests\Calc.Tests\bin\Debug\net10.0\Calc.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Calc.Tests.CalculatorTests" name="AddsCases" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="100e7646-4c3e-31bb-606f-aacbdcf784ca" executionId="b4f48cef-5d3d-4dde-8fa0-8d9c76ae2e3a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7f14577a-910a-46e0-6a2b-eeeae10ffef0" executionId="1e50536a-7e6b-4e8d-ba2f-c8dd7d4eebe8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8d64a334-7417-069f-7a73-5a1c2e661aed" executionId="2e5dede7-0907-4e05-b44c-e1ee424398d2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d8acd070-a7c0-9e9f-4955-097be63c185a" executionId="0a82c37e-e78f-46e5-8504-cb8a7d800736" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6e36dd51-be4c-5276-5f61-7ed841958bf0" executionId="9f2155ef-3f33-451d-9f34-6d0902ebc4f8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="5" executed="4" passed="2" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.03] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.5)&#xD;
+[xUnit.net 00:00:05.95]   Discovering: Calc.Tests&#xD;
+[xUnit.net 00:00:06.71]   Discovered:  Calc.Tests&#xD;
+[xUnit.net 00:00:06.81]   Starting:    Calc.Tests&#xD;
+[xUnit.net 00:00:07.81]       not ready&#xD;
+Test 'Calc.Tests.CalculatorTests.Skipped' was skipped in the test run.&#xD;
+[xUnit.net 00:00:09.53]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:09.53]       Expected: 5&#xD;
+[xUnit.net 00:00:09.53]       Actual:   4&#xD;
+[xUnit.net 00:00:09.53]       Stack Trace:&#xD;
+[xUnit.net 00:00:09.54]         C:\work\probe\tests\Calc.Tests\CalculatorTests.cs(28,0): at Calc.Tests.CalculatorTests.AddsCases(Int32 a, Int32 b, Int32 sum)&#xD;
+[xUnit.net 00:00:09.56]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)&#xD;
+[xUnit.net 00:00:09.56]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:09.63]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:09.63]       Expected: 4&#xD;
+[xUnit.net 00:00:09.63]       Actual:   5&#xD;
+[xUnit.net 00:00:09.63]       Stack Trace:&#xD;
+[xUnit.net 00:00:09.63]         C:\work\probe\tests\Calc.Tests\CalculatorTests.cs(20,0): at Calc.Tests.CalculatorTests.FailsOnPurpose()&#xD;
+[xUnit.net 00:00:09.63]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)&#xD;
+[xUnit.net 00:00:09.63]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:09.67]   Finished:    Calc.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="BUILDHOST" outcome="Warning" timestamp="2026-11-17T22:27:10.4163845+05:30">
+        <Text>[xUnit.net 00:00:07.77]     Calc.Tests.CalculatorTests.Skipped [SKIP]</Text>
+      </RunInfo>
+      <RunInfo computerName="BUILDHOST" outcome="Error" timestamp="2026-11-17T22:27:12.3194656+05:30">
+        <Text>[xUnit.net 00:00:09.50]     Calc.Tests.CalculatorTests.AddsCases(a: 2, b: 2, sum: 5) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="BUILDHOST" outcome="Error" timestamp="2026-11-17T22:27:12.3197653+05:30">
+        <Text>[xUnit.net 00:00:09.63]     Calc.Tests.CalculatorTests.FailsOnPurpose [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

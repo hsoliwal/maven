@@ -149,10 +149,7 @@ public final class Mavenizer {
             add(steps, "test", "meson", "test", "-C", "build/meson");
         }
         python(dir, steps);
-        if (any(dir, ".sln") || any(dir, ".slnx") || any(dir, ".csproj")) {
-            add(steps, "compile", "dotnet", "build");
-            add(steps, "test", "dotnet", "test");
-        }
+        DotnetSteps.add(dir, steps);
         if (has(dir, "MODULE.bazel") || has(dir, "WORKSPACE") || has(dir, "WORKSPACE.bazel")) {
             add(steps, "compile", "bazel", "build", "//...");
             add(steps, "test", "bazel", "test", "//...");
@@ -282,12 +279,22 @@ public final class Mavenizer {
                         .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
                         .append("          </execution>\n");
             }
+            if (DotnetSteps.packs(steps)) attach(text);
             text.append("        </executions>\n")
                     .append("      </plugin></plugins></build>\n")
                     .append("    </profile>\n")
                     .append("  </profiles>\n");
         }
         return text.append("</project>\n").toString();
+    }
+
+    /** After the package run, attach the packages it wrote (declared later, so it runs later in the phase). */
+    private static void attach(StringBuilder text) {
+        text.append("          <execution>\n")
+                .append("            <id>m3-polyglot-attach</id>\n")
+                .append("            <phase>package</phase>\n")
+                .append("            <goals><goal>attach</goal></goals>\n")
+                .append("          </execution>\n");
     }
 
     static String artifactId(Path dir) {
@@ -306,11 +313,11 @@ public final class Mavenizer {
         return has(dir, "pom.xml") && read(dir, "pom.xml").matches("(?s).*<name>[^<]*\\(mavenized: [^<]*\\)</name>.*");
     }
 
-    private static boolean has(Path dir, String name) {
+    static boolean has(Path dir, String name) {
         return Files.isRegularFile(dir.resolve(name), LinkOption.NOFOLLOW_LINKS);
     }
 
-    private static boolean any(Path dir, String suffix) throws IOException {
+    static boolean any(Path dir, String suffix) throws IOException {
         try (Stream<Path> list = Files.list(dir)) {
             return list.anyMatch(path -> path.getFileName().toString().endsWith(suffix)
                     && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));

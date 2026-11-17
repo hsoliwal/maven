@@ -38,7 +38,17 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjCompilerProvider.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/DotnetSteps.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/TrxReport.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireXml.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportMain.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/NugetPackages.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/DotnetReportsContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
@@ -49,3 +59,8 @@ java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
+# A real ECJ compile runs only when M3_POLYGLOT_ECJ_JAR names an ECJ jar; otherwise the case reports NOT_RUN.
+java ${M3_POLYGLOT_ECJ_JAR:+-Dm3.polyglot.ecj.jar="$M3_POLYGLOT_ECJ_JAR"} \
+  -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.DotnetReportsContractTestMain
