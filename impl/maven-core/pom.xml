@@ -54,6 +54,17 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
     <lifecycle.maven-site-plugin>3.22.0</lifecycle.maven-site-plugin>
     <lifecycle.maven-surefire-plugin>3.6.1</lifecycle.maven-surefire-plugin>
     <lifecycle.maven-war-plugin>3.5.1</lifecycle.maven-war-plugin>
+    <!-- The versions the default lifecycle binds, filtered into plugin-versions.properties. By default they
+         equal the lifecycle.* versions above. Profile 'plugins' binds the inline copies built from plugins/
+         instead; the lifecycle.* properties stay unchanged because the pluginManagement below also builds
+         maven-core itself with them. -->
+    <lifecycle.binding.maven-clean-plugin>${lifecycle.maven-clean-plugin}</lifecycle.binding.maven-clean-plugin>
+    <lifecycle.binding.maven-compiler-plugin>${lifecycle.maven-compiler-plugin}</lifecycle.binding.maven-compiler-plugin>
+    <lifecycle.binding.maven-deploy-plugin>${lifecycle.maven-deploy-plugin}</lifecycle.binding.maven-deploy-plugin>
+    <lifecycle.binding.maven-install-plugin>${lifecycle.maven-install-plugin}</lifecycle.binding.maven-install-plugin>
+    <lifecycle.binding.maven-jar-plugin>${lifecycle.maven-jar-plugin}</lifecycle.binding.maven-jar-plugin>
+    <lifecycle.binding.maven-resources-plugin>${lifecycle.maven-resources-plugin}</lifecycle.binding.maven-resources-plugin>
+    <lifecycle.binding.maven-surefire-plugin>${lifecycle.maven-surefire-plugin}</lifecycle.binding.maven-surefire-plugin>
   </properties>
 
   <dependencies>
@@ -563,4 +574,21 @@ Preserve first-party SPDX notices while retaining inherited Java and POM formatt
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <!-- Bind the default lifecycle to the inline plugins under plugins/ (batch 1), built in the same
+           reactor with the fork version. Stock coordinates are kept. -->
+      <id>plugins</id>
+      <properties>
+        <lifecycle.binding.maven-clean-plugin>${project.version}</lifecycle.binding.maven-clean-plugin>
+        <lifecycle.binding.maven-compiler-plugin>${project.version}</lifecycle.binding.maven-compiler-plugin>
+        <lifecycle.binding.maven-deploy-plugin>${project.version}</lifecycle.binding.maven-deploy-plugin>
+        <lifecycle.binding.maven-install-plugin>${project.version}</lifecycle.binding.maven-install-plugin>
+        <lifecycle.binding.maven-jar-plugin>${project.version}</lifecycle.binding.maven-jar-plugin>
+        <lifecycle.binding.maven-resources-plugin>${project.version}</lifecycle.binding.maven-resources-plugin>
+        <lifecycle.binding.maven-surefire-plugin>${project.version}</lifecycle.binding.maven-surefire-plugin>
+      </properties>
+    </profile>
+  </profiles>
 </project>
