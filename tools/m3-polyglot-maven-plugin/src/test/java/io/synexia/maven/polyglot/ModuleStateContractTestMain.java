@@ -31,6 +31,8 @@ public final class ModuleStateContractTestMain {
     private static final String DATABASE = ".m3/module.m3db";
     private static final String ENVIRONMENT = "M3_MODULE_DB_CONTRACT_ENVIRONMENT";
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
+    /** The owner-backed M3IndexDB state backend (decision 55). */
+    private static final String BACKEND = "m3db";
     private static int checks;
 
     private ModuleStateContractTestMain() {}
@@ -220,7 +222,7 @@ public final class ModuleStateContractTestMain {
         run(project, "copy", true);
         Files.writeString(project.resolve("m3-build.tsv"), original.replace("arg\tcopy\tcopy\n", "arg\tcopy\tsleep\n"));
         expectFailure(() -> TaskRunner.run(TaskManifest.load(project.resolve("m3-build.tsv")), project, "copy", false,
-                Duration.ofMillis(300), false, true, ignored -> {}), "timed out execution fails");
+                Duration.ofMillis(300), false, true, BACKEND, ignored -> {}), "timed out execution fails");
         long attempts = count(project);
         Files.writeString(project.resolve("m3-build.tsv"), original);
         run(project, "copy", true);
@@ -397,7 +399,7 @@ public final class ModuleStateContractTestMain {
     private static void doesNotWriteDuringPlanning(Path temporary) throws Exception {
         Path project = copyProject(temporary, "dry-run", "copy");
         TaskRunner.run(TaskManifest.load(project.resolve("m3-build.tsv")), project, "copy", true,
-                TIMEOUT, false, true, ignored -> {});
+                TIMEOUT, false, true, BACKEND, ignored -> {});
         check(!Files.exists(project.resolve(".m3")) && count(project) == 0, "planning creates no state and starts no tool");
         run(project, "copy", false);
         run(project, "copy", false);
@@ -467,10 +469,11 @@ public final class ModuleStateContractTestMain {
         run(project, target, incremental, ignored -> {});
     }
 
+    /** Incremental runs select the "m3db" state backend; disabled runs keep the default "legacy". */
     private static void run(Path project, String target, boolean incremental, java.util.function.Consumer<String> log)
             throws Exception {
         TaskRunner.run(TaskManifest.load(project.resolve("m3-build.tsv")), project, target, false,
-                TIMEOUT, false, incremental, log);
+                TIMEOUT, false, incremental, incremental ? BACKEND : "legacy", log);
     }
 
     private static void invoke(Path project, String target, Map<String, String> environment) throws Exception {

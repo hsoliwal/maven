@@ -151,7 +151,8 @@ public final class MavenizerContractTestMain {
         TaskManifest manifest = TaskManifest.load(file);
         for (int i = 0; i < 2; i++) TaskRunner.run(manifest, project, "count", false, Duration.ofSeconds(60), false, true, line -> {});
         require(Files.readAllLines(project.resolve("runs.log")).size() == 2, "a task without declared inputs runs every time");
-        require(!Files.exists(project.resolve(".m3/module.m3db")), "and records no reusable module state");
+        require(!Files.exists(project.resolve(InputStamps.DIRECTORY)) && !Files.exists(project.resolve(M3DbModuleStore.FILE)),
+                "and records no stamp or reusable module state");
         passed++;
     }
 

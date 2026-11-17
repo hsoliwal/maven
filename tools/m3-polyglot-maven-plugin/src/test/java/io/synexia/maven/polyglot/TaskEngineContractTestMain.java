@@ -26,7 +26,8 @@ public final class TaskEngineContractTestMain {
             refusesDuplicateOutputsAndTraversal(temp);
             preservesArgumentsAndNoShell(temp);
             checksInputsOutputsWithoutSkipping(temp);
-            skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp);
+            skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp, "legacy");
+            skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp, "m3db");
             checksInvalidUTF8(temp);
             checksSymlinkRefusal(temp);
             System.out.println("PASS: " + passed + " M3 polyglot contract cases");
@@ -106,9 +107,12 @@ public final class TaskEngineContractTestMain {
         passed++;
     }
 
-    private static void skipsOnlyUnchangedDeclaredInputsWhenIncremental(Path workspace) throws Exception {
-        Path project = Files.createDirectories(workspace.resolve("incremental"));
-        String jdk = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+    private static void skipsOnlyUnchangedDeclaredInputsWhenIncremental(Path workspace, String backend)
+            throws Exception {
+        Path project = Files.createDirectories(workspace.resolve("incremental-" + backend));
+        // m3db fingerprints the resolved executable bytes, so name the real launcher file (java.exe on Windows).
+        String jdk = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java").toString();
         // The "native tool": copies its input file and every file of its input folder, and logs each start.
         Files.writeString(project.resolve("Copy.java"), "import java.nio.file.*;\n"
                 + "public class Copy { public static void main(String[] a) throws Exception {\n"
@@ -125,34 +129,38 @@ public final class TaskEngineContractTestMain {
                 + "input\tcopy\tCopy.java\n" + "input\tcopy\tin.txt\n" + "input\tcopy\tsrc\n" + "output\tcopy\tout.txt\n";
         TaskManifest manifest = TaskManifest.load(manifestFile(project, definition));
         List<String> log = new ArrayList<>();
-        incremental(manifest, project, log);
+        incremental(manifest, project, backend, log);
         require(runs(project) == 1, "first incremental run starts the tool");
-        require(Files.isRegularFile(project.resolve(".m3/module.m3db")), "module state recorded");
+        require(Files.isRegularFile(project.resolve("legacy".equals(backend)
+                ? InputStamps.DIRECTORY + "/copy.sha256" : M3DbModuleStore.FILE)), backend + " state recorded");
         log.clear();
-        require(incremental(manifest, project, log).equals(List.of("copy")), "an up-to-date task still counts as satisfied");
+        require(incremental(manifest, project, backend, log).equals(List.of("copy")), "an up-to-date task still counts as satisfied");
         require(runs(project) == 1 && log.stream().anyMatch(row -> row.startsWith("UP-TO-DATE copy")),
                 "unchanged declared inputs skip the tool");
         Files.writeString(project.resolve("in.txt"), "two", StandardCharsets.UTF_8);
-        incremental(manifest, project, log);
+        incremental(manifest, project, backend, log);
         require(runs(project) == 2, "a changed input file runs the tool again");
         Files.writeString(project.resolve("src/nested/b.txt"), "B", StandardCharsets.UTF_8);
-        incremental(manifest, project, log);
+        incremental(manifest, project, backend, log);
         require(runs(project) == 3 && Files.readString(project.resolve("out.txt")).equals("twoB"),
                 "a changed file inside an input folder runs the tool again");
         Files.delete(project.resolve("out.txt"));
-        incremental(manifest, project, log);
+        incremental(manifest, project, backend, log);
         require(runs(project) == 4, "a missing declared output runs the tool again");
         TaskManifest changed = TaskManifest.load(manifestFile(project, definition.replace("arg\tcopy\truns.log\n",
                 "arg\tcopy\truns.log\narg\tcopy\textra\n")));
-        incremental(changed, project, log);
+        incremental(changed, project, backend, log);
         require(runs(project) == 5, "a changed task definition runs the tool again");
         TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, ignored -> {});
         require(runs(project) == 6, "without incremental mode the tool always runs");
         passed++;
     }
 
-    private static List<String> incremental(TaskManifest manifest, Path project, List<String> log) throws Exception {
-        return TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, true, log::add);
+    private static List<String> incremental(TaskManifest manifest, Path project, String backend, List<String> log)
+            throws Exception {
+        return "legacy".equals(backend)
+                ? TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, true, log::add)
+                : TaskRunner.run(manifest, project, "copy", false, Duration.ofSeconds(60), false, true, backend, log::add);
     }
 
     private static Path manifestFile(Path project, String body) throws IOException {

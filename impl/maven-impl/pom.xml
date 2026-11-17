@@ -194,6 +194,31 @@ under the License.
       <artifactId>xmlunit-core</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- ResourceFilterParityTest only: the Maven 3 filtering code the ResourceFilter service is compared with.
+         All Apache-2.0; see FOSS_REUSE_DECISION.tsv. Nothing of them is used outside the tests. -->
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-filtering</artifactId>
+      <version>3.5.0</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-interpolation</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-utils</artifactId>
+      <version>4.0.2</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

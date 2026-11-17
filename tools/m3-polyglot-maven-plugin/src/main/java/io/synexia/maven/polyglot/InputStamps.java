@@ -23,11 +23,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /**
  * Content identities for the original task runner. Each file is hashed separately;
  * length-framed paths, kinds, byte counts and digests prevent cross-file ambiguity.
- * No timestamp can authorize reuse. M3IndexDB owns persistence, not this scanner.
+ * No timestamp can authorize reuse. Persistence belongs to the selected state backend:
+ * legacy per-task stamp files here, or the module M3IndexDB image of {@link M3DbModuleStore}.
  */
 final class InputStamps {
     private static final String DOMAIN = "m3.maven.module-task.v2";
@@ -36,10 +38,74 @@ final class InputStamps {
     private static final List<String> CONFIGURATION = List.of(
             "pom.xml", ".mvn/maven.config", ".mvn/jvm.config", ".mvn/extensions.xml", ".mvn/toolchains.xml");
 
+    /** Per-task stamp files of the default "legacy" incremental state backend. */
+    static final String DIRECTORY = ".m3/polyglot-stamps";
+
     private InputStamps() {}
 
     /**
-     * Bind the actual command, inherited process environment, local Maven configuration,
+     * Legacy per-task stamp: SHA-256 over the task definition and every declared input file;
+     * directories recursively, sorted. Each file contributes its length-framed size and own
+     * SHA-256, so bytes of one file can no longer impersonate the path and bytes of another.
+     */
+    static String stamp(TaskManifest.Task task, Path root) throws IOException {
+        MessageDigest digest = sha256();
+        update(digest, "task");
+        update(digest, task.name());
+        update(digest, task.tool());
+        update(digest, task.workingDir());
+        for (String argument : task.arguments()) {
+            update(digest, "arg");
+            update(digest, argument);
+        }
+        for (String output : task.outputs()) {
+            update(digest, "output");
+            update(digest, output);
+        }
+        for (String input : task.inputs()) {
+            Path path = root.resolve(input).normalize();
+            update(digest, "input");
+            update(digest, input);
+            if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                List<Path> files = new ArrayList<>();
+                try (Stream<Path> walk = Files.walk(path)) {
+                    walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).sorted().forEach(files::add);
+                }
+                for (Path file : files) {
+                    update(digest, relative(root, file));
+                    file(digest, file, new Budget());
+                }
+            } else {
+                file(digest, path, new Budget());
+            }
+        }
+        return hex(digest);
+    }
+
+    /** Legacy: true when the recorded stamp equals the current one and every declared output exists. */
+    static boolean upToDate(TaskManifest.Task task, Path root, String current) throws IOException {
+        Path file = file(task, root);
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return false;
+        if (!current.equals(Files.readString(file, StandardCharsets.UTF_8).strip())) return false;
+        for (String output : task.outputs()) {
+            if (!Files.exists(root.resolve(output).normalize(), LinkOption.NOFOLLOW_LINKS)) return false;
+        }
+        return true;
+    }
+
+    /** Legacy: records the stamp of a task that completed and produced its declared outputs. */
+    static void record(TaskManifest.Task task, Path root, String current) throws IOException {
+        Path file = file(task, root);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, current + "\n", StandardCharsets.UTF_8);
+    }
+
+    static Path file(TaskManifest.Task task, Path root) {
+        return root.resolve(DIRECTORY).resolve(task.name() + ".sha256");
+    }
+
+    /**
+     * M3DB ("m3db" state backend): bind the actual command, inherited process environment, local Maven configuration,
      * declared inputs and successful prerequisite generations to this module location.
      * Tool libraries, external parents/settings and other hidden inputs remain declarations
      * owned by the caller; this is not a claim of arbitrary process hermeticity.
