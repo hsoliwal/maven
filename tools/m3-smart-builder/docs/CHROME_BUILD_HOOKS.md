@@ -148,6 +148,10 @@ are not built yet is advised like any other.
 
 In `<configuration>`, `<phase>` is the hook's phase parameter, not the lifecycle phase.
 
+To give every project of every build this binding without editing any POM, load the core extension
+`io.synexia:smart-maven-extension` (`../extension`) with `-Dmaven.ext.class.path` in `MAVEN_OPTS` and run
+builds with `-Dchromellm.advice=true`; see [the extension's README](../extension/README.md).
+
 ## Require canonical Java atomization and patternization receipts
 
 The optional receipt gate consumes the existing canonical Java convergence DAG's
