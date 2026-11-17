@@ -45,11 +45,18 @@ import java.util.function.Consumer;
  *       <td>ts, tsx, mts, cts, js, jsx, mjs, cjs</td></tr>
  *   <tr><td>csharp</td><td>cs</td><td>csharp-ls ({@code csharp})</td><td>cs, csx</td></tr>
  *   <tr><td>swift</td><td></td><td>sourcekit-lsp ({@code swift})</td><td>swift</td></tr>
+ *   <tr><td>groovy</td><td>groovy-eclipse</td><td>groovy-language-server ({@code groovy})</td>
+ *       <td>groovy, gvy, gy, gsh</td></tr>
+ *   <tr><td>kotlin</td><td>kt</td><td>kotlin-language-server, else kotlin-lsp ({@code kotlin})</td><td>kt, kts</td></tr>
+ *   <tr><td>php</td><td>pdt</td><td>phpactor, else intelephense ({@code php})</td><td>php, phtml</td></tr>
+ *   <tr><td>cobol</td><td>che4z</td><td>COBOL Language Support ({@code cobol})</td><td>cbl, cob, cpy, cobol</td></tr>
+ *   <tr><td>erlang</td><td>erlide</td><td>ELP, else erlang_ls ({@code erlang})</td><td>erl, hrl</td></tr>
  * </table>
  * See {@link ServerSpec} for how each server's command is found.
  */
 final class ServerProfiles {
-    static final List<String> NAMES = List.of("jdt", "cdt", "pydev", "wtp", "rust", "go", "typescript", "csharp", "swift");
+    static final List<String> NAMES = List.of("jdt", "cdt", "pydev", "wtp", "rust", "go", "typescript", "csharp", "swift",
+            "groovy", "kotlin", "php", "cobol", "erlang");
     static final List<ServerSpec> SERVERS = List.of(
             new ServerSpec("jdt", "jdt", Map.of("java", "java"), Duration.ofSeconds(180), JdtlsCommand::detect),
             new ServerSpec("cdt", "cdt", Map.of("c", "c", "h", "c", "cc", "cpp", "cpp", "cpp", "cxx", "cpp", "hpp", "cpp",
@@ -71,12 +78,23 @@ final class ServerProfiles {
             new ServerSpec("csharp", "csharp", Map.of("cs", "csharp", "csx", "csharp"), Duration.ofSeconds(120),
                     ServerDetection::csharpLs),
             new ServerSpec("swift", "swift", Map.of("swift", "swift"), Duration.ofSeconds(60),
-                    (l, h) -> ServerDetection.executable(l, h, "sourcekit-lsp")));
+                    (l, h) -> ServerDetection.executable(l, h, "sourcekit-lsp")),
+            new ServerSpec("groovy", "groovy", Map.of("groovy", "groovy", "gvy", "groovy", "gy", "groovy", "gsh", "groovy"),
+                    Duration.ofSeconds(120), ServerDetection::groovy),
+            new ServerSpec("kotlin", "kotlin", Map.of("kt", "kotlin", "kts", "kotlin"), Duration.ofSeconds(180),
+                    ServerDetection::kotlin),
+            new ServerSpec("php", "php", Map.of("php", "php", "phtml", "php"), Duration.ofSeconds(60), ServerDetection::php),
+            new ServerSpec("cobol", "cobol", Map.of("cbl", "cobol", "cob", "cobol", "cpy", "cobol", "cobol", "cobol"),
+                    Duration.ofSeconds(120), ServerDetection::cobol),
+            new ServerSpec("erlang", "erlang", Map.of("erl", "erlang", "hrl", "erlang"), Duration.ofSeconds(60),
+                    ServerDetection::erlang));
     private static final Map<String, String> ALIASES = Map.ofEntries(Map.entry("java", "jdt"), Map.entry("c", "cdt"),
             Map.entry("cpp", "cdt"), Map.entry("python", "pydev"), Map.entry("xml", "wtp"), Map.entry("html", "wtp"),
             Map.entry("css", "wtp"), Map.entry("json", "wtp"), Map.entry("web", "wtp"), Map.entry("rustdt", "rust"),
             Map.entry("corrosion", "rust"), Map.entry("ts", "typescript"), Map.entry("js", "typescript"),
-            Map.entry("javascript", "typescript"), Map.entry("cs", "csharp"));
+            Map.entry("javascript", "typescript"), Map.entry("cs", "csharp"), Map.entry("lemminx", "wtp"),
+            Map.entry("groovy-eclipse", "groovy"), Map.entry("kt", "kotlin"), Map.entry("pdt", "php"),
+            Map.entry("che4z", "cobol"), Map.entry("erlide", "erlang"));
 
     private ServerProfiles() { }
 
