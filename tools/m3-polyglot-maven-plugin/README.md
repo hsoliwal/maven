@@ -12,7 +12,8 @@ Gradle, MSBuild, Go, Swift and other build tools.
 The original compiler/build tool remains the authority for compiling each language.
 The universal task graph provides deterministic Ant-style targets and Make-style
 prerequisites. **This version does not implement Make's incremental timestamp
-semantics:** tasks execute after their dependencies, every time. It does not
+semantics:** by default tasks execute after their dependencies every time. Explicit
+incremental mode can reuse a declared-input content stamp, with the limitations below. It does not
 flatten source inputs, automatically download toolchains, or skip goals using
 unverified data. More sophisticated incremental verification belongs to the
 source owners and M3JDK/M3FS evidence services.
@@ -28,7 +29,9 @@ source owners and M3JDK/M3FS evidence services.
   SHA-256 of its definition (tool, working directory, arguments, outputs) and of the bytes of its declared inputs,
   folders included file by file, recorded in `.m3/polyglot-stamps/<task>.sha256`. A task whose declared outputs are
   missing runs again. No timestamps and nothing undeclared take part; declare an upstream task's outputs as this
-  task's inputs to have its changes re-run this task. Off by default.
+  task's inputs to have its changes re-run this task. Off by default. A task without both declared inputs and
+  outputs always executes; CodeQL and OpenRewrite providers always execute, even in incremental mode.
+  Stamps do **not** certify complete inputs, external tool versions, environment or ABI compatibility.
 
 ### Any language through Maven's own phases
 
@@ -102,6 +105,31 @@ Without Maven, validate the Java graph/quality planner with:
 ```sh
 sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
 ```
+
+### Portable Java CLI for Gradle and other build hosts
+
+The plugin artifact also exposes the original no-Maven-runtime entry point
+`io.synexia.maven.polyglot.PolyglotCli`. Its four-argument form remains supported;
+the new explicit options are accepted in any order:
+
+```sh
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  plan /work/project /work/project/m3-build.tsv all
+
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  run /work/project /work/project/m3-build.tsv all \
+  --timeout-seconds 900 --incremental
+```
+
+`--timeout-seconds` accepts 1–43200 (default 900). `--incremental` and
+`--approve-rewrite-apply` require `run`; recipe mutation still requires the
+separate approval flag. Unknown, duplicate or malformed options fail before
+the graph executes. The external host must SHA-256-verify the selected JAR
+and retain its own task/diagnostic lifecycle. The Gradle quality-bridge fork
+can invoke this exact class without loading Maven Core or copying the task
+engine. No separate caching, toolchain download or CodeQL execution is implicit.
 
 ## Strict manifest v1
 
