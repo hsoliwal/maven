@@ -23,7 +23,7 @@ workflows and sources are kept here, one recipe per class, each with tests, so t
 this repository and on any other one.
 
 The module (`org.apache.maven.plugins:maven-code-recipes`, a plain jar) is built on the Apache-2.0 OpenRewrite core:
-`rewrite-core`, `rewrite-yaml`, `rewrite-xml` and `rewrite-maven` 8.89.0, in `provided` scope because the recipe
+`rewrite-core`, `rewrite-yaml`, `rewrite-xml`, `rewrite-maven` and `rewrite-java` 8.89.0, in `provided` scope because the recipe
 runner (rewrite-maven-plugin, the Gradle plugin) brings them. 8.89.0 is the version rewrite-maven-plugin 6.46.1
 runs recipes on. No module under the Moderne Source Available License is used; `FOSS_REUSE_DECISION.tsv` lists
 what was checked and why.
@@ -39,6 +39,7 @@ what was checked and why.
 | `org.apache.maven.recipes.AddSetupJavaMatrixVersion` | change | `javaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.FindWorkflowWithoutSetupJavaVersion` | search | `javaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.Jdk21CiLeg` | composite (`META-INF/rewrite/jdk21.yml`) | the two above at 21 |
+| `org.apache.maven.recipes.UseCoreResourceFilter` | search (Java) | none |
 
 ### SetupJavaMinimumVersion
 
@@ -205,6 +206,31 @@ Run after `AddSetupJavaMatrixVersion` (as `Jdk21CiLeg` does), its markers are th
 Runs `AddSetupJavaMatrixVersion` with version 21, then `FindWorkflowWithoutSetupJavaVersion` with version 21. A
 build whose POM Java level is above 21 cannot compile on an added Java 21 job; `FindJavaLevelAboveMaximum` (part of
 `Jdk21Baseline`) lists those POMs.
+
+### UseCoreResourceFilter
+
+For plugins written against the Maven 4 API (a source that imports or uses an `org.apache.maven.api` type), marks
+each `org.apache.maven.shared.filtering.MavenResourcesFiltering.filterResources(MavenResourcesExecution)` call
+(overrides included) with its migration to the core `ResourceFilter` service: the `ResourceFilterRequest` builder
+method each `MavenResourcesExecution` setter called on the same variable in the same method maps to, the setters
+whose values the request callback supplies, and the setters without an equivalent:
+
+```java
+/*~~(ResourceFilter.copy(ResourceFilterRequest); builder: setEncoding -> encoding, setEscapeString -> escapeString,
+setOutputDirectory -> outputDirectory; callback: setMavenProject; no equivalent: setFilterFilenames)~~>*/
+filtering.filterResources(execution);
+```
+
+| Setters | Request |
+|---|---|
+| `setResources`, `setOutputDirectory`, `setResourcesBaseDirectory`, `setMavenSession`, `setEncoding`, `setPropertiesEncoding`, `setAdditionalProperties`, `setDelimiters`, `setEscapeString`, `setSupportMultiLineFiltering`, `setEscapeWindowsPaths`, `setNonFilteredFileExtensions`, `setAddDefaultExcludes`, `setIncludeEmptyDirs`, `setFlatten`, `setChangeDetection`, `setOverwrite` | builder methods `roots`, `outputDirectory`, `baseDirectory`, `session`, `encoding`, `propertiesEncoding`, `properties`, `delimiters`, `escapeString`, `supportMultiLineFiltering`, `escapeWindowsPaths`, `nonFilteredFileExtensions`, `useDefaultExcludes`, `includeEmptyDirs`, `flatten`, `changeDetection` (twice) |
+| `setMavenProject`, `setFilters`, `setFileFilters`, `setInjectProjectBuildFilters`, `setUseDefaultFilterWrappers` | values supplied by `callback` |
+| anything else (`setFilterFilenames`, `setProjectStartExpressions`, `setInterpolatorCustomizer`, filter wrappers) | no equivalent |
+
+Search only: a `MavenResourcesExecution` holds model `Resource`s where the request holds `SourceRoot`s, and the call
+site has no `ResourceFilter` handle, so no call is rewritten one to one. Maven 3 plugins are not marked, since they
+cannot use Maven 4 services. The service and its parity with maven-filtering are described in the site page
+`impl/maven-impl/src/site/markdown/resource-filter.md`.
 
 ## Running the recipes on any repository
 
