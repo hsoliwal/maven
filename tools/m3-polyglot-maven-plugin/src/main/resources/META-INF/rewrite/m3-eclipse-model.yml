@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+# Opt-in consumer registration; intentionally binds no Maven lifecycle execution.
+type: specs.openrewrite.org/v1beta/recipe
+name: io.synexia.maven.recipe.EnableEclipseModelInspection
+displayName: Register the M3 read-only Eclipse project model Maven plugin
+description: >-
+  Adds the polyglot Maven plugin so users can explicitly inspect existing
+  Eclipse Core, JDT, CDT, Rust and PyDev descriptors without editing them.
+recipeList:
+  - org.openrewrite.maven.AddPlugin:
+      groupId: io.synexia
+      artifactId: m3-polyglot-maven-plugin
+      version: 0.1.0-SNAPSHOT
