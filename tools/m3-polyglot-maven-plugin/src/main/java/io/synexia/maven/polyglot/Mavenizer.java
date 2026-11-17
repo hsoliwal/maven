@@ -58,7 +58,7 @@ public final class Mavenizer {
             }
             List<String> modules = new ArrayList<>();
             for (Path module : project.modules()) modules.add(relative(project.dir(), module));
-            String pom = pom(groupId, artifactId(project.dir()), version, project.tools(), modules);
+            String pom = pom(groupId, artifactId(project.dir()), version, project.tools(), modules, project.steps());
             emit(base, project.dir().resolve("pom.xml"), pom, write, lines);
             if (mavenized(project.dir())) {
                 String kept = read(project.dir(), "pom.xml");
@@ -245,6 +245,11 @@ public final class Mavenizer {
 
     /** An aggregator pom for a mavenized folder. */
     static String pom(String groupId, String artifactId, String version, List<String> tools, List<String> modules) {
+        return pom(groupId, artifactId, version, tools, modules, List.of());
+    }
+
+    static String pom(String groupId, String artifactId, String version, List<String> tools,
+            List<String> modules, List<Step> steps) {
         StringBuilder text = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
                 .append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n")
                 .append("  <modelVersion>4.0.0</modelVersion>\n")
@@ -257,6 +262,30 @@ public final class Mavenizer {
             text.append("  <modules>\n");
             for (String module : modules) text.append("    <module>").append(xml(module)).append("</module>\n");
             text.append("  </modules>\n");
+        }
+        if (!steps.isEmpty()) {
+            // Opt-in profile for stock Maven, which lacks the fork's lifecycle extension.
+            // Merely generating a POM must never execute native tools or download packages.
+            text.append("  <profiles>\n")
+                    .append("    <profile><id>m3-polyglot</id>\n")
+                    .append("      <build><plugins><plugin>\n")
+                    .append("        <groupId>io.synexia</groupId>\n")
+                    .append("        <artifactId>m3-polyglot-maven-plugin</artifactId>\n")
+                    .append("        <version>0.1.0-SNAPSHOT</version>\n")
+                    .append("        <executions>\n");
+            for (String phase : PHASES) {
+                if (steps.stream().noneMatch(step -> phase.equals(step.phase()))) continue;
+                text.append("          <execution>\n")
+                        .append("            <id>m3-polyglot-").append(phase).append("</id>\n")
+                        .append("            <phase>").append(phase).append("</phase>\n")
+                        .append("            <goals><goal>run</goal></goals>\n")
+                        .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
+                        .append("          </execution>\n");
+            }
+            text.append("        </executions>\n")
+                    .append("      </plugin></plugins></build>\n")
+                    .append("    </profile>\n")
+                    .append("  </profiles>\n");
         }
         return text.append("</project>\n").toString();
     }
