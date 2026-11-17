@@ -74,7 +74,12 @@ public final class ServerProfilesTest {
         CHECKS.check("empty setting selects nothing", ServerProfiles.names(" ", warnings::add).isEmpty());
         CHECKS.check("wtp has the XML, HTML, CSS and JSON servers", ServerProfiles.select("web", warnings::add).stream()
                 .map(ServerSpec::id).toList().equals(List.of("wtp.xml", "wtp.html", "wtp.css", "wtp.json")));
-        warnings.clear();
+        goToSwiftSelection();
+    }
+
+    /** The go, typescript, csharp and swift profiles: aliases, their place in all, one server each. */
+    private static void goToSwiftSelection() {
+        List<String> warnings = new ArrayList<>();
         CHECKS.check("aliases ts, js, javascript, cs; go and swift by name", ServerProfiles.names("swift,ts js JavaScript CS go",
                 warnings::add).equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
         CHECKS.check("all has fourteen profiles: go to swift, then the Eclipse language plug-in ones",
@@ -83,6 +88,10 @@ public final class ServerProfilesTest {
         CHECKS.check("go, typescript, csharp and swift: one server each, with the profile's id",
                 ServerProfiles.select("go,typescript,csharp,swift", warnings::add).stream().map(ServerSpec::id).toList()
                         .equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
+        goToSwiftLanguageIds();
+    }
+
+    private static void goToSwiftLanguageIds() {
         Map<String, String> ts = ServerProfiles.server("typescript").languageIds();
         CHECKS.check("typescript languageIds: ts, mts, cts; tsx as typescriptreact; js, mjs, cjs; jsx as javascriptreact",
                 ts.get("ts").equals("typescript") && ts.get("mts").equals("typescript") && ts.get("cts").equals("typescript")
@@ -181,6 +190,13 @@ public final class ServerProfilesTest {
                 command(ServerProfiles.server("wtp.html"), Map.of(), Map.of("PATH", bin.toString(), "WTP_HOME", npm.toString()))
                         .equals(List.of(node, script.toString(), "--stdio")));
         cssOnPath(dir, bin, node);
+        xmlAndPython(dir, bin, node, npm);
+        rustAndNodeless(dir, npm);
+        moreDetection(dir, bin, node);
+    }
+
+    /** LemMinX from its uber jar; pylsp from a virtual environment, else pyright from an npm prefix. */
+    private static void xmlAndPython(Path dir, Path bin, String node, Path npm) throws Exception {
         Path jar = file(dir.resolve("detect/lemminx/org.eclipse.lemminx-0.31.2-uber.jar"));
         CHECKS.check("wtp.xml: the LemMinX uber jar, run with this JVM", command(ServerProfiles.server("wtp.xml"),
                 Map.of("clustering.lsp.wtp.xml.home", jar.getParent().toString()), Map.of())
@@ -193,11 +209,18 @@ public final class ServerProfilesTest {
         CHECKS.check("pydev: else pyright from an npm prefix", command(ServerProfiles.server("pydev"),
                 Map.of("clustering.lsp.pydev.home", npm.toString()), Map.of("PATH", bin.toString()))
                 .equals(List.of(node, pyright.toString(), "--stdio")));
+    }
+
+    private static void rustAndNodeless(Path dir, Path npm) throws Exception {
         Path ra = exe(dir.resolve("detect/ra"), "rust-analyzer").getParent();
         CHECKS.check("rust: rust-analyzer in its home directory", command(ServerProfiles.server("rust"),
                 Map.of("clustering.lsp.rust.home", ra.toString()), Map.of()).equals(List.of(exeName(ra, "rust-analyzer"))));
         CHECKS.check("npm server without node: unresolved", unresolved(ServerProfiles.server("wtp.html"), Map.of(),
                 Map.of("WTP_HOME", npm.toString())).contains("node"));
+    }
+
+    /** gopls, csharp-ls, typescript-language-server, sourcekit-lsp, then the Eclipse language plug-in servers. */
+    private static void moreDetection(Path dir, Path bin, String node) throws Exception {
         go(dir);
         csharp(dir);
         typescriptAndSwift(dir, bin, node);
@@ -292,6 +315,18 @@ public final class ServerProfilesTest {
                 .equals(List.of(java, "-jar", newest.toString())));
         CHECKS.check("groovy: else groovy-language-server on the PATH", command(ServerProfiles.server("groovy"), Map.of(),
                 Map.of("PATH", onPath.toString())).equals(List.of(exeName(onPath, "groovy-language-server"))));
+        groovyVersions(dir, java);
+    }
+
+    /** Versions compare by number: 0.10 is newer than 0.9 and 0.9.1, though it sorts first as text. */
+    private static void groovyVersions(Path dir, String java) throws Exception {
+        Path home = dir.resolve("groovy/versions");
+        file(home.resolve("lib/groovy-language-server-0.9-all.jar"));
+        Path newest = file(home.resolve("lib/groovy-language-server-0.10-all.jar"));
+        file(home.resolve("lib/groovy-language-server-0.9.1-all.jar"));
+        CHECKS.check("groovy: the newest jar by version number (0.10 after 0.9.1 and 0.9)", command(ServerProfiles.server(
+                "groovy"), Map.of("clustering.lsp.groovy.home", home.toString()), Map.of())
+                .equals(List.of(java, "-jar", newest.toString())));
     }
 
     /** The Che4z COBOL Language Support server.jar in a home, run with this JVM; else the launcher. */
