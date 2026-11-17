@@ -34,6 +34,9 @@ import java.util.stream.Collectors;
  * root, so quoting survives on every platform, with {@code CANON_RUN_DIR}, {@code CANON_ROOT}, {@code CANON_BASE},
  * {@code CANON_STAGE}, {@code CANON_MODE}, {@code CANON_WORKERS}, {@code CANON_SHARD_INDEX},
  * {@code CANON_SHARD_COUNT} and {@code CANON_SHARD_MANIFEST} set.
+ *
+ * <p>{@code regex_sites <root> <out-dir> [<rev>]} runs the regex site table generator
+ * ({@link RegexSiteTable}) of the regex spec tables in {@code make/data/m3regex}.
  */
 public final class CanonGate {
     static final String VERSION = "canon-gate/1";
@@ -74,7 +77,11 @@ public final class CanonGate {
                 return new CanonGate(new Packet(Path.of(args[1])), Path.of(args[2]), Path.of(args[3]), log).run();
             }
             if (args.length > 0 && Checks.PREFIXES.containsKey(args[0])) return Checks.execute(args, log);
+            if (args.length > 0 && args[0].equals(RegexSiteTable.COMMAND)) {
+                return RegexSiteTable.execute(args, log);
+            }
             log.println("usage: CanonGate check <packet.tsv> | run <packet.tsv> <run-dir> <root>" + Checks.USAGE);
+            log.println("       CanonGate " + RegexSiteTable.USAGE);
             return 2;
         } catch (Packet.Invalid invalid) {
             log.println("canon-gate: PACKET_INVALID " + invalid.getMessage());
