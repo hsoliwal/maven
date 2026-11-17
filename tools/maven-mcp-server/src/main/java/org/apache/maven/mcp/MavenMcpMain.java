@@ -19,7 +19,8 @@
 package org.apache.maven.mcp;
 
 import java.io.IOException;
-import java.io.PrintStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.System.Logger.Level;
 import java.util.Optional;
 
@@ -33,8 +34,9 @@ import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
 
 /**
  * Starts the MCP server on stdio for one Maven project and stops when the client closes stdin. Stdout carries only
- * protocol messages: the original stream is handed to the transport and {@link System#out} is pointed at stderr, so
- * a stray print can never corrupt the protocol. Logging goes through {@link System.Logger} to stderr.
+ * protocol messages: the original stream becomes a {@link LineOutput} for the transport and {@link System#out} is
+ * pointed at stderr, so a stray print can never corrupt the protocol. Stdin goes through {@link ProtocolInput}, which
+ * answers unreadable lines itself and keeps the session up. Logging goes through {@link System.Logger} to stderr.
  */
 public final class MavenMcpMain {
 
@@ -46,23 +48,24 @@ public final class MavenMcpMain {
 
     public static void main(String[] args) throws IOException, InterruptedException {
         ServerSettings settings = settings(args);
-        PrintStream protocolOut = System.out;
+        LineOutput protocolOut = new LineOutput(System.out);
         System.setOut(System.err);
-        EndOfInput stdin = new EndOfInput(System.in);
+        McpJsonMapper mapper = new JacksonMcpJsonMapper(new ObjectMapper());
+        ProtocolInput input = ProtocolInput.start(System.in, protocolOut, mapper);
         Runtime.getRuntime().addShutdownHook(new Thread(MavenLauncher::stopAll, "stop-maven"));
-        McpSyncServer server = start(settings, stdin, protocolOut);
+        McpSyncServer server = start(settings, mapper, input.sdkInput(), protocolOut);
         LOG.log(Level.INFO, "Maven MCP server ready for " + settings.root() + ", runs in " + settings.runsDir());
-        stdin.await();
+        input.await();
         server.closeGracefully();
         MavenLauncher.stopAll();
         System.exit(0);
     }
 
-    static McpSyncServer start(ServerSettings settings, EndOfInput stdin, PrintStream out) throws IOException {
-        McpJsonMapper mapper = new JacksonMcpJsonMapper(new ObjectMapper());
+    static McpSyncServer start(ServerSettings settings, McpJsonMapper mapper, InputStream in, OutputStream out)
+            throws IOException {
         ServerContext context = new ServerContext(settings, new MavenLauncher(settings, System.getenv()),
                 new RunStore(settings.runsDir(), settings.keepRuns()));
-        return McpServer.sync(new StdioServerTransportProvider(mapper, stdin, out))
+        return McpServer.sync(new StdioServerTransportProvider(mapper, in, out, InboundLines.MAX_LINE_CHARS))
                 .serverInfo(SERVER_NAME, version())
                 .instructions(instructions(settings))
                 .capabilities(ServerCapabilities.builder().tools(false).build())

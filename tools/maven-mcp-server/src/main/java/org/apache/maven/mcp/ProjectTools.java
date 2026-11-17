@@ -54,21 +54,21 @@ final class ProjectTools {
     }
 
     JsonNode effectivePom(ToolArgs args) throws IOException {
-        List<String> goalArgs = MavenCommands.oneProject(args.string("project").orElse(""));
+        List<String> goalArgs = ServerArguments.oneProject(args.string("project").orElse(""));
         return query(args, "effective-pom.xml", output -> plus(goalArgs,
-                        MavenCommands.HELP_PLUGIN + ":effective-pom", "-Doutput=" + output),
+                        ServerArguments.HELP_PLUGIN + ":effective-pom", "-Doutput=" + output),
                 EffectivePom::summarize);
     }
 
     JsonNode dependencyTree(ToolArgs args) throws IOException {
-        List<String> goalArgs = new ArrayList<>(MavenCommands.projectWithUpstream(args.string("project").orElse("")));
+        List<String> goalArgs = new ArrayList<>(ServerArguments.projectWithUpstream(args.string("project").orElse("")));
         Optional<String> scope = args.string("scope");
         scope.filter(value -> !SCOPES.contains(value)).ifPresent(value -> {
             throw new IllegalArgumentException("scope must be one of " + SCOPES);
         });
         scope.ifPresent(value -> goalArgs.add("-Dscope=" + value));
         int maxNodes = args.number("maxNodes", 200, 1, 5000);
-        return query(args, "dependency-tree.json", output -> plus(goalArgs, MavenCommands.DEPENDENCY_PLUGIN + ":tree",
+        return query(args, "dependency-tree.json", output -> plus(goalArgs, ServerArguments.DEPENDENCY_PLUGIN + ":tree",
                 "-DoutputType=json", "-DoutputFile=" + output), file -> DependencyTree.summarize(file, maxNodes));
     }
 
@@ -82,7 +82,7 @@ final class ProjectTools {
                     .put("jar", resolved.get().jar().toString());
         }
         String goal = spec.substring(spec.lastIndexOf(':') + 1);
-        return query(args, "describe.txt", output -> List.of("-N", MavenCommands.HELP_PLUGIN + ":describe",
+        return query(args, "describe.txt", output -> List.of("-N", ServerArguments.HELP_PLUGIN + ":describe",
                 "-Dplugin=" + PluginDescriptors.plugin(spec), "-Dgoal=" + goal, "-Ddetail=true", "-Doutput=" + output),
                 file -> describeText(spec, file));
     }
@@ -107,7 +107,7 @@ final class ProjectTools {
         return context.exclusive(() -> {
             Path dir = context.store().query();
             Path output = dir.resolve(fileName);
-            List<String> all = new ArrayList<>(MavenCommands.base(dir, context.settings(), offline));
+            List<String> all = new ArrayList<>(ServerArguments.base(dir, context.settings(), offline));
             all.addAll(goalArgs.of(ArgumentGuard.path(output)));
             MavenLauncher.MavenRun run = context.launcher().run(dir, all, timeout);
             if (run.exitCode() != 0 || !Files.isRegularFile(output)) {
@@ -122,7 +122,7 @@ final class ProjectTools {
                 .map(JsonNode::asText)
                 .collect(Collectors.joining(" | "));
         return "Maven " + RunResults.outcome(run) + " (exit " + run.exitCode() + "), log " + dir.resolve(
-                MavenCommands.LOG) + (errors.isEmpty() ? "" : ": " + errors);
+                ServerArguments.LOG) + (errors.isEmpty() ? "" : ": " + errors);
     }
 
     private static ObjectNode describeText(String spec, Path file) throws IOException {

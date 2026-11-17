@@ -35,6 +35,12 @@ the [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk) 2.1.0.
 | `explain_failure` | The failure digest (`failure.json`) of a run, or why there is none plus the log's first `[ERROR]` lines. | no |
 | `build_events` | A page of the build event stream (`build-events.jsonl`) of a run, filtered by `types` and `project`. | no |
 
+Tool annotations: `build` and `test` are not read-only, destructive, not idempotent and open-world (they run any
+goal the client names; see Security). `effective_pom`, `dependency_tree` and `describe_goal` are not read-only (they
+write the server's query directory, replacing the previous query's output, and may download into the local
+repository), not destructive, idempotent and open-world. `list_modules`, `explain_failure` and `build_events` are
+read-only.
+
 Every answer is one line of JSON in the tool result's text content. Strings are capped (messages at 300 characters),
 lists are capped and say how many items were left out (`diagnosticsOmitted`, `nodesOmitted`, ...), and file paths
 point at the full data. A refused or failed call is a tool result with `isError: true` and `{"error": "..."}`; the
@@ -63,8 +69,11 @@ mvn -f tools/maven-mcp-server/pom.xml verify
 java -jar tools/maven-mcp-server/target/maven-mcp-server-0.1.0-SNAPSHOT.jar --root /path/to/project
 ```
 
-The module builds on its own (it has no parent POM) with JDK 17 or newer. `verify` runs three test mains through
-exec-maven-plugin: `ArgumentGuardTest`, `ResultReadersTest` and `McpProtocolTest`. The protocol test starts the
+The module builds on its own (it has no parent POM) with JDK 17 or newer, after the build events extension
+(`tools/m3-smart-builder/extension`, for `MavenCommands`) is installed; in the root reactor it builds after it.
+`verify` runs three test mains through exec-maven-plugin: `ArgumentGuardTest` (including the `.cmd` launcher rules
+and the final argument check), `ResultReadersTest` and `McpProtocolTest` (including unreadable input lines, the tool
+annotations and, on Windows, the probe `mvn.cmd` and a wrapper `mvnw.cmd`). The protocol test starts the
 shaded jar, talks JSON-RPC to it over stdio and runs real Maven builds on a copy of `src/test/resources/fixture`
 under `-Dmcp.test.scratch` (default `${java.io.tmpdir}/llm-mcp`). `-Dmcp.test.mavenHome=<dir>` makes it use a
 given Maven distribution, and `-Dmcp.test.extension=<jar>` adds a build-events extension, which switches the
@@ -105,6 +114,22 @@ length and count. Paths the server adds are checked for the characters cmd.exe e
 sets itself (`maven.agent*`, `maven.events.*`, `style.color`, ...) and `maven.ext.class.path` are refused. A refused
 call starts no Maven process and creates no run directory.
 
+When the launcher is a `.cmd` script (`mvn.cmd`, `mvnw.cmd`), cmd.exe also splits the script's parameters at `=`
+and `,`, and `mvn.cmd` scans those pieces for `-f`/`--file` to find the project's `.mvn/jvm.config` and
+`.mvn/maven.config`. A value such as `-f=C:/other` would otherwise point Maven at another directory's configuration.
+So through a `.cmd` launcher property values may hold neither `=` nor `,` nor start with `-`, and test selections may
+not hold `,` (name several methods as `Class#a+b`, several classes with a pattern such as `*Test`). Before the
+launch, the server checks the final argument vector once more the way cmd.exe splits it: no piece after the first of
+an argument may start with `-`. Through `bin/mvn` (a POSIX shell script that passes `"$@"`) commas and `=` stay
+allowed. The protocol test runs a probe `mvn.cmd` with Maven 3.9's own scan and a `mvnw.cmd` that ends like the Maven
+Wrapper's (`"<mvn.cmd>" %*`).
+
+The test tool's arguments (`-Dtest=... -Dsurefire.failIfNoSpecifiedTests=false test`, or for `it: true`
+`-Dit.test=... -Dfailsafe.failIfNoSpecifiedTests=false -Dtest=NoUnitTestSelected
+-Dsurefire.failIfNoSpecifiedTests=false verify`) come from `MavenCommands` of the build events extension, the one
+owner of that spelling, also used by the failure digest's reproduce commands and by `llms.txt`; only that class of
+the extension jar is shaded into the server.
+
 Each `build` and `test` call gets a numbered run directory under `--runs-dir`, outside the project's `target`, so
 `mvn clean` never deletes it or trips over an open file. The server adds:
 
@@ -133,7 +158,29 @@ writes these into `maven.agent.dir`. The server reads them and parses no compile
 
 Until the extension runs in a build, `build_events` and `explain_failure` answer `available: false` with the
 reason, and `build`, `test` and `explain_failure` carry `logErrors`: the first 20 non-empty `[ERROR]` lines of
-`build.log`, before Maven's help footer.
+`build.log`, before Maven's help footer. The extension publishes its files when the build ends, so a run stopped at
+its time limit has none either; its reason says that Maven was stopped after so many seconds (raise
+`timeoutSeconds`), not that no extension ran. `list_modules` numbers modules from 1, like the events and
+`project.json`.
+
+## Protocol input
+
+Stdin is read line by line on its own thread, and only lines the SDK can read as JSON-RPC messages reach it (the
+SDK's reader stops for good at the first line it cannot read). A line that is not JSON is answered with error
+`-32700` and `id: null`; JSON that is not a message, or a line longer than 16 Mi characters (the SDK's limit), with
+`-32600` and its `id` when it has one. The session goes on. The end of stdin, a read error, or an SDK reader that went
+away end the session: the server stops its Maven runs and exits 0. Responses go out one whole line at a time, so an
+error answer never interleaves with an SDK message.
+
+## Security
+
+`build` and `test` run whatever phases and plugin goals the client names, with the client's properties, in the
+project the server was started for. That is arbitrary process execution with the server's user rights: a plugin goal
+such as `exec:exec` runs any program, `clean` deletes the build output, `deploy` publishes. The character checks
+above keep a client from adding Maven options or changing which configuration Maven reads; they do not limit what
+the named goals do. Start the server only for projects and clients you trust, let the MCP client ask before each
+`build` and `test` call (they are marked destructive), and run it in a container or a throwaway checkout when the
+client is not supervised.
 
 ## Client configuration
 

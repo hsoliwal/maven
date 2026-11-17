@@ -27,7 +27,7 @@ import java.util.List;
  * in the run directory, the build-events extension when one was configured, and the agent properties that tell the
  * extension where to write the event stream and the failure digest (formats: README, "Files the server reads").
  */
-final class MavenCommands {
+final class ServerArguments {
 
     static final String LOG = "build.log";
     static final String EVENTS = "build-events.jsonl";
@@ -38,7 +38,7 @@ final class MavenCommands {
     static final String HELP_PLUGIN = "org.apache.maven.plugins:maven-help-plugin:3.5.1";
     static final String DEPENDENCY_PLUGIN = "org.apache.maven.plugins:maven-dependency-plugin:3.11.0";
 
-    private MavenCommands() {}
+    private ServerArguments() {}
 
     /** Arguments every run starts with; the log goes to {@code dir/build.log}. */
     static List<String> base(Path dir, ServerSettings settings, boolean offline) {

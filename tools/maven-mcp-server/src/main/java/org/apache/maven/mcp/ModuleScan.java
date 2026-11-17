@@ -118,7 +118,7 @@ final class ModuleScan {
     private static ObjectNode render(Path root, List<Module> modules) {
         Set<String> ids = modules.stream().map(Module::id).collect(Collectors.toSet());
         List<JsonNode> rows = IntStream.range(0, modules.size())
-                .mapToObj(index -> row(index, modules.get(index), ids))
+                .mapToObj(index -> row(index + 1, modules.get(index), ids))
                 .collect(Collectors.toList());
         ObjectNode out = CompactJson.object()
                 .put("source", "pom-scan")
@@ -128,6 +128,7 @@ final class ModuleScan {
         return CompactJson.capped(out, "modules", rows, MAX_MODULES);
     }
 
+    /** One module; {@code index} counts from 1, as in the build events and project.json. */
     private static JsonNode row(int index, Module module, Set<String> reactorIds) {
         ObjectNode row = CompactJson.object()
                 .put("index", index)

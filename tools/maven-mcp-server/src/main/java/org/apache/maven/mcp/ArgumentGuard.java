@@ -31,6 +31,12 @@ import java.util.stream.Collectors;
  * character that cmd.exe, a POSIX shell or PowerShell treats specially (white space, quotes, {@code % ! ^ & | < >
  * ( ) $ ; `}), which keeps the arguments inert even though Windows runs {@code mvn.cmd} through cmd.exe. Properties
  * the server sets itself, and {@code maven.ext.class.path}, are refused.
+ *
+ * <p>When the launcher is a {@code .cmd} script ({@code mvn.cmd}, {@code mvnw.cmd}), cmd.exe also splits the script's
+ * parameters at {@code =} and {@code ,}, and {@code mvn.cmd} scans those pieces for {@code -f}/{@code --file} to find
+ * the project's {@code .mvn} directory. Property values and test selections then may hold neither character and may
+ * not start with "-" (the {@code cmd} flag of {@link #properties} and {@link #selection}); {@link CmdArguments}
+ * checks the final argument vector once more before the launch.
  */
 final class ArgumentGuard {
 
@@ -57,6 +63,10 @@ final class ArgumentGuard {
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
     private static final Pattern VALUE = Pattern.compile("[A-Za-z0-9:._/,#*@=+-]*");
     private static final Pattern SELECTION = Pattern.compile("[A-Za-z0-9*][A-Za-z0-9._#*,+/-]*");
+    /** A value through a .cmd launcher: no '=' or ',' (cmd.exe parameter delimiters) and no leading '-'. */
+    private static final Pattern CMD_VALUE = Pattern.compile("(?:[A-Za-z0-9:._/#*@+][A-Za-z0-9:._/#*@+-]*)?");
+    /** A selection through a .cmd launcher: no ','; join methods with '+' or use a pattern such as {@code *Test}. */
+    private static final Pattern CMD_SELECTION = Pattern.compile("[A-Za-z0-9*][A-Za-z0-9._#*+/-]*");
     private static final Pattern RUN = Pattern.compile("latest|[1-9][0-9]{0,8}");
     private static final Pattern EVENT_TYPE = Pattern.compile("[a-z][a-z-]{0,40}");
     private static final Pattern UNSAFE_IN_PATH = Pattern.compile("[%!^&|<>\"`\\p{Cntrl}]");
@@ -86,19 +96,27 @@ final class ArgumentGuard {
         return token("project", project, PROJECT);
     }
 
-    /** The {@code -Dkey=value} arguments for the client's properties, in key order. */
-    static List<String> properties(Map<String, String> properties) {
+    /**
+     * The {@code -Dkey=value} arguments for the client's properties, in key order; {@code cmd} when the launcher is a
+     * {@code .cmd} script, which narrows the values (see the class comment).
+     */
+    static List<String> properties(Map<String, String> properties, boolean cmd) {
         if (properties.size() > MAX_ITEMS) {
             throw new IllegalArgumentException("properties may hold at most " + MAX_ITEMS + " entries");
         }
+        String kind = cmd ? "property value (through mvn.cmd: no '=', ',' or leading '-')" : "property value";
         return properties.entrySet().stream()
-                .map(entry -> "-D" + key(entry.getKey()) + "=" + token("property value", entry.getValue(), VALUE))
+                .map(entry -> "-D" + key(entry.getKey()) + "=" + token(kind, entry.getValue(), cmd ? CMD_VALUE : VALUE))
                 .collect(Collectors.toList());
     }
 
-    /** A Surefire or Failsafe test selection, such as {@code BTest#adds} or {@code fix.*Test}. */
-    static String selection(String selection) {
-        return token("test selection", selection, SELECTION);
+    /**
+     * A Surefire or Failsafe test selection, such as {@code BTest#adds} or {@code fix.*Test}; through a {@code .cmd}
+     * launcher without ',' (several methods as {@code Class#a+b}, several classes as a pattern).
+     */
+    static String selection(String selection, boolean cmd) {
+        return cmd ? token("test selection (through mvn.cmd: no ',')", selection, CMD_SELECTION)
+                : token("test selection", selection, SELECTION);
     }
 
     /** "latest" or a run number. */

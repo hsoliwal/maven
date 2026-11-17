@@ -47,6 +47,8 @@ final class McpStdioClient implements AutoCloseable {
     private final AtomicInteger ids = new AtomicInteger();
     private final AtomicInteger pollution = new AtomicInteger();
     private final AtomicInteger messages = new AtomicInteger();
+    /** Responses without an id the client sent: the server's answers to lines it could not read as a request. */
+    private final BlockingQueue<JsonNode> unmatched = new LinkedBlockingQueue<>();
 
     McpStdioClient(List<String> command, java.io.File stderr) throws IOException {
         process = new ProcessBuilder(command).redirectError(stderr).start();
@@ -76,6 +78,26 @@ final class McpStdioClient implements AutoCloseable {
         JsonNode response = pending.get(id).poll(seconds, TimeUnit.SECONDS);
         if (response == null) {
             throw new IllegalStateException("no response to request " + id + " within " + seconds + " s");
+        }
+        return response;
+    }
+
+    /** Writes {@code line} and a line end as they are, so the test can send what no correct client sends. */
+    synchronized void raw(String line) throws IOException {
+        stdin.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
+    }
+
+    /** Registers {@code id} so a response to a raw line that carried it can be awaited. */
+    void expect(int id) {
+        pending.put(id, new LinkedBlockingQueue<>());
+    }
+
+    /** The next response with no id this client registered, waiting at most {@code seconds}. */
+    JsonNode unmatched(int seconds) throws InterruptedException {
+        JsonNode response = unmatched.poll(seconds, TimeUnit.SECONDS);
+        if (response == null) {
+            throw new IllegalStateException("no unmatched response within " + seconds + " s");
         }
         return response;
     }
@@ -143,8 +165,10 @@ final class McpStdioClient implements AutoCloseable {
                 return;
             }
             messages.incrementAndGet();
-            if (message.has("id") && pending.containsKey(message.path("id").asInt())) {
+            if (message.path("id").isNumber() && pending.containsKey(message.path("id").asInt())) {
                 pending.get(message.path("id").asInt()).add(message);
+            } else if (message.has("error")) {
+                unmatched.add(message);
             }
         } catch (IOException e) {
             pollution.incrementAndGet();

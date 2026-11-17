@@ -62,6 +62,7 @@ public final class McpProtocolTest {
             session(checks, client, fixture, runs);
         }
         fallback(checks, jar, fixture, scratch);
+        WindowsLauncherChecks.run(checks, jar, fixture, scratch);
         checks.finish();
     }
 
@@ -76,6 +77,7 @@ public final class McpProtocolTest {
         McpRunChecks.protocolRefusals(checks, client, runs);
         McpRunChecks.concurrency(checks, client);
         McpRunChecks.timeout(checks, client, fixture);
+        malformedLines(checks, client);
         checks.that("stdout carried only JSON-RPC messages", client.pollution() == 0 && client.messages() > 10);
         checks.that("server exits 0 when stdin closes", client.shutdown(60) == 0);
     }
@@ -128,13 +130,33 @@ public final class McpProtocolTest {
     }
 
     /** initialize, then the initialized notification; returns the initialize result. */
-    private static JsonNode initialize(McpStdioClient client) throws Exception {
+    static JsonNode initialize(McpStdioClient client) throws Exception {
         ObjectNode params = CompactJson.object().put("protocolVersion", "2025-06-18");
         params.putObject("capabilities");
         params.putObject("clientInfo").put("name", "protocol-test").put("version", "1");
         JsonNode result = client.request("initialize", params, 60).path("result");
         client.notify("notifications/initialized");
         return result;
+    }
+
+    /**
+     * Lines that are not JSON-RPC requests get a JSON-RPC error and the session goes on: a line that is not JSON
+     * (-32700, id null), JSON that is not a message (-32600 with its id), a line beyond the size limit is not sent.
+     */
+    static void malformedLines(Checks checks, McpStdioClient client) throws Exception {
+        client.raw("{not json}");
+        JsonNode parse = client.unmatched(30);
+        checks.that("malformed line: parse error, id null", parse.path("error").path("code").asInt() == -32700
+                && parse.has("id") && parse.path("id").isNull(), parse.toString());
+        client.expect(9001);
+        client.raw("{\"jsonrpc\":\"2.0\",\"id\":9001,\"nothing\":true}");
+        JsonNode invalid = client.await(9001, 30);
+        checks.that("JSON that is no message: invalid request with its id",
+                invalid.path("error").path("code").asInt() == -32600, invalid.toString());
+        JsonNode ping = client.request("ping", CompactJson.object(), 30);
+        checks.that("session answers after malformed lines", ping.has("result"), ping.toString());
+        JsonNode modules = client.tool("list_modules", CompactJson.object(), 60);
+        checks.that("tools work after malformed lines", modules.path("count").asInt() == 4, modules.toString());
     }
 
     private static void toolList(Checks checks, McpStdioClient client) throws Exception {
@@ -144,9 +166,22 @@ public final class McpProtocolTest {
         checks.that("tools/list: the eight tools", names.equals(TOOLS), names.toString());
         checks.that("tools/list: object schemas", StreamSupport.stream(tools.spliterator(), false)
                 .allMatch(tool -> "object".equals(tool.path("inputSchema").path("type").asText())));
-        checks.that("tools/list: read-only hints", StreamSupport.stream(tools.spliterator(), false).allMatch(tool ->
-                tool.path("annotations").path("readOnlyHint").asBoolean() != tool.path("name").asText().matches(
-                        "build|test")));
+        checks.that("tools/list: hints per tool", StreamSupport.stream(tools.spliterator(), false)
+                .allMatch(McpProtocolTest::hintsMatch), tools.toString());
+    }
+
+    /**
+     * build and test run any goal: not read-only, destructive, not idempotent. The queries write only the server's
+     * query directory: not read-only, not destructive, idempotent. The readers are read-only.
+     */
+    private static boolean hintsMatch(JsonNode tool) {
+        JsonNode hints = tool.path("annotations");
+        String name = tool.path("name").asText();
+        String expected = name.matches("build|test") ? "false true false true"
+                : name.matches("effective_pom|dependency_tree|describe_goal") ? "false false true true"
+                : "true false true false";
+        return expected.equals(hints.path("readOnlyHint").asText() + " " + hints.path("destructiveHint").asText() + " "
+                + hints.path("idempotentHint").asText() + " " + hints.path("openWorldHint").asText());
     }
 
     private static void projectTools(Checks checks, McpStdioClient client) throws Exception {
