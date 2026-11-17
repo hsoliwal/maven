@@ -81,6 +81,8 @@ public final class CodeClusteringTest {
         check("STRUCTURE cluster", has(clusters, "STRUCTURE", "p/A.java#A.start(int[])"));
         joinAndCli(dir, src);
         families(dir);
+        LexicalAtomsTest.run(dir.resolve("lexical"));
+        failures += LexicalAtomsTest.failures();
         if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
         System.err.println("code clustering: all checks passed");
     }

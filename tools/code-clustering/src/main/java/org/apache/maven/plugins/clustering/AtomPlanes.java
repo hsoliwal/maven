@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -50,7 +51,8 @@ import javax.tools.ToolProvider;
  *   <li>{@code structure}: SHA-256 of the node kinds only: equal shape;</li>
  *   <li>{@code simhash}: 64-bit SimHash over 3-token shingles of the logic tokens: near duplicates.</li>
  * </ul>
- * Plane values are this facility's own; compare them only with values it produced.
+ * Plane values are this facility's own; compare them only with values it produced. Other languages get the same four
+ * planes from {@link LexicalAtoms}.
  */
 public final class AtomPlanes {
     private AtomPlanes() { }
@@ -59,24 +61,45 @@ public final class AtomPlanes {
     public record Atom(String path, String kind, String symbol, int tokens, String exact, String logic,
             String structure, String simhash) { }
 
-    /** Parses every {@code .java} file under the roots and returns their atoms, in path order. */
+    /**
+     * Atomizes every source file under the roots and returns the atoms in path order: {@code .java} through javac,
+     * the brace and indentation languages of {@link LexicalAtoms} through the lexical front end.
+     */
     public static List<Atom> scan(List<Path> roots) throws IOException {
         List<Atom> atoms = new ArrayList<>();
         for (Path given : roots) {
             Path root = given.toAbsolutePath().normalize();
-            List<Path> files = javaFiles(root);
-            if (!files.isEmpty()) atoms.addAll(parse(root, files));
+            List<Path> files = sourceFiles(root);
+            List<Path> java = files.stream().filter(p -> p.toString().endsWith(".java")).collect(Collectors.toList());
+            List<Path> other = files.stream().filter(LexicalAtoms::accepts).collect(Collectors.toList());
+            List<Atom> found = new ArrayList<>();
+            if (!java.isEmpty()) found.addAll(parse(root, java));
+            if (!other.isEmpty()) found.addAll(LexicalAtoms.scan(root, other));
+            found.sort(Comparator.comparing(Atom::path));
+            atoms.addAll(found);
         }
         return atoms;
     }
 
-    static List<Path> javaFiles(Path root) throws IOException {
+    /** Source files under the root, skipping build output, dependency caches and version-control folders. */
+    static List<Path> sourceFiles(Path root) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
         try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p)).sorted()
+            return walk.filter(p -> Files.isRegularFile(p) && !skipped(root.relativize(p)))
+                    .filter(p -> p.toString().endsWith(".java") || LexicalAtoms.accepts(p)).sorted()
                     .collect(Collectors.toList());
         }
     }
+
+    private static boolean skipped(Path relative) {
+        for (Path part : relative) {
+            if (SKIPPED.contains(part.toString())) return true;
+        }
+        return false;
+    }
+
+    private static final java.util.Set<String> SKIPPED = java.util.Set.of("node_modules", ".git", "target", "build",
+            "dist", "out", "vendor", "__pycache__", ".venv", "venv", ".gradle", ".idea");
 
     private static List<Atom> parse(Path root, List<Path> files) throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();

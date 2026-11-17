@@ -60,9 +60,18 @@ public final class ClusterMojo extends AbstractMojo {
     @Parameter(property = "clustering.against")
     private File against;
 
+    /**
+     * Source directories to atomize instead of the compile source roots, for projects whose sources are not Java
+     * (for example {@code src/main/js}, {@code src/main/python}, {@code src/main/cpp}); comma-separated as a property.
+     */
+    @Parameter(property = "clustering.sourceDirectories")
+    private List<File> sourceDirectories;
+
     @Override public void execute() throws MojoExecutionException {
         try {
-            List<Path> roots = sourceRoots.stream().map(Path::of).collect(Collectors.toList());
+            List<Path> roots = sourceDirectories != null && !sourceDirectories.isEmpty()
+                    ? sourceDirectories.stream().map(File::toPath).collect(Collectors.toList())
+                    : sourceRoots.stream().map(Path::of).collect(Collectors.toList());
             Path out = outputDirectory.toPath();
             getLog().info(CodeClustering.cluster(out, roots, minTokens, radius, fileThreshold));
             if (against != null) {
