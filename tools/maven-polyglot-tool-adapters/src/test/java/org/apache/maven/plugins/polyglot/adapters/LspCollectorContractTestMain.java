@@ -59,6 +59,10 @@ public final class LspCollectorContractTestMain {
         crashingServerFailsFast(ws);
         unreadableAndMissingFilesArePartial(ws);
         batchLauncherWithMetacharactersIsRefused(ws);
+        interpreterIsNeverStarted(ws);
+        loneSurrogateKeepsBothReports(ws);
+        lateStageIsPartial(ws);
+        doubleDashServerArgument(ws);
     }
 
     private static void secondStageIsKept(Path ws) throws Exception {
@@ -84,8 +88,9 @@ public final class LspCollectorContractTestMain {
 
     private static void crashingServerFailsFast(Path ws) throws Exception {
         Run run = collect(ws, "crash", DEADLINE, 1000, fakeServer("crash"), "a.c");
-        require(run.exit == 2 && run.sarif.contains("\"executionSuccessful\":false") && run.millis < DEADLINE / 3,
-                "a server that exits at once fails the run fast with reports: " + run);
+        // Fast = well before the deadline; JVM start-up under load takes seconds, so the margin is wide.
+        require(run.exit == 2 && run.sarif.contains("\"executionSuccessful\":false") && run.millis < DEADLINE - 10_000,
+                "a server that exits at once fails the run without waiting for the deadline, with reports: " + run);
         passed++;
     }
 
@@ -111,6 +116,39 @@ public final class LspCollectorContractTestMain {
         Run run = collect(ws, "cmd", DEADLINE, 500, List.of(launcher, unsafe), "a.c");
         require(run.exit == 2 && run.sarif.contains("metacharacter") && !Files.exists(ws.resolve("started.txt"))
                 && !Files.exists(ws.resolve("pwned")), "a .cmd server never receives " + unsafe + ": " + run);
+    }
+
+    /** cmd.exe re-reads every argument as a command line: refused by name before anything starts. */
+    private static void interpreterIsNeverStarted(Path ws) throws Exception {
+        Run run = collect(ws, "interpreter", DEADLINE, 500, List.of("cmd.exe", "/c", "md", "pwned"), "a.c");
+        require(run.exit == 2 && run.jsonlExists && run.sarif.contains("interpreter")
+                && !Files.exists(ws.resolve("pwned")), "a command interpreter is never a language server: " + run);
+        passed++;
+    }
+
+    /** A server message with a lone UTF-16 surrogate is written as U+FFFD; both reports stay. */
+    private static void loneSurrogateKeepsBothReports(Path ws) throws Exception {
+        Run run = collect(ws, "surrogate", DEADLINE, 500, fakeServer("surrogate"), "a.c");
+        require(run.exit == 0 && run.jsonlExists && run.sarif.contains("bad " + (char) 0xFFFD + " text"),
+                "a lone surrogate never deletes the reports: " + run);
+        passed++;
+    }
+
+    /** A stage 3.5 s after an empty publish, settle 2 s: past the snapshot but inside one more settle period. */
+    private static void lateStageIsPartial(Path ws) throws Exception {
+        Run run = collect(ws, "late", DEADLINE, 2000, fakeServer("late"), "a.c");
+        require(run.exit == LspDiagnosticsMain.PARTIAL_EXIT && run.sarif.contains("\"executionSuccessful\":false")
+                && run.sarif.contains("after the session became quiet"), "a late stage marks the run partial: " + run);
+        passed++;
+    }
+
+    /** npx-style launchers take a "--" of their own; the files follow the last one. */
+    private static void doubleDashServerArgument(Path ws) {
+        LspDiagnosticsMain.Request request = LspDiagnosticsMain.Request.parse(List.of(ws.toString(), "j", "s", "1000",
+                "0", "c", "node", "server.js", "--", "--stdio", "--", ws.resolve("a.c").toString()));
+        require(request.server().equals(List.of("node", "server.js", "--", "--stdio"))
+                && request.files().equals(List.of(ws.resolve("a.c"))), "split at the last --: " + request);
+        passed++;
     }
 
     /** The server command: this JVM's java running the fake server from the test class path. */

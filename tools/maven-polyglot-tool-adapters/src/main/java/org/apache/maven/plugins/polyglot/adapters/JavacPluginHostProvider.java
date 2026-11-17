@@ -42,9 +42,15 @@ import java.util.stream.Stream;
  * explicit opt-in {@code parse=second}. Analysis without a second parse puts {@code -Xplugin:...} and the processor
  * path on the build's own compile ({@code @m3:jdk:compiler:java} forwards them unchanged); this host gives way once
  * the diagnostics capture runs inside that compile.
- * <p>The javac arguments need exactly one {@code -d}; it and any {@code -s} or {@code -h} folder must lie in declared
+ * <p>The javac arguments are read once, as the host reads them ({@link JavacArguments}: javac's own option table, so
+ * {@code -cp -d x.java} holds no {@code -d}). They need exactly one {@code -d} and at most one {@code -s} and one
+ * {@code -h} (javac uses the last of each); every one of those folders must lie inside the workspace in declared
  * output space (a declared output, or a folder that holds or is held by one) and never in a declared input, so no
- * class lands beside the sources. javac {@code @argfiles} are refused because they would hide those options.
+ * class or header lands beside the sources. javac {@code @argfiles} are refused because they would hide those
+ * options. The task only reads sources ({@code READS_SOURCES}): Error Prone's patching options
+ * ({@code -XepPatchChecks}, {@code -XepPatchLocation}, in place or into a folder) are refused wherever they appear,
+ * also inside the {@code -Xplugin:ErrorProne ...} argument; a fix is applied through the code-patch patcher, with
+ * approval. javac plug-ins and annotation processors on the processor path run as trusted code in the host JVM.
  * {@code pp=} entries become one {@code -processorpath} in the host platform's syntax; with
  * {@code -Xplugin:ErrorProne} the options Error Prone requires of its compilation are added. The host exits 1 when
  * the compilation fails with an ERROR finding and 2 when the run is incomplete; both reports are written either way.
@@ -89,7 +95,7 @@ public final class JavacPluginHostProvider implements M3ToolProvider {
         List<String> args = ToolArgs.count(task, 4, 1024, USAGE);
         secondParse(args);
         List<String> javac = javac(task);
-        checkOutputs(task, javac);
+        checkOutputs(task, workspace, JavacArguments.parse(javac));
         List<String> argv = new ArrayList<>(host(task, workspace));
         argv.addAll(processorPath(args, task, workspace));
         if (javac.stream().anyMatch(a -> a.startsWith("-Xplugin:ErrorProne"))) argv.addAll(ERROR_PRONE_JAVAC);
@@ -121,35 +127,23 @@ public final class JavacPluginHostProvider implements M3ToolProvider {
         return positional.subList(Math.min(2, positional.size()), positional.size());
     }
 
-    /** One -d; -d, -s and -h folders in declared output space and never in a source input; no @argfiles. */
-    private static void checkOutputs(TaskManifest.Task task, List<String> javac) throws IOException {
-        if (javac.stream().anyMatch(a -> a.startsWith("@"))) {
-            throw new IOException("javac @argfiles are refused: they would hide -d, -s and -h: " + USAGE);
+    /**
+     * No @argfiles, no patching option, exactly one -d, at most one -s and one -h, and every one of those folders
+     * inside the workspace in declared output space ({@link ToolArgs#outputFolder}), read as the host reads them.
+     */
+    private static void checkOutputs(TaskManifest.Task task, Path workspace, JavacArguments javac) throws IOException {
+        Optional<String> refusal = javac.refusal();
+        if (refusal.isPresent()) {
+            throw new IOException(refusal.get() + ": " + USAGE);
         }
-        if (javac.stream().filter("-d"::equals).count() != 1) {
+        if (javac.values("-d").size() != 1) {
             throw new IOException("exactly one -d <class folder in the declared outputs> is required: " + USAGE);
         }
-        Optional<String> misplaced = Stream.of("-d", "-s", "-h").map(flag -> folder(javac, flag))
-                .flatMap(Optional::stream).map(f -> ToolArgs.declared(task, f)).filter(f -> !outputSpace(task, f))
-                .findFirst();
+        Optional<String> misplaced = JavacArguments.OUTPUT_FLAGS.stream().flatMap(flag -> javac.values(flag).stream())
+                .map(folder -> ToolArgs.outputRefusal(workspace, task, folder)).flatMap(Optional::stream).findFirst();
         if (misplaced.isPresent()) {
-            throw new IOException("a javac output folder must be declared output space, not a source: " + misplaced.get());
+            throw new IOException("javac " + misplaced.get());
         }
-    }
-
-    private static Optional<String> folder(List<String> javac, String flag) {
-        int at = javac.indexOf(flag);
-        return at < 0 ? Optional.empty() : Optional.of(at + 1 < javac.size() ? javac.get(at + 1) : "");
-    }
-
-    /** Declared output space: related to a declared output, unrelated to every declared input, not the root. */
-    static boolean outputSpace(TaskManifest.Task task, String folder) {
-        boolean source = folder.isEmpty() || task.inputs().stream().anyMatch(input -> related(input, folder));
-        return !source && task.outputs().stream().anyMatch(output -> related(output, folder));
-    }
-
-    private static boolean related(String a, String b) {
-        return a.equals(b) || a.startsWith(b + "/") || b.startsWith(a + "/");
     }
 
     private static List<String> processorPath(List<String> args, TaskManifest.Task task, Path workspace) {

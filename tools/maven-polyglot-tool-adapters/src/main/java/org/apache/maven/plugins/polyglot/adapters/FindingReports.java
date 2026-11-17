@@ -118,7 +118,7 @@ final class FindingReports {
     /** A relative path as a URI reference: characters URIs do not allow (spaces, ...) are percent-encoded. */
     private static String uri(String relative) {
         try {
-            return new URI(null, null, relative, null).getRawPath();
+            return new URI(null, null, wellFormed(relative), null).getRawPath();
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("unrepresentable path: " + relative, e);
         }
@@ -133,9 +133,19 @@ final class FindingReports {
         return value > 0 ? Long.toString(value) : "null";
     }
 
+    /**
+     * The text with every unpaired UTF-16 surrogate replaced by U+FFFD, so it encodes as UTF-8. Tool output (a
+     * language server's message, a file name) may hold lone surrogates; a valid pair is one code point and stays.
+     */
+    static String wellFormed(String text) {
+        return text.codePoints().map(c -> Character.isSurrogate((char) c) && c <= Character.MAX_VALUE ? 0xFFFD : c)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
+    }
+
+    /** A JSON string literal of the text, made well-formed first ({@link #wellFormed}). */
     static String quote(String text) {
         StringBuilder out = new StringBuilder(text.length() + 2).append('"');
-        text.chars().forEach(c -> out.append(switch (c) {
+        wellFormed(text).chars().forEach(c -> out.append(switch (c) {
             case '"' -> "\\\"";
             case '\\' -> "\\\\";
             case '\n' -> "\\n";

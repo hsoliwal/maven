@@ -44,6 +44,8 @@ import java.util.stream.Stream;
  * </ul>
  * The tool scans every file its front ends accept under the roots; the language field declares the one-AST status:
  * Java goes through the compiler's parser in a separate call, the other languages through the lexical front end.
+ * The arguments are read once ({@link #positional}) for command() and reports(); the atomizer takes no option, and
+ * the out-dir lies inside the workspace in declared output space ({@link ToolArgs#outputFolder}), outside the roots.
  */
 public final class ClusteringProvider implements M3ToolProvider {
     static final String MAIN = "org.apache.maven.plugins.clustering.CodeClustering";
@@ -75,9 +77,12 @@ public final class ClusteringProvider implements M3ToolProvider {
     }
 
     private static List<String> cluster(TaskManifest.Task task, Path workspace) throws IOException {
-        List<String> args = ToolArgs.count(task, 3, 1024, USAGE);
+        List<String> args = positional(ToolArgs.count(task, 3, 1024, USAGE));
+        if (args.size() != task.arguments().size()) {
+            throw new IOException("the atomizer takes no options: " + USAGE);
+        }
         List<String> roots = absolute(args.subList(2, args.size()), task, workspace);
-        String out = ToolArgs.absolute(workspace, task, args.get(1));
+        String out = ToolArgs.outputFolder(workspace, task, args.get(1));
         ToolArgs.outside(out, roots);
         List<String> argv = new ArrayList<>(List.of(ToolArgs.java(), "-cp",
                 ToolArgs.absolute(workspace, task, args.get(0)), MAIN, "cluster", out));
@@ -87,16 +92,21 @@ public final class ClusteringProvider implements M3ToolProvider {
 
     private static List<String> compare(TaskManifest.Task task, Path workspace) throws IOException {
         Optional<String> failOn = ToolArgs.option(ToolArgs.count(task, 4, 1024, USAGE), "failOn");
-        List<String> args = ToolArgs.positional(task.arguments(), OPTIONS);
+        List<String> args = positional(task.arguments());
         if (args.size() < 4 || failOn.filter(s -> !STATES.matcher(s).matches()).isPresent()) {
             throw new IOException("usage: " + USAGE);
         }
         List<String> roots = absolute(args.subList(3, args.size()), task, workspace);
-        String out = ToolArgs.absolute(workspace, task, args.get(2));
+        String out = ToolArgs.outputFolder(workspace, task, args.get(2));
         ToolArgs.outside(out, roots);
         return Stream.of(List.of(ToolArgs.java()), failOn.map(states -> List.of("-Dclustering.failOn=" + states))
                 .orElse(List.of()), List.of("-cp", ToolArgs.absolute(workspace, task, args.get(0)), MAIN, "compare",
                 ToolArgs.absolute(workspace, task, args.get(1)), out), roots).flatMap(List::stream).toList();
+    }
+
+    /** The one reading of the arguments: everything but the {@code failOn=} option. */
+    private static List<String> positional(List<String> arguments) {
+        return ToolArgs.positional(arguments, OPTIONS);
     }
 
     private static List<String> absolute(List<String> paths, TaskManifest.Task task, Path workspace) {
@@ -104,7 +114,7 @@ public final class ClusteringProvider implements M3ToolProvider {
     }
 
     @Override public List<M3Report> reports(M3ToolCapability capability, String language, TaskManifest.Task task) {
-        List<String> args = ToolArgs.positional(task.arguments(), OPTIONS);
+        List<String> args = positional(task.arguments());
         return capability == M3ToolCapability.ATOMIZER
                 ? List.of(new M3Report(ToolArgs.declared(task, args.get(1) + "/ATOM_HASHES.tsv"),
                         M3ReportFormat.ATOM_HASHES_TSV))

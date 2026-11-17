@@ -28,14 +28,16 @@ import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Position;
 
 /**
- * The linter process: starts the language server (no shell, its stderr discarded; a .cmd/.bat server never receives
- * a cmd.exe metacharacter), opens every readable file once at version 1, waits until the session is quiet
- * ({@link LspDiagnosticsClient}) or the deadline passes, and writes the diagnostics as SARIF 2.1.0 and build-events
- * lines. Usage: {@code LspDiagnosticsMain <root> <out.jsonl> <out.sarif> <deadline-ms> <settle-ms> <language-id>
- * <server> [server-arg]... -- <file>...}. Both reports are written on every outcome. Exit 0: complete. Exit
- * {@link #FAILED_EXIT}: the invocation failed (the server could not start, exited, or did not answer initialize).
- * Exit {@link #PARTIAL_EXIT}: files not analysed or not answered, or the server still busy at the deadline; the
- * reports name them and mark the invocation unsuccessful.
+ * The linter process: starts the language server (no shell, its stderr discarded; never a command interpreter, and a
+ * .cmd/.bat server never receives a cmd.exe metacharacter), opens every readable file once at version 1, waits until
+ * the session is quiet ({@link LspDiagnosticsClient}) or the deadline passes, and writes the diagnostics as SARIF
+ * 2.1.0 and build-events lines (unpaired UTF-16 surrogates in server text become U+FFFD). Usage:
+ * {@code LspDiagnosticsMain <root> <out.jsonl> <out.sarif> <deadline-ms> <settle-ms> <language-id> <server>
+ * [server-arg]... -- <file>...}; the files follow the last "--". Both reports are written on every outcome. Exit 0:
+ * complete. Exit {@link #FAILED_EXIT}: the invocation failed (the server could not start, exited, or did not answer
+ * initialize; or the reports could not be written). Exit {@link #PARTIAL_EXIT}: files not analysed or not answered,
+ * the server still busy at the deadline, or diagnostics published after the session became quiet; the reports name
+ * them and mark the invocation unsuccessful.
  * <p>Placed here until code-clustering-lsp's session keeps diagnostics (its client discards them); the argv contract
  * of {@link LspLinterProvider} stays when the collector moves there.
  */
@@ -47,11 +49,11 @@ public final class LspDiagnosticsMain {
             + " <language-id> <server> [server-arg]... -- <file>...";
     private static final System.Logger LOG = System.getLogger(LspDiagnosticsMain.class.getName());
 
-    /** The parsed command line. */
+    /** The parsed command line; the files follow the last "--" (they are absolute paths), so a server may take "--". */
     record Request(Path root, Path jsonl, Path sarif, Duration deadline, Duration settle, String languageId,
             List<String> server, List<Path> files) {
         static Request parse(List<String> args) {
-            int split = args.indexOf("--");
+            int split = args.lastIndexOf("--");
             if (split < 7 || split == args.size() - 1) {
                 throw new IllegalArgumentException(USAGE);
             }
@@ -65,17 +67,22 @@ public final class LspDiagnosticsMain {
 
     private LspDiagnosticsMain() { }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException {
         System.exit(run(List.of(args)));
     }
 
-    static int run(List<String> args) throws IOException, InterruptedException {
+    static int run(List<String> args) throws InterruptedException {
         Request request = Request.parse(args);
         LspSession.Outcome outcome = LspSession.collect(request);
-        FindingReports.write(request.jsonl(), request.sarif(), outcome.tool(), request.root(), outcome.findings(),
-                outcome.notes());
         LOG.log(System.Logger.Level.INFO, "LSP linter: files={0}, findings={1}, failed={2}, notes={3}",
                 request.files().size(), outcome.findings().size(), outcome.failed(), outcome.notes());
+        try {
+            FindingReports.write(request.jsonl(), request.sarif(), outcome.tool(), request.root(), outcome.findings(),
+                    outcome.notes());
+        } catch (IOException failure) {
+            LOG.log(System.Logger.Level.ERROR, "LSP linter: cannot write the reports: {0}", failure.toString());
+            return FAILED_EXIT;
+        }
         return outcome.failed() ? FAILED_EXIT : outcome.notes().isEmpty() ? 0 : PARTIAL_EXIT;
     }
 

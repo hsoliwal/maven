@@ -117,7 +117,10 @@ final class ToolArgs {
         }
     }
 
-    /** Refuses a .cmd/.bat launcher when any argument holds a cmd.exe metacharacter (no shell ever interprets argv). */
+    /**
+     * Refuses a command interpreter as the launcher, and a .cmd/.bat launcher when any argument holds a cmd.exe
+     * metacharacter, so no shell ever interprets argv ({@link CmdLauncher}).
+     */
     static List<String> launch(List<String> argv) throws IOException {
         return CmdLauncher.shellSafe(argv);
     }
@@ -136,5 +139,50 @@ final class ToolArgs {
         if (roots.stream().map(Path::of).anyMatch(out::startsWith)) {
             throw new IOException("the output folder lies inside a source root: " + output);
         }
+    }
+
+    /**
+     * A folder a tool writes into, as an absolute path: inside the workspace and in declared output space (a declared
+     * output, or a folder that holds or is held by one), never related to a declared input. Every adapter checks its
+     * output folders here, with the same parse of the arguments its reports come from.
+     */
+    static String outputFolder(Path workspace, TaskManifest.Task task, String folder) throws IOException {
+        Optional<String> refusal = outputRefusal(workspace, task, folder);
+        if (refusal.isPresent()) {
+            throw new IOException(refusal.get());
+        }
+        return absolute(workspace, task, folder);
+    }
+
+    /** Why the folder cannot be an output folder ({@link #outputFolder}), if it cannot. */
+    static Optional<String> outputRefusal(Path workspace, TaskManifest.Task task, String folder) {
+        if (!within(workspace, task, folder)) {
+            return Optional.of("the output folder lies outside the workspace: " + folder);
+        }
+        return outputSpace(task, declared(task, folder)) ? Optional.empty()
+                : Optional.of("an output folder must be declared output space, never a declared input: " + folder);
+    }
+
+    /** The argument as an absolute path that must lie inside the workspace (the root itself included). */
+    static String inside(Path workspace, TaskManifest.Task task, String argument, String what) throws IOException {
+        if (!within(workspace, task, argument)) {
+            throw new IOException("the " + what + " lies outside the workspace: " + argument);
+        }
+        return absolute(workspace, task, argument);
+    }
+
+    private static boolean within(Path workspace, TaskManifest.Task task, String argument) {
+        return Path.of(absolute(workspace, task, argument)).startsWith(workspace.toAbsolutePath().normalize());
+    }
+
+    /** Declared output space: related to a declared output, unrelated to every declared input, not the root. */
+    static boolean outputSpace(TaskManifest.Task task, String folder) {
+        boolean source = folder.isEmpty() || task.inputs().stream().anyMatch(input -> related(input, folder));
+        return !source && task.outputs().stream().anyMatch(output -> related(output, folder));
+    }
+
+    /** Equal, or one holds the other, in the declared '/' form. */
+    static boolean related(String a, String b) {
+        return a.equals(b) || a.startsWith(b + "/") || b.startsWith(a + "/");
     }
 }

@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 import javax.tools.Diagnostic;
@@ -38,14 +39,24 @@ import javax.tools.JavaFileObject;
  * The listener of the host's one compilation. It never throws: javac wraps a listener exception into a
  * ClientCodeException that ends the whole compilation, so a diagnostic that cannot be recorded becomes a note of an
  * incomplete run instead. A source that is not a file (a class inside a jar: {@code jar:file:...!/p/C.class}, a
- * {@code jrt:} class) is located by its URI, never through {@code Path.of}. An ERROR without a source is about the
- * invocation (a javac plug-in or annotation processor not found, an option refused) and is a note, not a finding;
- * the {@code -Werror} summary error stays a finding. Columns count UTF-16 code units, as SARIF does, not javac's
- * tab-expanded columns.
+ * {@code jrt:} class) is located by its URI, never through {@code Path.of}. An ERROR without a source whose code
+ * says the invocation could not run as asked ({@link #invocation}: a javac plug-in or annotation processor not found,
+ * an option refused, a file unreadable) is a note of an incomplete run, not a finding; every other ERROR, also a
+ * processor's {@code Messager} error without an element and the {@code -Werror} summary, is a finding. Columns count
+ * UTF-16 code units, as SARIF does, not javac's tab-expanded columns.
  */
 final class JavacDiagnostics implements DiagnosticListener<JavaFileObject> {
-    /** javac's summary error when -Werror turned warnings into a failure: a result of the findings, not of the run. */
-    static final String WERROR = "compiler.err.warnings.and.werror";
+    /** Code prefixes (after {@code compiler.err.}) of invocation failures: plug-ins, locations, options. */
+    static final List<String> INVOCATION_PREFIXES = List.of("plugin.", "locn.", "option.", "module.not.found");
+    /** Exact codes (after {@code compiler.err.}) of invocation failures: files, flags, values, releases. */
+    static final Set<String> INVOCATION = Set.of("file.not.found", "file.not.directory", "file.not.file",
+            "error.reading.file", "error.writing.file", "cant.read.file", "class.cant.write", "bad.file.name",
+            "invalid.flag", "invalid.path", "invalid.profile", "invalid.source", "invalid.target", "invalid.A.key",
+            "illegal.argument.for.option", "bad.name.for.option", "bad.value.for.option", "no.value.for.option",
+            "req.arg", "release.bootclasspath.conflict", "profile.bootclasspath.conflict", "add.exports.with.release",
+            "add.reads.with.release", "addmods.all.module.path.invalid", "no.output.dir", "no.source.files",
+            "no.source.files.classes", "preview.without.source.or.release", "unsupported.release.version",
+            "unsupported.encoding");
     private final Path root;
     private final List<Finding> findings = Collections.synchronizedList(new ArrayList<>());
     private final List<String> notes = Collections.synchronizedList(new ArrayList<>());
@@ -72,11 +83,22 @@ final class JavacDiagnostics implements DiagnosticListener<JavaFileObject> {
     }
 
     private void accept(Diagnostic<? extends JavaFileObject> d) {
-        if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() == null && !WERROR.equals(d.getCode())) {
+        if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() == null && invocation(d.getCode())) {
             notes.add("javac " + d.getCode() + ": " + d.getMessage(Locale.ROOT));
         } else {
             findings.add(finding(d));
         }
+    }
+
+    /**
+     * javac's codes for an invocation that could not run as asked: a plug-in or processor that cannot be found or
+     * loaded, an option or path javac refused, a file it cannot read or write. Every other sourceless ERROR (a
+     * processor's {@code Messager} error without an element, the {@code -Werror} summary) is an analysis result.
+     */
+    static boolean invocation(String code) {
+        String key = code == null ? "" : code.replaceFirst("^compiler\\.err\\.", "");
+        boolean processor = key.startsWith("proc.") && !"proc.messager".equals(key);
+        return processor || INVOCATION_PREFIXES.stream().anyMatch(key::startsWith) || INVOCATION.contains(key);
     }
 
     /** Plug-in messages start with {@code [CheckName]}: that is the SARIF rule; otherwise javac's diagnostic code is. */

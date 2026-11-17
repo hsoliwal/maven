@@ -32,7 +32,8 @@ import java.util.stream.Stream;
  * A stdio JSON-RPC language server for collector fault injection; no LSP library. Modes: {@code ok} (one warning per
  * opened file), {@code twostage} (an empty publish, the real ERROR 1.5 s later, as servers with a second checking
  * stage do), {@code progress} (work-done progress begins, an empty publish, the ERROR and the progress end 2.5 s
- * later), {@code silent} (never answers) and {@code crash} (exits 3 at once).
+ * later), {@code late} (an empty publish, the ERROR 3.5 s later), {@code surrogate} (a message holding a lone UTF-16
+ * surrogate as a JSON escape), {@code silent} (never answers) and {@code crash} (exits 3 at once).
  */
 public final class FakeLanguageServer {
     private static final OutputStream OUT = System.out;
@@ -67,6 +68,9 @@ public final class FakeLanguageServer {
     private static void opened(String mode, String uri) {
         switch (mode) {
             case "twostage" -> later(1500, () -> send(publish(uri, error())), () -> send(publish(uri, "")));
+            case "late" -> later(3500, () -> send(publish(uri, error())), () -> send(publish(uri, "")));
+            case "surrogate" -> send(publish(uri, "{\"range\":" + RANGE
+                    + ",\"severity\":2,\"code\":\"s1\",\"message\":\"bad " + '\\' + "ud800 text\"}"));
             case "progress" -> later(2500, () -> {
                 send(publish(uri, error()));
                 send(progress("end"));

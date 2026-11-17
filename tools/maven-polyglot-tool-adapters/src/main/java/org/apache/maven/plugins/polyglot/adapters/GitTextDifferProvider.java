@@ -39,11 +39,15 @@ import java.util.stream.Stream;
  *   declared inputs (so the engine checks they exist). Report grade: the paths keep both folder names, so code-patch
  *   does not apply it.</li>
  *   <li>{@code repo <git> <repository> <revision> <out.patch> [<pathspec>...]}: the work tree of a git repository
- *   against a revision, untracked (not ignored) files included; paths are repository-relative, so code-patch can
- *   plan, verify and apply the patch.</li>
+ *   (a declared input) against a revision, untracked (not ignored) files included; paths are repository-relative, so
+ *   code-patch can plan, verify and apply the patch. Commands the repository configures never run (hooks,
+ *   fsmonitor, external diff, textconv), and a path with a {@code filter} attribute is refused, because a clean
+ *   filter is a configured program.</li>
  * </ul>
- * Either mode exits 0 with the patch (empty when nothing differs) and 2 without one when git failed. The repository's
- * own {@code .gitattributes} still apply: with {@code text}/{@code eol} conversion the patch is in repository form.
+ * Either mode exits 0 with the patch (empty when nothing differs) and 2 without one when git failed. System, global
+ * and XDG git configuration is never read ({@link PinnedGit}). The repository's own {@code .gitattributes} and
+ * configuration still apply (they are part of the repository): with {@code text}/{@code eol} conversion the patch is
+ * in repository form. A git launcher is checked like every launcher ({@link CmdLauncher}).
  */
 public final class GitTextDifferProvider implements M3ToolProvider {
     static final String MAIN = "org.apache.maven.plugins.polyglot.adapters.GitDiffMain";
@@ -98,8 +102,11 @@ public final class GitTextDifferProvider implements M3ToolProvider {
         return trees;
     }
 
-    /** Repository, revision, then the pathspecs. */
+    /** Repository (a declared input, so inside the workspace and checked by the engine), revision, the pathspecs. */
     private static List<String> repo(List<String> args, TaskManifest.Task task, Path workspace) throws IOException {
+        if (!task.inputs().contains(ToolArgs.declared(task, args.get(2)))) {
+            throw new IOException("the repository must be a declared input, so it lies in the workspace: " + args.get(2));
+        }
         List<String> operands = new ArrayList<>(List.of(ToolArgs.absolute(workspace, task, args.get(2)),
                 ToolArgs.operand(args.get(3), "revision")));
         operands.addAll(args.subList(5, args.size()));

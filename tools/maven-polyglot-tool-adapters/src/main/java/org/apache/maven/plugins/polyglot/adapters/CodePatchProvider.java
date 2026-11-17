@@ -43,6 +43,10 @@ import java.util.regex.Pattern;
  *   <li>{@code rollback <mvn> <version> <base-dir> <out-dir> <receipt-id>}: restores from the receipt.</li>
  * </ul>
  * apply and rollback declare {@link M3ToolEffect#WRITES_SOURCES}; the registry refuses them without separate approval.
+ * The arguments are read once ({@link #positional}): the {@code key=value} options may stand anywhere, and command(),
+ * effect() and reports() see the same mode, base-dir and out-dir. The base-dir lies inside the workspace; the out-dir
+ * lies inside it in declared output space ({@link ToolArgs#outputFolder}) and neither is nor holds the base-dir, so
+ * the plan, stage, verify and receipt folders never land among the sources or outside the workspace.
  * There is no {@code expectPlan}: code-patch has no such check, so verify cannot be tied to a reviewed plan id, and a
  * declared {@code verify/<id>/COMPARE.tsv} could be satisfied by a stale file of an earlier run. The reviewed plan id
  * binds at apply ({@code approvedPlan}), which code-patch checks.
@@ -72,8 +76,8 @@ public final class CodePatchProvider implements M3ToolProvider {
 
     @Override public List<String> command(M3ToolCapability capability, String language, TaskManifest.Task task,
             Path workspace) throws IOException {
-        List<String> args = positional(task);
-        String mode = mode(task);
+        List<String> args = checked(task);
+        String mode = args.get(0);
         List<String> argv = new ArrayList<>(List.of(args.get(1)));
         argv.addAll(MAVEN_FLAGS);
         argv.add(PLUGIN + ToolArgs.version(args.get(2)) + ":" + mode);
@@ -84,26 +88,31 @@ public final class CodePatchProvider implements M3ToolProvider {
         return ToolArgs.launch(argv);
     }
 
-    private static List<String> positional(TaskManifest.Task task) throws IOException {
-        List<String> args = ToolArgs.positional(ToolArgs.count(task, 6, 1024, USAGE), OPTIONS);
-        if (args.size() < 6 || task.arguments().stream().anyMatch(a -> a.startsWith("expectPlan="))) {
+    /** The one reading of the arguments: everything but the options, mode first. */
+    private static List<String> positional(TaskManifest.Task task) {
+        return ToolArgs.positional(task.arguments(), OPTIONS);
+    }
+
+    /** {@link #positional}, checked: a mode, at least five operands, no expectPlan. */
+    private static List<String> checked(TaskManifest.Task task) throws IOException {
+        List<String> args = positional(task);
+        if (args.size() < 6 || !MODES.contains(args.get(0)) || task.arguments().size() > 1024
+                || task.arguments().stream().anyMatch(a -> a.startsWith("expectPlan="))) {
             throw new IOException("usage (code-patch has no expectPlan check; approvedPlan binds the plan at apply): "
                     + USAGE);
         }
         return args;
     }
 
-    private static List<String> directories(List<String> args, TaskManifest.Task task, Path workspace) {
-        return List.of("-Dpatch.baseDirectory=" + ToolArgs.absolute(workspace, task, args.get(3)),
-                "-Dpatch.outputDirectory=" + ToolArgs.absolute(workspace, task, args.get(4)));
-    }
-
-    private static String mode(TaskManifest.Task task) throws IOException {
-        String mode = task.arguments().get(0);
-        if (!MODES.contains(mode)) {
-            throw new IOException("usage: " + USAGE);
+    /** The base-dir inside the workspace; the out-dir in declared output space, neither the base-dir nor above it. */
+    private static List<String> directories(List<String> args, TaskManifest.Task task, Path workspace)
+            throws IOException {
+        String base = ToolArgs.inside(workspace, task, args.get(3), "base-dir");
+        String out = ToolArgs.outputFolder(workspace, task, args.get(4));
+        if (Path.of(base).startsWith(Path.of(out))) {
+            throw new IOException("the out-dir must neither be the base-dir nor hold it: " + args.get(4));
         }
-        return mode;
+        return List.of("-Dpatch.baseDirectory=" + base, "-Dpatch.outputDirectory=" + out);
     }
 
     private static List<String> rollback(List<String> args) throws IOException {
@@ -139,16 +148,16 @@ public final class CodePatchProvider implements M3ToolProvider {
 
     @Override public M3ToolEffect effect(M3ToolCapability capability, String language, TaskManifest.Task task)
             throws IOException {
-        String mode = mode(task);
+        String mode = checked(task).get(0);
         return "apply".equals(mode) || "rollback".equals(mode) ? M3ToolEffect.WRITES_SOURCES : M3ToolEffect.READS_SOURCES;
     }
 
     @Override public List<M3Report> reports(M3ToolCapability capability, String language, TaskManifest.Task task) {
-        List<String> all = task.arguments();
-        String out = all.get(4) + "/";
-        String mode = all.get(0);
+        List<String> args = positional(task);
+        String out = args.get(4) + "/";
+        String mode = args.get(0);
         if ("apply".equals(mode) || "rollback".equals(mode)) {
-            String id = "apply".equals(mode) ? value(all, "approvedPlan") : all.get(5);
+            String id = "apply".equals(mode) ? value(task.arguments(), "approvedPlan") : args.get(5);
             return List.of(new M3Report(ToolArgs.declared(task, out + "receipts/" + id + "/RECEIPT.tsv"),
                     M3ReportFormat.RECEIPT_TSV));
         }

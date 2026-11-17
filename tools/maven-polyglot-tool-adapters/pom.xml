@@ -96,6 +96,34 @@ under the License.
             </configuration>
           </execution>
           <execution>
+            <id>javac-host-confinement-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.JavacHostConfinementContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>provider-confinement-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.ProviderConfinementContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- Repository commands and user, system and XDG git configuration against the real git program. -->
+            <id>git-differ-pinning-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.polyglot.adapters.GitDifferPinningContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <!-- Starts the git differ process with the real git program; prints NOT RUN without git on PATH. -->
             <id>git-differ-contract</id>
             <phase>verify</phase>

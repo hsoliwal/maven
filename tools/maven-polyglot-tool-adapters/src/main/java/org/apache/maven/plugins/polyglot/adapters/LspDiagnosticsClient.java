@@ -128,6 +128,20 @@ final class LspDiagnosticsClient implements LanguageClient {
         return published.get();
     }
 
+    /** Whether more than {@code count} publishes are accepted before {@code until} ({@link System#nanoTime}). */
+    boolean publishedBy(int count, long until, Process process) {
+        return Stream.generate(() -> later(count, until, process)).flatMap(Optional::stream).findFirst().orElse(false);
+    }
+
+    private Optional<Boolean> later(int count, long until, Process process) {
+        if (published.get() > count) {
+            return Optional.of(true);
+        }
+        long now = System.nanoTime();
+        return now >= until || !process.isAlive() || !pause(Math.min(TimeUnit.NANOSECONDS.toMillis(until - now) + 1,
+                POLL_MILLIS)) ? Optional.of(published.get() > count) : Optional.empty();
+    }
+
     /** What is missing or still running, for the notes of a run that did not become quiet. */
     List<String> unfinished() {
         List<String> notes = new ArrayList<>(expected.stream().filter(f -> !answers.containsKey(f)).sorted()

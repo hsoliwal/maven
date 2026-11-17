@@ -41,8 +41,12 @@ import java.util.stream.Stream;
  * every file was answered for that version, no work-done progress is open and nothing was published for
  * {@code settle} ms (default {@value #DEFAULT_SETTLE}), all before the deadline; otherwise PARTIAL (exit 4) or, when
  * the server could not start, exited or did not answer initialize, FAILED (exit 2). The task fails either way and
- * both reports are kept. A .cmd/.bat server is refused when it or a {@code server-arg} holds a cmd.exe metacharacter.
- * The server parses on its own: one-AST status {@link M3AstStatus#LANGUAGE_SERVER}.
+ * both reports are kept. After the session became quiet the collector watches one more {@code settle} period: a
+ * publish then makes the run PARTIAL. A server whose next stage comes later than twice {@code settle} after its last
+ * publish, without work-done progress, is not seen; give such a server a larger {@code settle}. A command interpreter
+ * (cmd.exe, PowerShell, a POSIX shell, a script host) is never accepted as the server; a .cmd/.bat server is refused
+ * when it or a {@code server-arg} holds a cmd.exe metacharacter ({@link CmdLauncher}). A {@code server-arg} may be
+ * {@code --}. The server parses on its own: one-AST status {@link M3AstStatus#LANGUAGE_SERVER}.
  */
 public final class LspLinterProvider implements M3ToolProvider {
     static final String MAIN = "org.apache.maven.plugins.polyglot.adapters.LspDiagnosticsMain";

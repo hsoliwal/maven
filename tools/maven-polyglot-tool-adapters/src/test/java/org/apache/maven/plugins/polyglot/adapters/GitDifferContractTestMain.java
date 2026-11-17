@@ -36,7 +36,7 @@ import java.util.Map;
  * Prints NOT RUN when git is not on PATH.
  */
 public final class GitDifferContractTestMain {
-    private static final String GIT = System.getProperty("m3.git", "git");
+    static final String GIT = System.getProperty("m3.git", "git");
     private static int passed;
 
     private GitDifferContractTestMain() { }
@@ -193,20 +193,24 @@ public final class GitDifferContractTestMain {
         return env;
     }
 
+    /** System and global configuration are replaced (no system file, an empty global file); lazy fetches are off. */
     private static void environmentIsPinned() {
         Map<String, String> env = new HashMap<>(Map.of("GIT_DIFF_OPTS", "-u1", "GIT_EXTERNAL_DIFF", "x",
                 "GIT_CONFIG_PARAMETERS", "'diff.noprefix'='true'", "GIT_INDEX_FILE", "i", "GIT_CONFIG_KEY_0", "k",
-                "GIT_DIR", "d", "PATH", "p", "GIT_CONFIG_GLOBAL", "g"));
-        PinnedGit.pin(env);
-        require(env.keySet().equals(java.util.Set.of("PATH", "GIT_CONFIG_GLOBAL", "GIT_ATTR_NOSYSTEM", "LC_ALL",
-                "GIT_TERMINAL_PROMPT")) && "C".equals(env.get("LC_ALL")), "pinned environment: " + env);
+                "GIT_DIR", "d", "PATH", "p", "GIT_CONFIG_GLOBAL", "g", "GIT_CONFIG_SYSTEM", "s"));
+        Path empty = Path.of("scratch", "empty");
+        PinnedGit.pin(env, empty);
+        require(env.keySet().equals(java.util.Set.of("PATH", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
+                "GIT_NO_LAZY_FETCH", "GIT_ATTR_NOSYSTEM", "LC_ALL", "GIT_TERMINAL_PROMPT")) && "C".equals(env.get("LC_ALL"))
+                && empty.toString().equals(env.get("GIT_CONFIG_GLOBAL")) && "1".equals(env.get("GIT_CONFIG_NOSYSTEM")),
+                "pinned environment: " + env);
         passed++;
     }
 
-    private record Child(int exit, String output) { }
+    record Child(int exit, String output) { }
 
     /** GitDiffMain in its own JVM, as the engine runs it, with extra environment variables. */
-    private static Child child(Path dir, Map<String, String> env, String... args) throws Exception {
+    static Child child(Path dir, Map<String, String> env, String... args) throws Exception {
         List<String> command = new ArrayList<>(List.of(ToolArgs.java(), "-cp", ToolArgs.home(GitDiffMain.class),
                 GitDiffMain.class.getName()));
         command.addAll(List.of(args));
@@ -227,14 +231,14 @@ public final class GitDifferContractTestMain {
         return text;
     }
 
-    private static void git(Path dir, String... args) throws Exception {
+    static void git(Path dir, String... args) throws Exception {
         List<String> command = new ArrayList<>(List.of(GIT, "-c", "core.autocrlf=false"));
         command.addAll(List.of(args));
         int exit = new ProcessBuilder(command).directory(dir.toFile()).inheritIO().start().waitFor();
         require(exit == 0, "git " + String.join(" ", args) + " exit " + exit);
     }
 
-    private static boolean gitAvailable() {
+    static boolean gitAvailable() {
         try {
             return new ProcessBuilder(GIT, "--version").redirectErrorStream(true).start().waitFor() == 0;
         } catch (IOException | InterruptedException absent) {
@@ -242,16 +246,16 @@ public final class GitDifferContractTestMain {
         }
     }
 
-    private static Path write(Path file, String text) throws IOException {
+    static Path write(Path file, String text) throws IOException {
         Files.createDirectories(file.getParent());
         return Files.writeString(file, text, StandardCharsets.UTF_8);
     }
 
-    private static void require(boolean condition, String message) {
+    static void require(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
     }
 
-    private static void delete(Path root) throws IOException {
+    static void delete(Path root) throws IOException {
         try (var paths = Files.walk(root)) {
             paths.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(java.io.File::delete);
         }

@@ -41,6 +41,7 @@ public final class FindingReportsContractTestMain {
         Path ws = Files.createTempDirectory("finding-reports-").toRealPath();
         try {
             reports(ws);
+            surrogatesBecomeReplacementCharacters(ws);
             javacHostCompiles(ws);
             javacHostReportsCrashedPlugin(ws);
             System.out.println("PASS: " + passed + " report writer and javac host contract cases");
@@ -71,6 +72,23 @@ public final class FindingReportsContractTestMain {
                 && sarif.contains("\"startLine\":1}"), "SARIF shape: " + sarif);
         require(Files.readAllLines(ws.resolve("r1.jsonl")).get(0).startsWith("{\"v\":1,\"seq\":1,\"tMs\":0,\"type\":\"diagnostic\""),
                 "build-events diagnostic line");
+        passed++;
+    }
+
+    /** Unpaired UTF-16 surrogates (a language server's message, a file name) become U+FFFD; valid pairs stay. */
+    private static void surrogatesBecomeReplacementCharacters(Path ws) throws Exception {
+        String r = String.valueOf((char) 0xFFFD);
+        String pair = new String(Character.toChars(0x1F600));
+        Finding finding = new Finding("src/s" + (char) 0xDC01 + ".c", 1, 1, Finding.Level.WARNING, "r" + (char) 0xD801,
+                "bad " + (char) 0xD800 + " text " + (char) 0xDC00 + "x " + pair);
+        var tool = new FindingReports.Tool("srv" + (char) 0xD800, "1", "", "linter");
+        FindingReports.write(ws.resolve("s.jsonl"), ws.resolve("s.sarif"), tool, ws, List.of(finding),
+                List.of("note " + (char) 0xDBFF));
+        String sarif = Files.readString(ws.resolve("s.sarif"), StandardCharsets.UTF_8);
+        require(sarif.contains("bad " + r + " text " + r + "x " + pair) && sarif.contains("note " + r)
+                && Files.readString(ws.resolve("s.jsonl"), StandardCharsets.UTF_8).contains("bad " + r),
+                "well-formed UTF-8 with U+FFFD for each lone surrogate: " + sarif);
+        require(FindingReports.quote(String.valueOf((char) 0xD800)).equals("\"" + r + "\""), "quote replaces");
         passed++;
     }
 

@@ -55,7 +55,8 @@ import org.eclipse.lsp4j.services.LanguageServer;
  * the time left, then the process tree is ended). It never throws for a tool failure: a server that cannot start,
  * exits, refuses or does not answer {@code initialize}, or a launcher refused by {@link CmdLauncher}, gives a failed
  * outcome; files that are missing or not UTF-8, files without an answer, a server still busy at the deadline and a
- * publish after the snapshot give a partial one. Every outcome carries what was collected.
+ * publish after the snapshot (watched for one more settle period once the session is quiet) give a partial one.
+ * Every outcome carries what was collected.
  */
 final class LspSession {
     private static final long SHUTDOWN_MILLIS = 2000;
@@ -134,21 +135,32 @@ final class LspSession {
         }
     }
 
-    /** Takes the snapshot, shuts the server down in the time left, and notes what makes the result partial. */
+    /**
+     * Takes the snapshot, watches one more settle period (within the deadline) for a later stage, shuts the server
+     * down in the time left, and notes what makes the result partial. A stage later than twice the settle period after
+     * the last activity, with no work-done progress open, is not seen: such a server needs a larger {@code settle}.
+     */
     private Outcome finish(LanguageServer server, LspDiagnosticsClient client, Process process,
             LspDiagnosticsClient.Quiet quiet) throws InterruptedException {
-        Map<Path, List<Diagnostic>> snapshot = client.snapshot();
         int published = client.published();
+        Map<Path, List<Diagnostic>> snapshot = client.snapshot();
         if (quiet == LspDiagnosticsClient.Quiet.EXITED) {
             notes.add("the language server exited (code " + process.exitValue() + ") before the run completed");
             return outcome(snapshot, true);
         }
         notes.addAll(quiet == LspDiagnosticsClient.Quiet.DEADLINE ? client.unfinished() : List.of());
+        long grace = Math.min(end, System.nanoTime() + request.settle().toNanos());
+        boolean late = quiet == LspDiagnosticsClient.Quiet.QUIET && client.publishedBy(published, grace, process);
         shutdown(server, process);
-        if (client.published() > published) {
-            notes.add("diagnostics were published after the snapshot; the reports may miss them");
-        }
+        late(late || client.published() > published);
         return outcome(snapshot, false);
+    }
+
+    private void late(boolean late) {
+        if (late) {
+            notes.add("diagnostics were published after the session became quiet (a stage later than settle="
+                    + request.settle().toMillis() + " ms); the reports may miss them: raise settle");
+        }
     }
 
     private Outcome outcome(Map<Path, List<Diagnostic>> answers, boolean failed) {

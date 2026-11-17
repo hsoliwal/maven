@@ -56,7 +56,10 @@ CP="$DEST/engine$SEP$DEST/classes$SEP$DEST/test-classes"
 java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.ToolAdaptersContractTestMain
 java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.FindingReportsContractTestMain
 java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.ToolAdaptersFailureContractTestMain
+java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.JavacHostConfinementContractTestMain
+java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.ProviderConfinementContractTestMain
 java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.GitDifferContractTestMain
+java -cp "$CP" org.apache.maven.plugins.polyglot.adapters.GitDifferPinningContractTestMain
 if [ -n "$LSP_CP" ]; then
   java -cp "$CP$SEP$LSP_CP" org.apache.maven.plugins.polyglot.adapters.LspCollectorContractTestMain
 else

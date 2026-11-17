@@ -29,6 +29,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -41,12 +43,15 @@ import java.util.stream.Stream;
  *   differences only with no {@code error:}/{@code fatal:} line and a patch that starts with {@code diff --git}.</li>
  *   <li>{@code GitDiffMain repo <git> <repository> <revision> <out.patch> [<pathspec>...]}: the work tree against a
  *   revision with repository-relative paths, untracked files included (not ignored ones): they are added
- *   intent-to-add to a copy of the index, so the repository's own index is never written.</li>
+ *   intent-to-add to a copy of the index, so the repository's own index is never written. A path with a
+ *   {@code filter} attribute is refused before {@code git diff} could run its clean filter.</li>
  * </ul>
  * Relative paths resolve against the working directory, so trees-mode patch headers keep the paths as given.
  */
 public final class GitDiffMain {
     static final int FAILED = 2;
+    /** check-attr values of an attribute that is not set. */
+    static final Set<String> UNSET = Set.of("unspecified", "unset");
     static final String USAGE = "GitDiffMain trees <git> <before> <after> <out.patch>"
             + " | repo <git> <repository> <revision> <out.patch> [<pathspec>...]";
     private static final System.Logger LOG = System.getLogger(GitDiffMain.class.getName());
@@ -130,6 +135,7 @@ public final class GitDiffMain {
         Map<String, String> index = Map.of("GIT_INDEX_FILE", indexCopy(git, repository, scratch).toString());
         List<String> pathspecs = args.subList(5, args.size());
         addUntracked(git, repository, index, pathspecs, scratch);
+        refuseFilters(git, repository, index, files(git, repository, index, pathspecs, scratch));
         PinnedGit.Result result = git.run(repository, index, Stream.of(List.of("diff"), PinnedGit.DIFF_OPTIONS,
                 List.of("--output=" + out, args.get(3), "--"), pathspecs).flatMap(List::stream).toList());
         boolean written = Files.isRegularFile(out) && (Files.size(out) == 0 || patch(out));
@@ -180,6 +186,42 @@ public final class GitDiffMain {
         if (added.exit() != 0 || added.failed()) {
             throw failure("git add --intent-to-add (index copy)", added, list);
         }
+    }
+
+    /** Every path the diff can read (the index copy holds the untracked ones), NUL-separated, in a scratch file. */
+    private static Path files(PinnedGit git, Path repository, Map<String, String> index, List<String> pathspecs,
+            Path scratch) throws IOException, InterruptedException {
+        List<String> list = new ArrayList<>(List.of("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--"));
+        list.addAll(pathspecs);
+        PinnedGit.Result files = git.run(repository, index, list);
+        if (files.exit() != 0 || files.failed()) {
+            throw failure("git ls-files --cached --others", files, scratch.resolve("files"));
+        }
+        return Files.write(scratch.resolve("files"), files.stdout());
+    }
+
+    /**
+     * A path with a {@code filter} attribute would make git run the clean filter program configured for it (the
+     * repository's own configuration, git-lfs and the like) and its bytes would depend on that program: refused.
+     */
+    private static void refuseFilters(PinnedGit git, Path repository, Map<String, String> index, Path files)
+            throws IOException, InterruptedException {
+        PinnedGit.Result attributes = git.run(repository, index, List.of("check-attr", "-z", "--stdin", "filter"), files);
+        if (attributes.exit() != 0 || attributes.failed()) {
+            throw failure("git check-attr filter", attributes, files);
+        }
+        List<String> filtered = filtered(attributes.stdout());
+        if (!filtered.isEmpty()) {
+            throw new IOException("repository mode refuses paths with a filter attribute (git would run a configured"
+                    + " clean filter program; diff two trees instead): " + filtered);
+        }
+    }
+
+    /** {@code git check-attr -z} output, {@code <path> NUL <attribute> NUL <value> NUL}: the paths whose value is set. */
+    static List<String> filtered(byte[] output) {
+        String[] fields = new String(output, StandardCharsets.UTF_8).split(String.valueOf((char) 0), -1);
+        return IntStream.range(0, fields.length / 3).filter(i -> !UNSET.contains(fields[3 * i + 2]))
+                .mapToObj(i -> fields[3 * i]).toList();
     }
 
     /** A non-empty unified diff as git writes it. */
