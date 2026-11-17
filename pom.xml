@@ -1481,6 +1481,14 @@ under the License.
       </modules>
     </profile>
     <profile>
+      <!-- Plugins imported with full history under plugins/. Off by default so that core builds stay fast;
+           the distribution build passes -Pplugins (see plugins/pom.xml and apache-maven/pom.xml). -->
+      <id>plugins</id>
+      <modules>
+        <module>plugins</module>
+      </modules>
+    </profile>
+    <profile>
       <id>ci</id>
       <build>
         <pluginManagement>
