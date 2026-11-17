@@ -63,10 +63,10 @@ import static java.util.Comparator.comparing;
 public class DefaultGraphBuilder implements GraphBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultGraphBuilder.class);
 
-    private final BuildResumptionDataRepository buildResumptionDataRepository;
-    private final PomlessCollectionStrategy pomlessCollectionStrategy;
-    private final MultiModuleCollectionStrategy multiModuleCollectionStrategy;
-    private final RequestPomCollectionStrategy requestPomCollectionStrategy;
+    private BuildResumptionDataRepository buildResumptionDataRepository;
+    private PomlessCollectionStrategy pomlessCollectionStrategy;
+    private MultiModuleCollectionStrategy multiModuleCollectionStrategy;
+    private RequestPomCollectionStrategy requestPomCollectionStrategy;
     private final ProjectSelector projectSelector;
 
     /**
@@ -89,6 +89,29 @@ public class DefaultGraphBuilder implements GraphBuilder {
         this.multiModuleCollectionStrategy = multiModuleCollectionStrategy;
         this.requestPomCollectionStrategy = requestPomCollectionStrategy;
         this.projectSelector = new ProjectSelector(); // if necessary switch to DI
+    }
+
+    /**
+     * Completes a graph builder created through the deprecated no-argument constructor. Extensions written for
+     * Maven 3 subclass this class with such a constructor and a Plexus descriptor (Tycho 4.0.x
+     * {@code TychoGraphBuilder}); the container creates them that way and then injects this method. Without it
+     * every collection strategy stayed {@code null} and the build ended in a {@link NullPointerException}.
+     * Collaborators set by the injecting constructor are kept.
+     */
+    @Inject
+    void injectCollaborators(
+            BuildResumptionDataRepository buildResumptionDataRepository,
+            PomlessCollectionStrategy pomlessCollectionStrategy,
+            MultiModuleCollectionStrategy multiModuleCollectionStrategy,
+            RequestPomCollectionStrategy requestPomCollectionStrategy) {
+        this.buildResumptionDataRepository = keep(this.buildResumptionDataRepository, buildResumptionDataRepository);
+        this.pomlessCollectionStrategy = keep(this.pomlessCollectionStrategy, pomlessCollectionStrategy);
+        this.multiModuleCollectionStrategy = keep(this.multiModuleCollectionStrategy, multiModuleCollectionStrategy);
+        this.requestPomCollectionStrategy = keep(this.requestPomCollectionStrategy, requestPomCollectionStrategy);
+    }
+
+    private static <T> T keep(T current, T injected) {
+        return current != null ? current : injected;
     }
 
     @Override
