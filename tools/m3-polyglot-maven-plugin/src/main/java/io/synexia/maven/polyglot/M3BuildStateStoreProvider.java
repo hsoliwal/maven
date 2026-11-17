@@ -25,7 +25,11 @@ public interface M3BuildStateStoreProvider {
     /** Unique lower-case ID (a-z, 0-9, dash), different from built-in backend IDs. */
     String id();
 
-    /** Opens storage in the selected project/module root; must not escape it. */
+    /**
+     * Opens storage in the selected project/module root; must not escape it.
+     * On-disk state must be confined below .m3/module-state-<id> so Maven can
+     * exclude the state itself when a task declares the whole project as input.
+     */
     Store open(Path moduleRoot) throws IOException;
 
     interface Store extends AutoCloseable {
