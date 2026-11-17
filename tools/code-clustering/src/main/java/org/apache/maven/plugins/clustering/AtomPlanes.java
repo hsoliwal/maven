@@ -32,7 +32,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.tools.DiagnosticCollector;
@@ -62,31 +64,38 @@ public final class AtomPlanes {
             String structure, String simhash) { }
 
     /**
-     * Atomizes every source file under the roots and returns the atoms in path order: {@code .java} through javac,
-     * the brace and indentation languages of {@link LexicalAtoms} through the lexical front end.
+     * Atomizes every source file under the roots with the {@link AtomFrontEnd front ends}: discovered ones first, then
+     * javac for {@code .java} and the lexical front end for the brace and indentation languages. Returns the atoms in
+     * path order.
      */
     public static List<Atom> scan(List<Path> roots) throws IOException {
+        return scan(roots, AtomFrontEnd.all());
+    }
+
+    /** As {@link #scan(List)} with an explicit, ordered list of front ends; each file goes to the first that accepts it. */
+    public static List<Atom> scan(List<Path> roots, List<AtomFrontEnd> frontEnds) throws IOException {
         List<Atom> atoms = new ArrayList<>();
         for (Path given : roots) {
             Path root = given.toAbsolutePath().normalize();
-            List<Path> files = sourceFiles(root);
-            List<Path> java = files.stream().filter(p -> p.toString().endsWith(".java")).collect(Collectors.toList());
-            List<Path> other = files.stream().filter(LexicalAtoms::accepts).collect(Collectors.toList());
+            Map<AtomFrontEnd, List<Path>> assigned = new LinkedHashMap<>();
+            for (Path file : sourceFiles(root, frontEnds)) {
+                frontEnds.stream().filter(f -> f.accepts(file)).findFirst()
+                        .ifPresent(f -> assigned.computeIfAbsent(f, k -> new ArrayList<>()).add(file));
+            }
             List<Atom> found = new ArrayList<>();
-            if (!java.isEmpty()) found.addAll(parse(root, java));
-            if (!other.isEmpty()) found.addAll(LexicalAtoms.scan(root, other));
+            for (Map.Entry<AtomFrontEnd, List<Path>> e : assigned.entrySet()) found.addAll(e.getKey().atoms(root, e.getValue()));
             found.sort(Comparator.comparing(Atom::path));
             atoms.addAll(found);
         }
         return atoms;
     }
 
-    /** Source files under the root, skipping build output, dependency caches and version-control folders. */
-    static List<Path> sourceFiles(Path root) throws IOException {
+    /** Files under the root that a front end accepts, skipping build output, dependency caches and version control. */
+    static List<Path> sourceFiles(Path root, List<AtomFrontEnd> frontEnds) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
         try (Stream<Path> walk = Files.walk(root)) {
             return walk.filter(p -> Files.isRegularFile(p) && !skipped(root.relativize(p)))
-                    .filter(p -> p.toString().endsWith(".java") || LexicalAtoms.accepts(p)).sorted()
+                    .filter(p -> frontEnds.stream().anyMatch(f -> f.accepts(p))).sorted()
                     .collect(Collectors.toList());
         }
     }
@@ -101,7 +110,7 @@ public final class AtomPlanes {
     private static final java.util.Set<String> SKIPPED = java.util.Set.of("node_modules", ".git", "target", "build",
             "dist", "out", "vendor", "__pycache__", ".venv", "venv", ".gradle", ".idea");
 
-    private static List<Atom> parse(Path root, List<Path> files) throws IOException {
+    static List<Atom> parse(Path root, List<Path> files) throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) throw new IOException("planes need a JDK (no system Java compiler)");
         DiagnosticCollector<JavaFileObject> ignored = new DiagnosticCollector<>();
@@ -154,11 +163,7 @@ public final class AtomPlanes {
             long start = positions.getStartPosition(unit, node);
             long end = positions.getEndPosition(unit, node);
             if (start < 0 || end <= start || end > text.length()) return;
-            String source = text.substring((int) start, (int) end).replace("\r\n", "\n");
-            PlaneTokens tokens = PlaneTokens.of(node);
-            atoms.add(new Atom(path, kind, symbol, tokens.logicTokens().size(), PlaneHash.sha256(source),
-                    PlaneHash.sha256(tokens.logic()), PlaneHash.sha256(tokens.structure()),
-                    PlaneHash.simhash(tokens.logicTokens())));
+            atoms.add(PlaneTokens.atom(node, path, kind, symbol, text.substring((int) start, (int) end)));
         }
     }
 }

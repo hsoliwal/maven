@@ -25,10 +25,9 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.Lexer.Kind;
@@ -44,7 +43,7 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
  * assignment, or {@code in}/{@code of}. Other names and all literals are kept. STRUCTURE keeps keywords and
  * operators and reduces names and literals to their class.
  */
-final class LexicalAtoms {
+public final class LexicalAtoms {
     static final Set<String> BRACE = Set.of("c", "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "js", "mjs", "cjs", "jsx",
             "ts", "tsx", "go", "rs", "kt", "kts", "scala", "swift", "php", "dart", "groovy");
     static final Set<String> INDENTED = Set.of("py");
@@ -245,26 +244,45 @@ final class LexicalAtoms {
     private static Atom atom(String path, String text, List<Token> span, Frame frame, String owner) {
         int from = span.get(0).start();
         int to = span.get(span.size() - 1).end();
-        String source = text.substring(from, to).replace("\r\n", "\n");
         String symbol = (owner.isEmpty() ? "" : owner + ".") + frame.name()
                 + ("METHOD".equals(frame.kind()) ? "(" + arity(frame.params()) + ")" : "");
-        Map<String, String> declared = declared(span, frame);
-        List<String> logic = new ArrayList<>();
-        List<String> structure = new ArrayList<>();
+        AtomBuilder builder = AtomBuilder.atom(path, frame.kind(), symbol, text.substring(from, to));
+        declared(span, frame).forEach(builder::declare);
         for (int i = 0; i < span.size(); i++) {
             Token t = span.get(i);
             boolean member = i > 0 && (span.get(i - 1).text().equals(".") || span.get(i - 1).text().equals("->"));
-            structure.add(switch (t.kind()) {
-                case ID -> "ID";
-                case NUMBER -> "NUM";
-                case STRING -> "STR";
-                default -> t.text();
-            });
-            logic.add(t.kind() == Kind.ID && !member ? declared.getOrDefault(t.text(), t.text()) : t.text());
+            switch (t.kind()) {
+                case ID -> {
+                    if (member) builder.literal("ID", t.text());
+                    else builder.name("ID", t.text());
+                }
+                case NUMBER -> builder.literal("NUM", t.text());
+                case STRING -> builder.literal("STR", t.text());
+                default -> builder.node(t.text());
+            }
         }
-        return new Atom(path, frame.kind(), symbol, logic.size(), PlaneHash.sha256(source),
-                PlaneHash.sha256(String.join(" ", logic)), PlaneHash.sha256(String.join(" ", structure)),
-                PlaneHash.simhash(logic));
+        return builder.build();
+    }
+
+    /**
+     * The atom of a range that another front end found, for example a document symbol reported by a language
+     * server: the range's tokens go through the same plane rules as the lexical front end's own atoms.
+     *
+     * @param indented true for indentation languages (comments start with {@code #})
+     * @param name     the symbol's own name, declared first
+     * @param symbol   the symbol written to the atom table
+     */
+    public static Atom rangeAtom(String path, String text, int from, int to, String kind, String name, String symbol,
+            boolean indented) {
+        List<Token> span = Lexer.tokens(text.substring(from, to), indented);
+        if (span.isEmpty()) return AtomBuilder.atom(path, kind, symbol, text.substring(from, to)).build();
+        int paren = -1;
+        for (int i = 0; i + 1 < span.size() && paren < 0; i++) {
+            if (span.get(i).text().equals(name) && span.get(i + 1).text().equals("(")) paren = i + 1;
+        }
+        Frame frame = new Frame(0, kind, name, paren < 0 ? List.of() : group(span, paren));
+        Atom atom = atom(path, text.substring(from, to), trim(span), frame, "");
+        return new Atom(path, kind, symbol, atom.tokens(), atom.exact(), atom.logic(), atom.structure(), atom.simhash());
     }
 
     private static int arity(List<Token> params) {
@@ -280,14 +298,14 @@ final class LexicalAtoms {
         return commas + 1;
     }
 
-    /** Names the atom binds, numbered in order: its own name, its parameters, then local bindings. */
-    private static Map<String, String> declared(List<Token> span, Frame frame) {
-        Map<String, String> declared = new LinkedHashMap<>();
-        declared.put(frame.name(), "$0");
+    /** Names the atom binds, in order: its own name, its parameters, then local bindings. */
+    private static Set<String> declared(List<Token> span, Frame frame) {
+        Set<String> declared = new LinkedHashSet<>();
+        declared.add(frame.name());
         List<Token> params = frame.params();
         for (int i = 0; i < params.size(); i++) {
             String next = i + 1 < params.size() ? params.get(i + 1).text() : ")";
-            if (params.get(i).kind() == Kind.ID && Set.of(",", ")", "=", ":").contains(next)) bind(declared, params.get(i).text());
+            if (params.get(i).kind() == Kind.ID && Set.of(",", ")", "=", ":").contains(next)) declared.add(params.get(i).text());
         }
         for (int i = 0; i + 1 < span.size(); i++) {
             Token t = span.get(i);
@@ -300,13 +318,9 @@ final class LexicalAtoms {
                     || Set.of("*", ">", "]", ";", "{", "}", "INDENT", "DEDENT", ",").contains(prev));
             boolean loop = next.equals("in") || next.equals("of") || next.equals(":=")
                     || next.equals(":") && prevToken != null && prevToken.kind() == Kind.ID;
-            if (afterKeyword || assigned || loop) bind(declared, t.text());
+            if (afterKeyword || assigned || loop) declared.add(t.text());
         }
         return declared;
-    }
-
-    private static void bind(Map<String, String> declared, String name) {
-        declared.putIfAbsent(name, "$" + declared.size());
     }
 
     private static String extension(Path file) {

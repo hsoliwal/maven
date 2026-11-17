@@ -33,6 +33,25 @@ finds.
    | javac | Java (`.java`) | `JavacTask.parse()`: no classpath needed, nothing is compiled |
    | lexical | C, C++, C#, JavaScript, TypeScript (incl. JSX/TSX), Go, Rust, Kotlin, Scala, Swift, PHP, Dart, Groovy (brace blocks); Python (indentation) | A tokenizer that skips comments and keeps literals whole. A block becomes a TYPE atom if its header names a type (class, struct, interface, enum, trait, impl, object, record, union, Go `type X struct`). It becomes a METHOD atom if the header has a name followed by a parameter list, or ends in `=>`. Control statements are not atoms. In Python, `def` and `class` lines open atoms that run to the next line indented as far or less, decorators included |
 
+   More front ends plug in through the `AtomFrontEnd` service interface: add a jar that registers one in
+   `META-INF/services/org.apache.maven.plugins.clustering.AtomFrontEnd` as a dependency of the plugin.
+   Discovered front ends come before javac and lexical, and each file goes to the first front end that accepts it.
+   An adapter over a language core (Eclipse JDT, CDT, PyDev, a language server through LSP4J) walks its own tree
+   and feeds `AtomBuilder`, the single owner of the planes. It calls `declare(name)` for the names the atom binds,
+   then `node(kind)`, `name(kind, name)` or `literal(kind, value)` per node in pre-order. An adapter that only
+   knows symbol ranges (for example a language server's document symbols) can call `LexicalAtoms.rangeAtom` to
+   get planes from the range's tokens.
+
+   ```xml
+   <plugin>
+     <groupId>org.apache.maven.plugins</groupId>
+     <artifactId>maven-code-clustering-plugin</artifactId>
+     <dependencies>
+       <dependency><!-- a jar with an AtomFrontEnd service --></dependency>
+     </dependencies>
+   </plugin>
+   ```
+
    The lexical front end binds a name for the LOGIC plane when the name is the atom's own name, a parameter, a
    name after a declaration keyword (`let`, `const`, `var`, `val`, `def`, `fn`, `func`, `function`, `fun`, `auto`),
    the target of `:=` or of a plain assignment, or a loop variable (`in`, `of`, `:`). Directories named
