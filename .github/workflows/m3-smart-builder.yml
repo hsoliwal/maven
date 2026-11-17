@@ -1,10 +1,7 @@
 name: M3 Smart Maven Builder
 
 "on":
-  pull_request:
-    paths:
-      - 'tools/m3-smart-builder/**'
-      - '.github/workflows/m3-smart-builder.yml'
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
 
 permissions:

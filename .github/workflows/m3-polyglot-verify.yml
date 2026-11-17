@@ -2,15 +2,7 @@
 name: M3 Polyglot Maven Plugin
 
 on:
-  pull_request:
-    paths:
-      - 'tools/m3-polyglot-maven-plugin/**'
-      - '.github/workflows/m3-polyglot-verify.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'tools/m3-polyglot-maven-plugin/**'
-      - '.github/workflows/m3-polyglot-verify.yml'
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
 
 permissions:

@@ -4,14 +4,8 @@
 # The ASF licenses this file to You under the Apache License, Version 2.0.
 name: M3 Native GitHub Patch Bootstrap
 on:
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java'
-      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java'
-      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*'
-      - 'm3/PATCH_RECIPE_BOOT.md'
-      - '.github/workflows/m3-native-pr-patch-bootstrap.yml'
 permissions:
   contents: read
 jobs:
