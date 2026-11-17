@@ -125,8 +125,9 @@ final class ModuleStateDb implements AutoCloseable {
             channel.close();
             throw new IOException("module state already owned by another Maven build: " + root);
         }
+        Storage storage = null;
         try {
-            Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
+            storage = switch (Objects.requireNonNull(backend, "backend")) {
                 case "file" -> new FileStorage(root.resolve(FILE));
                 case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
                 case "sqlite", "h2", "derby" -> {
@@ -152,6 +153,10 @@ final class ModuleStateDb implements AutoCloseable {
             }
             return database;
         } catch (IOException | RuntimeException | LinkageError failure) {
+            if (storage != null) {
+                try { storage.close(); }
+                catch (IOException suppressed) { failure.addSuppressed(suppressed); }
+            }
             try { lock.release(); }
             catch (IOException suppressed) { failure.addSuppressed(suppressed); }
             try { channel.close(); }
