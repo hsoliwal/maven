@@ -90,7 +90,7 @@ public final class M3ToolKindsRunnerContractTestMain {
 
     /** A declared output folder that is a junction (Windows) or symlink out of the workspace: refused before the run. */
     private static void outputThroughLinkIsRefused(Path root) throws Exception {
-        Path outside = Files.createTempDirectory("m3-tool-kinds-outside-");
+        Path outside = Files.createTempDirectory("tool-kinds-outside-");
         Path link = root.resolve("linked");
         try {
             if (link(link, outside)) {
