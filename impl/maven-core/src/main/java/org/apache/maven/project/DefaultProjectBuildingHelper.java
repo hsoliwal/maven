@@ -37,6 +37,7 @@ import org.apache.maven.api.xml.XmlNode;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
+import org.apache.maven.artifact.repository.layout.ArtifactRepositoryLayout;
 import org.apache.maven.bridge.MavenRepositorySystem;
 import org.apache.maven.classrealm.ClassRealmManager;
 import org.apache.maven.model.Build;
@@ -71,17 +72,20 @@ public class DefaultProjectBuildingHelper implements ProjectBuildingHelper {
     private final ProjectRealmCache projectRealmCache;
     private final MavenRepositorySystem repositorySystem;
     private final MavenPluginManager pluginManager;
+    private final List<ArtifactRepositoryLayout> layouts;
 
     @Inject
     public DefaultProjectBuildingHelper(
             ClassRealmManager classRealmManager,
             ProjectRealmCache projectRealmCache,
             MavenRepositorySystem repositorySystem,
-            MavenPluginManager pluginManager) {
+            MavenPluginManager pluginManager,
+            List<ArtifactRepositoryLayout> layouts) {
         this.classRealmManager = classRealmManager;
         this.projectRealmCache = projectRealmCache;
         this.repositorySystem = repositorySystem;
         this.pluginManager = pluginManager;
+        this.layouts = layouts;
     }
 
     @Override
@@ -100,7 +104,8 @@ public class DefaultProjectBuildingHelper implements ProjectBuildingHelper {
                         repository.getUrl());
                 continue;
             }
-            internalRepositories.add(MavenRepositorySystem.buildArtifactRepository(repository));
+            internalRepositories.add(MavenRepositorySystem.buildArtifactRepositoryWithLayout(
+                    repository, layout(repository.getLayout())));
         }
 
         repositorySystem.injectMirror(request.getRepositorySession(), internalRepositories);
@@ -141,6 +146,33 @@ public class DefaultProjectBuildingHelper implements ProjectBuildingHelper {
         artifactRepositories = repositorySystem.getEffectiveRepositories(artifactRepositories);
 
         return artifactRepositories;
+    }
+
+    /**
+     * The layout registered for {@code id} that the current project realm sees, as Maven 3's realm-filtered
+     * lookup chose it. The same extension can be loaded twice: Tycho's p2 layout comes with its core extension
+     * ({@code tycho-build}) and with its build extension ({@code tycho-maven-plugin}), and Tycho recognises its p2
+     * sites with {@code instanceof} against the class of the realm the project uses.
+     */
+    private ArtifactRepositoryLayout layout(String id) {
+        if (id == null || layouts == null) {
+            return null;
+        }
+        List<ArtifactRepositoryLayout> candidates =
+                layouts.stream().filter(layout -> id.equals(layout.getId())).toList();
+        ClassLoader context = Thread.currentThread().getContextClassLoader();
+        return candidates.stream()
+                .filter(layout -> visible(context, layout.getClass()))
+                .findFirst()
+                .orElse(candidates.isEmpty() ? null : candidates.get(0));
+    }
+
+    private static boolean visible(ClassLoader loader, Class<?> type) {
+        try {
+            return loader != null && Class.forName(type.getName(), false, loader) == type;
+        } catch (ClassNotFoundException | LinkageError e) {
+            return false;
+        }
     }
 
     @Override

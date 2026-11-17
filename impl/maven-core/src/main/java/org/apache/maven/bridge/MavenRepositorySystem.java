@@ -354,6 +354,42 @@ public class MavenRepositorySystem {
         }
     }
 
+    /**
+     * Builds a POM repository with the layout it declares, as Maven 3 did. A layout contributed by an extension
+     * (Tycho's {@code p2} layout for {@code <repository><layout>p2</layout>}) both marks the repository for that
+     * extension and keeps it out of Maven artifact resolution through the layout's own policies. A layout id no
+     * component answers for keeps the default layout.
+     *
+     * @param repo the POM repository
+     * @return the artifact repository, or {@code null} when {@code repo} is {@code null}
+     * @throws InvalidRepositoryException if the repository has no id or no URL
+     * @since 4.2.0
+     */
+    public ArtifactRepository buildArtifactRepositoryWithLayout(org.apache.maven.model.Repository repo)
+            throws InvalidRepositoryException {
+        return buildArtifactRepositoryWithLayout(
+                repo, repo != null && repo.getLayout() != null ? getLayout(repo.getLayout()) : null);
+    }
+
+    /**
+     * Builds a POM repository with the given layout; {@code null} or the default layout keep the default layout.
+     *
+     * @param repo the POM repository
+     * @param layout the layout registered for the repository's layout id, may be {@code null}
+     * @return the artifact repository, or {@code null} when {@code repo} is {@code null}
+     * @throws InvalidRepositoryException if the repository has no id or no URL
+     * @since 4.2.0
+     */
+    public static ArtifactRepository buildArtifactRepositoryWithLayout(
+            org.apache.maven.model.Repository repo, ArtifactRepositoryLayout layout) throws InvalidRepositoryException {
+        ArtifactRepository repository = buildArtifactRepository(repo);
+        if (repository == null || layout == null || layout.getClass() == DefaultRepositoryLayout.class) {
+            return repository;
+        }
+        return createArtifactRepository(
+                repository.getId(), repository.getUrl(), layout, repository.getSnapshots(), repository.getReleases());
+    }
+
     public static ArtifactRepositoryPolicy buildArtifactRepositoryPolicy(
             org.apache.maven.model.RepositoryPolicy policy) {
         boolean enabled = true;
