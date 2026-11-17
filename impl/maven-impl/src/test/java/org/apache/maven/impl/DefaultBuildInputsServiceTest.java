@@ -1,6 +1,20 @@
 /*
- * SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
- * SPDX-License-Identifier: Apache-2.0
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.impl;
 
@@ -80,7 +94,10 @@ final class DefaultBuildInputsServiceTest {
         String content = HEADER + "I\tsrc/main/resources/a.txt\t" + SHA + "\t1\n";
         Path file = directory.resolve("actual-receipt.tsv");
         Files.writeString(file, content);
-        var receipt = new M3PluginEvidenceService.Receipt(identity(), file, BuildInputsService.SCHEMA,
+        var receipt = new M3PluginEvidenceService.Receipt(
+                identity(),
+                file,
+                BuildInputsService.SCHEMA,
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))),
                 BuildInputsService.CAPABILITIES);
         Session session = mock(Session.class);
@@ -157,8 +174,7 @@ final class DefaultBuildInputsServiceTest {
         Session session = mock(Session.class);
         var service = new DefaultBuildInputsService(provider);
         for (var foreignReceipt : foreignReceipts) {
-            when(provider.read(
-                            eq(session), eq(id), eq(BuildInputsService.SCHEMA), eq(BuildInputsService.CAPABILITIES)))
+            when(provider.read(eq(session), eq(id), eq(BuildInputsService.SCHEMA), eq(BuildInputsService.CAPABILITIES)))
                     .thenReturn(Optional.of(foreignReceipt.snapshot()));
             assertThrows(IOException.class, () -> service.read(session, id));
         }
@@ -180,20 +196,32 @@ final class DefaultBuildInputsServiceTest {
     private Fixture fixture(String text, String fileName) throws Exception {
         Path file = directory.resolve(fileName + ".tsv");
         Files.writeString(file, text);
-        var receipt = new M3PluginEvidenceService.Receipt(identity(), file, BuildInputsService.SCHEMA,
+        var receipt = new M3PluginEvidenceService.Receipt(
+                identity(),
+                file,
+                BuildInputsService.SCHEMA,
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))),
                 BuildInputsService.CAPABILITIES);
         M3PluginEvidenceService evidence = mock(M3PluginEvidenceService.class);
         Session session = mock(Session.class);
-        when(evidence.read(eq(session), eq(identity()), eq(BuildInputsService.SCHEMA),
-                eq(BuildInputsService.CAPABILITIES)))
+        when(evidence.read(
+                        eq(session),
+                        eq(identity()),
+                        eq(BuildInputsService.SCHEMA),
+                        eq(BuildInputsService.CAPABILITIES)))
                 .thenAnswer(ignored -> Optional.of(receipt.snapshot()));
         return new Fixture(file, receipt, new DefaultBuildInputsService(evidence), session);
     }
 
     private static M3PluginEvidenceService.Identity identity() {
-        return new M3PluginEvidenceService.Identity("project", "org.apache.maven.plugins:maven-resources-plugin",
-                "3.4.0", "resources", "default-resources", "b".repeat(64), 1);
+        return new M3PluginEvidenceService.Identity(
+                "project",
+                "org.apache.maven.plugins:maven-resources-plugin",
+                "3.4.0",
+                "resources",
+                "default-resources",
+                "b".repeat(64),
+                1);
     }
 
     private static final class Memory implements SessionData {
@@ -230,8 +258,8 @@ final class DefaultBuildInputsServiceTest {
         }
     }
 
-    private record Fixture(Path file, M3PluginEvidenceService.Receipt receipt, BuildInputsService service,
-            Session session) {
+    private record Fixture(
+            Path file, M3PluginEvidenceService.Receipt receipt, BuildInputsService service, Session session) {
         Optional<BuildInputsService.Manifest> read() throws IOException {
             return service.read(session, identity());
         }

@@ -65,8 +65,7 @@ final class DefaultM3BuildFingerprintServiceTest {
         var first = service.fingerprint(new Request(context(), List.of(resource, java)));
         var second = service.fingerprint(new Request(context(), List.of(java, resource)));
 
-        assertEquals("007f41c16f571f9656efd7b54baac44d7319aaeb1bd32fb2224734e6dcef84ce",
-                first.sha256());
+        assertEquals("007f41c16f571f9656efd7b54baac44d7319aaeb1bd32fb2224734e6dcef84ce", first.sha256());
         assertEquals(first, second);
         assertEquals(2, first.inputCount());
         assertEquals(34, first.inputBytes());
@@ -75,32 +74,59 @@ final class DefaultM3BuildFingerprintServiceTest {
     @Test
     void changingEachInputDimensionChangesTheKeyWithoutReadingFilesystem() {
         Input java = new Input("src/main/java/A.java", Kind.SOURCE, ONE, 11);
-        String expected = service.fingerprint(new Request(context(), List.of(java))).sha256();
-        assertNotEquals(expected, service.fingerprint(new Request(
-                context(), List.of(new Input("src/main/java/B.java", Kind.SOURCE, ONE, 11)))).sha256());
-        assertNotEquals(expected, service.fingerprint(new Request(
-                context(), List.of(new Input("src/main/java/A.java", Kind.RESOURCE, ONE, 11)))).sha256());
-        assertNotEquals(expected, service.fingerprint(new Request(
-                context(), List.of(new Input("src/main/java/A.java", Kind.SOURCE, TWO, 11)))).sha256());
-        assertNotEquals(expected, service.fingerprint(new Request(
-                context(), List.of(new Input("src/main/java/A.java", Kind.SOURCE, ONE, 12)))).sha256());
+        String expected =
+                service.fingerprint(new Request(context(), List.of(java))).sha256();
+        assertNotEquals(
+                expected,
+                service.fingerprint(new Request(
+                                context(), List.of(new Input("src/main/java/B.java", Kind.SOURCE, ONE, 11))))
+                        .sha256());
+        assertNotEquals(
+                expected,
+                service.fingerprint(new Request(
+                                context(), List.of(new Input("src/main/java/A.java", Kind.RESOURCE, ONE, 11))))
+                        .sha256());
+        assertNotEquals(
+                expected,
+                service.fingerprint(new Request(
+                                context(), List.of(new Input("src/main/java/A.java", Kind.SOURCE, TWO, 11))))
+                        .sha256());
+        assertNotEquals(
+                expected,
+                service.fingerprint(new Request(
+                                context(), List.of(new Input("src/main/java/A.java", Kind.SOURCE, ONE, 12))))
+                        .sha256());
 
-        Context changed = new Context("demo:demo:1", "org.apache.maven.plugins:maven-resources-plugin",
-                "3.3.1", "testResources", "default-resources", A, B, C, D);
-        assertNotEquals(expected, service.fingerprint(new Request(changed, List.of(java))).sha256());
+        Context changed = new Context(
+                "demo:demo:1",
+                "org.apache.maven.plugins:maven-resources-plugin",
+                "3.3.1",
+                "testResources",
+                "default-resources",
+                A,
+                B,
+                C,
+                D);
+        assertNotEquals(
+                expected,
+                service.fingerprint(new Request(changed, List.of(java))).sha256());
     }
 
     @Test
     void duplicatePathAndRoleCannotSilentlyChangeFingerprintSemantics() {
         Input java = new Input("src/main/java/A.java", Kind.SOURCE, ONE, 11);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.fingerprint(new Request(context(), List.of(java, java))));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.fingerprint(new Request(context(), List.of(
-                        java, new Input(java.relativePath(), Kind.SOURCE, TWO, 12)))));
+        assertThrows(
+                IllegalArgumentException.class, () -> service.fingerprint(new Request(context(), List.of(java, java))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.fingerprint(
+                        new Request(context(), List.of(java, new Input(java.relativePath(), Kind.SOURCE, TWO, 12)))));
         // A producer can legitimately declare one path in two distinct roles.
-        assertEquals(2, service.fingerprint(new Request(context(), List.of(
-                java, new Input(java.relativePath(), Kind.CONFIGURATION, ONE, 11)))).inputCount());
+        assertEquals(
+                2,
+                service.fingerprint(new Request(
+                                context(), List.of(java, new Input(java.relativePath(), Kind.CONFIGURATION, ONE, 11))))
+                        .inputCount());
     }
 
     @Test
@@ -110,20 +136,30 @@ final class DefaultM3BuildFingerprintServiceTest {
         }
         assertThrows(IllegalArgumentException.class, () -> new Input("a", Kind.SOURCE, "invalid", 1));
         assertThrows(IllegalArgumentException.class, () -> new Input("a", Kind.SOURCE, ONE, -1));
-        assertThrows(IllegalArgumentException.class,
-                () -> new Input(String.valueOf((char) 0xD800), Kind.SOURCE, ONE, 1));
-        assertThrows(IllegalArgumentException.class, () -> new Context(
-                String.valueOf((char) 0xDC00), "plugin", "1", "goal", "execution", A, B, C, D));
-        assertThrows(IllegalArgumentException.class, () -> new Context(
-                "demo", "group:plugin", "1", "goal", "execution", "bad", B, C, D));
-        assertThrows(IllegalArgumentException.class, () -> new Context(
-                "demo", "plugin", "1", "goal", "execution", A, B, C, D));
-        assertThrows(IllegalArgumentException.class, () -> service.fingerprint(new Request(
-                context(), List.of(new Input("a", Kind.SOURCE, ONE, Long.MAX_VALUE),
-                        new Input("b", Kind.SOURCE, TWO, 1)))));
-        assertThrows(IllegalArgumentException.class,
-                () -> new Request(context(), Collections.nCopies(M3BuildFingerprintService.MAX_INPUTS + 1,
-                        new Input("a", Kind.SOURCE, ONE, 1))));
+        assertThrows(
+                IllegalArgumentException.class, () -> new Input(String.valueOf((char) 0xD800), Kind.SOURCE, ONE, 1));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Context(String.valueOf((char) 0xDC00), "plugin", "1", "goal", "execution", A, B, C, D));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Context("demo", "group:plugin", "1", "goal", "execution", "bad", B, C, D));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Context("demo", "plugin", "1", "goal", "execution", A, B, C, D));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.fingerprint(new Request(
+                        context(),
+                        List.of(
+                                new Input("a", Kind.SOURCE, ONE, Long.MAX_VALUE),
+                                new Input("b", Kind.SOURCE, TWO, 1)))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Request(
+                        context(),
+                        Collections.nCopies(
+                                M3BuildFingerprintService.MAX_INPUTS + 1, new Input("a", Kind.SOURCE, ONE, 1))));
     }
 
     @Test
@@ -138,7 +174,15 @@ final class DefaultM3BuildFingerprintServiceTest {
     }
 
     private static Context context() {
-        return new Context("demo:demo:1", "org.apache.maven.plugins:maven-resources-plugin",
-                "3.3.1", "resources", "default-resources", A, B, C, D);
+        return new Context(
+                "demo:demo:1",
+                "org.apache.maven.plugins:maven-resources-plugin",
+                "3.3.1",
+                "resources",
+                "default-resources",
+                A,
+                B,
+                C,
+                D);
     }
 }

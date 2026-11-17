@@ -56,6 +56,7 @@ final class DefaultM3StaticAnalysisServiceTest {
     private static final String HEADER =
             "M3-STATIC-ANALYSIS-V1\nstatus\tCOMPLETE\nrule\tseverity\tpath\tline\tcolumn\tmessage64\n";
     private static final String MESSAGE = encoded("A reported problem");
+
     @TempDir
     Path directory;
 
@@ -78,8 +79,12 @@ final class DefaultM3StaticAnalysisServiceTest {
         var original = new DefaultM3PluginEvidenceService();
         Session session = session();
         var identity = identity("maven-checkstyle-plugin", 1);
-        Path file = publish(original, session, identity,
-                HEADER + row("A.Rule", "ERROR", "src/main/java/A.java", "4", "2", MESSAGE)
+        Path file = publish(
+                original,
+                session,
+                identity,
+                HEADER
+                        + row("A.Rule", "ERROR", "src/main/java/A.java", "4", "2", MESSAGE)
                         + row("B.Rule", "WARNING", "src/main/java/B.java", "12", "0", MESSAGE));
         var service = new DefaultM3StaticAnalysisService(original);
         var read = service.read(session, identity).orElseThrow();
@@ -109,15 +114,23 @@ final class DefaultM3StaticAnalysisServiceTest {
         Session session = session();
         var baseline = identity("maven-checkstyle-plugin", 71);
         var current = identity("maven-checkstyle-plugin", 72);
-        publish(provider, session, baseline, HEADER
-                + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
-                + row("C.Rule", "WARNING", "src/C.java", "2", "1", encoded("resolved"))
-                + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same")));
-        publish(provider, session, current, HEADER
-                + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
-                + row("B.Rule", "ERROR", "src/B.java", "2", "1", encoded("introduced"))
-                + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same"))
-                + row("E.Rule", "WARNING", "src/E.java", "4", "1", encoded("introduced")));
+        publish(
+                provider,
+                session,
+                baseline,
+                HEADER
+                        + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
+                        + row("C.Rule", "WARNING", "src/C.java", "2", "1", encoded("resolved"))
+                        + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same")));
+        publish(
+                provider,
+                session,
+                current,
+                HEADER
+                        + row("A.Rule", "ERROR", "src/A.java", "1", "1", encoded("same"))
+                        + row("B.Rule", "ERROR", "src/B.java", "2", "1", encoded("introduced"))
+                        + row("D.Rule", "INFO", "src/D.java", "2", "1", encoded("same"))
+                        + row("E.Rule", "WARNING", "src/E.java", "4", "1", encoded("introduced")));
         var before = service.read(session, baseline).orElseThrow();
         var after = service.read(session, current).orElseThrow();
         var comparison = service.compare(before, after);
@@ -141,10 +154,8 @@ final class DefaultM3StaticAnalysisServiceTest {
         Session session = session();
         var baseline = identity("maven-pmd-plugin", 73);
         var current = identity("maven-pmd-plugin", 74);
-        publish(provider, session, baseline, HEADER
-                + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("old")));
-        publish(provider, session, current, HEADER
-                + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("new")));
+        publish(provider, session, baseline, HEADER + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("old")));
+        publish(provider, session, current, HEADER + row("A.Rule", "WARNING", "src/A.java", "1", "1", encoded("new")));
         var comparison = service.compare(
                 service.read(session, baseline).orElseThrow(),
                 service.read(session, current).orElseThrow());
@@ -170,13 +181,12 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertFalse(incomplete.comparable());
         assertEquals(0, incomplete.introduced());
         assertEquals(0, incomplete.resolved());
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> service.compare(old, service.read(session, other).orElseThrow()));
         assertThrows(NullPointerException.class, () -> service.compare(null, old));
-        assertThrows(IllegalArgumentException.class,
-                () -> new M3StaticAnalysisService.Comparison(false, 0, 1, 0, 0));
-        assertThrows(IllegalArgumentException.class,
-                () -> new M3StaticAnalysisService.Comparison(true, 0, 1, 0, 2));
+        assertThrows(IllegalArgumentException.class, () -> new M3StaticAnalysisService.Comparison(false, 0, 1, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> new M3StaticAnalysisService.Comparison(true, 0, 1, 0, 2));
     }
 
     @Test
@@ -191,11 +201,11 @@ final class DefaultM3StaticAnalysisServiceTest {
         when(forged.receipt()).thenReturn(original.receipt());
         when(forged.status()).thenReturn(M3StaticAnalysisService.Status.COMPLETE);
         when(forged.size()).thenReturn(2);
-        when(forged.entry(0)).thenReturn(
-                new M3StaticAnalysisService.Finding(
+        when(forged.entry(0))
+                .thenReturn(new M3StaticAnalysisService.Finding(
                         "Z.Rule", M3StaticAnalysisService.Severity.ERROR, "src/Z.java", 1, 1, "z"));
-        when(forged.entry(1)).thenReturn(
-                new M3StaticAnalysisService.Finding(
+        when(forged.entry(1))
+                .thenReturn(new M3StaticAnalysisService.Finding(
                         "A.Rule", M3StaticAnalysisService.Severity.ERROR, "src/A.java", 1, 1, "a"));
         assertThrows(IllegalArgumentException.class, () -> service.compare(forged, original));
     }
@@ -205,10 +215,16 @@ final class DefaultM3StaticAnalysisServiceTest {
         var evidence = new DefaultM3PluginEvidenceService();
         Session session = session();
         var identity = identity("maven-pmd-plugin", 444);
-        publish(evidence, session, identity, HEADER
-                + row("RuleA", "ERROR", "src/A.java", "1", "1", MESSAGE)
-                + row("RuleB", "WARNING", "src/B.java", "1", "1", MESSAGE));
-        var original = new DefaultM3StaticAnalysisService(evidence).read(session, identity).orElseThrow();
+        publish(
+                evidence,
+                session,
+                identity,
+                HEADER
+                        + row("RuleA", "ERROR", "src/A.java", "1", "1", MESSAGE)
+                        + row("RuleB", "WARNING", "src/B.java", "1", "1", MESSAGE));
+        var original = new DefaultM3StaticAnalysisService(evidence)
+                .read(session, identity)
+                .orElseThrow();
         M3StaticAnalysisService.Manifest legacy = new M3StaticAnalysisService.Manifest() {
             @Override
             public M3PluginEvidenceService.Receipt receipt() {
@@ -233,7 +249,8 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertEquals(1, legacy.count(M3StaticAnalysisService.Severity.ERROR));
         assertEquals(1, legacy.count(M3StaticAnalysisService.Severity.WARNING));
         assertEquals(0, legacy.count(M3StaticAnalysisService.Severity.INFO));
-        assertEquals(original.count(M3StaticAnalysisService.Severity.ERROR),
+        assertEquals(
+                original.count(M3StaticAnalysisService.Severity.ERROR),
                 legacy.count(M3StaticAnalysisService.Severity.ERROR));
     }
 
@@ -245,9 +262,11 @@ final class DefaultM3StaticAnalysisServiceTest {
         var checkstyle = identity("maven-checkstyle-plugin", 1);
         var pmd = identity("maven-pmd-plugin", 2);
         var spotbugs = identity("spotbugs-maven-plugin", 3);
-        publish(provider, session, checkstyle,
-                HEADER + row("A", "INFO", "src/A.java", "1", "1", MESSAGE));
-        publish(provider, session, pmd,
+        publish(provider, session, checkstyle, HEADER + row("A", "INFO", "src/A.java", "1", "1", MESSAGE));
+        publish(
+                provider,
+                session,
+                pmd,
                 HEADER.replace("status\tCOMPLETE", "status\tPARTIAL")
                         + row("B", "WARNING", "src/B.java", "2", "0", MESSAGE));
 
@@ -255,15 +274,22 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertFalse(report.complete());
         assertEquals(3, report.coverage().size());
         assertEquals(2, report.findings().size());
-        assertEquals(M3StaticAnalysisService.Status.MISSING, report.coverage().get(0).status());
-        assertEquals(M3StaticAnalysisService.Status.COMPLETE, report.coverage().get(1).status());
-        assertEquals(M3StaticAnalysisService.Status.PARTIAL, report.coverage().get(2).status());
+        assertEquals(
+                M3StaticAnalysisService.Status.MISSING, report.coverage().get(0).status());
+        assertEquals(
+                M3StaticAnalysisService.Status.COMPLETE,
+                report.coverage().get(1).status());
+        assertEquals(
+                M3StaticAnalysisService.Status.PARTIAL, report.coverage().get(2).status());
         assertEquals(checkstyle, report.findings().get(0).identity());
-        assertThrows(UnsupportedOperationException.class, () -> report.findings().clear());
-        assertThrows(UnsupportedOperationException.class, () -> report.coverage().clear());
+        assertThrows(
+                UnsupportedOperationException.class, () -> report.findings().clear());
+        assertThrows(
+                UnsupportedOperationException.class, () -> report.coverage().clear());
 
         publish(provider, session, spotbugs, HEADER.replace("status\tCOMPLETE", "status\tFAILED"));
-        assertEquals(M3StaticAnalysisService.Status.FAILED,
+        assertEquals(
+                M3StaticAnalysisService.Status.FAILED,
                 service.aggregate(session, List.of(spotbugs)).coverage().get(0).status());
         assertTrue(service.read(session(), checkstyle).isEmpty(), "no cross-session evidence");
     }
@@ -289,9 +315,11 @@ final class DefaultM3StaticAnalysisServiceTest {
         Session session = session();
         var checkstyle = identity("maven-checkstyle-plugin", 5);
         var pmd = identity("maven-pmd-plugin", 4);
-        publish(provider, session, pmd,
-                HEADER + row("PMD.Rule", "ERROR", "src/B.java", "5", "1", MESSAGE));
-        publish(provider, session, checkstyle,
+        publish(provider, session, pmd, HEADER + row("PMD.Rule", "ERROR", "src/B.java", "5", "1", MESSAGE));
+        publish(
+                provider,
+                session,
+                checkstyle,
                 HEADER + row("Checkstyle.Rule", "WARNING", "src/A.java", "2", "3", MESSAGE));
 
         var service = new DefaultM3StaticAnalysisService(provider);
@@ -309,16 +337,14 @@ final class DefaultM3StaticAnalysisServiceTest {
         String[] invalid = {
             "M3-STATIC-ANALYSIS-V1",
             HEADER + "x".repeat(16_385) + "\n",
-            HEADER + row("Rule", "ERROR", "src/A.java", "1", "1", MESSAGE)
-                    + "extra-without-final-LF"
+            HEADER + row("Rule", "ERROR", "src/A.java", "1", "1", MESSAGE) + "extra-without-final-LF"
         };
         for (int index = 0; index < invalid.length; index++) {
             var provider = new DefaultM3PluginEvidenceService();
             Session session = session();
             var identity = identity("maven-pmd-plugin", index + 100);
             publish(provider, session, identity, invalid[index]);
-            assertThrows(IOException.class,
-                    () -> new DefaultM3StaticAnalysisService(provider).read(session, identity));
+            assertThrows(IOException.class, () -> new DefaultM3StaticAnalysisService(provider).read(session, identity));
         }
     }
 
@@ -330,8 +356,10 @@ final class DefaultM3StaticAnalysisServiceTest {
         var pmd = identity("maven-pmd-plugin", 1);
         assertThrows(IllegalArgumentException.class, () -> service.aggregate(session, List.of()));
         assertThrows(IllegalArgumentException.class, () -> service.aggregate(session, List.of(pmd, pmd)));
-        assertThrows(IllegalArgumentException.class, () -> service.aggregate(
-                session, java.util.Collections.nCopies(M3StaticAnalysisService.MAX_PRODUCERS + 1, pmd)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.aggregate(
+                        session, java.util.Collections.nCopies(M3StaticAnalysisService.MAX_PRODUCERS + 1, pmd)));
         assertThrows(NullPointerException.class, () -> service.aggregate(null, List.of(pmd)));
         verifyNoInteractions(evidence);
     }
@@ -372,21 +400,25 @@ final class DefaultM3StaticAnalysisServiceTest {
     @Test
     void inputLocationValidationPreservesOnlyCanonicalPathsAndPositions() {
         var level = M3StaticAnalysisService.Severity.ERROR;
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new M3StaticAnalysisService.Finding("Rule", level, "../outside", 1, 1, "bad"));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new M3StaticAnalysisService.Finding("Rule", level, "C:/absolute", 1, 1, "bad"));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new M3StaticAnalysisService.Finding("Rule", level, "a\\b", 1, 1, "bad"));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new M3StaticAnalysisService.Finding("Rule", level, "", 1, 1, "bad"));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new M3StaticAnalysisService.Finding("Rule", level, "A.java", 0, 1, "bad"));
-        assertThrows(IllegalArgumentException.class,
-                () -> new M3StaticAnalysisService.Finding("Rule", level,
-                        String.valueOf((char) 0xD800), 0, 0, "bad"));
-        assertEquals("", new M3StaticAnalysisService.Finding("Rule", level, "", 0, 0, "project")
-                .relativePath());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new M3StaticAnalysisService.Finding("Rule", level, String.valueOf((char) 0xD800), 0, 0, "bad"));
+        assertEquals("", new M3StaticAnalysisService.Finding("Rule", level, "", 0, 0, "project").relativePath());
     }
 
     @Test
@@ -400,8 +432,14 @@ final class DefaultM3StaticAnalysisServiceTest {
         bytes[prefix.length + 1] = (byte) 0x28;
         Path file = directory.resolve("invalid-utf8.tsv");
         Files.write(file, bytes);
-        provider.publish(session, new M3PluginEvidenceService.Receipt(identity, file,
-                M3StaticAnalysisService.SCHEMA, sha(bytes), M3StaticAnalysisService.CAPABILITIES));
+        provider.publish(
+                session,
+                new M3PluginEvidenceService.Receipt(
+                        identity,
+                        file,
+                        M3StaticAnalysisService.SCHEMA,
+                        sha(bytes),
+                        M3StaticAnalysisService.CAPABILITIES));
         assertThrows(IOException.class, () -> new DefaultM3StaticAnalysisService(provider).read(session, identity));
     }
 
@@ -413,7 +451,10 @@ final class DefaultM3StaticAnalysisServiceTest {
         Path path = directory.resolve("without-capability.txt");
         Files.writeString(path, HEADER);
         var receipt = new M3PluginEvidenceService.Receipt(
-                identity, path, M3StaticAnalysisService.SCHEMA, sha(Files.readAllBytes(path)),
+                identity,
+                path,
+                M3StaticAnalysisService.SCHEMA,
+                sha(Files.readAllBytes(path)),
                 M3PluginEvidenceService.INPUTS);
         provider.publish(session, receipt);
         var consumer = new DefaultM3StaticAnalysisService(provider);
@@ -421,12 +462,19 @@ final class DefaultM3StaticAnalysisServiceTest {
         assertFalse(consumer.aggregate(session, List.of(identity)).complete());
     }
 
-    private Path publish(M3PluginEvidenceService evidence, Session session,
-            M3PluginEvidenceService.Identity identity, String content) throws Exception {
+    private Path publish(
+            M3PluginEvidenceService evidence,
+            Session session,
+            M3PluginEvidenceService.Identity identity,
+            String content)
+            throws Exception {
         Path path = Files.createTempFile(directory, "original-analysis-", ".tsv");
         Files.writeString(path, content, StandardCharsets.UTF_8);
         var receipt = new M3PluginEvidenceService.Receipt(
-                identity, path, M3StaticAnalysisService.SCHEMA, sha(Files.readAllBytes(path)),
+                identity,
+                path,
+                M3StaticAnalysisService.SCHEMA,
+                sha(Files.readAllBytes(path)),
                 M3StaticAnalysisService.CAPABILITIES);
         evidence.publish(session, receipt);
         return path;
@@ -440,14 +488,14 @@ final class DefaultM3StaticAnalysisServiceTest {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(message.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String row(
-            String rule, String severity, String path, String line, String column, String message64) {
+    private static String row(String rule, String severity, String path, String line, String column, String message64) {
         return rule + "\t" + severity + "\t" + path + "\t" + line + "\t" + column + "\t" + message64 + "\n";
     }
 
     private static M3PluginEvidenceService.Identity identity(String plugin, long generation) {
         String ga = "spotbugs-maven-plugin".equals(plugin)
-                ? "com.github.spotbugs:" + plugin : "org.apache.maven.plugins:" + plugin;
+                ? "com.github.spotbugs:" + plugin
+                : "org.apache.maven.plugins:" + plugin;
         return new M3PluginEvidenceService.Identity(
                 "sample:demo:1.0", ga, "1.0", "check", "default-check", "a".repeat(64), generation);
     }
