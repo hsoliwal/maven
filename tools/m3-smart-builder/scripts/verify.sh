@@ -2,6 +2,14 @@
 # Offline JDK 21 core regression; does not claim Maven plugin descriptor verification.
 set -eu
 cd "$(dirname "$0")/.."
+# Some Java 21 runtimes ship the compiler/tool modules but omit the bin launchers.
+# Invoke those same JDK tools directly when javac/jar commands are unavailable.
+if ! command -v javac >/dev/null 2>&1; then
+  javac() { java com.sun.tools.javac.Main "$@"; }
+fi
+if ! command -v jar >/dev/null 2>&1; then
+  jar() { java sun.tools.jar.Main "$@"; }
+fi
 # Class path separator of the JDK in use: a Windows JDK under Git Bash wants ';'.
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) sep=';' ;; *) sep=':' ;; esac
 mkdir -p target/jdk-only
@@ -21,12 +29,15 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/DiagnoseEngine.java \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
   src/main/java/io/synexia/maven/smart/RecipeCatalog.java \
+  src/main/java/io/synexia/maven/smart/MachineEvidence.java \
   src/main/java/io/synexia/maven/smart/CodeAgentMain.java \
+  src/main/java/io/synexia/maven/smart/CodeAgentVerifyMain.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderTest.java \
   src/test/java/io/synexia/maven/smart/BuildHookTest.java \
   src/test/java/io/synexia/maven/smart/AtomPatternEvidenceTest.java \
   src/test/java/io/synexia/maven/smart/CanonicalPreparationEvidenceTestMain.java \
-  src/test/java/io/synexia/maven/smart/CodeAgentTest.java
+  src/test/java/io/synexia/maven/smart/CodeAgentTest.java \
+  src/test/java/io/synexia/maven/smart/CodeAgentVerifyTest.java
 # Canon gate: the hard run contract, compiled and tested without any Maven API.
 mkdir -p target/canon-only
 javac -encoding UTF-8 -Xlint:all -Werror -d target/canon-only \
@@ -50,6 +61,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -cp "target/jdk-only${sep}target/canon-
   src/main/java/io/synexia/maven/smart/DiagnoseMojo.java \
   src/main/java/io/synexia/maven/smart/BuildHookMojo.java \
   src/main/java/io/synexia/maven/smart/CodeAgentMojo.java \
+  src/main/java/io/synexia/maven/smart/CodeAgentVerifyMojo.java \
   src/main/java/io/synexia/maven/smart/CanonMojo.java \
   src/test/java/io/synexia/maven/smart/SmartBuilderAdapterTest.java
 mkdir -p target/mcp-fixture
@@ -74,9 +86,11 @@ java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaage
   -cp target/syntax-only io.synexia.maven.smart.ast.SyntaxTreeAtomicFailureContract
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
 java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
+java -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp "target/jdk-only${sep}target/adapter-only" io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
+java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest

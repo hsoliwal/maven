@@ -109,6 +109,9 @@ public final class CodeAgentTest {
             String request = Files.readString(Path.of(profile + ".request"));
             require(request.contains("m3.smart.code-agent.candidate.v1") && request.contains(binding),
                     "ChromeLLM receives bound recipe schema and evidence");
+            require(request.contains("Machine-Oriented Programming") && request.contains("SimHash")
+                            && request.contains("atomize then patternize"),
+                    "ChromeLLM receives explicit M3 rules with low-authority fingerprint similarity");
             require(!request.contains("PRIVATE_SOURCE_MARKER"), "model prompt excludes raw source content");
         }
         System.out.println("CODE AGENT TESTS PASS: " + checks + " (synthetic evidence only)");
