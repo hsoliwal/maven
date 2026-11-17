@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# M3 Polyglot Maven — Ant + Make + CodeQL + OpenRewrite
+# M3 Polyglot Maven — Ant + Make + compiler/analysis SPI + CodeQL + OpenRewrite
 
 **Experimental, opt-in**. This is an additive Maven plugin, not a replacement for
 Maven Core or the original Ant, Make, OpenRewrite, CodeQL, CMake, Meson, Cargo,
@@ -172,6 +172,82 @@ The opt-in OpenRewrite registration recipe `io.synexia.maven.recipe.EnableEclips
 plugin to a consuming POM; it does not bind goals, modify IDE metadata or install toolchains. Test full m2e/PDE,
 JDT, CDT and PyDev round trips independently before treating any live workspace behavior as supported.
 
+## Public M3 tool provider SPI (v1)
+
+The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
+`ServiceLoader<M3ToolProvider>` contract for these operations:
+
+| Capability | What an extension supplies | Built in |
+| --- | --- | --- |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler` |
+| `interpreter` | Original interpreter argv, possibly with no output | SPI only; provider required |
+| `transpiler` | Source-to-source translation argv | SPI only; provider required |
+| `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
+| `patternizer` | Structural, logic and pattern-evidence argv | SPI only; provider required |
+
+The manifest `task` tool value is `@m3:<provider-id>:<capability>:<language>`.
+All names are lowercase, validated and unambiguous. The registry fails closed on
+unknown or duplicate IDs, unsupported capabilities/languages, incompatible SPI
+versions, malformed service descriptors and invalid argv. The `plan` command
+validates provider resolution without starting a subprocess. Provider tasks are
+**never** skipped by the lightweight incremental stamp heuristic, which does
+not model provider classpaths, ABI or environment.
+
+Only the `interpreter` operation may omit output declarations. The others need
+separate declared inputs and outputs, and overlapping source/output paths are
+refused. This is a declaration gate, **not** an isolation boundary; installed
+Java provider implementations and explicitly invoked native tools must be
+trusted. A passing compiler or patternizer does not prove that generated
+transformations preserve behavior: apply the canonical OpenRewrite recipe,
+compiler, tests, contract-risk and semantic-evidence gates separately.
+
+To install a third-party provider, put its jar (compiled against the public
+`io.synexia.maven.polyglot` API) on the polyglot engine's **runtime classpath**
+and include its class name in
+`META-INF/services/io.synexia.maven.polyglot.M3ToolProvider`.
+For Maven this means a declared plugin dependency; for the portable CLI or
+Gradle's JavaExec host it means an explicit, version-pinned classpath entry.
+Nothing is silently downloaded or introspected from an IDE. Runtime
+classpath/provider provenance must be managed by the consuming build.
+
+For example, after compiling the plugin and selecting a JDK (or M3JDK) with
+`jdk.compiler`:
+
+```text
+M3-POLYGLOT-TASKS-V1
+task	compile	@m3:jdk:compiler:java	.
+arg	compile	-d
+arg	compile	target/classes
+arg	compile	src/main/java/Example.java
+input	compile	src/main/java/Example.java
+output	compile	target/classes/Example.class
+```
+
+`-Xplugin:M3AST` and other compiler-supported options can be forwarded as
+additional `arg` records when that installed compiler actually supplies them.
+The class output folder must exist or be created by an explicit predecessor.
+To inspect the installed providers without running any task:
+
+```sh
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.PolyglotCli providers
+```
+
+The output starts with `M3-POLYGLOT-PROVIDERS-V1` and then sorted, tab-separated
+`provider`, ID, capability list and language list records. This is the same
+Maven-owned capability contract Gradle and eventual thin Eclipse plugins can
+query. **JDT/CDT/RustDT/PyDev are not replaced here**; their native compilers,
+builders, language servers and Eclipse resource/event interfaces remain owners
+until independently verified proxy adapters exist.
+
+The shared fact path remains **M3File (identity/digest/deltas) → M3String
+(immutable shared source atoms/ranges) → M3AST → atom/pattern evidence**.
+This plugin does not claim to implement or copy those authoritative structures;
+providers should exchange qualified IDs/digests and reference original source
+owners. The `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite
+recipe opt-in registers this Maven plugin in a consuming POM without binding
+any goal to the default lifecycle.
+
 ## Strict manifest v1
 
 UTF-8, LF lines, terminal LF and a maximum 1 MiB. One row per tab-separated
@@ -261,8 +337,8 @@ not a license waiver or a guarantee of security/semantic equivalence.
 
 `verify.sh` compiles the pure Java engine with `--release 17 -Xlint:all -Werror` on a full JDK,
 or with `-source 17 -target 17` on reduced JDK images without `javac`/`ct.sym`
-(the fallback cannot certify Java 17 API availability). It runs five standalone contract suites
-(graph, providers, Mavenizer, Eclipse model and CLI).
+(the fallback cannot certify Java 17 API availability). It runs six standalone contract suites
+(graph, quality providers, M3 tool SPI, Mavenizer, Eclipse model and CLI).
 This is not Maven plugin-descriptor
 qualification, real CodeQL extraction, real OpenRewrite application, or full
 Maven reactor/m2e PDE verification. Those need independent CI execution.

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+# Additive, opt-in Maven/OpenRewrite recipe: leaves all existing lifecycle bindings intact.
+type: specs.openrewrite.org/v1beta/recipe
+name: io.synexia.maven.recipe.EnableM3ToolProviderSPI
+displayName: Register the extensible M3 compiler and analysis provider service
+description: >-
+  Adds the portable polyglot Maven engine to a consuming POM without activating
+  any builder, interpreter, compiler, transpiler, atomizer or patternizer.
+  Existing Eclipse, Gradle and Maven behaviors stay unchanged until an explicit
+  M3 manifest target is requested.
+recipeList:
+  - org.openrewrite.maven.AddPlugin:
+      groupId: io.synexia
+      artifactId: m3-polyglot-maven-plugin
+      version: 0.1.0-SNAPSHOT

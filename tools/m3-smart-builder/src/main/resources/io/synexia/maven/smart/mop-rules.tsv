@@ -3,15 +3,20 @@ rule_id	stage	authority	directive
 api-lock	PROMOTION	EXTERNAL_GATE	Preserve public and protected interfaces signatures annotations and externally visible event behavior until independent contract proof.
 atom-inventory	INVENTORY	MECHANICAL	Inventory every selected Java file before inference and bind checkpoint coverage to current source SHA-256.
 atom-leaf	ATOM	PRODUCER_REPORTED	Atomize independent Java leaves into private methods only when observable contracts are preserved; parallelize leaves not promotion.
+callgraph-residue	PATTERN	REVIEW_ONLY	Treat all non-attributed call sites as typed residue; obtain compiler-resolved call graphs before asserting effects or safe substitutions.
 canon-proof	VERIFY	EXTERNAL_GATE	Require diff then linter then compiler then tests then optional runtime with M3 canon packet evidence before promotion.
+compiler-bindings	PATTERN	PRODUCER_REPORTED	Compiler-resolved static call targets and types are guidance only; reject missing dependencies and never claim virtual dispatch or effect equivalence.
 contract-hash	SIMILARITY	PRODUCER_REPORTED	Contract fingerprints and effect facts are signals only until producer semantics and host verification are authenticated.
+control-flow-cues	PATTERN	PRODUCER_REPORTED	AST branches loops exceptions writes allocations and monitors are candidate cues only; syntax masks are not a control flow graph or effect proof.
 deterministic-first	RESIDUE	REVIEW_ONLY	Prefer deterministic indexing recognizers and registered recipes over probabilistic code generation.
 doc-memory	INVENTORY	PRODUCER_REPORTED	Treat interfaces annotations signatures and Javadocs as semantic memory; retain provenance and stale-document detection.
 effect-contract	PATTERN	EXTERNAL_GATE	Confirm control flow effects exceptions synchronization JNI ABI and public behavior before treating atoms as equivalent.
+evidence-authority	VERIFY	EXTERNAL_GATE	Never promote a pattern from a similarity pair or non-attributed effect mask; require compiler and canonical host proof at its owning scope.
 file-digest	INVENTORY	MECHANICAL	Verify per-file SHA-256 and reject stale canonical source and atom checkpoint receipts.
 inference-boundary	RESIDUE	MECHANICAL	LLM emits only one schema-bound applicable allowlisted recipe nomination and never code commands paths or authority.
 logic-hash	SIMILARITY	PRODUCER_REPORTED	Normalized logic SHA-256 groups candidate operations but does not establish semantic or behavioral equivalence.
 masked-regex	LEXICAL	EXTERNAL_GATE	Mask strings comments and documentation before applying regex cues; only AST or masked recognition may authorize structural evidence.
+match-priority	PATTERN	REVIEW_ONLY	Rank exact logic cues then exact AST shapes then near SimHash; inspect syntactic contract mismatches and retain typed residue for review.
 pattern-order	PATTERN	PRODUCER_REPORTED	Patternize after atomization using AST structure control flow effects and masked cues then typed residue and a fixed point.
 recipe-first	REWRITE	MECHANICAL	Create or reuse an operator-reviewed Maven OpenRewrite recipe instead of accepting direct LLM source patches.
 simhash	SIMILARITY	REVIEW_ONLY	SimHash Hamming-near atoms are similarity candidates only; never infer equivalence from a distance threshold.

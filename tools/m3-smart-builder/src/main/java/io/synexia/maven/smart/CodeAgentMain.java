@@ -17,7 +17,8 @@ import java.util.Set;
 /** Source-bound ChromeLLM recipe nomination, never recipe execution or semantic proof. */
 public final class CodeAgentMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
-            "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence", "--candidate-file",
+            "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence",
+            "--require-machine-evidence", "--candidate-file",
             "--backend", "--chrome-llm-jar", "--llama-bin", "--jni-lib", "--model", "--timeout-seconds");
     private static final Set<String> CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
     private static final String CANDIDATE_SCHEMA = "m3.smart.code-agent.candidate.v1";
@@ -39,6 +40,11 @@ public final class CodeAgentMain {
             if (destination.resolve("m3-smart").startsWith(source))
                 throw new IOException("report must stay outside selected sources");
             directory = SafeBuildOutput.directory(base, destination);
+            // Strict mode is an explicit, backward-compatible admission gate. The
+            // producer ledger is source-bound but is not semantic or contract proof.
+            if (bool(options, "--require-machine-evidence", false)
+                    && !options.containsKey("--machine-evidence"))
+                throw new IOException("machine fingerprint evidence required by policy");
 
             // Evidence is revalidated against current bytes before any model can start.
             String preparation = CanonicalPreparationEvidence.inspect(base, source,
@@ -152,6 +158,13 @@ public final class CodeAgentMain {
                 .append("Use this exact evidenceSha256=").append(binding)
                 .append("; confidence HIGH, MEDIUM or LOW. If no match, recipeId='' and confidence='NONE'. ")
                 .append("Do not assert verification: all recipe nominations require human review and independent tests. ")
+                .append("Machine patternCandidates are at most 24 ranked REVIEW_ONLY pairs: exact normalized logic, ")
+                .append("then exact structure, then near SimHash. Contract-signature mismatches are risk cues, ")
+                .append("not permission to replace code. staticCues count unattributed AST branches, loops, calls, ")
+                .append("writes, allocations and monitors; calls are unresolved, not proof of effects or purity. ")
+                .append("When attributionFacts.available is true, resolvedCallSites are only statically resolved ")
+                .append("compiler symbols: dynamic dispatch, reflection, aliases and runtime effects remain unproven. ")
+                .append("If these cues cannot justify an applicable reviewed recipe, leave typed residue unresolved. ")
                 .append("Atom=").append(atom.json()).append("; machine=")
                 .append(machine == null ? "no-producer-ledger" : machine.json())
                 .append("; machineRules=").append(rules.json())

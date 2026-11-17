@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Additive, recipe-first opt-in. The plugin goal remains explicitly invoked.
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.synexia.maven.smart.EnableStrictMachineEvidence
+displayName: Require current AST machine evidence for M3 recipe nomination
+description: >-
+  Set the optional source-bound machine fingerprint admission policy on a Maven
+  project. This does not attach a build goal, run a model, modify Java source,
+  or authenticate semantic equivalence. Generate the ledger with the explicit
+  m3:machine-fingerprints goal before invoking m3:code-agent.
+recipeList:
+  - org.openrewrite.maven.AddProperty:
+      key: m3.smart.requireMachineEvidence
+      value: "true"
+      preserveExistingValue: false
