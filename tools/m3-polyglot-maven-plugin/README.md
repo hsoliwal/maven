@@ -80,8 +80,23 @@ added; a task without declared inputs always runs.
 
 ```sh
 mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:mavenize -Dm3.polyglot.mavenize.groupId=org.example
+
+# Using the M3 Maven fork with its explicit core extension:
 mvn -Dm3.polyglot.lifecycle=true verify
+
+# Using stock Maven 3.9+ / Maven 4 with the installed polyglot plugin:
+mvn -Pm3-polyglot verify
 ```
+
+Mavenizer's generated per-language POMs now include a dormant `m3-polyglot`
+profile with `run` executions bound to the native `validate`, `compile`,
+`test` and `package` targets present in that folder's `m3-build.tsv`.
+The profile is **not** active by default. Stock Maven can execute those
+installed native tools through its original reactor without loading the
+fork's separate core extension. Pure aggregators have no native executions,
+and existing hand-written POMs remain untouched. Install/pin the plugin
+before activating the profile. Choose either the profile or the fork's
+explicit extension property for a particular build, not both.
 
 `src/it/test_mavenize.sh` proves it on a repository of a Node app, a Go module, a Python package, a Make project
 and a Rust crate, built and tested by their own tools through one `mvn verify`.
