@@ -32,6 +32,8 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.ServiceLoader;
+import java.util.ServiceConfigurationError;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -71,9 +73,10 @@ final class ModuleStateDb implements AutoCloseable {
         }
     }
 
-    private interface Storage {
+    private interface Storage extends AutoCloseable {
         byte[] read() throws IOException;
         void write(byte[] bytes) throws IOException;
+        @Override default void close() throws IOException { }
     }
 
     private final Path root;
@@ -133,8 +136,7 @@ final class ModuleStateDb implements AutoCloseable {
                         @Override public void write(byte[] bytes) throws IOException { jdbc.write(bytes); }
                     };
                 }
-                default -> throw new IllegalArgumentException(
-                        "incremental database must be file, m3db, sqlite, h2, or derby");
+                default -> providerStore(root, backend);
             };
             ModuleStateDb database = new ModuleStateDb(root, storage, channel, lock);
             byte[] image = storage.read();
@@ -158,11 +160,48 @@ final class ModuleStateDb implements AutoCloseable {
         }
     }
 
+    /** Discover an explicitly installed trusted backend for an alternate KV engine. */
+    private static Storage providerStore(Path root, String backend) throws IOException {
+        if (backend == null || !backend.matches("[a-z][a-z0-9-]{0,31}")) {
+            throw new IllegalArgumentException("invalid module database backend id");
+        }
+        M3BuildStateStoreProvider chosen = null;
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        try {
+            for (M3BuildStateStoreProvider candidate : ServiceLoader.load(M3BuildStateStoreProvider.class)) {
+                String name = candidate.id();
+                if (name == null || !name.matches("[a-z][a-z0-9-]{0,31}")
+                        || java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2", "derby")
+                                .contains(name) || !ids.add(name)) {
+                    throw new IOException("invalid/duplicate custom module database backend id: " + name);
+                }
+                if (name.equals(backend)) chosen = candidate;
+            }
+        } catch (ServiceConfigurationError failure) {
+            throw new IOException("cannot discover module database provider", failure);
+        }
+        if (chosen == null) {
+            throw new IllegalArgumentException("unavailable module database backend: " + backend);
+        }
+        M3BuildStateStoreProvider.Store target = chosen.open(root);
+        if (target == null) throw new IOException("module database provider returned null storage");
+        return new Storage() {
+            @Override public byte[] read() throws IOException { return target.read(); }
+            @Override public void write(byte[] bytes) throws IOException { target.write(bytes); }
+            @Override public void close() throws IOException { target.close(); }
+        };
+    }
+
     @Override
     public void close() throws IOException {
         IOException failure = null;
-        try { lease.release(); }
+        try { storage.close(); }
         catch (IOException error) { failure = error; }
+        try { lease.release(); }
+        catch (IOException error) {
+            if (failure != null) failure.addSuppressed(error);
+            else failure = error;
+        }
         try { leaseChannel.close(); }
         catch (IOException error) {
             if (failure != null) failure.addSuppressed(error);
