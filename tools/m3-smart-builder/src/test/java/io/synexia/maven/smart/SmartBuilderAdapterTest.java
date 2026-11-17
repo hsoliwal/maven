@@ -110,6 +110,11 @@ public final class SmartBuilderAdapterTest {
             require(Files.readString(build.resolve("m3-smart/post-build.json")).contains("\"atomPatternError\":\"manifest-required\""),
                     "Maven required-evidence parameter reaches the controller");
         }
+        set(hook, "failOnError", false);
+        hook.execute();  // a lifecycle-bound hook: the refusal is reported and the build goes on
+        require(Files.readString(build.resolve("m3-smart/post-build.json")).contains("\"atomPatternError\":\"manifest-required\""),
+                "failOnError=false still writes the refused report");
+        set(hook, "failOnError", true);
         set(hook, "atomPatternManifest", project.resolve("absent-checkpoints.tsv").toFile());
         try {
             hook.execute();

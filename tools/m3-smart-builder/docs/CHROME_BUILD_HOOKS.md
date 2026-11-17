@@ -105,6 +105,49 @@ Bind `build-hook` to `validate` for preparation and `verify` for successful-buil
 analysis if desired. The Maven lifecycle can stop before `verify`, so GitHub's
 explicit post step remains responsible for failed-build diagnosis.
 
+### Bridge provider, CPU summarizer and lifecycle binding
+
+`--backend bridge` (Maven: `m3.smart.llmBackend=bridge`) runs ChromeLLM's `bridge`
+provider: a loopback OpenAI-compatible `chat/completions` endpoint, for example the
+one in front of a Chrome that already holds the on-device model. It needs the
+ChromeLLM module (`--chrome-llm-jar`, a ChromeLLM build with the bridge provider);
+`--bridge-url` defaults to `http://127.0.0.1:11435/v1/` and `--bridge-token-file`
+names a file with the bearer token. Chrome and native controls are refused with it,
+and the bridge controls with every other backend.
+
+`--summarizer "<command line>"` (Maven: `m3.smart.summarizer`) adds a CPU summarizer
+of the operator's choice. Double or single quotes group an argument. The hook appends
+the project's `pom.xml` and, after a build, the given log, runs the command in the
+project directory, and records `summaryStatus` and up to 40 non-blank output lines as
+`summaryLines` among the facts the model sees. Its standard output is kept as
+`<phase>.summary.txt` next to the report. A command that exits non-zero, outlives
+`--summarizer-timeout-seconds` (default 60) or cannot start is recorded as
+`summaryStatus: failed: ...` and the hook goes on. A summarizer's lines are its own:
+unlike the built-in facts they may quote the log.
+
+`m3.smart.failOnError` (default `true`) keeps the goal's contract: a hook that does
+not complete fails the goal. Set it to `false` where `build-hook` is bound into a
+POM's lifecycle, so advice never changes a build result; the report still records the
+failure. Neither goal resolves project dependencies, so a module whose dependencies
+are not built yet is advised like any other.
+
+```xml
+<plugin>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-smart-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <configuration><failOnError>false</failOnError></configuration>
+  <executions>
+    <execution><id>advice-pre-build</id><phase>validate</phase><goals><goal>build-hook</goal></goals>
+      <configuration><phase>pre-build</phase></configuration></execution>
+    <execution><id>advice-post-build</id><phase>verify</phase><goals><goal>build-hook</goal></goals>
+      <configuration><phase>post-build</phase><buildOutcome>success</buildOutcome></configuration></execution>
+  </executions>
+</plugin>
+```
+
+In `<configuration>`, `<phase>` is the hook's phase parameter, not the lifecycle phase.
+
 ## Require canonical Java atomization and patternization receipts
 
 The optional receipt gate consumes the existing canonical Java convergence DAG's
