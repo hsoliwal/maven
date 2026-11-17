@@ -33,12 +33,6 @@ under the License.
   <description>Aggregates the plugin repositories imported with full history under plugins/. Built only with
     -Pplugins. Each imported reactor keeps its upstream parent and build; this POM only lists them.</description>
 
-  <properties>
-    <!-- Inline atomizer: wired off. The atomizer javac plugin is added to compiler runs under plugins/ when its
-         lane lands; until then nothing reads this property. -->
-    <inline.atomizer>false</inline.atomizer>
-  </properties>
-
   <!-- Batch 1: the default-lifecycle plugins. The version of each is the fork reactor version. -->
   <modules>
     <module>maven-clean-plugin</module>
@@ -49,4 +43,10 @@ under the License.
     <module>maven-deploy-plugin</module>
     <module>maven-surefire</module>
   </modules>
+
+  <properties>
+    <!-- Inline atomizer: wired off. The atomizer javac plugin is added to compiler runs under plugins/ when its
+         lane lands; until then nothing reads this property. -->
+    <inline.atomizer>false</inline.atomizer>
+  </properties>
 </project>
