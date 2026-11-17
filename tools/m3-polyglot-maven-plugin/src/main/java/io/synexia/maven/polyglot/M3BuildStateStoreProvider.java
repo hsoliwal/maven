@@ -22,6 +22,11 @@ import java.nio.file.Path;
  * descriptor. No provider is downloaded or activated automatically.
  */
 public interface M3BuildStateStoreProvider {
+    int API_VERSION = 1;
+
+    /** Additive version for future provider contract evolution. */
+    default int apiVersion() { return API_VERSION; }
+
     /** Unique lower-case ID (a-z, 0-9, dash), different from built-in backend IDs. */
     String id();
 
