@@ -199,20 +199,22 @@ final class ModuleStateDb implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        IOException failure = null;
+        Throwable failure = null;
         try { storage.close(); }
-        catch (IOException error) { failure = error; }
+        catch (IOException | RuntimeException | Error error) { failure = error; }
         try { lease.release(); }
-        catch (IOException error) {
-            if (failure != null) failure.addSuppressed(error);
-            else failure = error;
+        catch (IOException | RuntimeException error) {
+            if (failure == null) failure = error;
+            else failure.addSuppressed(error);
         }
         try { leaseChannel.close(); }
-        catch (IOException error) {
-            if (failure != null) failure.addSuppressed(error);
-            else failure = error;
+        catch (IOException | RuntimeException error) {
+            if (failure == null) failure = error;
+            else failure.addSuppressed(error);
         }
-        if (failure != null) throw failure;
+        if (failure instanceof IOException error) throw error;
+        if (failure instanceof RuntimeException error) throw error;
+        if (failure instanceof Error error) throw error;
     }
 
     int digestedFiles() {
