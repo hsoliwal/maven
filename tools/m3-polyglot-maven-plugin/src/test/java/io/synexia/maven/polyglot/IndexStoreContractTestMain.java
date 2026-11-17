@@ -65,7 +65,11 @@ public final class IndexStoreContractTestMain {
         Class<?> platform = IndexStores.platformType(layer).orElseThrow();
         check(platform.getModule().getName().equals("jdk.m3.indexdb")
                 && platform != LibraryIndexStore.engineType(), "platform type comes from the named module");
-        Path root = temporary.resolve("shared");
+        oneFormat(layer, temporary.resolve("shared"));
+    }
+
+    /** What the platform binding writes, the library binding reads. */
+    private static void oneFormat(ModuleLayer layer, Path root) throws Exception {
         try (IndexStore store = IndexStores.open(root, layer)) {
             check(store.binding().equals("platform"), "platform store");
             store.write("b", "kind", 2, PAYLOAD);

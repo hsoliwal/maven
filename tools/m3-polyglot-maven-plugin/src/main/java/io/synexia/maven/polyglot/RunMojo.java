@@ -59,7 +59,10 @@ public final class RunMojo extends AbstractMojo {
         if (timeoutSeconds < 1 || timeoutSeconds > 43_200) {
             throw new MojoExecutionException("m3.polyglot.timeoutSeconds must be between 1 and 43200");
         }
-        String backend = backend();
+        run(backend());
+    }
+
+    private void run(String backend) throws MojoExecutionException {
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,

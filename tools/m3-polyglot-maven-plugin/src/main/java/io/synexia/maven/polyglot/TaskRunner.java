@@ -232,26 +232,32 @@ public final class TaskRunner {
             perform(task, quality, provider);
         }
 
+        /**
+         * Only explicitly declared, ordinary tool actions are reuse candidates. CodeQL databases, OpenRewrite
+         * recipes and pluggable providers own further hidden inputs and always execute.
+         */
         private void perform(TaskManifest.Task task, List<String> quality, List<String> provider)
                 throws IOException, InterruptedException {
             Path directory = checkDeclarations(task);
-            // Only explicitly declared, ordinary tool actions are reuse candidates. CodeQL databases,
-            // OpenRewrite recipes and pluggable providers own further hidden inputs and always execute.
             boolean ordinary = quality == null && provider == null;
             List<String> command = quality != null ? quality : provider != null ? provider
                     : ordinaryCommand(task, directory);
             ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).inheritIO();
             Map<String, String> environment = Map.copyOf(builder.environment());
             Receipt receipt = indexDb ? indexReceipt(task, ordinary, command, environment) : stampReceipt(task, ordinary);
-            if (receipt.upToDate()) {
-                log.accept("UP-TO-DATE " + task.name() + (indexDb ? " (M3DB input and output content verified)"
-                        : " (declared inputs unchanged, outputs present)"));
-                return;
-            }
+            if (upToDate(task, receipt)) return;
             revoke(task);
             execute(task, builder, timeout);
             requireOutputs(task);
             if (receipt.stamp() != null) publish(task, receipt.stamp(), directory, environment);
+        }
+
+        private boolean upToDate(TaskManifest.Task task, Receipt receipt) {
+            if (receipt.upToDate()) {
+                log.accept("UP-TO-DATE " + task.name() + (indexDb ? " (M3DB input and output content verified)"
+                        : " (declared inputs unchanged, outputs present)"));
+            }
+            return receipt.upToDate();
         }
 
         private Path checkDeclarations(TaskManifest.Task task) throws IOException {
@@ -264,13 +270,18 @@ public final class TaskRunner {
                     throw new IOException("missing declared input for " + task.name() + ": " + input);
                 }
             }
+            checkOutputs(task);
+            return directory;
+        }
+
+        /** Declared outputs stay inside the module and never name the module database or its lock. */
+        private void checkOutputs(TaskManifest.Task task) throws IOException {
             for (String output : task.outputs()) {
                 checked(root, output);
                 if (InputStamps.statePath(output)) {
                     throw new IOException("declared output overlaps Maven module database: " + output);
                 }
             }
-            return directory;
         }
 
         /** Master's content stamps: legacy per-task files, or the sealed "file"/"m3db" module image. */

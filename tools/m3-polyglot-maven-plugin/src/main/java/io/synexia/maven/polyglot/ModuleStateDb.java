@@ -290,14 +290,14 @@ final class ModuleStateDb {
         return result;
     }
 
-    private void decode(byte[] sealed) throws IOException {
-        if (sealed.length < 48 || sealed.length > MAX_IMAGE) return;
-        int end = sealed.length - 32;
-        byte[] actual = sha256().digest(Arrays.copyOf(sealed, end));
-        if (!MessageDigest.isEqual(actual, Arrays.copyOfRange(sealed, end, sealed.length))) return;
+    private void decode(byte[] image) throws IOException {
+        if (image.length < 48 || image.length > MAX_IMAGE) return;
+        int end = image.length - 32;
+        byte[] actual = sha256().digest(Arrays.copyOf(image, end));
+        if (!MessageDigest.isEqual(actual, Arrays.copyOfRange(image, end, image.length))) return;
         Map<String, FileState> readFiles = new TreeMap<>();
         Map<String, TaskState> readTasks = new TreeMap<>();
-        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(sealed, 0, end))) {
+        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(image, 0, end))) {
             if (data.readInt() != MAGIC || data.readInt() != VERSION) return;
             int count = data.readInt();
             if (count < 0 || count > MAX_ENTRIES) return;
