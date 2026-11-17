@@ -60,8 +60,8 @@ public final class CodeAgentVerifyMain {
             AtomPatternEvidence.Summary atom = AtomPatternEvidence.inspect(base, source, atomFile);
             RecipeCatalog catalog = RecipeCatalog.load(base, catalogFile);
             MachineEvidence.Summary machine = machineFile == null ? null : MachineEvidence.inspect(base, source, machineFile);
-            String binding = Hashes.sha256((preparation + "\n" + atom.json() + "\n" + catalog.digest()
-                    + (machine == null ? "" : "\n" + machine.json())).getBytes(StandardCharsets.UTF_8));
+            MachineRulebook.Policy rules = MachineRulebook.load();
+            String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules);
             List<RecipeCatalog.Entry> applicable = catalog.applicable(object(object(TinyJson.parse(preparation))
                     .get("patternCounts")));
             String approvedId = required(argsMap, "--approved-recipe-id");
@@ -70,7 +70,7 @@ public final class CodeAgentVerifyMain {
             if (!"FILE".equals(entry.scope()))
                 throw new IOException("only FILE scope may run without higher-scope contracts");
             validateNomination(base, output.resolve("code-agent.json"), binding, preparation,
-                    atom, machine, catalog, applicable, entry);
+                    atom, machine, rules, catalog, applicable, entry);
             String pomBefore = Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576));
 
             Path runner = Path.of(required(argsMap, "--maven-executable")).toAbsolutePath().normalize();
@@ -141,6 +141,7 @@ public final class CodeAgentVerifyMain {
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, preparationFile))
                     || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
                     || machine != null && !machine.equals(MachineEvidence.inspect(base, source, machineFile))
+                    || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !pomBefore.equals(Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576)))
                     || !catalog.digest().equals(RecipeCatalog.load(base, catalogFile).digest()))
                 throw new IOException("source or approval evidence changed during replay");
@@ -151,6 +152,7 @@ public final class CodeAgentVerifyMain {
                     + ",\"mode\":\"isolated-execution\",\"approvedRecipeId\":" + TinyJson.quote(approvedId)
                     + ",\"recipeJarSha256\":" + TinyJson.quote(entry.implementationSha256())
                     + ",\"rewritePluginSha256\":" + TinyJson.quote(pluginHash)
+                    + ",\"machineRulebookSha256\":" + TinyJson.quote(rules.sha256())
                     + ",\"evidenceBindingSha256\":" + TinyJson.quote(binding)
                     + ",\"stageRelativePath\":" + TinyJson.quote(base.relativize(stage).toString().replace('\\', '/'))
                     + ",\"beforeSourceDigest\":" + TinyJson.quote(stageBefore.summary().digest())
@@ -173,6 +175,7 @@ public final class CodeAgentVerifyMain {
 
     private static void validateNomination(Path base, Path file, String binding, String preparation,
                                            AtomPatternEvidence.Summary atom, MachineEvidence.Summary machine,
+                                           MachineRulebook.Policy rules,
                                            RecipeCatalog catalog, List<RecipeCatalog.Entry> applicable,
                                            RecipeCatalog.Entry entry) throws IOException {
         Map<?, ?> report = object(TinyJson.parse(new String(RecipeCatalog.readLocal(base, file, 1_048_576),
@@ -180,7 +183,7 @@ public final class CodeAgentVerifyMain {
         List<Object> expected = new ArrayList<>();
         for (RecipeCatalog.Entry available : applicable) expected.add(TinyJson.parse(available.json()));
         if (!report.keySet().equals(Set.of("schema", "mode", "status", "candidateOrigin",
-                    "evidenceBindingSha256", "catalogSha256", "atomPatternFacts", "machineEvidenceFacts",
+                    "evidenceBindingSha256", "catalogSha256", "machineRulebookSha256", "atomPatternFacts", "machineEvidenceFacts",
                     "preparationFacts", "candidateSha256", "applicableRecipes", "selectedRecipe",
                     "modelConfidence", "modelOutputTrusted", "recipeApproved", "recipeExecuted",
                     "semanticProofAuthenticated", "verificationAuthenticated"))
@@ -192,6 +195,7 @@ public final class CodeAgentVerifyMain {
                 || !Set.of("HIGH", "MEDIUM", "LOW").contains(report.get("modelConfidence"))
                 || !binding.equals(report.get("evidenceBindingSha256"))
                 || !catalog.digest().equals(report.get("catalogSha256"))
+                || !rules.sha256().equals(report.get("machineRulebookSha256"))
                 || !object(TinyJson.parse(preparation)).equals(report.get("preparationFacts"))
                 || !object(TinyJson.parse(atom.json())).equals(report.get("atomPatternFacts"))
                 || !(machine == null ? report.get("machineEvidenceFacts") == null

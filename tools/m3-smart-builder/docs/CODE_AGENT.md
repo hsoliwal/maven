@@ -60,6 +60,41 @@ promotion only with real proof; deterministic recipes before probabilistic
 inference; and structural/logic/SimHash similarity strictly below compiler,
 tests and behavior proof in authority. No entire source text is sent to Chrome.
 
+### Versioned machine law packet (M3 policy)
+
+This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
+the LLM is a constrained speculative operator, while the machine owns evidence,
+recipes, verification, and canonical promotion.
+
+The 18 required M3 laws are materialized as the packaged resource
+`src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
+`rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
+complete required set, bounded syntax, and an exact schema before any model
+invocation. Its content SHA-256 appears as `machineRulebookSha256` in the
+nomination and verification receipts and participates in the model candidate's
+`evidenceBindingSha256`. Changing even the wording of a directive therefore
+requires a fresh nomination rather than silently replaying an obsolete one.
+New reviewed rules may be appended additively in sorted order (up to 64 rows),
+but cannot claim `MECHANICAL` authority without a corresponding implemented
+gate. The four actually enforced admission rules retain their required labels.
+
+The four authority classes are deliberately distinct:
+
+- `MECHANICAL`: a rule has an actual local admission check (current source
+  receipt, allowlisted recipe, or exact response schema).
+- `PRODUCER_REPORTED`: AST, logic, structural, contract and pattern facts are
+  external owner statements; Maven can bind their bytes but cannot prove them.
+- `REVIEW_ONLY`: heuristics, SimHash near matches, ranking and typed residue
+  remain proposals.
+- `EXTERNAL_GATE`: independent masking, API/ABI/JNI behavior, canon and
+  hierarchical promotion proofs are required before claiming completion.
+
+Chrome receives the complete bounded policy packet and its authority labels,
+not a request to invent arbitrary fixes. The policy is packaged with the Maven
+plugin so it is independently reviewable in the pull request and does not
+depend on hidden browser prompts. This is **operational distillation of coding
+discipline into rules and recipes**, not access to Chrome's model weights.
+
 ## Use without a model
 
 ```sh
@@ -150,7 +185,8 @@ report. The plugin JAR (`org.openrewrite.maven:rewrite-maven-plugin:6.66.0`) is
 also checked against the operator-supplied SHA-256. Both artifact coordinates
 and version are fixed before executing child Maven; the runner uses `-o`, `-B`,
 `-ntp` and an explicit local repository. Maven is passed fixed arguments, not
-LLM text or shell fragments. Only `FILE`-scoped recipes are executable in this
+LLM text or shell fragments. The rulebook digest from nomination must match
+the verifier's packaged rulebook. Only `FILE`-scoped recipes are executable in this
 slice. Other scopes require their independent contract gates first.
 
 The goal makes a bounded, symlink-free project copy inside

@@ -60,6 +60,8 @@ public final class CodeAgentVerifyTest {
                 "--machine-evidence", "receipts/fingerprints.tsv"));
         require(runNomination(nomination) == 0, "machine-bound catalogue listed offline");
         Map<?, ?> report = nomination(project);
+        require(MachineRulebook.load().sha256().equals(report.get("machineRulebookSha256")),
+                "the nominal model contract records its exact packaged M3 rules");
         Map<?, ?> machine = object(report.get("machineEvidenceFacts"));
         require("m3.smart.machine-evidence.v1".equals(machine.get("schema")), "fingerprint ledger reaches nomination");
         require(Boolean.FALSE.equals(machine.get("similarityIsProof")), "SimHash never authenticates equivalence");
@@ -94,6 +96,11 @@ public final class CodeAgentVerifyTest {
                 "plugin artifact pin mandatory");
         refused(replace(command, "--approved-recipe-id", "unknown-recipe"), project,
                 "operator cannot approve unknown recipe");
+        Path nominationFile = project.resolve("target/m3-smart/code-agent.json");
+        String savedNomination = Files.readString(nominationFile);
+        Files.writeString(nominationFile, savedNomination.replace(MachineRulebook.load().sha256(), "0".repeat(64)));
+        refused(command, project, "forged or stale M3 rule digest invalidates the execution nomination");
+        Files.writeString(nominationFile, savedNomination);
         Files.writeString(evidence, ledger.replace("0000000000000001", "0000000000000002"));
         refused(command, project, "changed SimHash invalidates candidate binding");
         Files.writeString(evidence, ledger);
@@ -116,6 +123,8 @@ public final class CodeAgentVerifyTest {
         require("1".equals(verified.get("changedJavaFiles")), "a synthetic staged Java change observed");
         require(Boolean.TRUE.equals(verified.get("fixedPointPassed"))
                         && Boolean.TRUE.equals(verified.get("mavenVerifyPassed")), "Maven verify and repeat applied");
+        require(MachineRulebook.load().sha256().equals(verified.get("machineRulebookSha256")),
+                "execution receipt is bound to the same immutable rules the model saw");
         require(Boolean.FALSE.equals(verified.get("semanticProofAuthenticated"))
                         && Boolean.FALSE.equals(verified.get("promoted")), "offline runner cannot prove behavior or promote");
         require(verified.get("dryRunPatchSha256") instanceof String,
