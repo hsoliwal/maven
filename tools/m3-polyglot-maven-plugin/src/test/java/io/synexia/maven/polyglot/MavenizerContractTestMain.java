@@ -28,6 +28,7 @@ public final class MavenizerContractTestMain {
         try {
             detectsEachToolFamily(temp.resolve("detect"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
+            mavenizesAGradleMultiProjectBuildAsOneProject(temp.resolve("gradle-multi"));
             neverSkipsATaskWithoutDeclaredInputs(temp.resolve("noinputs"));
             resolvesBareToolNames(temp.resolve("tools"));
             System.out.println("PASS: " + passed + " Mavenizer contract cases");
@@ -137,6 +138,30 @@ public final class MavenizerContractTestMain {
         require(modules(root.resolve("pom.xml")).equals(List.of("lib", "svc", "tools", "web")), "the kept root pom is unchanged");
         Path nothing = Files.createDirectories(root.resolve("../nothing"));
         require(Mavenizer.mavenize(nothing, "g", "1", true).get(0).startsWith("NOTHING "), "no build tool found");
+        passed++;
+    }
+
+    /**
+     * The layout of Eclipse buildship (a Gradle build with a wrapper): included projects, buildSrc, a test fixture
+     * build under src/test/resources and a sample build with its own settings. All of it is one Gradle build run by
+     * the root wrapper; mavenizing it per sub-folder ran Gradle 25+ times, mixed the wrapper with the PATH gradle and
+     * turned buildSrc and fixtures into reactor modules.
+     */
+    private static void mavenizesAGradleMultiProjectBuildAsOneProject(Path root) throws Exception {
+        dir(root, ".", "settings.gradle", "include 'core', 'ui'\n", "build.gradle", "", "gradlew", "", "gradlew.bat", "");
+        dir(root, "core", "build.gradle", "");
+        dir(root, "ui", "build.gradle.kts", "");
+        dir(root, "buildSrc", "build.gradle", "");
+        dir(root.resolve("core/src/test/resources/sample-projects"), "simple-multimodule", "settings.gradle", "",
+                "build.gradle", "");
+        dir(root.resolve("samples"), "custom-tapi-model", "settings.gradle.kts", "", "build.gradle.kts", "");
+        List<String> plan = Mavenizer.mavenize(root, "org.example", "1.0-SNAPSHOT", false);
+        require(plan.equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv")), "one Gradle build, one project: " + plan);
+        expect(root, "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
+        Path standalone = dir(root.resolve(".."), "gradle-standalone", "build.gradle", "");
+        dir(standalone, "nested", "settings.gradle", "", "gradlew", "");
+        require(Mavenizer.mavenize(standalone, "g", "1", false).equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv",
+                "PLAN nested/pom.xml", "PLAN nested/m3-build.tsv")), "a build without settings still finds builds below");
         passed++;
     }
 
