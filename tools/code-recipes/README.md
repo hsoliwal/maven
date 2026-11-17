@@ -36,6 +36,9 @@ what was checked and why.
 | `org.apache.maven.recipes.FindSetupJavaVersionBelowMinimum` | search | `minimumJavaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.FindJavaLevelAboveMaximum` | search | `maximumJavaMajorVersion` (8 to 99, default 21) |
 | `org.apache.maven.recipes.Jdk21Baseline` | composite (`META-INF/rewrite/jdk21.yml`) | the three above at 21 |
+| `org.apache.maven.recipes.AddSetupJavaMatrixVersion` | change | `javaMajorVersion` (8 to 99, default 21) |
+| `org.apache.maven.recipes.FindWorkflowWithoutSetupJavaVersion` | search | `javaMajorVersion` (8 to 99, default 21) |
+| `org.apache.maven.recipes.Jdk21CiLeg` | composite (`META-INF/rewrite/jdk21.yml`) | the two above at 21 |
 
 ### SetupJavaMinimumVersion
 
@@ -130,6 +133,79 @@ active. Only a key that none of these defines is read from the JVM that runs the
 Runs `SetupJavaMinimumVersion` with minimum 21, then `FindSetupJavaVersionBelowMinimum` with minimum 21 and
 `FindJavaLevelAboveMaximum` with maximum 21.
 
+### AddSetupJavaMatrixVersion
+
+In `.github/workflows/*.yml` and `*.yaml`, adds the Java major version to the matrix axis list
+`jobs.<job>.strategy.matrix.<axis>` when an `actions/setup-java` step of the same job reads that axis
+(`java-version: ${{ matrix.<axis> }}`) and the list lacks the version, so that the workflow gets jobs on it.
+
+* A list holds the version when one of its entries has that major version: `21`, `'21'`, `21.0.2`, `21-ea` (and
+  `1.8` for 8).
+* The version goes in ascending order: before the first entry with a higher major version, or last when there is
+  none, in flow (`['17', '25']`) or block (`- 17`) form. It is a copy of the entry before it (of the first entry when
+  it goes first), so it takes that entry's quoting style; an anchor on that entry is not copied.
+* Comments stay on their lines. In a block list the comment of the entry before the new one stays on that entry's
+  line, also when the new entry goes last (rewrite-yaml keeps that comment in the prefix of the node after the list,
+  and it is moved back in front of the new entry). In a multi-line flow list the new comma goes before the comment. A
+  trailing comma (`[11, 17,]`) stays last.
+* Kept as they are: `include` and `exclude` (GitHub Actions then adds an `include` object for the version to the new
+  jobs whose values it does not change, instead of making a job of its own, and an `exclude` for the version removes
+  the matching new jobs), axes given as an expression (`${{ fromJSON(...) }}`) or an alias (`*versions`), lists that
+  carry an anchor (their aliases would change too), empty lists, lists with an entry that is not a plain or quoted
+  version (an expression, `lts`, an alias, a `|` block, a nested list), matrices and `with` inputs written as nested
+  flow mappings, axes read by other actions or by reusable workflow calls, values such as `${{ matrix.java }}-ea`, and
+  YAML outside `.github/workflows`. A second run changes nothing.
+
+```yaml
+# before                                   # after
+matrix:                                    matrix:
+  java: ['11', '17']                         java: ['11', '17', '21']
+  jdk:                                       jdk:
+    - 17 # LTS                                 - 17 # LTS
+    - 25 # current                             - 21
+                                               - 25 # current
+steps:                                     steps:
+  - uses: actions/setup-java@v4              - uses: actions/setup-java@v4
+    with:                                      with:
+      java-version: ${{ matrix.java }}           java-version: ${{ matrix.java }}
+  - uses: actions/setup-java@v4              - uses: actions/setup-java@v4
+    with:                                      with:
+      java-version: ${{ matrix.jdk }}            java-version: ${{ matrix.jdk }}
+```
+
+### FindWorkflowWithoutSetupJavaVersion
+
+Marks the `.github/workflows/*.yml` and `*.yaml` files that set up Java and in which nothing can run the Java major
+version, so that the shapes `AddSetupJavaMatrixVersion` does not change are listed for review by hand: workflows
+whose `java-version` values are all scalars that differ, and reusable workflows (callers that pass a Java version as
+an input, workflows that take it as an input). The marker is on the YAML document, so it is printed in front of its
+first key, after any leading comments:
+
+```yaml
+~~(no actions/setup-java step or reusable workflow input runs Java 21)~~>jobs:
+```
+
+* Java sources are the `actions/setup-java` steps of the jobs and the inputs of reusable workflow calls
+  (`jobs.<job>.uses`) whose name holds `java` or `jdk` and whose value names a Java version or a matrix axis
+  (`jdk-matrix: '[ "11", "17" ]'`, `java-version: ${{ matrix.java }}`). A file without Java sources is not marked.
+* A source runs the version when one of its values has that major version: a scalar `java-version`, a line of a
+  multi-line one, a value in a `with` written as a nested flow mapping, a version in the text of an input, or, for
+  `${{ matrix.<axis> }}`, a value that the job's matrix gives the axis (its list or one of its `include` objects,
+  also when written as nested flow mappings).
+* Expressions (`${{ inputs.java-version }}`, whatever the input's default), names such as `lts`, aliases,
+  `java-version-file` and setup-java steps without `java-version` do not run it. `exclude` objects are not read.
+* Not read: composite actions and steps that use them, reusable workflow calls without a Java input (their JDKs are
+  set in the called workflow), and workflows that use the runner's JDK or a container image instead of
+  `actions/setup-java`.
+
+Run after `AddSetupJavaMatrixVersion` (as `Jdk21CiLeg` does), its markers are the workflows left without the version.
+
+### Jdk21CiLeg
+
+Runs `AddSetupJavaMatrixVersion` with version 21, then `FindWorkflowWithoutSetupJavaVersion` with version 21. A
+build whose POM Java level is above 21 cannot compile on an added Java 21 job; `FindJavaLevelAboveMaximum` (part of
+`Jdk21Baseline`) lists those POMs.
+
 ## Running the recipes on any repository
 
 Install the module once (it is not published to a remote repository):
@@ -152,12 +228,22 @@ mvn org.openrewrite.maven:rewrite-maven-plugin:6.46.1:dryRun \
 mvn org.openrewrite.maven:rewrite-maven-plugin:6.46.1:run \
   -Drewrite.recipeArtifactCoordinates=org.apache.maven.plugins:maven-code-recipes:0.1.0-SNAPSHOT \
   -Drewrite.activeRecipes=org.apache.maven.recipes.SetupJavaMinimumVersion
+
+# list the Java 21 matrix legs to add and the workflows left without Java 21
+mvn org.openrewrite.maven:rewrite-maven-plugin:6.46.1:dryRun \
+  -Drewrite.recipeArtifactCoordinates=org.apache.maven.plugins:maven-code-recipes:0.1.0-SNAPSHOT \
+  -Drewrite.activeRecipes=org.apache.maven.recipes.Jdk21CiLeg
+
+# add the Java 21 matrix legs
+mvn org.openrewrite.maven:rewrite-maven-plugin:6.46.1:run \
+  -Drewrite.recipeArtifactCoordinates=org.apache.maven.plugins:maven-code-recipes:0.1.0-SNAPSHOT \
+  -Drewrite.activeRecipes=org.apache.maven.recipes.AddSetupJavaMatrixVersion
 ```
 
 `rewrite:run` writes search markers into the files: as XML comments in a POM, and as text inside the value in YAML
-(`java-version: ~~(...)~~>17`), which breaks the workflow. So run the composite and the `Find` recipes with
-`dryRun` only (the markers are then in the patch), and use `run` with `SetupJavaMinimumVersion` alone, which adds no
-markers, to apply changes. Options other than
+(`java-version: ~~(...)~~>17`), which breaks the workflow. So run the composites and the `Find` recipes with
+`dryRun` only (the markers are then in the patch), and use `run` with `SetupJavaMinimumVersion` or
+`AddSetupJavaMatrixVersion` alone, which add no markers, to apply changes. Options other than
 the defaults go through a declarative recipe of your own (a `rewrite.yml`, see `-Drewrite.configLocation`). The
 commands were tested with rewrite-maven-plugin 6.46.1.
 
