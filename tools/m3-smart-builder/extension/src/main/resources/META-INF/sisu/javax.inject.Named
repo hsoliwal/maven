@@ -1,2 +1,3 @@
 io.synexia.maven.smart.extension.AdviceLifecycleParticipant
 io.synexia.maven.smart.extension.PolyglotLifecycleParticipant
+io.synexia.maven.smart.extension.M3LifecycleExecutionStrategy

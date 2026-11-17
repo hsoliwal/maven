@@ -112,7 +112,7 @@ public final class BuildCacheContractTestMain {
         PolyglotCli.execute(new String[] {"run", cli.toString(), cli.resolve("m3-build.tsv").toString(), "build",
                 "--incremental", "--build-cache", cache.toString()}, log::add);
         require(runs(cli) == 0 && log.stream().anyMatch(row -> row.startsWith("FROM-CACHE build")), "CLI flag");
-        require(Files.exists(InputStamps.file(manifest(cli).order("build").get(0), cli)), "a hit records the stamp");
+        require(Files.exists(cli.resolve(ModuleStateDb.EMBEDDED_FILE)), "a hit records the module receipt");
         require(run(cli, cache, true).stream().anyMatch(row -> row.startsWith("UP-TO-DATE build")) && runs(cli) == 0,
                 "after a hit, incremental mode finds the task up to date");
         refused(new String[] {"plan", cli.toString(), "m.tsv", "build", "--build-cache", cache.toString()});

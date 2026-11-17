@@ -213,10 +213,17 @@ under the License.
       <artifactId>plexus-interpolation</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- parity references for DefaultProcessLauncher: the cli packages it replaces for v4 plugins -->
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-shared-utils</artifactId>
+      <version>3.5.0</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
-      <version>4.0.2</version>
+      <version>4.2.0</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

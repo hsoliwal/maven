@@ -42,6 +42,7 @@ under the License.
         <exclude>org.apache.maven:maven-classworlds</exclude>
         <exclude>org.jline:*</exclude>
         <exclude>io.synexia:smart-maven-extension</exclude>
+        <exclude>io.synexia:m3-polyglot-maven-plugin</exclude>
       </excludes>
     </dependencySet>
 
@@ -50,6 +51,7 @@ under the License.
       <outputDirectory>lib/ext</outputDirectory>
       <includes>
         <include>io.synexia:smart-maven-extension</include>
+        <include>io.synexia:m3-polyglot-maven-plugin</include>
       </includes>
     </dependencySet>
   </dependencySets>
