@@ -35,6 +35,10 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
+    /** "legacy" (unchanged default), "file" (one image per module), or "m3db" (native MIndexDB). */
+    @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "legacy")
+    private String incrementalState;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (skip) {
@@ -47,7 +51,8 @@ public final class RunMojo extends AbstractMojo {
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
-                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, message -> getLog().info(message));
+                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
+                    message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("M3 polyglot tool execution interrupted", interruption);

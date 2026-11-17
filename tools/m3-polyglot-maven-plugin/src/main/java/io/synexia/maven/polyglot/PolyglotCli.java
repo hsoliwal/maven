@@ -37,6 +37,8 @@ public final class PolyglotCli {
         }
         boolean approveRewriteApply = false;
         boolean incremental = false;
+        String stateBackend = "legacy";
+        boolean stateBackendSupplied = false;
         boolean timeoutSupplied = false;
         int timeoutSeconds = 900;
         for (int index = 4; index < args.length; index++) {
@@ -48,6 +50,13 @@ public final class PolyglotCli {
                 case "--incremental" -> {
                     if (incremental || !"run".equals(args[0])) throw usage();
                     incremental = true;
+                }
+                case "--state-backend" -> {
+                    if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
+                    stateBackendSupplied = true;
+                    stateBackend = args[index];
+                    if (!("legacy".equals(stateBackend) || "file".equals(stateBackend)
+                            || "m3db".equals(stateBackend))) throw usage();
                 }
                 case "--timeout-seconds" -> {
                     if (timeoutSupplied || ++index == args.length) throw usage();
@@ -62,16 +71,17 @@ public final class PolyglotCli {
                 default -> throw usage();
             }
         }
+        if (stateBackendSupplied && !incremental) throw usage();
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, output);
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend, output);
         output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
         return done;
     }
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--approve-rewrite-apply]"
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db] [--approve-rewrite-apply]"
                 + " (the last two flags require run)");
     }
 }

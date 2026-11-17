@@ -65,6 +65,30 @@ public final class TaskRunner {
             boolean allowRewriteApply,
             boolean incremental,
             Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, "legacy", log);
+    }
+
+    /**
+     * Per-module persistent state is opt-in: "legacy" preserves the original per-task stamps,
+     * "file" uses one sealed state file per module, and "m3db" uses native MIndexDB artifacts.
+     * Neither mode changes Maven's lifecycle or the explicit native-tool execution contract.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Consumer<String> log) throws IOException, InterruptedException {
+        if (!java.util.Set.of("legacy", "file", "m3db").contains(stateBackend)) {
+            throw new IllegalArgumentException("state backend must be legacy, file or m3db");
+        }
+        if (!incremental && !"legacy".equals(stateBackend)) {
+            throw new IllegalArgumentException("module state DB requires incremental execution");
+        }
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(workspace, "workspace");
         Objects.requireNonNull(target, "target");
@@ -78,6 +102,8 @@ public final class TaskRunner {
             throw new IOException("polyglot workspace is not a directory: " + root);
         }
         List<TaskManifest.Task> tasks = plan.order(target);
+        ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
+                ? ModuleStateDb.open(root, stateBackend) : null;
         List<String> performed = new ArrayList<>(tasks.size());
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
@@ -113,8 +139,10 @@ public final class TaskRunner {
             // Pluggable providers own further hidden inputs, so never skip them.
             boolean stampCandidate = incremental && !task.inputs().isEmpty() && !task.outputs().isEmpty()
                     && qualityCommand == null && m3Command == null;
-            String stamp = stampCandidate ? InputStamps.stamp(task, root) : null;
-            if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
+            String stamp = !stampCandidate ? null : moduleState == null
+                    ? InputStamps.stamp(task, root) : moduleState.stamp(task);
+            if (stamp != null && (moduleState == null
+                    ? InputStamps.upToDate(task, root, stamp) : moduleState.upToDate(task, stamp))) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
                 performed.add(task.name());
                 continue;
@@ -158,7 +186,10 @@ public final class TaskRunner {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
                 }
             }
-            if (stamp != null) InputStamps.record(task, root, stamp);
+            if (stamp != null) {
+                if (moduleState == null) InputStamps.record(task, root, stamp);
+                else moduleState.record(task, stamp);
+            }
             performed.add(task.name());
         }
         return List.copyOf(performed);
