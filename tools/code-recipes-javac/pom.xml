@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-code-recipes-javac</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>Apache Maven Code Recipes javac bridge</name>
+  <description>A javac plugin (-Xplugin:MavenRecipes) that builds the OpenRewrite Java tree of each source file from
+    the trees the build's own compile made, so recipes need no second parse. It changes no compiler output.
+  </description>
+  <licenses>
+    <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url></license>
+  </licenses>
+  <properties>
+    <!-- source/target, not release: release forbids the add-exports of jdk.compiler internals the bridge needs -->
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- the rewrite version tools/code-recipes and rewrite-maven-plugin 6.46.1 use -->
+    <rewriteVersion>8.89.0</rewriteVersion>
+    <junitVersion>5.14.4</junitVersion>
+    <spotless.action>apply</spotless.action>
+    <!-- one line: surefire passes it to the forked test JVM as given; the same list the tests hand to a forked javac -->
+    <javacExports>--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</javacExports>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.openrewrite</groupId>
+        <artifactId>rewrite-bom</artifactId>
+        <version>${rewriteVersion}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junitVersion}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <!-- compile scope: the plugin runs inside javac, where no recipe runner supplies the rewrite modules -->
+    <dependency>
+      <groupId>org.openrewrite</groupId>
+      <artifactId>rewrite-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrewrite</groupId>
+      <artifactId>rewrite-java</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrewrite</groupId>
+      <artifactId>rewrite-java-21</artifactId>
+      <exclusions>
+        <!-- rewrite-java-lombok brings org.projectlombok:lombok, whose jar registers an annotation processor: on the
+             processor path of a build it would run Lombok over that build's sources. The bridge needs neither: the
+             parser visitor only compares annotation names, and the classic parser's LombokSupport is not used. -->
+        <exclusion>
+          <groupId>org.openrewrite</groupId>
+          <artifactId>rewrite-java-lombok</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- the classic Java21Parser (test oracle only) logs through SLF4J, which rewrite-maven-plugin supplies -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>1.7.36</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-nop</artifactId>
+      <version>1.7.36</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>3.10.2</version>
+        <configuration>
+          <java>
+            <palantirJavaFormat>
+              <version>2.98.0</version>
+            </palantirJavaFormat>
+            <removeUnusedImports />
+            <importOrder>
+              <file>config/maven-eclipse-importorder.txt</file>
+            </importOrder>
+            <licenseHeader>
+              <file>config/maven-header-plain.txt</file>
+            </licenseHeader>
+          </java>
+          <lineEndings>PRESERVE</lineEndings>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.shared</groupId>
+            <artifactId>maven-shared-resources</artifactId>
+            <version>6</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>spotless</id>
+            <goals><goal>${spotless.action}</goal></goals>
+            <phase>process-sources</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.rat</groupId>
+        <artifactId>apache-rat-plugin</artifactId>
+        <version>0.18</version>
+        <configuration>
+          <inputExcludes>
+            <exclude>FOSS_REUSE_DECISION.tsv</exclude>
+          </inputExcludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>rat-check</id>
+            <goals><goal>check</goal></goals>
+            <phase>process-resources</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.4.1</version>
+        <executions>
+          <execution>
+            <!-- an incremental recompile deletes the plugin class but not its registration -->
+            <id>drop-javac-plugin-registration</id>
+            <goals><goal>clean</goal></goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <excludeDefaultDirectories>true</excludeDefaultDirectories>
+              <filesets>
+                <fileset>
+                  <directory>${project.build.outputDirectory}/META-INF/services</directory>
+                  <includes><include>com.sun.source.util.Plugin</include></includes>
+                </fileset>
+              </filesets>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <!-- after compile: javac lists Plugin services on its class path even without -Xplugin, and a
+                 registration copied before the class exists fails this module's own compile -->
+            <id>javac-plugin-registration</id>
+            <goals><goal>copy-resources</goal></goals>
+            <phase>process-classes</phase>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+              <resources>
+                <resource><directory>src/main/javac-plugin</directory></resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <parameters>true</parameters>
+          <proc>none</proc>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.11.0</version>
+        <executions>
+          <execution>
+            <!-- the processor path the forked and -Xplugin tests hand to javac -->
+            <id>plugin-classpath</id>
+            <goals><goal>build-classpath</goal></goals>
+            <phase>generate-test-resources</phase>
+            <configuration>
+              <includeScope>runtime</includeScope>
+              <outputFile>${project.build.directory}/plugin-classpath.txt</outputFile>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <argLine>${javacExports}</argLine>
+          <systemPropertyVariables>
+            <recipes.pluginClasspath>${project.build.directory}/plugin-classpath.txt</recipes.pluginClasspath>
+            <recipes.pluginClasses>${project.build.outputDirectory}</recipes.pluginClasses>
+            <recipes.workDir>${project.build.directory}/lst-tests</recipes.workDir>
+            <recipes.javacExports>${javacExports}</recipes.javacExports>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-install-plugin</artifactId>
+        <version>3.1.2</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
