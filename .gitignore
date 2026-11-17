@@ -1,4 +1,6 @@
 **/target/**
+**/.m3/module.m3db
+**/.m3/module.m3db.lock
 .project
 .classpath
 .settings/

@@ -37,6 +37,7 @@ public final class PolyglotCli {
         }
         boolean approveRewriteApply = false;
         boolean incremental = false;
+        boolean moduleDb = false;
         boolean timeoutSupplied = false;
         int timeoutSeconds = 900;
         for (int index = 4; index < args.length; index++) {
@@ -48,6 +49,10 @@ public final class PolyglotCli {
                 case "--incremental" -> {
                     if (incremental || !"run".equals(args[0])) throw usage();
                     incremental = true;
+                }
+                case "--m3db" -> {
+                    if (moduleDb || !"run".equals(args[0])) throw usage();
+                    moduleDb = true;
                 }
                 case "--timeout-seconds" -> {
                     if (timeoutSupplied || ++index == args.length) throw usage();
@@ -62,16 +67,17 @@ public final class PolyglotCli {
                 default -> throw usage();
             }
         }
+        if (moduleDb && !incremental) throw usage();
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, output);
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, moduleDb, output);
         output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
         return done;
     }
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--approve-rewrite-apply]"
-                + " (the last two flags require run)");
+                + " [--timeout-seconds 1..43200] [--incremental] [--m3db] [--approve-rewrite-apply]"
+                + " (incremental/recipe flags require run; m3db also requires incremental)");
     }
 }

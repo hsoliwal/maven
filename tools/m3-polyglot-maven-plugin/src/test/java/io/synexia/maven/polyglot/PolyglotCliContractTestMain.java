@@ -65,9 +65,25 @@ public final class PolyglotCliContractTestMain {
             check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE")), "changed input executes");
             passed++;
 
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db"
+            }, log::add);
+            check(Files.isRegularFile(M3ModuleDb.file(root)), "CLI creates one per-module M3DB database");
+            log.clear();
+            PolyglotCli.execute(new String[] {
+                    "run", root.toString(), manifest.toString(), "all", "--m3db", "--incremental"
+            }, log::add);
+            check(log.stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile")),
+                    "CLI reads its completed module M3DB receipt");
+            passed++;
+
             for (String[] rejected : List.of(
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--incremental"},
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--approve-rewrite-apply"},
+                    new String[] {"plan", root.toString(), manifest.toString(), "all", "--m3db"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--m3db"},
+                    new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--m3db", "--m3db"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--incremental", "--incremental"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "0"},
                     new String[] {"run", root.toString(), manifest.toString(), "all", "--timeout-seconds", "43201"},

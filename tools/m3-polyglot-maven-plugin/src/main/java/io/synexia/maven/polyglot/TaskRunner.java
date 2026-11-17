@@ -65,6 +65,23 @@ public final class TaskRunner {
             boolean allowRewriteApply,
             boolean incremental,
             Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply, incremental, false, log);
+    }
+
+    /**
+     * When both incremental and moduleDb are explicit, one per-module M3DB replaces per-task stamps.
+     * All existing entry points and the default Maven lifecycle retain their earlier behavior.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            boolean moduleDb,
+            Consumer<String> log) throws IOException, InterruptedException {
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(workspace, "workspace");
         Objects.requireNonNull(target, "target");
@@ -72,6 +89,9 @@ public final class TaskRunner {
         Objects.requireNonNull(log, "log");
         if (timeoutPerTask.isNegative() || timeoutPerTask.isZero() || timeoutPerTask.compareTo(Duration.ofHours(12)) > 0) {
             throw new IllegalArgumentException("timeout must be between 1ns and 12 hours");
+        }
+        if (moduleDb && !incremental) {
+            throw new IllegalArgumentException("M3DB requires explicit incremental mode");
         }
         Path root = workspace.toAbsolutePath().normalize();
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
@@ -113,8 +133,29 @@ public final class TaskRunner {
             // Pluggable providers own further hidden inputs, so never skip them.
             boolean stampCandidate = incremental && !task.inputs().isEmpty() && !task.outputs().isEmpty()
                     && qualityCommand == null && m3Command == null;
-            String stamp = stampCandidate ? InputStamps.stamp(task, root) : null;
-            if (stamp != null && InputStamps.upToDate(task, root, stamp)) {
+            String stamp = null;
+            boolean current = false;
+            if (stampCandidate) {
+                if (moduleDb) {
+                    try {
+                        stamp = M3ModuleDb.fingerprint(task, root);
+                    } catch (IOException unavailable) {
+                        log.accept("M3DB MISS " + task.name() + " (" + unavailable.getMessage() + ")");
+                    }
+                    if (stamp != null) {
+                        try {
+                            current = M3ModuleDb.upToDate(task, root, stamp);
+                        } catch (IOException unavailable) {
+                            // Preserve the valid input fingerprint for publication after a successful rebuild.
+                            log.accept("M3DB MISS " + task.name() + " (" + unavailable.getMessage() + ")");
+                        }
+                    }
+                } else {
+                    stamp = InputStamps.stamp(task, root);
+                    current = InputStamps.upToDate(task, root, stamp);
+                }
+            }
+            if (current) {
                 log.accept("UP-TO-DATE " + task.name() + " (declared inputs unchanged, outputs present)");
                 performed.add(task.name());
                 continue;
@@ -158,7 +199,18 @@ public final class TaskRunner {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
                 }
             }
-            if (stamp != null) InputStamps.record(task, root, stamp);
+            if (stamp != null) {
+                if (moduleDb) {
+                    try {
+                        M3ModuleDb.record(task, root, stamp);
+                    } catch (IOException unavailable) {
+                        // Persistence is an optimization; a successful original build stays successful.
+                        log.accept("M3DB NOT-RECORDED " + task.name() + " (" + unavailable.getMessage() + ")");
+                    }
+                } else {
+                    InputStamps.record(task, root, stamp);
+                }
+            }
             performed.add(task.name());
         }
         return List.copyOf(performed);

@@ -17,6 +17,8 @@ incremental mode can reuse a declared-input content stamp, with the limitations 
 flatten source inputs, automatically download toolchains, or skip goals using
 unverified data. More sophisticated incremental verification belongs to the
 source owners and M3JDK/M3FS evidence services.
+See [M3DB module state](../../docs/M3-MODULE-DB.md) for the durable per-module adapter,
+its storage contract, and the pending native Maven/Core admission gates.
 
 ## Goals and explicit lifecycle activation
 
@@ -32,6 +34,21 @@ source owners and M3JDK/M3FS evidence services.
   task's inputs to have its changes re-run this task. Off by default. A task without both declared inputs and
   outputs always executes; CodeQL and OpenRewrite providers always execute, even in incremental mode.
   Stamps do **not** certify complete inputs, external tool versions, environment or ABI compatibility.
+- `-Dm3.polyglot.incremental=true -Dm3.polyglot.m3db=true` uses the **M3DB module ledger** instead of
+  separate task stamps. Every module gets its own `.m3/module.m3db` (plus a coordination `.lock` file).
+  One versioned, SHA-256-sealed database stores the successful input/task fingerprint and actual output-tree
+  fingerprint for each eligible task. Input and output paths are recursively content-hashed, including file
+  and directory identity; timestamps alone do not authorize reuse. Entries are updated under a cross-process
+  lock, with atomic replacement so a crash or corrupt/truncated database becomes a cache miss. The database
+  is bounded to 256 task entries / 1 MiB per module, does not follow symlinks, and is independent for every
+  Maven module. Missing or changed output bytes force a re-run; no result restoration is attempted. A failed
+  database read or write never changes the result of a successful original build.
+  This is an **opt-in completed-work ledger**, not a cache for arbitrary Maven Mojos. The calling project
+  remains responsible for complete declared inputs, tool versions, toolchain, dependency/ABI and environment
+  changes; CodeQL, OpenRewrite and M3 compiler/atomizer/patternizer providers continue to run normally.
+  If the database cannot verify a result, the original task executes. The old per-task stamp mode and all
+  original entry points remain available unchanged. The OpenRewrite recipe
+  `io.synexia.maven.recipe.EnableM3ModuleDb` explicitly configures both opt-in properties.
 
 ### Any language through Maven's own phases
 
@@ -84,6 +101,9 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:mavenize -Dm3.polyglot.ma
 # Using the M3 Maven fork with its explicit core extension:
 mvn -Dm3.polyglot.lifecycle=true verify
 
+# Use the module-local database for explicitly declared polyglot inputs/outputs:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true -Dm3.polyglot.m3db=true verify
+
 # Using stock Maven 3.9+ / Maven 4 with the installed polyglot plugin:
 mvn -Pm3-polyglot verify
 ```
@@ -135,10 +155,11 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 java -cp /verified/m3-polyglot-maven-plugin.jar \
   io.synexia.maven.polyglot.PolyglotCli \
   run /work/project /work/project/m3-build.tsv all \
-  --timeout-seconds 900 --incremental
+  --timeout-seconds 900 --incremental --m3db
 ```
 
-`--timeout-seconds` accepts 1–43200 (default 900). `--incremental` and
+`--timeout-seconds` accepts 1–43200 (default 900). `--m3db` requires `--incremental`;
+`--incremental` and
 `--approve-rewrite-apply` require `run`; recipe mutation still requires the
 separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
