@@ -55,9 +55,7 @@ public final class PolyglotCli {
                     if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
                     stateBackendSupplied = true;
                     stateBackend = args[index];
-                    if (!("legacy".equals(stateBackend) || "file".equals(stateBackend)
-                            || "m3db".equals(stateBackend) || "sqlite".equals(stateBackend)
-                            || "h2".equals(stateBackend) || "derby".equals(stateBackend))) throw usage();
+                    if (!stateBackend.matches("[a-z][a-z0-9-]{0,31}")) throw usage();
                 }
                 case "--timeout-seconds" -> {
                     if (timeoutSupplied || ++index == args.length) throw usage();
@@ -82,7 +80,7 @@ public final class PolyglotCli {
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db|sqlite|h2|derby] [--approve-rewrite-apply]"
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend legacy|file|m3db|sqlite|h2|derby|provider-id] [--approve-rewrite-apply]"
                 + " (the last two flags require run)");
     }
 }
