@@ -28,6 +28,7 @@ public final class MavenizerContractTestMain {
         try {
             detectsEachToolFamily(temp.resolve("detect"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
+            mavenizesAGradleMultiProjectBuildAsOneProject(temp.resolve("gradle-multi"));
             pointsClangdAtTheCMakeCompileDatabase(temp.resolve("clangd"));
             neverSkipsATaskWithoutDeclaredInputs(temp.resolve("noinputs"));
             resolvesBareToolNames(temp.resolve("tools"));
@@ -72,7 +73,22 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "pytest", "pyproject.toml", "[tool.pytest.ini_options]\n"),
                 "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
                 "test python-test python [-m, pytest]");
-        expect(dir(root, "dotnet", "App.csproj", "<Project/>"), "compile dotnet-compile dotnet [build]", "test dotnet-test dotnet [test]");
+        String dotnetTest = "test dotnet-test @m3:surefire:interpreter:trx [target/dotnet-test-results, "
+                + "target/surefire-reports, dotnet, test, --logger, trx, --results-directory, target/dotnet-test-results]";
+        String dotnetPack = "package dotnet-package dotnet [pack, --output, target/nuget]";
+        expect(dir(root, "dotnet", "App.csproj", "<Project/>"), "validate dotnet-validate dotnet [restore]",
+                "compile dotnet-compile dotnet [build]", dotnetTest, dotnetPack);
+        expect(dir(root, "fsharp", "Lib.fsproj", "<Project/>", "packages.lock.json", "{}"),
+                "validate dotnet-validate dotnet [restore, --locked-mode]", "compile dotnet-compile dotnet [build]",
+                dotnetTest, dotnetPack);
+        expect(dir(root, "vb", "Old.vbproj", "<Project/>"), "validate dotnet-validate dotnet [restore]",
+                "compile dotnet-compile dotnet [build]", dotnetTest, dotnetPack);
+        expect(dir(root, "dotnet-lookalike", "App.csproj.user", "<Project/>"));
+        List<Mavenizer.Step> dotnet = Mavenizer.steps(root.resolve("dotnet"));
+        require(Mavenizer.pom("g", "a", "1", List.of("dotnet"), List.of(), dotnet).contains("<goal>attach</goal>"),
+                "a packing .NET folder attaches its NuGet packages in the generated profile");
+        require(!Mavenizer.pom("g", "a", "1", List.of("cargo"), List.of(), Mavenizer.steps(root.resolve("cargo")))
+                .contains("<goal>attach</goal>"), "other tools attach nothing");
         expect(dir(root, "gradle", "build.gradle.kts", "", "gradlew.bat", ""),
                 "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
         expect(dir(root, "ant", "build.xml", "<project><target name=\"test\"/></project>"),
@@ -149,6 +165,30 @@ public final class MavenizerContractTestMain {
         require(modules(root.resolve("pom.xml")).equals(List.of("lib", "svc", "tools", "web")), "the kept root pom is unchanged");
         Path nothing = Files.createDirectories(root.resolve("../nothing"));
         require(Mavenizer.mavenize(nothing, "g", "1", true).get(0).startsWith("NOTHING "), "no build tool found");
+        passed++;
+    }
+
+    /**
+     * The layout of Eclipse buildship (a Gradle build with a wrapper): included projects, buildSrc, a test fixture
+     * build under src/test/resources and a sample build with its own settings. All of it is one Gradle build run by
+     * the root wrapper; mavenizing it per sub-folder ran Gradle 25+ times, mixed the wrapper with the PATH gradle and
+     * turned buildSrc and fixtures into reactor modules.
+     */
+    private static void mavenizesAGradleMultiProjectBuildAsOneProject(Path root) throws Exception {
+        dir(root, ".", "settings.gradle", "include 'core', 'ui'\n", "build.gradle", "", "gradlew", "", "gradlew.bat", "");
+        dir(root, "core", "build.gradle", "");
+        dir(root, "ui", "build.gradle.kts", "");
+        dir(root, "buildSrc", "build.gradle", "");
+        dir(root.resolve("core/src/test/resources/sample-projects"), "simple-multimodule", "settings.gradle", "",
+                "build.gradle", "");
+        dir(root.resolve("samples"), "custom-tapi-model", "settings.gradle.kts", "", "build.gradle.kts", "");
+        List<String> plan = Mavenizer.mavenize(root, "org.example", "1.0-SNAPSHOT", false);
+        require(plan.equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv")), "one Gradle build, one project: " + plan);
+        expect(root, "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
+        Path standalone = dir(root.resolve(".."), "gradle-standalone", "build.gradle", "");
+        dir(standalone, "nested", "settings.gradle", "", "gradlew", "");
+        require(Mavenizer.mavenize(standalone, "g", "1", false).equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv",
+                "PLAN nested/pom.xml", "PLAN nested/m3-build.tsv")), "a build without settings still finds builds below");
         passed++;
     }
 

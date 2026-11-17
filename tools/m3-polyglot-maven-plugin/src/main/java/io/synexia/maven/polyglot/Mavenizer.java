@@ -111,6 +111,11 @@ public final class Mavenizer {
             found.add(new Project(dir, List.of("maven"), List.of(), List.of(), true));
             return true;
         }
+        if (gradleBuildRoot(dir)) {
+            List<Step> steps = steps(dir);
+            found.add(new Project(dir, tools(steps), List.copyOf(steps), List.of(), false));
+            return true;
+        }
         int slot = found.size();
         List<Path> modules = new ArrayList<>();
         if (depth < MAX_DEPTH) {
@@ -120,14 +125,27 @@ public final class Mavenizer {
         }
         List<Step> steps = steps(dir);
         if (steps.isEmpty() && modules.isEmpty()) return false;
+        found.add(slot, new Project(dir, tools(steps), List.copyOf(steps), List.copyOf(modules), false));
+        return true;
+    }
+
+    /**
+     * A folder with settings.gradle(.kts) is one Gradle build: its included projects, buildSrc and every build
+     * below it (test fixtures, samples with their own settings) are Gradle's business. It becomes one project whose
+     * steps run the build's own wrapper once; nothing below it becomes a Maven module.
+     */
+    static boolean gradleBuildRoot(Path dir) {
+        return has(dir, "settings.gradle") || has(dir, "settings.gradle.kts");
+    }
+
+    private static List<String> tools(List<Step> steps) {
         List<String> tools = new ArrayList<>();
         for (Step step : steps) {
             String tool = step.name().substring(0, step.name().indexOf('-'));
             if (!tools.contains(tool)) tools.add(tool);
         }
         if (tools.isEmpty()) tools.add("aggregator");
-        found.add(slot, new Project(dir, List.copyOf(tools), List.copyOf(steps), List.copyOf(modules), false));
-        return true;
+        return List.copyOf(tools);
     }
 
     private static List<Path> children(Path dir) throws IOException {
@@ -158,10 +176,7 @@ public final class Mavenizer {
             add(steps, "test", "meson", "test", "-C", "build/meson");
         }
         python(dir, steps);
-        if (any(dir, ".sln") || any(dir, ".slnx") || any(dir, ".csproj")) {
-            add(steps, "compile", "dotnet", "build");
-            add(steps, "test", "dotnet", "test");
-        }
+        DotnetSteps.add(dir, steps);
         if (has(dir, "MODULE.bazel") || has(dir, "WORKSPACE") || has(dir, "WORKSPACE.bazel")) {
             add(steps, "compile", "bazel", "build", "//...");
             add(steps, "test", "bazel", "test", "//...");
@@ -322,12 +337,22 @@ public final class Mavenizer {
                         .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
                         .append("          </execution>\n");
             }
+            if (DotnetSteps.packs(steps)) attach(text);
             text.append("        </executions>\n")
                     .append("      </plugin></plugins></build>\n")
                     .append("    </profile>\n")
                     .append("  </profiles>\n");
         }
         return text.append("</project>\n").toString();
+    }
+
+    /** After the package run, attach the packages it wrote (declared later, so it runs later in the phase). */
+    private static void attach(StringBuilder text) {
+        text.append("          <execution>\n")
+                .append("            <id>m3-polyglot-attach</id>\n")
+                .append("            <phase>package</phase>\n")
+                .append("            <goals><goal>attach</goal></goals>\n")
+                .append("          </execution>\n");
     }
 
     static String artifactId(Path dir) {
@@ -346,11 +371,11 @@ public final class Mavenizer {
         return has(dir, "pom.xml") && read(dir, "pom.xml").matches("(?s).*<name>[^<]*\\(mavenized: [^<]*\\)</name>.*");
     }
 
-    private static boolean has(Path dir, String name) {
+    static boolean has(Path dir, String name) {
         return Files.isRegularFile(dir.resolve(name), LinkOption.NOFOLLOW_LINKS);
     }
 
-    private static boolean any(Path dir, String suffix) throws IOException {
+    static boolean any(Path dir, String suffix) throws IOException {
         try (Stream<Path> list = Files.list(dir)) {
             return list.anyMatch(path -> path.getFileName().toString().endsWith(suffix)
                     && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));

@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Java 17 adapter for original XML, SARIF 2.1.0 and Semgrep CLI JSON.
+ * Java 17 adapter for original XML, SARIF 2.1.0, Semgrep CLI JSON, ECJ XML logs and javac diagnostics.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF, SEMGREP
+        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF, SEMGREP, ECJ, JAVAC
     }
 
     public enum Status {
@@ -121,6 +121,8 @@ public final class AnalyzerXmlNormalizer {
         List<Finding> facts = switch (format) {
             case SARIF -> SarifJsonReader.read(root, status, xml);
             case SEMGREP -> SemgrepJsonReader.read(root, status, xml);
+            case ECJ -> EcjXmlReader.read(root, status, xml);
+            case JAVAC -> JavacLogReader.read(root, status, xml);
             default -> readXml(format, status, root, xml);
         };
         facts.sort(ORDER);
