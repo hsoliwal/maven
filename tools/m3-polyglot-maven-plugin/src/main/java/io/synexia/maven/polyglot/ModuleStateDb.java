@@ -175,6 +175,9 @@ final class ModuleStateDb implements AutoCloseable {
         try {
             for (M3BuildStateStoreProvider candidate : ServiceLoader.load(M3BuildStateStoreProvider.class)) {
                 String name = candidate.id();
+                if (candidate.apiVersion() != M3BuildStateStoreProvider.API_VERSION) {
+                    throw new IOException("unsupported module storage provider SPI version: " + name);
+                }
                 if (name == null || !name.matches("[a-z][a-z0-9-]{0,31}")
                         || java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2", "derby")
                                 .contains(name) || !ids.add(name)) {
