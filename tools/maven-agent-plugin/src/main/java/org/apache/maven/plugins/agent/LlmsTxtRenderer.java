@@ -59,10 +59,13 @@ final class LlmsTxtRenderer {
     private static void build(StringBuilder text, ProjectDescription.Commands commands) {
         text.append("\n## Build\n\n");
         text.append("- Whole build: `").append(commands.build()).append("`\n");
-        text.append("- Agent mode: `").append(commands.agent()).append("` prints a short summary (every line starts with")
-                .append(" `[agent]`) and writes the files under Results; it needs the build events extension in")
+        text.append("- Agent mode: `").append(commands.agent()).append("` prints a short summary (every line starts")
+                .append(" with `[agent]`) and writes the files under Results; it needs the build events extension in")
                 .append(" `lib/ext` of the Maven distribution, in `.mvn/extensions.xml` or as")
-                .append(" `-Dmaven.ext.class.path=<smart-maven-extension.jar>`\n");
+                .append(" `-Dmaven.ext.class.path=<smart-maven-extension.jar>`. The quoted `-D` arguments work in bash,")
+                .append(" cmd.exe and PowerShell (Windows PowerShell 5.1 splits an unquoted `-Dkey.with.dots=value`), or put")
+                .append(" the options in the `MAVEN_ARGS` environment variable; keep `-B -ntp \"-Dstyle.color=never\"`, since")
+                .append(" `-Dmaven.agent=true` alone does not turn off colours or transfer progress\n");
         text.append("- One module and the modules it needs: `").append(commands.module()).append("`\n");
     }
 

@@ -35,13 +35,17 @@ public final class LlmsTxtRendererTestMain {
             + " or one test, and leave results an agent can read without the console.\n\n"
             + "## Build\n\n"
             + "- Whole build: `mvn verify`\n"
-            + "- Agent mode: `mvn -B -ntp -q -Dstyle.color=never -Dmaven.agent=true verify` prints a short summary (every"
-            + " line starts with `[agent]`) and writes the files under Results; it needs the build events extension in"
-            + " `lib/ext` of the Maven distribution, in `.mvn/extensions.xml` or as"
-            + " `-Dmaven.ext.class.path=<smart-maven-extension.jar>`\n"
+            + "- Agent mode: `mvn -B -ntp -q \"-Dstyle.color=never\" \"-Dmaven.agent=true\" verify` prints a short"
+            + " summary (every line starts with `[agent]`) and writes the files under Results; it needs the build events"
+            + " extension in `lib/ext` of the Maven distribution, in `.mvn/extensions.xml` or as"
+            + " `-Dmaven.ext.class.path=<smart-maven-extension.jar>`. The quoted `-D` arguments work in bash, cmd.exe"
+            + " and PowerShell (Windows PowerShell 5.1 splits an unquoted `-Dkey.with.dots=value`), or put the options in"
+            + " the `MAVEN_ARGS` environment variable; keep `-B -ntp \"-Dstyle.color=never\"`, since `-Dmaven.agent=true`"
+            + " alone does not turn off colours or transfer progress\n"
             + "- One module and the modules it needs: `mvn -pl <path> -am verify`\n\n"
             + "## Test\n\n"
-            + "- One test: `mvn -pl <path> -am -Dtest=<Class>#<method> -Dsurefire.failIfNoSpecifiedTests=false test`\n"
+            + "- One test: `mvn -pl <path> -am \"-Dtest=<Class>#<method>\" \"-Dsurefire.failIfNoSpecifiedTests=false\""
+            + " test`\n"
             + "- Tests of fix:b: b/src/test/java\n\n"
             + "## Results\n\n"
             + "- [summary.txt](target/agent/summary.txt): the summary agent mode printed\n"
@@ -71,9 +75,7 @@ public final class LlmsTxtRendererTestMain {
                         List.of("b/src/main/java"), List.of("b/src/test/java"), TESTED),
                 new ProjectDescription.Module(4, "fix:c", "c", "jar", "1.0-SNAPSHOT", List.of(), List.of("c/src/main/java"),
                         List.of(), JAR));
-        return new ProjectDescription("fixture", "Three modules.", modules, new ProjectDescription.Commands("mvn verify",
-                "mvn -B -ntp -q -Dstyle.color=never -Dmaven.agent=true verify", "mvn -pl <path> -am verify",
-                "mvn -pl <path> -am -Dtest=<Class>#<method> -Dsurefire.failIfNoSpecifiedTests=false test"));
+        return new ProjectDescription("fixture", "Three modules.", modules, ProjectDescriber.commands("mvn", "verify"));
     }
 
     public static void main(String[] args) {
@@ -86,9 +88,12 @@ public final class LlmsTxtRendererTestMain {
                 + "\"goals\":[]},{\"index\":2,\"id\":\"fix:a\""), "project.json field order: " + json);
         equal(true, json.contains("\"goals\":[{\"phase\":\"process-resources\",\"plugin\":\"org.apache.maven.plugins:"
                 + "maven-resources-plugin:3.3.1\",\"goal\":\"resources\",\"execution\":\"default-resources\"}"), "goal fields");
-        equal(true, json.endsWith("\"commands\":{\"build\":\"mvn verify\",\"agent\":\"mvn -B -ntp -q -Dstyle.color=never"
-                + " -Dmaven.agent=true verify\",\"module\":\"mvn -pl <path> -am verify\",\"test\":\"mvn -pl <path> -am"
-                + " -Dtest=<Class>#<method> -Dsurefire.failIfNoSpecifiedTests=false test\"}}\n"), "commands");
+        equal(true, json.endsWith("\"commands\":{\"build\":\"mvn verify\",\"agent\":\"mvn -B -ntp -q"
+                + " \\\"-Dstyle.color=never\\\" \\\"-Dmaven.agent=true\\\" verify\",\"module\":\"mvn -pl <path> -am verify\","
+                + "\"test\":\"mvn -pl <path> -am \\\"-Dtest=<Class>#<method>\\\" \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\""
+                + " test\"}}\n"), "commands: " + json);
+        equal(true, LlmsTxtMojo.same(GOLDEN.replace("\n", "\r\n"), GOLDEN), "a CRLF checkout of the same file is current");
+        equal(false, LlmsTxtMojo.same(GOLDEN.replace("fix:c", "fix:d"), GOLDEN), "a changed file is stale");
         equal(false, json.contains("Three modules."), "the POM description is not part of project.json");
         equal("exec:java", new ProjectDescription.Goal("x", "org.codehaus.mojo:exec-maven-plugin:3.5.0", "java", "e")
                 .shortName(), "prefix of a *-maven-plugin");

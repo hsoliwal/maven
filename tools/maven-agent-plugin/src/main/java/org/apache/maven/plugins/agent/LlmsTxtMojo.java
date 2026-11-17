@@ -36,7 +36,7 @@ import org.apache.maven.plugins.annotations.Parameter;
  * Writes {@code llms.txt} for coding agents, {@code mvn agent:llms-txt}: how to build the project, run one module
  * or one test, where the results are, its modules and their goals, all from the same description as
  * {@code agent:describe-project}. With {@code -Dagent.check=true} it writes nothing and fails when the file is
- * missing or differs, so a build can keep it current.
+ * missing or differs (line ends aside: a CRLF checkout of the same text is current), so a build can keep it current.
  */
 @Mojo(name = "llms-txt", aggregator = true, threadSafe = true)
 public final class LlmsTxtMojo extends AbstractMojo {
@@ -68,7 +68,7 @@ public final class LlmsTxtMojo extends AbstractMojo {
         Path file = output != null ? output.toPath() : describer.root().resolve("llms.txt");
         String text = LlmsTxtRenderer.render(describer.describe(phase));
         try {
-            boolean current = Files.isRegularFile(file) && text.equals(Files.readString(file, StandardCharsets.UTF_8));
+            boolean current = Files.isRegularFile(file) && same(Files.readString(file, StandardCharsets.UTF_8), text);
             if (check && !current) {
                 throw new MojoFailureException(describer.relative(file) + " is missing or stale; run mvn agent:llms-txt");
             }
@@ -79,5 +79,10 @@ public final class LlmsTxtMojo extends AbstractMojo {
         } catch (IOException failed) {
             throw new MojoExecutionException("Cannot read or write " + file, failed);
         }
+    }
+
+    /** Whether {@code existing} is {@code rendered} with any line ends: a CRLF checkout (git autocrlf) is current. */
+    static boolean same(String existing, String rendered) {
+        return existing.replace("\r\n", "\n").equals(rendered);
     }
 }

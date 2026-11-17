@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The short text an agent reads first, on standard output and in {@code summary.txt}: one header line with the
@@ -31,6 +32,7 @@ import java.util.Locale;
  */
 final class SummaryPrinter {
     static final String PREFIX = "[agent] ";
+    private static final Pattern LINE_BREAK = Pattern.compile("\r\n|[\r\n  ]");
 
     /** Counts of the header line. */
     record Header(String outcome, long durationMs, int projects, int success, int failure, int skipped, int errors,
@@ -71,6 +73,25 @@ final class SummaryPrinter {
         lines.add("  reproduce: " + f.reproduce());
     }
 
+    /**
+     * {@code text} on one line: CR LF, CR, LF, U+2028 and U+2029 become the two characters {@code \n}, a tab a space,
+     * and every other control character {@code \}{@code uXXXX}, so no message can start a line of its own.
+     */
+    static String oneLine(String text) {
+        String joined = LINE_BREAK.matcher(text).replaceAll("\\\\n");
+        StringBuilder out = new StringBuilder(joined.length());
+        joined.chars().forEach(c -> {
+            if (c == '\t') {
+                out.append(' ');
+            } else if (Character.isISOControl(c)) {
+                out.append(String.format(Locale.ROOT, "\\u%04x", c));
+            } else {
+                out.append((char) c);
+            }
+        });
+        return out.toString();
+    }
+
     private static String diagnostic(Diagnostic d) {
         return d.severity() + " " + d.location() + (d.rule().isEmpty() ? "" : " [" + d.rule() + "]") + " " + d.message();
     }
@@ -84,7 +105,7 @@ final class SummaryPrinter {
         int[] used = {0};
         String tail = PREFIX + "... more in " + more + "\n";
         int budget = maxBytes - tail.getBytes(StandardCharsets.UTF_8).length;
-        boolean cut = lines.stream().map(line -> PREFIX + line + "\n").anyMatch(line -> {
+        boolean cut = lines.stream().map(line -> PREFIX + oneLine(line) + "\n").anyMatch(line -> {
             int size = line.getBytes(StandardCharsets.UTF_8).length;
             if (used[0] + size > budget) {
                 return true;

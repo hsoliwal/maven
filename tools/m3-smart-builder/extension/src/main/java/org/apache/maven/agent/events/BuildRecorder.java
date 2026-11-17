@@ -42,8 +42,11 @@ import org.apache.maven.project.MavenProject;
  * project for the digest that {@link SessionReport} writes at the end. Callers serialize access.
  */
 final class BuildRecorder {
-    /** The first failure of a project: kind and mojo of the failed step (empty when no mojo failed) and the cause. */
-    record FailureNote(String project, String kind, String mojo, String phase, Throwable cause) {}
+    /**
+     * The first failure of a project: kind, mojo and phase of the failed step (empty when no mojo failed), the
+     * properties and {@code g:a:v:goal} of a failed goal run from the command line (else empty) and the cause.
+     */
+    record FailureNote(String project, String kind, String mojo, String phase, List<String> goal, Throwable cause) {}
 
     private final AgentSettings settings;
     private final EventWriter writer;
@@ -112,7 +115,7 @@ final class BuildRecorder {
         long millis = timeline.end(MojoTimeline.key(project)).map(MojoTimeline.Start::elapsedMillis).orElse(0L);
         outcomes.put(id, outcome);
         if ("failure".equals(outcome)) {
-            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", cause));
+            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", List.of(), cause));
         }
         writer.emit("project-end", projectFields(project).put("outcome", outcome).put("durationMs", millis));
     }
@@ -159,7 +162,8 @@ final class BuildRecorder {
     private void mojoFailed(MavenProject project, MojoExecution mojo, Throwable cause) {
         String id = ReactorIndex.id(project);
         failures.putIfAbsent(id, new FailureNote(id, MojoNames.kind(mojo), MojoNames.name(mojo),
-                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""), cause));
+                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""),
+                MojoNames.cliGoal(mojo, request.getUserProperties()), cause));
         diagnostics.accept(DiagnosticLines.parse(message(cause), DiagnosticLines.ERROR, MojoNames.name(mojo),
                 project.getArtifactId()), index, index.find(project), MojoNames.source(mojo));
     }

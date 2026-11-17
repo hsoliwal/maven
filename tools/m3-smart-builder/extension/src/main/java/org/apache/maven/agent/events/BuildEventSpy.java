@@ -95,6 +95,7 @@ public final class BuildEventSpy extends AbstractEventSpy {
             off = true;
             return;
         }
+        SessionReport.removePrevious(settings);
         EventWriter writer = EventWriter.open(settings.stdout() == AgentSettings.Stdout.EVENTS
                 ? line -> System.out.println(line) : line -> {});
         recorder = new BuildRecorder(settings, writer, request);

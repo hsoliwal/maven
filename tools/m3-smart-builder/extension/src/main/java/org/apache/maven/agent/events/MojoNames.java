@@ -18,10 +18,18 @@
  */
 package org.apache.maven.agent.events;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
+import org.apache.maven.plugin.descriptor.Parameter;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
 
 /**
@@ -31,6 +39,12 @@ import org.apache.maven.plugin.descriptor.PluginDescriptor;
 final class MojoNames {
     private static final Map<String, String> SOURCES = Map.of("maven-compiler-plugin", "compiler",
             "maven-checkstyle-plugin", "checkstyle", "maven-pmd-plugin", "pmd", "spotbugs-maven-plugin", "spotbugs");
+    /** A parameter expression that is one property, such as {@code ${agent.check}}. */
+    private static final Pattern PROPERTY = Pattern.compile("\\$\\{([A-Za-z0-9._-]{1,200})}");
+    /** Property names whose values a reproduce command never repeats. */
+    private static final Pattern SECRET = Pattern.compile("(?i).*(pass|secret|token|credential|auth|key).*");
+    /** Values a double-quoted command-line argument cannot carry unchanged in every shell. */
+    private static final Pattern UNQUOTABLE = Pattern.compile("[\"`$%!\\p{Cntrl}]");
 
     private MojoNames() {}
 
@@ -59,6 +73,32 @@ final class MojoNames {
     static String source(MojoExecution mojo) {
         String source = SOURCES.getOrDefault(mojo.getArtifactId(), "log");
         return "pmd".equals(source) && mojo.getGoal().startsWith("cpd") ? "cpd" : source;
+    }
+
+    /**
+     * For a goal run from the command line (execution {@code default-cli}, or no lifecycle phase): the user properties
+     * its parameters read, as {@code -Dname=value}, then its {@code g:a:v:goal}; empty for a lifecycle execution.
+     * Properties with a secret-like name or a value no shell passes unchanged in double quotes are left out.
+     */
+    static List<String> cliGoal(MojoExecution mojo, Properties user) {
+        boolean cli = "default-cli".equals(mojo.getExecutionId())
+                || Optional.ofNullable(mojo.getLifecyclePhase()).orElse("").isEmpty();
+        if (!cli) {
+            return List.of();
+        }
+        List<String> args = new ArrayList<>(goalProperties(mojo, user));
+        args.add(mojo.getGroupId() + ":" + mojo.getArtifactId() + ":" + mojo.getVersion() + ":" + mojo.getGoal());
+        return args;
+    }
+
+    private static List<String> goalProperties(MojoExecution mojo, Properties user) {
+        List<Parameter> parameters = Optional.ofNullable(mojo.getMojoDescriptor())
+                .map(MojoDescriptor::getParameters).orElse(List.of());
+        return parameters.stream().map(Parameter::getExpression).filter(Objects::nonNull).map(PROPERTY::matcher)
+                .filter(Matcher::matches).map(m -> m.group(1)).distinct().sorted()
+                .filter(name -> user.getProperty(name) != null && !SECRET.matcher(name).matches())
+                .filter(name -> !UNQUOTABLE.matcher(user.getProperty(name)).find())
+                .map(name -> "-D" + name + "=" + user.getProperty(name)).collect(Collectors.toList());
     }
 
     /** The {@code mojo} object of the mojo events: plugin {@code g:a:v}, goal, execution, phase. */

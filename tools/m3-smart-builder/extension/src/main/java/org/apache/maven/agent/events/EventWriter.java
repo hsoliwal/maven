@@ -24,19 +24,27 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.DirectoryStream;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.function.Consumer;
+import java.util.stream.StreamSupport;
 
 /**
  * The JSON Lines event stream: one object per line, each starting with {@code v}, {@code seq}, {@code tMs}
  * (milliseconds since the stream opened) and {@code type}. Lines are staged in a temporary file outside the build
- * tree, so {@code clean} never meets an open file, and moved to their place by {@link #publish(Path)}. Thread-safe.
+ * tree ({@link #stagingDir()}), so {@code clean} never meets an open file, and moved to their place by
+ * {@link #publish(Path)}. Thread-safe.
  */
 final class EventWriter implements AutoCloseable {
     /** Schema version of every line. */
     static final int VERSION = 1;
     /** Lines written before further events are only counted; the final event is always written. */
     static final int MAX_EVENTS = 20_000;
+    /** Age after which a staged stream that was never published (a killed build) is removed. */
+    static final Duration STALE_STAGED = Duration.ofDays(1);
 
     private final Path staged;
     private final BufferedWriter out;
@@ -52,9 +60,43 @@ final class EventWriter implements AutoCloseable {
         this.echo = echo;
     }
 
-    /** Opens a staged stream; {@code echo} receives every written line (standard output in events mode). */
+    /** Where streams are staged: {@code maven-build-events} in the temporary directory. */
+    static Path stagingDir() {
+        return Path.of(System.getProperty("java.io.tmpdir"), "maven-build-events");
+    }
+
+    /**
+     * Opens a staged stream; {@code echo} receives every written line (standard output in events mode). Streams that
+     * killed builds left staged more than {@link #STALE_STAGED} ago are removed first.
+     */
     static EventWriter open(Consumer<String> echo) throws IOException {
-        return new EventWriter(Files.createTempFile("build-events-", ".jsonl"), echo);
+        Path dir = Files.createDirectories(stagingDir());
+        removeStale(dir);
+        return new EventWriter(Files.createTempFile(dir, "build-events-", ".jsonl"), echo);
+    }
+
+    private static void removeStale(Path dir) throws IOException {
+        FileTime cutoff = FileTime.from(Instant.now().minus(STALE_STAGED));
+        try (DirectoryStream<Path> staged = Files.newDirectoryStream(dir, "build-events-*.jsonl")) {
+            StreamSupport.stream(staged.spliterator(), false).filter(file -> modified(file).compareTo(cutoff) < 0)
+                    .forEach(EventWriter::deleteQuietly);
+        }
+    }
+
+    private static FileTime modified(Path file) {
+        try {
+            return Files.getLastModifiedTime(file);
+        } catch (IOException gone) {
+            return FileTime.from(Instant.now());
+        }
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException inUse) {
+            // another build still writes it, or it is locked; the next build tries again
+        }
     }
 
     /** Writes one event unless the cap is reached; returns whether it was written. */
