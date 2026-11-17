@@ -24,6 +24,15 @@
       <version>3.9.9</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Test-only database donors; Maven bootstrap has no mandatory JDBC engines. -->
+    <dependency>
+      <groupId>com.h2database</groupId><artifactId>h2</artifactId>
+      <version>2.5.252</version><scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.xerial</groupId><artifactId>sqlite-jdbc</artifactId>
+      <version>3.54.1.0</version><scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.maven.plugin-tools</groupId>
       <artifactId>maven-plugin-annotations</artifactId>
@@ -68,6 +77,15 @@
             <goals><goal>java</goal></goals>
             <configuration>
               <mainClass>io.synexia.maven.polyglot.ModuleStateDbContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>jdbc-module-state-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.JdbcModuleStateContractTestMain</mainClass>
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
