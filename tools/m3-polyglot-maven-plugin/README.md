@@ -87,6 +87,45 @@ CLI/other hosts can use
 `--incremental --state-backend m3db`. The standalone verification suite
 includes `ModuleStateDbContractTestMain`.
 
+### Portable database backends (additional opt-in)
+
+The existing sealed `ModuleStateDb` image now also supports local `sqlite` and
+`h2` JDBC persistence, or an explicitly installed `ext-*` storage provider.
+The backend stores the **same** sealed image: changing backend does not migrate
+or translate evidence. Default `legacy` and the preexisting `file`/`m3db`
+modes retain their CLI/API contracts.
+
+```sh
+# Requires the org.sqlite.JDBC class in this plugin's explicit runtime dependencies:
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=sqlite verify
+
+# Requires org.h2.Driver in the plugin realm (H2 is MPL-2.0 / EPL-1.0):
+mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true \
+    -Dm3.polyglot.incrementalState=h2 verify
+
+# Portable CLI: --incremental --state-backend sqlite|h2|ext-provider-id
+```
+
+No JDBC driver is bundled or fetched. SQLite uses a module-local
+`.m3/module-state.sqlite` and its transaction journal; H2 uses a
+`.m3/module-state.mv.db` with its own temporary/lock files. Each module
+takes `.m3/module-state.run.lock` for the entire opt-in incremental run,
+not merely during snapshot publication. A conflicting concurrent build of
+the same module refuses the lock. The new backend SPI is
+`M3ModuleDbBackendProvider`; operators must install and independently
+qualify external implementations. Missing drivers/providers fail explicitly.
+
+Before any changed task starts, previous task/dependent success records are
+revoked; missing outputs cannot be recorded as successful. After a successful
+process, the inputs are checked again before recording new state. These
+protections avoid presenting a stale snapshot as a success after failed or
+interrupted work. The database is still **not** a whole-reactor Mojo cache
+or a zero-byte-read M3File content oracle. See
+[portable database contract](docs/M3_PORTABLE_DATABASES.md) for donor
+provenance, license boundaries, storage tradeoffs and remaining integration
+qualification.
+
 ### Any language through Maven's own phases
 
 With the Maven fork's core extension (`io.synexia:smart-maven-extension`, built into the fork's distribution,

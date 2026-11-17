@@ -30,6 +30,8 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -92,7 +94,14 @@ final class ModuleStateDb {
         Storage storage = switch (Objects.requireNonNull(backend, "backend")) {
             case "file" -> new FileStorage(root.resolve(FILE));
             case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
-            default -> throw new IllegalArgumentException("incremental database must be file or m3db");
+            case "sqlite", "h2" -> {
+                M3ModuleJdbcStorage jdbc = new M3ModuleJdbcStorage(root, backend);
+                yield new Storage() {
+                    @Override public byte[] read() throws IOException { return jdbc.read(); }
+                    @Override public void write(byte[] bytes) throws IOException { jdbc.write(bytes); }
+                };
+            }
+            default -> externalStorage(root, backend);
         };
         ModuleStateDb database = new ModuleStateDb(root, storage);
         try {
@@ -108,6 +117,56 @@ final class ModuleStateDb {
 
     int digestedFiles() {
         return digestedFiles;
+    }
+
+    /**
+     * Revoke a task and all transitive consumers before starting any changed tool.
+     * Never permit a failed build to resurrect an earlier successful generation.
+     */
+    void invalidateTransitive(TaskManifest plan, String target) throws IOException {
+        java.util.Set<String> invalid = new java.util.HashSet<>();
+        invalid.add(target);
+        boolean changed;
+        do {
+            changed = false;
+            for (TaskManifest.Task task : plan.orderAll()) {
+                if (!invalid.contains(task.name())
+                        && task.prerequisites().stream().anyMatch(invalid::contains)) {
+                    changed |= invalid.add(task.name());
+                }
+            }
+        } while (changed);
+        boolean removed = false;
+        for (String name : invalid) removed |= tasks.remove(name) != null;
+        if (removed) storage.write(encode());
+    }
+
+    /** External providers are explicit, trusted plugin dependencies, never silent fallbacks. */
+    private static Storage externalStorage(Path root, String backend) throws IOException {
+        if (!backend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
+            throw new IllegalArgumentException("unknown module DB backend: " + backend);
+        }
+        M3ModuleDbBackendProvider selected = null;
+        try {
+            for (M3ModuleDbBackendProvider provider : ServiceLoader.load(M3ModuleDbBackendProvider.class)) {
+                String id = provider.id();
+                if (id == null || !id.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
+                    throw new IOException("invalid M3 portable DB provider identity");
+                }
+                if (backend.equals(id)) {
+                    if (selected != null) throw new IOException("duplicate M3 portable DB provider: " + id);
+                    selected = provider;
+                }
+            }
+        } catch (ServiceConfigurationError malformed) {
+            throw new IOException("M3 portable DB provider registration failed", malformed);
+        }
+        if (selected == null) throw new IOException("requested M3 portable DB provider is absent: " + backend);
+        M3ModuleDbBackendProvider provider = selected;
+        return new Storage() {
+            @Override public byte[] read() throws IOException { return provider.read(root); }
+            @Override public void write(byte[] image) throws IOException { provider.write(root, image); }
+        };
     }
 
     String stamp(TaskManifest.Task task) throws IOException {
@@ -158,14 +217,20 @@ final class ModuleStateDb {
 
     boolean upToDate(TaskManifest.Task task, String current) throws IOException {
         TaskState prior = tasks.get(task.name());
-        return prior != null && prior.inputStamp.equals(current)
+        return prior != null && !prior.outputStamp.isEmpty() && prior.inputStamp.equals(current)
                 && prior.outputStamp.equals(outputStamp(task));
     }
 
     void record(TaskManifest.Task task, String current) throws IOException {
         String outputs = outputStamp(task);
+        if (outputs.isEmpty()) throw new IOException("cannot record missing module outputs");
         tasks.put(task.name(), new TaskState(current, outputs));
-        storage.write(encode());
+        try {
+            storage.write(encode());
+        } catch (IOException failure) {
+            tasks.remove(task.name());
+            throw failure;
+        }
     }
 
     private String outputStamp(TaskManifest.Task task) throws IOException {
@@ -213,11 +278,13 @@ final class ModuleStateDb {
 
     private void addEntry(MessageDigest digest, Path path) throws IOException {
         Path relative = root.relativize(path);
-        if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
-                || path.equals(root.resolve(".m3/module-state.lock"))
-                || path.startsWith(root.resolve(NATIVE_DIRECTORY)))) return;
-        if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         String name = relative.toString().replace('\\', '/');
+        // A declared .m3 input cannot recursively fingerprint the cache's own
+        // lock, database, SQLite journal or H2 lock/trace/temporary sidecars.
+        if (relative.startsWith(".m3") && (path.equals(root.resolve(FILE))
+                || path.startsWith(root.resolve(NATIVE_DIRECTORY))
+                || name.startsWith(".m3/module-state."))) return;
+        if (Files.isSymbolicLink(path)) throw new IOException("symlink in module tree: " + path);
         update(digest, name);
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             update(digest, "directory");
