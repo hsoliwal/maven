@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -73,16 +72,11 @@ final class JdbcModuleStateStorage {
                     "SELECT IMAGE FROM " + TABLE + " WHERE STATE_ID = 1");
                     ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) return null;
-                Blob blob = rows.getBlob(1);
-                if (blob == null || blob.length() > MAX_IMAGE) {
-                    throw new IOException("oversized or missing module-state BLOB");
-                }
-                try (InputStream stream = blob.getBinaryStream()) {
+                try (InputStream stream = rows.getBinaryStream(1)) {
+                    if (stream == null) return null;
                     byte[] bytes = stream.readNBytes(MAX_IMAGE + 1);
                     if (bytes.length > MAX_IMAGE) throw new IOException("module-state BLOB exceeds size cap");
                     return bytes;
-                } finally {
-                    blob.free();
                 }
             }
         } catch (SQLException error) {
