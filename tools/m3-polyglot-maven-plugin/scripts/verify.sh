@@ -74,7 +74,8 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ReportFormat.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3Report.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolKindsContractTestMain.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolKindsRunnerContractTestMain.java
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolKindsRunnerContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/ToolProviderLinkageContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
@@ -101,6 +102,7 @@ java ${M3_POLYGLOT_ECJ_JAR:+-Dm3.polyglot.ecj.jar="$M3_POLYGLOT_ECJ_JAR"} \
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.DotnetReportsContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3ToolKindsContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.ToolProviderLinkageContractTestMain
 if command -v git >/dev/null 2>&1; then
   java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources-kinds" \
     io.synexia.maven.polyglot.M3ToolKindsRunnerContractTestMain

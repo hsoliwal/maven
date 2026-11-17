@@ -443,7 +443,12 @@ the provider listing must ignore slugs they do not know.
 The manifest `task` tool value is `@m3:<provider-id>:<capability>:<language>`.
 All names are lowercase, validated and unambiguous. The registry fails closed on
 unknown or duplicate IDs, unsupported capabilities/languages, incompatible SPI
-versions, malformed service descriptors and invalid argv. The `plan` command
+versions, malformed service descriptors and invalid argv. Every call into a
+provider (discovery, description, argv and run-contract planning) is guarded:
+a `RuntimeException`, a `LinkageError` (a provider jar built against a newer
+engine, such as a `NoSuchFieldError` for a capability constant this engine lacks)
+or a `ServiceConfigurationError` becomes an `IOException` naming the provider,
+never an uncaught error. The `plan` command
 validates provider resolution without starting a subprocess. Provider tasks are
 **never** skipped by module database reuse: provider-owned hidden inputs, classpaths and ABI
 need their own complete execution evidence.

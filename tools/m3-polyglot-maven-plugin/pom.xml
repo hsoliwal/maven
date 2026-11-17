@@ -245,6 +245,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>tool-provider-linkage-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.ToolProviderLinkageContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <!-- Registers its git probe through src/test/resources-kinds, so the v1 inventory suite keeps 2 providers. -->
             <id>m3-tool-kinds-runner-contract</id>
             <phase>verify</phase>

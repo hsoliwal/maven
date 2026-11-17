@@ -6,7 +6,6 @@ package io.synexia.maven.polyglot;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -15,6 +14,7 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.StreamSupport;
 
 /**
  * Deterministic registry for the public, versioned M3 tool SPI. The reserved
@@ -33,13 +33,34 @@ public final class M3ToolProviders {
     }
 
     public static List<Descriptor> available() throws IOException {
-        var descriptors = new ArrayList<Descriptor>();
-        for (Map.Entry<String, M3ToolProvider> entry : discover().entrySet()) {
-            var roles = entry.getValue().capabilities().stream().map(M3ToolCapability::slug).sorted().toList();
-            var languages = entry.getValue().languages().stream().sorted().toList();
-            descriptors.add(new Descriptor(entry.getKey(), roles, languages));
+        Map<String, M3ToolProvider> registry = discover();
+        return guarded("cannot describe M3 tool providers " + registry.keySet(),
+                () -> registry.entrySet().stream().map(M3ToolProviders::describe).toList());
+    }
+
+    private static Descriptor describe(Map.Entry<String, M3ToolProvider> entry) {
+        var roles = entry.getValue().capabilities().stream().map(M3ToolCapability::slug).sorted().toList();
+        var languages = entry.getValue().languages().stream().sorted().toList();
+        return new Descriptor(entry.getKey(), roles, languages);
+    }
+
+    /** A call into provider code, which may throw anything a provider jar built for another engine can. */
+    @FunctionalInterface
+    interface ProviderCall<T> {
+        T call() throws IOException;
+    }
+
+    /**
+     * Runs provider code; a RuntimeException, a LinkageError (a provider built against a newer engine:
+     * NoSuchFieldError, AbstractMethodError, NoClassDefFoundError) or a ServiceConfigurationError becomes an
+     * IOException with {@code what} as its message, so no provider can end the caller with an uncaught Error.
+     */
+    static <T> T guarded(String what, ProviderCall<T> call) throws IOException {
+        try {
+            return call.call();
+        } catch (RuntimeException | LinkageError | ServiceConfigurationError failure) {
+            throw new IOException(what, failure);
         }
-        return List.copyOf(descriptors);
     }
 
     public static List<String> command(TaskManifest.Task task, Path workspace) throws IOException {
@@ -67,11 +88,8 @@ public final class M3ToolProviders {
         List<String> argv = command(task, workspace, registry);
         String[] fields = task.tool().split(":", -1);
         M3ToolCapability capability = M3ToolCapability.parse(fields[2]);
-        try {
-            return contract(registry.get(fields[1]), capability, fields[3], task, argv, approveSourceMutation);
-        } catch (RuntimeException error) {
-            throw new IOException("M3 provider contract planning failed: " + fields[1], error);
-        }
+        return guarded("M3 provider contract planning failed: " + fields[1],
+                () -> contract(registry.get(fields[1]), capability, fields[3], task, argv, approveSourceMutation));
     }
 
     private static Planned contract(M3ToolProvider provider, M3ToolCapability capability, String language,
@@ -99,62 +117,85 @@ public final class M3ToolProviders {
     private static List<M3Report> reports(M3ToolProvider provider, M3ToolCapability capability, String language,
             TaskManifest.Task task) throws IOException {
         List<M3Report> reports = Objects.requireNonNull(provider.reports(capability, language, task), "reports");
-        for (M3Report report : reports) {
-            if (report == null || !task.outputs().contains(report.path())) {
-                throw new IOException("M3 provider report is not a declared output: " + report);
-            }
+        Optional<String> undeclared = reports.stream().filter(r -> r == null || !task.outputs().contains(r.path()))
+                .map(String::valueOf).findFirst();
+        if (undeclared.isPresent()) {
+            throw new IOException("M3 provider report is not a declared output: " + undeclared.get());
         }
         return reports;
     }
 
     static List<String> command(TaskManifest.Task task, Path workspace, Map<String, M3ToolProvider> registry)
             throws IOException {
-        Objects.requireNonNull(task, "task");
+        String[] fields = fields(Objects.requireNonNull(task, "task"));
         Objects.requireNonNull(workspace, "workspace");
+        String id = checkId(fields[1]);
+        M3ToolCapability capability = M3ToolCapability.parse(fields[2]);
+        String language = checkLanguage(fields[3]);
+        M3ToolProvider provider = supporting(registry, id, capability, language);
+        checkDeclarations(task, capability);
+        List<String> argv = guarded("M3 provider command planning failed: " + id,
+                () -> provider.command(capability, language, task, workspace.toAbsolutePath().normalize()));
+        return checkArgv(id, argv);
+    }
+
+    private static String[] fields(TaskManifest.Task task) throws IOException {
         String[] fields = task.tool().split(":", -1);
         if (fields.length != 4 || !"@m3".equals(fields[0])) {
             throw new IOException("M3 tool must be @m3:provider:capability:language");
         }
-        String id = checkId(fields[1]);
-        M3ToolCapability capability = M3ToolCapability.parse(fields[2]);
-        String language = checkLanguage(fields[3]);
+        return fields;
+    }
+
+    private static M3ToolProvider supporting(Map<String, M3ToolProvider> registry, String id,
+            M3ToolCapability capability, String language) throws IOException {
         M3ToolProvider provider = registry.get(id);
         if (provider == null) {
             throw new IOException("M3 provider is not installed: " + id);
         }
-        if (!provider.capabilities().contains(capability) || !provider.languages().contains(language)) {
+        boolean supported = guarded("M3 provider description failed: " + id,
+                () -> provider.capabilities().contains(capability) && provider.languages().contains(language));
+        if (!supported) {
             throw new IOException("M3 provider does not support " + capability.slug() + " for " + language);
         }
-        // An atom/pattern/transpile/compile result must have separately declared
-        // inputs and outputs; source paths must never also be claimed as outputs.
-        if (capability != M3ToolCapability.INTERPRETER) {
-            if (task.inputs().isEmpty() || task.outputs().isEmpty()) {
-                throw new IOException("M3 " + capability.slug() + " needs declared inputs and outputs");
-            }
-            for (String input : task.inputs()) {
-                for (String output : task.outputs()) {
-                    if (input.equals(output) || output.startsWith(input + "/") || input.startsWith(output + "/")) {
-                        throw new IOException("M3 provider output overlaps source input: " + output);
-                    }
-                }
-            }
+        return provider;
+    }
+
+    /**
+     * An atom/pattern/transpile/compile result must have separately declared
+     * inputs and outputs; source paths must never also be claimed as outputs.
+     */
+    private static void checkDeclarations(TaskManifest.Task task, M3ToolCapability capability) throws IOException {
+        if (capability == M3ToolCapability.INTERPRETER) {
+            return;
         }
-        final List<String> argv;
-        try {
-            argv = provider.command(capability, language, task, workspace.toAbsolutePath().normalize());
-        } catch (RuntimeException error) {
-            throw new IOException("M3 provider command planning failed: " + id, error);
+        if (task.inputs().isEmpty() || task.outputs().isEmpty()) {
+            throw new IOException("M3 " + capability.slug() + " needs declared inputs and outputs");
         }
+        Optional<String> overlap = task.inputs().stream()
+                .flatMap(input -> task.outputs().stream().filter(output -> overlaps(input, output))).findFirst();
+        if (overlap.isPresent()) {
+            throw new IOException("M3 provider output overlaps source input: " + overlap.get());
+        }
+    }
+
+    private static boolean overlaps(String input, String output) {
+        return input.equals(output) || output.startsWith(input + "/") || input.startsWith(output + "/");
+    }
+
+    private static List<String> checkArgv(String id, List<String> argv) throws IOException {
         if (argv == null || argv.isEmpty() || argv.size() > 1024) {
             throw new IOException("M3 provider returned no command or exceeded argument limit: " + id);
         }
-        for (String argument : argv) {
-            if (argument == null || argument.isBlank() || argument.length() > 4096
-                    || argument.chars().anyMatch(Character::isISOControl)) {
-                throw new IOException("M3 provider returned an invalid argv element: " + id);
-            }
+        if (argv.stream().anyMatch(M3ToolProviders::invalidArgument)) {
+            throw new IOException("M3 provider returned an invalid argv element: " + id);
         }
         return List.copyOf(argv);
+    }
+
+    private static boolean invalidArgument(String argument) {
+        return argument == null || argument.isBlank() || argument.length() > 4096
+                || argument.chars().anyMatch(Character::isISOControl);
     }
 
     private static Map<String, M3ToolProvider> discover() throws IOException {
@@ -163,28 +204,62 @@ public final class M3ToolProviders {
 
     /** Validated, sorted registry; package-private so contract tests can supply providers directly. */
     static Map<String, M3ToolProvider> registry(Iterable<M3ToolProvider> providers) throws IOException {
+        List<M3ToolProvider> loaded = guarded("cannot load M3 tool providers",
+                () -> StreamSupport.stream(providers.spliterator(), false).toList());
         var selected = new TreeMap<String, M3ToolProvider>();
-        try {
-            for (M3ToolProvider provider : providers) {
-                if (provider == null || provider.apiVersion() != M3ToolProvider.API_VERSION) {
-                    throw new IOException("M3 provider SPI version mismatch");
-                }
-                String id = checkId(provider.id());
-                Set<M3ToolCapability> roles = provider.capabilities();
-                Set<String> languages = provider.languages();
-                if (roles == null || roles.isEmpty() || roles.stream().anyMatch(Objects::isNull)
-                        || languages == null || languages.isEmpty() || languages.stream().anyMatch(Objects::isNull)) {
-                    throw new IOException("M3 provider must declare valid roles and languages: " + id);
-                }
-                for (String language : languages) checkLanguage(language);
-                if (selected.putIfAbsent(id, provider) != null) {
-                    throw new IOException("ambiguous duplicate M3 provider identifier: " + id);
-                }
-            }
-        } catch (ServiceConfigurationError | RuntimeException failure) {
-            throw new IOException("cannot load M3 tool providers", failure);
+        Optional<IOException> refused = loaded.stream().map(provider -> refusal(() -> admit(selected, provider)))
+                .flatMap(Optional::stream).findFirst();
+        if (refused.isPresent()) {
+            throw refused.get();
         }
         return selected;
+    }
+
+    /** One provider into the registry; every call into it is guarded and named after its class. */
+    private static Void admit(Map<String, M3ToolProvider> selected, M3ToolProvider provider) throws IOException {
+        String what = "cannot load M3 tool provider " + (provider == null ? "null" : provider.getClass().getName());
+        if (provider == null || guarded(what, provider::apiVersion) != M3ToolProvider.API_VERSION) {
+            throw new IOException("M3 provider SPI version mismatch");
+        }
+        String id = checkId(guarded(what, provider::id));
+        Set<M3ToolCapability> roles = guarded(what, provider::capabilities);
+        Set<String> languages = guarded(what, provider::languages);
+        checkRoles(id, roles, languages);
+        return putOnce(selected, id, provider);
+    }
+
+    private static void checkRoles(String id, Set<M3ToolCapability> roles, Set<String> languages)
+            throws IOException {
+        if (!valid(roles) || !valid(languages)) {
+            throw new IOException("M3 provider must declare valid roles and languages: " + id);
+        }
+        Optional<IOException> invalid = languages.stream().map(language -> refusal(() -> checkLanguage(language)))
+                .flatMap(Optional::stream).findFirst();
+        if (invalid.isPresent()) {
+            throw invalid.get();
+        }
+    }
+
+    private static boolean valid(Set<?> values) {
+        return values != null && !values.isEmpty() && values.stream().noneMatch(Objects::isNull);
+    }
+
+    private static Void putOnce(Map<String, M3ToolProvider> selected, String id, M3ToolProvider provider)
+            throws IOException {
+        if (selected.putIfAbsent(id, provider) != null) {
+            throw new IOException("ambiguous duplicate M3 provider identifier: " + id);
+        }
+        return null;
+    }
+
+    /** The IOException a check throws, if any, so checks can run inside streams. */
+    private static Optional<IOException> refusal(ProviderCall<?> check) {
+        try {
+            check.call();
+            return Optional.empty();
+        } catch (IOException refused) {
+            return Optional.of(refused);
+        }
     }
 
     private static String checkId(String id) throws IOException {
