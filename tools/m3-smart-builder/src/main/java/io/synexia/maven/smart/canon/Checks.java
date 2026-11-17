@@ -31,6 +31,7 @@ final class Checks {
     static final Map<String, String> PREFIXES = orderedPrefixes();
     static final String USAGE = " | <" + String.join("|", PREFIXES.keySet()) + "> <root> <base-ref> <out-dir> [<name>...]";
     private static final String NEEDS_NAMES = "text_refs";
+    private static final String REGEX_SPEC = "regex_spec";
 
     private Checks() {
     }
@@ -40,6 +41,7 @@ final class Checks {
         prefixes.put("stamp", StampCheck.PREFIX);
         prefixes.put("extension_points", ExtensionPoints.PREFIX);
         prefixes.put(NEEDS_NAMES, TextRefs.PREFIX);
+        prefixes.put(REGEX_SPEC, RegexSpecCheck.PREFIX);
         return Collections.unmodifiableMap(prefixes);
     }
 
@@ -78,6 +80,11 @@ final class Checks {
         }
         if (packet.checks.contains(NEEDS_NAMES)) {
             rows(dir, TextRefs.TABLE).forEach(cell -> line(out, cell[1], cell[2], TextRefs.PREFIX + "STALE " + cell[0]));
+        }
+        if (packet.checks.contains(REGEX_SPEC)) {
+            rows(dir, RegexSpecCheck.TABLE).filter(cell -> RegexSpecCheck.FAILING.contains(cell[0]))
+                    .forEach(cell -> line(out, cell[1], cell[2],
+                            RegexSpecCheck.PREFIX + cell[0] + " " + cell[4]));
         }
         return out.toString();
     }
@@ -118,6 +125,7 @@ final class Checks {
         return switch (id) {
             case "stamp" -> StampCheck.check(git, root, out, base, violations);
             case "extension_points" -> ExtensionPoints.check(git, root, out, base, violations);
+            case REGEX_SPEC -> RegexSpecCheck.check(git, root, out, base, violations);
             default -> TextRefs.check(git, root, out, names, violations);
         };
     }
