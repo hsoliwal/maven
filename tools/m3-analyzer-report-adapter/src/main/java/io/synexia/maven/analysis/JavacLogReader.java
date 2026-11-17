@@ -23,10 +23,17 @@ import io.synexia.maven.analysis.AnalyzerXmlNormalizer.Status;
  * {@code javac.<lint key>} for a warning such as {@code [deprecation] ...}, otherwise {@code javac.error} or
  * {@code javac.warning}; {@code Note:} lines are project-wide {@code javac.note} INFO rows, and diagnostics without
  * a file ({@code warning: [options] ...}) are project-wide too. Count lines are skipped and other lines ignored.
- * When javac says it showed only the first errors or warnings, the log cannot be COMPLETE.
+ * When javac says it showed only the first errors or warnings, the log cannot be COMPLETE. A diagnostic line is read
+ * with the grammar of the smart builder's {@code canon.Diagnostics} ({@code file:line[:column]: error|warning:
+ * message}), for {@code .java} files. javac prints its diagnostics in the language of its locale: a diagnostic or
+ * count line in another language, or decoded from another code page, is not read, so that log cannot be COMPLETE
+ * either; run javac with {@code -J-Duser.language=en -J-Dstderr.encoding=UTF-8}.
  */
 final class JavacLogReader {
-    private static final Pattern LOCATED = Pattern.compile("^(.+?\\.java):(\\d{1,9}): (error|warning): (.*)$");
+    private static final Pattern LOCATED =
+            Pattern.compile("^(.+?\\.java):(\\d{1,9})(?::(\\d{1,9}))?:\\s*(error|warning):\\s*(.*)$");
+    private static final Pattern ANY_LOCATED = Pattern.compile("^\\S.*?\\.java:\\d+: [^:]+: ");
+    private static final Pattern ANY_COUNT = Pattern.compile("^\\d+ \\S+$");
     private static final Pattern GLOBAL = Pattern.compile("^(error|warning): (.*)$");
     private static final Pattern NOTE = Pattern.compile("^Note: (.*)$");
     private static final Pattern CARET = Pattern.compile("^[ \\t]*\\^[ \\t]*$");
@@ -38,6 +45,7 @@ final class JavacLogReader {
     private final List<Finding> findings = new ArrayList<>();
     private Open current;
     private boolean truncated;
+    private boolean unread;
 
     /** A diagnostic still taking lines: after its header come the source line, the caret and details. */
     private static final class Open {
@@ -49,11 +57,12 @@ final class JavacLogReader {
         private int column;
         private int lines;
 
-        Open(String rule, Severity severity, String path, int line, String message) {
+        Open(String rule, Severity severity, String path, int line, int column, String message) {
             this.rule = rule;
             this.severity = severity;
             this.path = path;
             this.line = line;
+            this.column = column;
             this.message = new StringBuilder(message);
         }
     }
@@ -69,27 +78,44 @@ final class JavacLogReader {
         if (reader.truncated && status == Status.COMPLETE) {
             throw new IOException("javac showed only part of its diagnostics; the log is not COMPLETE");
         }
+        if (reader.unread && status == Status.COMPLETE) {
+            throw new IOException("javac diagnostics not in English or not UTF-8; the log is not COMPLETE (run javac"
+                    + " with -J-Duser.language=en -J-Dstderr.encoding=UTF-8)");
+        }
         return reader.findings;
     }
 
     private void accept(String line) throws IOException {
         Matcher located = LOCATED.matcher(line);
         Matcher global = GLOBAL.matcher(line);
-        Matcher note = NOTE.matcher(line);
         if (located.matches()) {
             flush();
-            current = open(located.group(3), AnalyzerXmlNormalizer.relative(root, located.group(1)),
-                    Integer.parseInt(located.group(2)), located.group(4));
+            int column = located.group(3) == null ? 0 : Integer.parseInt(located.group(3));
+            current = open(located.group(4), AnalyzerXmlNormalizer.relative(root, located.group(1)),
+                    Integer.parseInt(located.group(2)), column, located.group(5));
         } else if (global.matches()) {
             flush();
-            current = open(global.group(1), "", 0, global.group(2));
-        } else if (note.matches() || COUNT.matcher(line).matches() || TRUNCATED.matcher(line).matches()) {
-            flush();
-            truncated |= TRUNCATED.matcher(line).matches();
-            if (note.matches()) add(new Open("javac.note", Severity.INFO, "", 0, note.group(1)));
-        } else if (current != null) {
+            current = open(global.group(1), "", 0, 0, global.group(2));
+        } else if (!summary(line) && current != null) {
             continued(line);
         }
+    }
+
+    /**
+     * A {@code Note:}, count or truncation line, or a diagnostic or count line this reader cannot read: it ends the
+     * open diagnostic. Returns false for any other line.
+     */
+    private boolean summary(String line) throws IOException {
+        Matcher note = NOTE.matcher(line);
+        boolean count = COUNT.matcher(line).matches();
+        boolean cut = TRUNCATED.matcher(line).matches();
+        boolean foreign = !count && (ANY_LOCATED.matcher(line).lookingAt() || ANY_COUNT.matcher(line).matches());
+        if (!note.matches() && !count && !cut && !foreign) return false;
+        flush();
+        truncated |= cut;
+        unread |= foreign;
+        if (note.matches()) add(new Open("javac.note", Severity.INFO, "", 0, 0, note.group(1)));
+        return true;
     }
 
     /** The source line follows a located header; then the caret gives the column; anything else is detail. */
@@ -102,12 +128,12 @@ final class JavacLogReader {
         }
     }
 
-    private static Open open(String kind, String path, int line, String text) {
+    private static Open open(String kind, String path, int line, int column, String text) {
         Matcher lint = LINT.matcher(text);
         boolean keyed = "warning".equals(kind) && lint.matches();
         String rule = keyed ? "javac." + lint.group(1) : "javac." + kind;
         Severity severity = "error".equals(kind) ? Severity.ERROR : Severity.WARNING;
-        return new Open(rule, severity, path, line, keyed ? lint.group(2) : text);
+        return new Open(rule, severity, path, line, column, keyed ? lint.group(2) : text);
     }
 
     private void flush() throws IOException {

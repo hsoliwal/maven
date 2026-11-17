@@ -1,0 +1,36 @@
+SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+SPDX-License-Identifier: Apache-2.0
+javac 21.0.9 -J-Duser.language=de -J-Dstderr.encoding=UTF-8 --release 17 -Xlint:all output for src/demo/Bad.java and src/demo/Warn.java
+src/demo/Bad.java:6: Fehler: Inkompatible Typen: String kann nicht in int konvertiert werden
+        int n = s;
+                ^
+src/demo/Bad.java:7: Fehler: Symbol nicht gefunden
+        return missing(n);
+               ^
+  Symbol: Methode missing(int)
+  Ort: Klasse Bad
+src/demo/Warn.java:13: Warnung: [rawtypes] Raw-Typ gefunden: List
+    List names() {
+    ^
+  Typargumente für generische Klasse List<E> fehlen
+  Dabei ist E eine Typvariable:
+    E erweitert Object, deklariert in Schnittstelle List
+src/demo/Warn.java:14: Warnung: [rawtypes] Raw-Typ gefunden: List
+        List raw = new ArrayList();
+        ^
+  Typargumente für generische Klasse List<E> fehlen
+  Dabei ist E eine Typvariable:
+    E erweitert Object, deklariert in Schnittstelle List
+src/demo/Warn.java:14: Warnung: [rawtypes] Raw-Typ gefunden: ArrayList
+        List raw = new ArrayList();
+                       ^
+  Typargumente für generische Klasse ArrayList<E> fehlen
+  Dabei ist E eine Typvariable:
+    E erweitert Object, deklariert in Klasse ArrayList
+src/demo/Warn.java:15: Warnung: [unchecked] Nicht geprüfter Aufruf von add(E) als Mitglied des Raw-Typs List
+        raw.add("x");
+               ^
+  Dabei ist E eine Typvariable:
+    E erweitert Object, deklariert in Schnittstelle List
+2 Fehler
+4 Warnungen
