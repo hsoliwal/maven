@@ -107,9 +107,10 @@ under the License.
     <!-- The plugins the extension binds, built and installed with the fork: build-hook and the polyglot lifecycle. -->
     <module>tools/m3-smart-builder</module>
     <module>tools/m3-polyglot-maven-plugin</module>
-    <!-- Code clustering (atoms, hash planes, clusters, baseline compare) and its language-server front end. -->
+    <!-- Code clustering (atoms, hash planes, clusters, baseline compare), its language-server and clang AST front ends. -->
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
+    <module>tools/code-clustering-clang</module>
     <module>apache-maven</module>
   </modules>
 

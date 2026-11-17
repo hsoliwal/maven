@@ -42,8 +42,9 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  *       {@code Class(Category)}.</li>
  * </ul>
  * Owners are the enclosing records, as in the lexical front end (namespaces are not owners). A member function
- * defined outside its class takes the class from {@code parentDeclContextId}. Implicit declarations and template
- * instantiations are skipped; the instantiation of a class template has the range of its pattern and is not
+ * defined outside its class takes the class from {@code parentDeclContextId}. Implicit declarations, template
+ * instantiations and {@code = default} functions (clang gives an odr-used one a body of generated nodes, so it would
+ * be an atom only where the file uses it) are skipped; the instantiation of a class template has the range of its pattern and is not
  * counted again. An atom's text runs from the range's first token to the end of its last token; when the last
  * token comes from a macro expansion, to the end of that macro call's argument list.
  */
@@ -79,7 +80,8 @@ final class AstAtoms {
 
     /** Adds the atoms of one kept top-level declaration. */
     void visit(AstNode n) {
-        if (n.flag("isImplicit") || n.attrs.containsKey("TemplateInstantiationPattern")) return;
+        if (n.flag("isImplicit") || n.attrs.containsKey("TemplateInstantiationPattern")
+                || n.attrs.containsKey("explicitlyDefaulted")) return;
         if (FUNCTIONS.contains(n.kind)) {
             if (n.children.stream().anyMatch(c -> BODIES.contains(c.kind))) function(n);
             return;

@@ -29,8 +29,9 @@ import java.util.Set;
  * The clang command that dumps a file's syntax tree, made from the file's compile command: the compiler is replaced
  * by clang (in {@code cl} driver mode for {@code cl} and {@code clang-cl} entries, in {@code g++} mode for C++
  * drivers, so files are read in the same language), the include paths, macros, language standard and target are
- * kept, and the outputs are dropped: the object file, dependency files, precompiled headers, the source file
- * itself. Then {@code -fsyntax-only -Xclang -ast-dump=json} (or {@code /Zs}), {@code -w}, {@code -ferror-limit=0} (so
+ * kept, and the outputs are dropped: the object file, dependency files (also {@code -Wp,-MD,<file>}), compilation
+ * database fragments ({@code -MJ}), precompiled headers, the source file itself, so clang writes nothing into the
+ * build folder. Then {@code -fsyntax-only -Xclang -ast-dump=json} (or {@code /Zs}), {@code -w}, {@code -ferror-limit=0} (so
  * many errors, for example from stub headers, do not stop clang), {@code -fno-delayed-template-parsing} (clang's
  * default for the MSVC target leaves the bodies of templates that are never instantiated unparsed) and the file are
  * added. A compiler
@@ -41,7 +42,9 @@ final class AstCommand {
     private static final Set<String> CL_DRIVERS = Set.of("cl", "clang-cl");
     private static final Set<String> GNU_DROP = Set.of("-c", "-MD", "-MMD", "-MP", "-M", "-MM", "-fcolor-diagnostics",
             "-fdiagnostics-color", "--");
-    private static final Set<String> GNU_DROP_NEXT = Set.of("-o", "-MF", "-MT", "-MQ");
+    private static final Set<String> GNU_DROP_NEXT = Set.of("-o", "-MF", "-MT", "-MQ", "-MJ");
+    /** Joined forms of options that write a file next to the build: {@code -MJ<file>}, {@code -Wp,-MD,<file>}. */
+    private static final List<String> GNU_DROP_PREFIXES = List.of("-MF", "-MT", "-MQ", "-MJ", "-Wp,-M");
     private static final Set<String> CL_DROP = Set.of("/c", "-c", "/showIncludes", "-showIncludes", "/FS", "-FS", "--");
     private static final List<String> CL_DROP_PREFIXES = List.of("Fo", "Fd", "Fe", "Fa", "Fp", "Yu", "Yc", "Fi");
     /** Options whose value is the next word; the value is kept as it is, never taken for the source file. */
@@ -107,7 +110,7 @@ final class AstCommand {
     private static boolean dropped(String a, boolean cl) {
         if (cl) return CL_DROP.contains(a) || (a.startsWith("/") || a.startsWith("-"))
                 && CL_DROP_PREFIXES.stream().anyMatch(prefix -> a.startsWith(prefix, 1));
-        return GNU_DROP.contains(a) || a.startsWith("-MF") || a.startsWith("-MT") || a.startsWith("-MQ")
+        return GNU_DROP.contains(a) || GNU_DROP_PREFIXES.stream().anyMatch(a::startsWith)
                 || a.startsWith("-o") && a.length() > 2 && !a.startsWith("-objc");
     }
 

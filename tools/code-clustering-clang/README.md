@@ -34,7 +34,8 @@ compiles are exact.
 
 ## Use
 
-Add the module as a dependency of the plugin; clang must be installed.
+Add the module as a dependency of the plugin; clang must be installed. The root reactor builds and installs it
+(`maven-code-clustering-clang`) with the other code-clustering modules.
 
 ```xml
 <plugin>
@@ -80,7 +81,8 @@ first, then the longest common folder path. It is parsed as a C, C++, Objective-
 file (`.hpp`, `.hh`, `.hxx` are always C++). The command is rewritten without a shell: the compiler becomes clang
 (`--driver-mode=cl` for `cl` and `clang-cl` entries, `--driver-mode=g++` for C++ drivers, so `.c` files compiled as
 C++ stay C++), include paths, macros, standard and target are kept, and outputs are dropped (`-o`, `-c`, `-MD`,
-`-MF`, `/Fo`, `/Fd`, precompiled headers, the source file itself). The value of an option such as `-include x.h` is
+`-MF`, `-Wp,-MD,<file>`, `-MJ`, `/Fo`, `/Fd`, precompiled headers, the source file itself), so clang writes nothing
+into the build folder. The value of an option such as `-include x.h` is
 never taken for the source file. A compiler launcher (`ccache`, `sccache`, `distcc`, `icecc`) is dropped.
 
 **When clang cannot read a file** (no command, a fatal error such as a missing header, a refused argument, a
@@ -100,7 +102,9 @@ headers from `javac -h`, `config.h`) do not exist yet.
 - Owners are the enclosing records, as in the lexical front end; namespaces are not owners. A member defined outside
   its class (`int Point::norm() const {...}`) is owned by its class, through `parentDeclContextId`, also when the
   class is declared in a header.
-- Implicit declarations and template instantiations are left out; a template is one atom. The bodies of templates
+- Implicit declarations, template instantiations and `= default` functions are left out; a template is one atom.
+  (Clang gives a `= default` function that the file uses a body of generated nodes, so without this rule it would be
+  an atom only in files that use it.) The bodies of templates
   that are never instantiated are parsed (`-fno-delayed-template-parsing`; clang's MSVC-target default skips them).
 - An atom's text runs from the range's first token to the end of its last token, both in the main file. When the
   definition comes from a macro, the text is the macro call (`DEFINE_GET(7)`).
