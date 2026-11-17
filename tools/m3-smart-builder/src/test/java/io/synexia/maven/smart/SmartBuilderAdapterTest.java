@@ -139,6 +139,26 @@ public final class SmartBuilderAdapterTest {
             require(Files.readString(build.resolve("m3-smart/code-agent.json")).contains("\"status\":\"refused\""),
                     "Maven code-agent adapter refuses evidence before any model launch");
         }
+        CodeAgentVerifyMojo verify = new CodeAgentVerifyMojo();
+        set(verify, "baseDir", project.toFile());
+        set(verify, "buildDir", build.toFile());
+        set(verify, "sourceRoot", source.toFile());
+        set(verify, "preparationReport", project.resolve("absent-preparation.json").toFile());
+        set(verify, "atomPatternManifest", project.resolve("absent-checkpoints.tsv").toFile());
+        set(verify, "recipeCatalog", project.resolve("absent-catalog.tsv").toFile());
+        set(verify, "approvedRecipeId", "an-explicit-operator-id");
+        set(verify, "approveRecipeExecution", false);
+        set(verify, "mavenExecutable", project.resolve("absent-mvn").toFile());
+        set(verify, "mavenRepository", project.resolve("absent-m2").toFile());
+        set(verify, "recipeCoordinates", "example.org:recipe:1.0.0");
+        set(verify, "rewritePluginSha256", "a".repeat(64));
+        try {
+            verify.execute();
+            throw new AssertionError("code-agent verification must refuse missing approval");
+        } catch (org.apache.maven.plugin.MojoExecutionException expected) {
+            require(Files.readString(build.resolve("m3-smart/code-agent-verify.json")).contains("\"status\":\"refused\""),
+                    "Maven verifier cannot be invoked by default without operator approval");
+        }
         int count = 7;
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {

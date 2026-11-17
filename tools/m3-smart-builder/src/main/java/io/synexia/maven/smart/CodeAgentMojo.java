@@ -25,6 +25,8 @@ public final class CodeAgentMojo extends AbstractMojo {
     private File atomPatternManifest;
     @Parameter(property = "m3.smart.recipeCatalog", required = true)
     private File recipeCatalog;
+    @Parameter(property = "m3.smart.machineEvidence")
+    private File machineEvidence;
     @Parameter(property = "m3.smart.codeAgentCandidate")
     private File candidateFile;
     @Parameter(property = "m3.smart.llmBackend", defaultValue = "none")
@@ -64,6 +66,7 @@ public final class CodeAgentMojo extends AbstractMojo {
                 "--backend", llmBackend == null ? "none" : llmBackend,
                 "--timeout-seconds", Integer.toString(llmTimeoutSeconds)));
         add(args, "--candidate-file", candidateFile);
+        add(args, "--machine-evidence", machineEvidence);
         add(args, "--chrome-llm-jar", chromeLlmJar);
         add(args, "--chrome-binary", chromeBin);
         add(args, "--chrome-profile", chromeProfile);
