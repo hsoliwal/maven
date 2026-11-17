@@ -133,6 +133,7 @@ documented on `AtomDiff`; the ones seen on real trees are:
 | `START_PREPROCESSOR_LINES` | the lexical atom starts earlier, at directive lines (`#include`, a `#define` with continuation lines) |
 | `START_ACCESS_SPECIFIER`, `START_TEMPLATE_HEADER` | the lexical atom starts at `public:` or at `template <...>` |
 | `OWNER_DIFFERS` | a member defined outside its class: clang qualifies it |
+| `OWNER_EXPORT_MACRO`, `NAME_EXPORT_MACRO` | `class SK_API SkMatrix`: the lexical front end takes the export macro for the class name |
 | `ARITY_VOID`, `ARITY_VARIADIC` | `(void)` and `...` counted as parameters by the lexical front end |
 | `NAME_DESTRUCTOR` | `~X` read as `X` |
 | `NAME_MACRO_PASTED`, `CLANG_ONLY_MACRO_GENERATED` | a function a macro made; its name is not in the text |

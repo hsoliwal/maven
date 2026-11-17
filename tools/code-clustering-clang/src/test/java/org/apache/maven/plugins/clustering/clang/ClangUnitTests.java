@@ -296,6 +296,11 @@ public final class ClangUnitTests {
         List<Row> access = AtomDiff.compare(List.of(a("METHOD", "C.C(0)", 2, 2, "c")), List.of(a("METHOD", "C.C(0)", 1, 2, "l")),
                 p -> SourceLines.of("protected:\n  C() {}\n"));
         check("access specifier before a member", access.size() == 1 && access.get(0).diffClass().equals("START_ACCESS_SPECIFIER"));
+        List<Row> export = AtomDiff.compare(List.of(a("TYPE", "SkM", 1, 3, "c"), a("METHOD", "SkM.get(0)", 2, 2, "c")),
+                List.of(a("TYPE", "SK_API", 1, 3, "l"), a("METHOD", "SK_API.get(0)", 2, 2, "l")),
+                p -> SourceLines.of("class SK_API SkM {\n  int get() { return 1; }\n};\n"));
+        check("export macro taken for the class name " + export, export.stream().map(Row::diffClass).toList()
+                .equals(List.of("OWNER_EXPORT_MACRO", "NAME_EXPORT_MACRO")));
     }
 
     private static Atom a(String kind, String symbol, int line, int endLine, String text) {

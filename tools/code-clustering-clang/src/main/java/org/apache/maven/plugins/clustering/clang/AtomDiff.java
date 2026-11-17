@@ -19,6 +19,7 @@
 package org.apache.maven.plugins.clustering.clang;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,7 @@ import java.util.TreeSet;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 
@@ -38,13 +40,17 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  *       {@code extern "C"}, clang's declaration after it), or {@code TEXT_DIFFERS} when the exact text differs
  *       otherwise (the atoms start or end in another column);</li>
  *   <li>same kind, name and last line: {@code OWNER_DIFFERS} (for example a member defined outside its class, which
- *       clang qualifies), {@code ARITY_VOID} ({@code f(void)} has no parameter), {@code ARITY_OTHER},
- *       {@code ARITY_VARIADIC} ({@code ...} is not a parameter), {@code START_PREPROCESSOR_LINES} (the lexical
- *       atom takes in directive lines before the definition, such as a {@code #define} with continuation lines), {@code START_TEMPLATE_HEADER} (it includes
- *       {@code template <...>}), {@code START_LEXICAL_EARLIER} or {@code START_CLANG_EARLIER};</li>
+ *       clang qualifies), {@code OWNER_EXPORT_MACRO} (the lexical owner is an export macro, as in
+ *       {@code class SK_API SkMatrix}), {@code ARITY_VOID} ({@code f(void)} has no parameter),
+ *       {@code ARITY_VARIADIC} ({@code ...} is not a parameter), {@code ARITY_OTHER}, {@code START_PREPROCESSOR_LINES}
+ *       (the lexical atom takes in directive lines before the definition, such as a {@code #define} with
+ *       continuation lines), {@code START_TEMPLATE_HEADER} (it includes {@code template <...>}),
+ *       {@code START_ACCESS_SPECIFIER} (it includes a {@code public:} label), {@code START_LEXICAL_EARLIER} or
+ *       {@code START_CLANG_EARLIER};</li>
  *   <li>same kind and last line, another name: {@code NAME_DESTRUCTOR}, {@code NAME_OPERATOR},
  *       {@code NAME_MACRO_PASTED} (clang's name is not in the text: a macro made it), {@code NAME_MACRO_WRAPPER}
- *       (the lexical name is a macro's), {@code NAME_DIRECTIVE_IN_HEADER} (the lexical atom starts on a preprocessor
+ *       (the lexical name is a macro's), {@code NAME_EXPORT_MACRO} (the lexical name is the export macro between
+ *       {@code class} and the name), {@code NAME_DIRECTIVE_IN_HEADER} (the lexical atom starts on a preprocessor
  *       line, for example {@code #if defined(X)}), {@code NAME_OTHER};</li>
  *   <li>same kind and name, overlapping lines: {@code RANGE_DIFFERS};</li>
  *   <li>same last line, another kind: {@code KIND_DIFFERS_DIRECTIVE_IN_HEADER} (the lexical atom starts on a
@@ -156,7 +162,7 @@ final class AtomDiff {
     private static String sameNameClass(Atom c, Atom l, SourceLines lines) {
         Symbol sc = Symbol.of(c);
         Symbol sl = Symbol.of(l);
-        if (!sc.owner().equals(sl.owner())) return "OWNER_DIFFERS";
+        if (!sc.owner().equals(sl.owner())) return macroOwner(sc.owner(), sl.owner()) ? "OWNER_EXPORT_MACRO" : "OWNER_DIFFERS";
         if (sc.arity() != sl.arity()) return arityClass(sc, sl, lines.text(l.line(), l.endLine()));
         if (l.line() < c.line()) return startClass(lines, l.line(), c.line() - 1);
         return l.line() > c.line() ? "START_CLANG_EARLIER" : "TEXT_DIFFERS";
@@ -202,7 +208,19 @@ final class AtomDiff {
         if (name.startsWith("operator")) return "NAME_OPERATOR";
         if (!mentions(lines.text(c.line(), c.endLine()), name)) return "NAME_MACRO_PASTED";
         if (directive(lines, l)) return "NAME_DIRECTIVE_IN_HEADER";
-        return Symbol.of(l).name().matches("[A-Z_][A-Z0-9_]*") ? "NAME_MACRO_WRAPPER" : "NAME_OTHER";
+        String lexicalName = Symbol.of(l).name();
+        if (!isMacroName(lexicalName)) return "NAME_OTHER";
+        boolean export = lines.text(l.line(), c.line()).matches("(?s).*\\b" + lexicalName + "\\s+" + Pattern.quote(name) + "\\b.*");
+        return export ? "NAME_EXPORT_MACRO" : "NAME_MACRO_WRAPPER";
+    }
+
+    /** True when an owner chain differs only by an export macro the lexical front end read as the class name. */
+    private static boolean macroOwner(String clang, String lexical) {
+        return Arrays.stream(lexical.split("\\.")).anyMatch(AtomDiff::isMacroName) && !clang.isEmpty();
+    }
+
+    private static boolean isMacroName(String name) {
+        return name.matches("[A-Z_][A-Z0-9_]*");
     }
 
     /** True when the lexical atom starts on a preprocessor line: its header took in a directive's tokens. */
@@ -220,9 +238,9 @@ final class AtomDiff {
         String name = Symbol.of(a).name();
         String text = lines.text(a.line(), a.endLine());
         if (name.contains(":") || a.path().endsWith(".m") || a.path().endsWith(".mm")) return "OBJC";
-        if (!mentions(text, name.replace("~", "").split("[ (]")[0])) return "MACRO_GENERATED";
         if (name.startsWith("~")) return "DESTRUCTOR";
         if (name.startsWith("operator")) return "OPERATOR";
+        if (!mentions(text, name)) return "MACRO_GENERATED";
         if (lines.conditional(a.line())) return "IN_CONDITIONAL";
         if (spansConditional(lines, a)) return "SPANS_CONDITIONAL";
         if ("TYPE".equals(a.kind())) return lines.line(a.line()).contains("enum") ? "ENUM" : "TYPE";
