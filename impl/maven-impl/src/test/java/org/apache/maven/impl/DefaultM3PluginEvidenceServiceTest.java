@@ -354,7 +354,12 @@ final class DefaultM3PluginEvidenceServiceTest {
         assertThrows(
                 IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 0));
         assertThrows(
-                IllegalArgumentException.class, () -> service.read(session, receipt.identity(), receipt.schema(), 128));
+                IllegalArgumentException.class,
+                () -> service.read(
+                        session,
+                        receipt.identity(),
+                        receipt.schema(),
+                        M3PluginEvidenceService.KNOWN_CAPABILITIES << 1));
     }
 
     @Test
@@ -415,7 +420,8 @@ final class DefaultM3PluginEvidenceServiceTest {
                     IllegalArgumentException.class, () -> provider.identities(session, ResourceObservation.SCHEMA, 0));
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> provider.identities(session, ResourceObservation.SCHEMA, 128));
+                    () -> provider.identities(
+                            session, ResourceObservation.SCHEMA, M3PluginEvidenceService.KNOWN_CAPABILITIES << 1));
         }
     }
 
