@@ -57,7 +57,8 @@ final class ReactorIndex {
     }
 
     private static Module module(int index, MavenProject project, AgentSettings settings) {
-        Path basedir = project.getBasedir().toPath().toAbsolutePath().normalize();
+        Path basedir = Optional.ofNullable(project.getBasedir()).map(java.io.File::toPath).orElse(settings.root())
+                .toAbsolutePath().normalize();
         return new Module(index, id(project), settings.relative(basedir), project.getPackaging(), basedir);
     }
 

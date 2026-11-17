@@ -28,8 +28,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Advice for a failed build from the existing advice owner, the build hook's post-build phase, run once for the
@@ -40,9 +38,10 @@ import java.util.regex.Pattern;
 final class AdviceBridge {
     /** Extra seconds over the hook's own provider timeout. */
     static final int GRACE_SECONDS = 30;
-    private static final Pattern STATUS = Pattern.compile("\"adviceStatus\":\"([a-z-]*)\"");
-    private static final Pattern CANDIDATE = Pattern.compile("\"llmCandidate\":\"((?:[^\"\\\\]|\\\\.)*)\"");
-    private static final Pattern ESCAPE = Pattern.compile("\\\\(u[0-9a-fA-F]{4}|[^u])");
+    /** Characters of advice text kept; the hook's own adviser caps a candidate at 32 KB too. */
+    static final int MAX_TEXT_CHARS = 32 * 1024;
+    /** Size of a report that is read at all. */
+    static final long MAX_REPORT_BYTES = 4L * 1024 * 1024;
 
     private AdviceBridge() {}
 
@@ -81,36 +80,24 @@ final class AdviceBridge {
         }
     }
 
-    /** Status and candidate of the hook's report: disabled gives none, available with text gives available. */
+    /**
+     * Status and candidate of the hook's report: disabled gives none, available with text gives available. Read with
+     * {@link JsonText#stringField}, linear and without recursion; a broken or oversized report is a failed advice.
+     */
     static FailureDigest.Advice report(Path file) throws IOException {
-        if (!Files.isRegularFile(file)) {
-            return new FailureDigest.Advice("failed", "build hook wrote no report", "");
+        if (!Files.isRegularFile(file) || Files.size(file) > MAX_REPORT_BYTES) {
+            return new FailureDigest.Advice("failed", "build hook wrote no report of at most " + MAX_REPORT_BYTES
+                    + " bytes", "");
         }
         String json = Files.readString(file, StandardCharsets.UTF_8);
-        Matcher status = STATUS.matcher(json);
-        Matcher candidate = CANDIDATE.matcher(json);
-        String hook = status.find() ? status.group(1) : "";
-        String text = candidate.find() ? unescape(candidate.group(1)) : "";
-        String source = "build hook post-build (" + hook + ")";
-        String result = "disabled".equals(hook) ? "none" : "available".equals(hook) && !text.isBlank() ? "available"
-                : "available".equals(hook) ? "none" : "failed";
-        return new FailureDigest.Advice(result, source, text);
-    }
-
-    /** Reverses JSON string escapes. */
-    static String unescape(String text) {
-        return ESCAPE.matcher(text).replaceAll(m -> Matcher.quoteReplacement(decode(m.group(1))));
-    }
-
-    private static String decode(String escape) {
-        return switch (escape.charAt(0)) {
-            case 'n' -> "\n";
-            case 't' -> "\t";
-            case 'r' -> "\r";
-            case 'b' -> "\b";
-            case 'f' -> "\f";
-            case 'u' -> String.valueOf((char) Integer.parseInt(escape.substring(1), 16));
-            default -> escape;
-        };
+        try {
+            String hook = JsonText.stringField(json, "adviceStatus", 40).orElse("");
+            String text = JsonText.stringField(json, "llmCandidate", MAX_TEXT_CHARS).orElse("");
+            String result = "disabled".equals(hook) ? "none" : "available".equals(hook) && !text.isBlank()
+                    ? "available" : "available".equals(hook) ? "none" : "failed";
+            return new FailureDigest.Advice(result, "build hook post-build (" + hook + ")", text);
+        } catch (IllegalArgumentException | StackOverflowError broken) {
+            return new FailureDigest.Advice("failed", "build hook report is not valid JSON", "");
+        }
     }
 }

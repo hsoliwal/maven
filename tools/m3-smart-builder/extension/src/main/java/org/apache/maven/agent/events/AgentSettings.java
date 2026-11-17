@@ -41,6 +41,8 @@ import java.util.Properties;
  * @param messageChars {@code maven.agent.messageChars}: characters per message
  * @param summaryBytes {@code maven.agent.summaryBytes}: size of the printed summary
  * @param root the build's root directory; every written path is relative to it
+ * @param localRepository {@code maven.repo.local}, else {@code <home>/.m2/repository}: written {@code <local-repo>}
+ * @param home the {@code user.home} of the build: written {@code ~}
  */
 public record AgentSettings(
         boolean agent,
@@ -56,7 +58,9 @@ public record AgentSettings(
         int context,
         int messageChars,
         int summaryBytes,
-        Path root) {
+        Path root,
+        Optional<Path> localRepository,
+        Optional<Path> home) {
 
     /** What the build prints on standard output. */
     public enum Stdout {
@@ -74,12 +78,36 @@ public record AgentSettings(
         Path eventsFile = file.map(name -> root.resolve(name).normalize())
                 .orElse(agentDir.resolve("build-events.jsonl"));
         Stdout stdout = stdout(lookup.get("maven.events.stdout", agent ? "summary" : "none"));
+        Optional<Path> home = path(lookup.find("user.home"), root);
         return new AgentSettings(agent, agent || file.isPresent(), eventsFile, stdout,
                 lookup.find("maven.events.log").map(name -> root.resolve(name).normalize()), agentDir,
                 "all".equals(lookup.get("maven.agent.tests", "failed")), lookup.bounded("maven.agent.printLimit", 20, 0, 1000),
                 lookup.bounded("maven.agent.maxRepeat", 3, 1, 1000), lookup.bounded("maven.agent.stackLines", 12, 1, 200),
                 lookup.bounded("maven.agent.context", 2, 0, 10), lookup.bounded("maven.agent.messageChars", 300, 40, 10000),
-                lookup.bounded("maven.agent.summaryBytes", 4000, 200, 1_000_000), root);
+                lookup.bounded("maven.agent.summaryBytes", 4000, 200, 1_000_000), root,
+                path(lookup.find("maven.repo.local"), root).or(() -> home.map(h -> h.resolve(".m2/repository"))), home);
+    }
+
+    /** An absolute, normalized path of {@code value} (relative to {@code root}); empty when it is no path. */
+    private static Optional<Path> path(Optional<String> value, Path root) {
+        try {
+            return value.map(text -> root.resolve(text).toAbsolutePath().normalize());
+        } catch (java.nio.file.InvalidPathException notAPath) {
+            return Optional.empty();
+        }
+    }
+
+    /** The places every message is redacted for: root, local repository, home. */
+    Redact.Places places() {
+        return new Redact.Places(root, localRepository, home);
+    }
+
+    /** A failure message (digest, {@code mojo-end} error) keeps up to this many times {@link #messageChars()}. */
+    static final int FAILURE_MESSAGE_FACTOR = 4;
+
+    /** Characters of a whole failure message. */
+    int failureMessageChars() {
+        return messageChars * FAILURE_MESSAGE_FACTOR;
     }
 
     private static Stdout stdout(String value) {

@@ -22,29 +22,40 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.StreamSupport;
 
 /**
  * The JSON Lines event stream: one object per line, each starting with {@code v}, {@code seq}, {@code tMs}
- * (milliseconds since the stream opened) and {@code type}. Lines are staged in a temporary file outside the build
- * tree ({@link #stagingDir()}), so {@code clean} never meets an open file, and moved to their place by
- * {@link #publish(Path)}. Thread-safe.
+ * (milliseconds since the stream opened) and {@code type}. Lines are staged outside the build tree, so {@code clean}
+ * never meets an open file, and moved to their place by {@link #publish(Path)}. Each build stages in a new private
+ * directory ({@value #STAGING_PREFIX}..., owner-only on POSIX) under {@link #stagingBase()}: no existing path is
+ * written to, so no other user can stop or forge the stream. Thread-safe.
  */
 final class EventWriter implements AutoCloseable {
     /** Schema version of every line. */
     static final int VERSION = 1;
     /** Lines written before further events are only counted; the final event is always written. */
     static final int MAX_EVENTS = 20_000;
-    /** Age after which a staged stream that was never published (a killed build) is removed. */
+    /** Age after which the staging directory of a build that was killed (never published) is removed. */
     static final Duration STALE_STAGED = Duration.ofDays(1);
+    /** Name prefix of a build's private staging directory. */
+    static final String STAGING_PREFIX = "maven-build-events-";
+    /** Name of the staged stream in that directory. */
+    static final String STAGED_NAME = "build-events.jsonl";
 
     private final Path staged;
     private final BufferedWriter out;
@@ -56,47 +67,82 @@ final class EventWriter implements AutoCloseable {
 
     private EventWriter(Path staged, Consumer<String> echo) throws IOException {
         this.staged = staged;
-        this.out = Files.newBufferedWriter(staged, StandardCharsets.UTF_8);
+        this.out = Files.newBufferedWriter(staged, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE);
         this.echo = echo;
     }
 
-    /** Where streams are staged: {@code maven-build-events} in the temporary directory. */
-    static Path stagingDir() {
-        return Path.of(System.getProperty("java.io.tmpdir"), "maven-build-events");
+    /**
+     * Where builds stage: on Windows the user profile's {@code Temp} ({@code %LOCALAPPDATA%\Temp}), whatever
+     * {@code java.io.tmpdir} says; elsewhere {@code java.io.tmpdir}, safe to share because each build's directory
+     * is new and owner-only.
+     */
+    static Path stagingBase() {
+        return profileTemp(System.getProperty("os.name", ""), System.getenv("LOCALAPPDATA"))
+                .orElse(Path.of(System.getProperty("java.io.tmpdir")));
+    }
+
+    /** {@code <localAppData>/Temp} on Windows when it is a directory. */
+    static Optional<Path> profileTemp(String os, String localAppData) {
+        return os.startsWith("Windows") && localAppData != null && !localAppData.isBlank()
+                ? Optional.of(Path.of(localAppData, "Temp")).filter(Files::isDirectory) : Optional.empty();
+    }
+
+    /** Opens a staged stream under {@link #stagingBase()}; {@code echo} receives every written line. */
+    static EventWriter open(Consumer<String> echo) throws IOException {
+        return open(stagingBase(), echo);
     }
 
     /**
-     * Opens a staged stream; {@code echo} receives every written line (standard output in events mode). Streams that
-     * killed builds left staged more than {@link #STALE_STAGED} ago are removed first.
+     * Opens a staged stream in a new private directory under {@code base}. Directories of killed builds, owned by
+     * this user and older than {@link #STALE_STAGED}, are removed first; nothing else under {@code base} is touched.
      */
-    static EventWriter open(Consumer<String> echo) throws IOException {
-        Path dir = Files.createDirectories(stagingDir());
-        removeStale(dir);
-        return new EventWriter(Files.createTempFile(dir, "build-events-", ".jsonl"), echo);
+    static EventWriter open(Path base, Consumer<String> echo) throws IOException {
+        Path dir = base.getFileSystem().supportedFileAttributeViews().contains("posix")
+                ? Files.createTempDirectory(base, STAGING_PREFIX,
+                        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+                : Files.createTempDirectory(base, STAGING_PREFIX);
+        removeStale(base, Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS));
+        return new EventWriter(dir.resolve(STAGED_NAME), echo);
     }
 
-    private static void removeStale(Path dir) throws IOException {
+    private static void removeStale(Path base, UserPrincipal owner) throws IOException {
         FileTime cutoff = FileTime.from(Instant.now().minus(STALE_STAGED));
-        try (DirectoryStream<Path> staged = Files.newDirectoryStream(dir, "build-events-*.jsonl")) {
-            StreamSupport.stream(staged.spliterator(), false).filter(file -> modified(file).compareTo(cutoff) < 0)
-                    .forEach(EventWriter::deleteQuietly);
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(base, STAGING_PREFIX + "*")) {
+            StreamSupport.stream(dirs.spliterator(), false).filter(dir -> stale(dir, owner, cutoff))
+                    .forEach(EventWriter::removeDirectory);
         }
     }
 
-    private static FileTime modified(Path file) {
+    /** A real directory (not a link) of this user, last changed before {@code cutoff}. */
+    private static boolean stale(Path dir, UserPrincipal owner, FileTime cutoff) {
         try {
-            return Files.getLastModifiedTime(file);
-        } catch (IOException gone) {
-            return FileTime.from(Instant.now());
+            BasicFileAttributes attributes = Files.readAttributes(dir, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            return attributes.isDirectory() && attributes.lastModifiedTime().compareTo(cutoff) < 0
+                    && owner.equals(Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS));
+        } catch (IOException | UnsupportedOperationException unreadable) {
+            return false;
         }
+    }
+
+    /** Removes a staging directory: its stream (a link is removed, never followed), then the directory if empty. */
+    private static void removeDirectory(Path dir) {
+        deleteQuietly(dir.resolve(STAGED_NAME));
+        deleteQuietly(dir);
     }
 
     private static void deleteQuietly(Path file) {
         try {
             Files.deleteIfExists(file);
         } catch (IOException inUse) {
-            // another build still writes it, or it is locked; the next build tries again
+            // another build still writes it, it is locked, or the directory is not empty; the next build tries again
         }
+    }
+
+    /** The staged file of this stream, in its private directory. */
+    Path stagedFile() {
+        return staged;
     }
 
     /** Writes one event unless the cap is reached; returns whether it was written. */
@@ -140,7 +186,7 @@ final class EventWriter implements AutoCloseable {
         return dropped;
     }
 
-    /** Closes the stream and moves it to {@code target}, replacing an older file. */
+    /** Closes the stream, moves it to {@code target} (replacing an older file) and removes its directory. */
     synchronized void publish(Path target) throws IOException {
         close();
         Path parent = target.toAbsolutePath().getParent();
@@ -148,6 +194,7 @@ final class EventWriter implements AutoCloseable {
             Files.createDirectories(parent);
         }
         Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING);
+        deleteQuietly(staged.getParent());
     }
 
     /** Closes the staged file without publishing it; a published or closed stream ignores further events. */
@@ -159,9 +206,9 @@ final class EventWriter implements AutoCloseable {
         }
     }
 
-    /** Removes the staged file when it was never published. */
+    /** Removes the staged file and its directory when it was never published. */
     synchronized void discard() throws IOException {
         close();
-        Files.deleteIfExists(staged);
+        removeDirectory(staged.getParent());
     }
 }

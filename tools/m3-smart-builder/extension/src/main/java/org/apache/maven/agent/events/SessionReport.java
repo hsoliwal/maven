@@ -41,19 +41,23 @@ import org.apache.maven.exception.DefaultExceptionHandler;
 final class SessionReport {
     /** Characters of the {@code -l} log read for warnings. */
     static final long MAX_LOG_CHARS = 64L * 1024 * 1024;
+    /** Where Maven 3.9 points a {@code [Help]} reference. */
+    static final String HELP_BASE = "http://cwiki.apache.org/confluence/display/MAVEN/";
 
     private SessionReport() {}
 
     static void write(BuildRecorder recorder, List<Throwable> exceptions) throws IOException {
         AgentSettings settings = recorder.settings();
+        recorder.startIfNeeded();
         recorder.skipUnfinished();
         diagnose(recorder, exceptions);
         List<BuildRecorder.FailureNote> notes = notes(recorder, exceptions);
-        List<FailureDigest.Failure> failures = notes.stream().map(note -> failure(recorder, note))
+        ReproduceCommand.Build build = build(recorder);
+        List<FailureDigest.Failure> failures = notes.stream().map(note -> failure(recorder, build, note))
                 .collect(Collectors.toList());
         String outcome = failures.isEmpty() ? "success" : "failure";
         Optional<FailureDigest> digest = failures.isEmpty() || !settings.agent() ? Optional.empty()
-                : Optional.of(digest(recorder, outcome, notes, failures));
+                : Optional.of(digest(recorder, MavenCommands.Launchers.of(build.launcher()), notes, failures));
         recorder.writer().emitFinal("session-end", sessionEnd(recorder, outcome, notes, digest.isPresent()));
         recorder.writer().publish(settings.eventsFile());
         agentFiles(settings, digest);
@@ -74,7 +78,7 @@ final class SessionReport {
         if (log.isEmpty()) {
             return;
         }
-        DiagnosticLines reader = new DiagnosticLines(DiagnosticLines.ERROR, "", "");
+        DiagnosticLines reader = new DiagnosticLines(DiagnosticLines.ERROR, "", "", file -> owner(recorder, file));
         Charset charset = LogCharset.of(log.get(), LogCharset.candidates(), MAX_LOG_CHARS);
         try (BufferedReader lines = new BufferedReader(new InputStreamReader(Files.newInputStream(log.get()), charset))) {
             long[] chars = {0};
@@ -86,6 +90,16 @@ final class SessionReport {
         recorder.diagnostics().accept(byCompiler.get(false), recorder.index(), Optional.empty(), "log");
     }
 
+    /** The artifactId of the reactor module holding {@code file} (as the log names it), for -T logs. */
+    private static Optional<String> owner(BuildRecorder recorder, String file) {
+        try {
+            return recorder.index().owning(recorder.settings().root().resolve(file)).map(ReactorIndex.Module::id)
+                    .map(id -> id.substring(id.indexOf(':') + 1));
+        } catch (java.nio.file.InvalidPathException notAPath) {
+            return Optional.empty();
+        }
+    }
+
     /** Failed projects in reactor order; a build that failed before its projects ran gets one note per cause. */
     private static List<BuildRecorder.FailureNote> notes(BuildRecorder recorder, List<Throwable> exceptions) {
         List<BuildRecorder.FailureNote> notes = new ArrayList<>(recorder.failures().values());
@@ -93,7 +107,7 @@ final class SessionReport {
                 .map(ReactorIndex.Module::index).orElse(Integer.MAX_VALUE)));
         if (notes.isEmpty()) {
             exceptions.stream().limit(3).forEach(e -> notes.add(new BuildRecorder.FailureNote("",
-                    modelProblems(e).isEmpty() ? "other" : "model", "", "", List.of(), e)));
+                    modelProblems(e).isEmpty() ? "other" : "model", "", "", "", e)));
         }
         return notes;
     }
@@ -107,7 +121,16 @@ final class SessionReport {
         }
     }
 
-    private static FailureDigest.Failure failure(BuildRecorder recorder, BuildRecorder.FailureNote note) {
+    /** What every reproduce command of this build shares: the launcher where it ran, its options and goals. */
+    private static ReproduceCommand.Build build(BuildRecorder recorder) {
+        Path root = recorder.settings().root();
+        Path workingDirectory = ReproduceOptions.workingDirectory(recorder.request()).orElse(root);
+        return new ReproduceCommand.Build(MavenCommands.launcher(workingDirectory),
+                ReproduceOptions.of(recorder.request(), root), recorder.request().getGoals());
+    }
+
+    private static FailureDigest.Failure failure(BuildRecorder recorder, ReproduceCommand.Build build,
+            BuildRecorder.FailureNote note) {
         AgentSettings settings = recorder.settings();
         Optional<ReactorIndex.Module> module = recorder.index().byId(note.project());
         String path = module.map(ReactorIndex.Module::path).orElse(".");
@@ -115,31 +138,38 @@ final class SessionReport {
         List<TestResult> tests = recorder.tests().failed(note.project());
         List<FailureDigest.Item> items = errors.stream().limit(settings.printLimit()).map(d -> new FailureDigest.Item(d,
                 SourceWindow.read(settings.root(), d.file(), d.line(), settings.context()))).collect(Collectors.toList());
-        String reproduce = ReproduceCommand.of(MavenCommands.launcher(settings.root()), note.kind(), path, errors,
-                tests.stream().map(TestResult::test).collect(Collectors.toList()), note.phase(), note.goal());
+        String reproduce = ReproduceCommand.of(build, new ReproduceCommand.Failed(note.kind(), note.project().isEmpty()
+                ? "" : ReproduceCommand.projectArg(path, note.project()), errors, tests.stream().map(TestResult::test)
+                .collect(Collectors.toList()), note.phase(), note.goal()));
         return new FailureDigest.Failure(module.map(ReactorIndex.Module::index).orElse(0), note.project(), path,
                 note.kind(), note.mojo(), message(note.cause(), settings), helpReference(note.cause()), items,
                 tests.stream().limit(settings.printLimit()).collect(Collectors.toList()), reproduce);
     }
 
+    /** The whole failure message, bounded: every line of a dependency, plugin or rule failure keeps its reason. */
     private static String message(Throwable cause, AgentSettings settings) {
-        String text = cause == null ? "" : Redact.firstLine(BuildRecorder.message(BuildRecorder.unwrap(cause)),
-                settings.root(), settings.messageChars());
+        String text = cause == null ? "" : Redact.message(BuildRecorder.message(BuildRecorder.unwrap(cause)),
+                settings.places(), settings.failureMessageChars());
         return text.isEmpty() ? "no message" : text;
     }
 
-    /** The {@code [Help]} reference Maven prints for the cause, from Maven's own exception handler. */
+    /** The {@code [Help]} link Maven prints for the cause, from Maven's own exception handler. */
     static String helpReference(Throwable cause) {
         try {
-            return cause == null ? "" : Optional.ofNullable(new DefaultExceptionHandler().handleException(cause)
-                    .getReference()).orElse("");
+            return cause == null ? "" : helpLink(Optional.ofNullable(new DefaultExceptionHandler()
+                    .handleException(cause).getReference()).orElse(""));
         } catch (RuntimeException | LinkageError unavailable) {
             return "";
         }
     }
 
-    private static FailureDigest digest(BuildRecorder recorder, String outcome, List<BuildRecorder.FailureNote> notes,
-            List<FailureDigest.Failure> failures) {
+    /** A reference as a link: Maven 4 gives the bare page name ({@code MojoFailureException}) that 3.9 links. */
+    static String helpLink(String reference) {
+        return reference.isEmpty() || reference.contains(":") ? reference : HELP_BASE + reference;
+    }
+
+    private static FailureDigest digest(BuildRecorder recorder, MavenCommands.Launchers launchers,
+            List<BuildRecorder.FailureNote> notes, List<FailureDigest.Failure> failures) {
         AgentSettings settings = recorder.settings();
         int limit = settings.printLimit();
         int omittedDiagnostics = notes.stream().mapToInt(n -> Math.max(0,
@@ -150,7 +180,7 @@ final class SessionReport {
                 .orElse(settings.root());
         FailureDigest.Advice advice = AdviceBridge.advise(recorder.request().getUserProperties(),
                 recorder.request().getSystemProperties(), localRepository(recorder), projectDir, settings.eventsLog());
-        return new FailureDigest(outcome, recorder.request().getGoals(), failures, skipped(recorder), advice,
+        return new FailureDigest("failure", recorder.request().getGoals(), launchers, failures, skipped(recorder), advice,
                 new FailureDigest.Limits(limit, omittedDiagnostics, omittedTests));
     }
 

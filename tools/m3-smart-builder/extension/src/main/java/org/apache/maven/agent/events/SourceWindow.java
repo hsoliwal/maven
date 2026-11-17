@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 /**
  * The numbered source lines around a diagnostic, so a fix needs no extra file read: {@code context} lines (at most
  * 10) before and after the marked line, {@value #LINE_CHARS} characters per line. Only files inside the root are
- * read.
+ * read, judged by their real paths, so a symbolic link in the tree never shows a file outside it.
  */
 final class SourceWindow {
     static final int LINE_CHARS = 240;
@@ -50,7 +50,7 @@ final class SourceWindow {
     /** The window of root-relative {@code file} around {@code line}; empty when unreadable or outside the root. */
     static Optional<Window> read(Path root, String file, int line, int context) {
         Path base = root.toAbsolutePath().normalize();
-        Optional<Path> source = resolve(base, file).filter(path -> path.startsWith(base) && Files.isRegularFile(path));
+        Optional<Path> source = resolve(base, file).filter(path -> path.startsWith(base) && inside(path, base));
         if (line < 1 || source.isEmpty()) {
             return Optional.empty();
         }
@@ -63,6 +63,15 @@ final class SourceWindow {
             return lines.size() < line - start + 1 ? Optional.empty() : Optional.of(new Window(start, line, lines));
         } catch (IOException | java.io.UncheckedIOException unreadable) {
             return Optional.empty();
+        }
+    }
+
+    /** Whether {@code path} is a regular file whose real path (links resolved) lies under that of {@code base}. */
+    private static boolean inside(Path path, Path base) {
+        try {
+            return Files.isRegularFile(path) && path.toRealPath().startsWith(base.toRealPath());
+        } catch (IOException | SecurityException unresolved) {
+            return false;
         }
     }
 

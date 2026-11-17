@@ -28,14 +28,21 @@ import java.util.stream.Collectors;
 /**
  * The Maven command lines agents are told to run: the one owner of their spelling, used by the failure digest's
  * reproduce commands, by the project description and {@code llms.txt} of maven-agent-plugin, and by the MCP server's
- * test tool ({@link #testArgs}, {@link #integrationTestArgs}). Every {@code -D} argument is written in double quotes,
- * which bash, cmd.exe and PowerShell all accept (Windows PowerShell 5.1 splits an unquoted
- * {@code -Dkey.with.dots=value} at the first dot); other arguments are quoted when they hold white space or a shell
- * character.
+ * test tool ({@link #testArgs}, {@link #integrationTestArgs}). Every {@code -D} and {@code -P} argument is written in
+ * double quotes, which bash, cmd.exe and PowerShell all accept (Windows PowerShell 5.1 splits an unquoted
+ * {@code -Dkey.with.dots=value} at the first dot and an unquoted {@code -Pa,b} at the comma); other arguments are
+ * quoted when they hold white space or a shell character. Callers pass only {@link #quotable} arguments, which every
+ * shell keeps unchanged inside double quotes. Only the launcher differs per shell ({@link Launchers}).
  */
 public final class MavenCommands {
     /** Characters that make an argument need quotes (declared first: {@link #AGENT_OPTIONS} uses it). */
-    private static final Pattern NEEDS_QUOTES = Pattern.compile("[\\s\"'`$&|;()^%!]");
+    private static final Pattern NEEDS_QUOTES = Pattern.compile("[\\s\"'`$&|;(),^%!]");
+    /** Characters some shell changes inside double quotes: quote, backtick, $, %, !, backslash, control. */
+    private static final Pattern UNQUOTABLE = Pattern.compile("[\"`$%!\\\\\\p{Cntrl}]");
+    /** The Maven Wrapper as bash (and PowerShell) runs it from the root. */
+    public static final String WRAPPER = "./mvnw";
+    /** The Maven Wrapper as PowerShell and cmd.exe run it from the root. */
+    public static final String WINDOWS_WRAPPER = ".\\mvnw.cmd";
     /** Arguments of an agent build: batch, no transfer progress, quiet, no colours, agent files on. */
     public static final List<String> AGENT_ARGS =
             List.of("-B", "-ntp", "-q", "-Dstyle.color=never", "-Dmaven.agent=true");
@@ -44,11 +51,40 @@ public final class MavenCommands {
     /** Selects no unit test, so a Failsafe run of the integration-test tool skips Surefire's tests. */
     public static final String NO_UNIT_TEST = "NoUnitTestSelected";
 
+    /**
+     * The launcher as each shell starts it: {@code ./mvnw} in bash, {@code .\mvnw.cmd} in PowerShell and in cmd.exe
+     * ({@code ./mvnw} is no command in cmd.exe, and a bare {@code mvnw.cmd} is not found there when
+     * {@code NoDefaultCurrentDirectoryInExePath} is set); {@code mvn} is the same everywhere.
+     */
+    public record Launchers(String sh, String powershell, String cmd) {
+        /** The spellings of {@code launcher}, as {@link #launcher(Path)} gives it. */
+        public static Launchers of(String launcher) {
+            return WRAPPER.equals(launcher) ? new Launchers(WRAPPER, WINDOWS_WRAPPER, WINDOWS_WRAPPER)
+                    : new Launchers(launcher, launcher, launcher);
+        }
+
+        /** Whether some shell needs another spelling. */
+        public boolean differ() {
+            return !sh.equals(powershell) || !sh.equals(cmd);
+        }
+
+        /** The other shells' spelling as a clause: {@code PowerShell and cmd.exe start it as `.\mvnw.cmd`}. */
+        public String otherShells() {
+            return powershell.equals(cmd) ? "PowerShell and cmd.exe start it as `" + cmd + "`"
+                    : "PowerShell starts it as `" + powershell + "`, cmd.exe as `" + cmd + "`";
+        }
+    }
+
     private MavenCommands() {}
 
-    /** {@code ./mvnw} when the root has the Maven Wrapper, else {@code mvn}. */
-    public static String launcher(Path root) {
-        return Files.isRegularFile(root.resolve("mvnw")) ? "./mvnw" : "mvn";
+    /** {@code ./mvnw} when {@code dir} has the Maven Wrapper, else {@code mvn}. */
+    public static String launcher(Path dir) {
+        return Files.isRegularFile(dir.resolve("mvnw")) ? WRAPPER : "mvn";
+    }
+
+    /** Whether every shell keeps {@code arg} unchanged inside double quotes. */
+    public static boolean quotable(String arg) {
+        return !UNQUOTABLE.matcher(arg).find();
     }
 
     /** The whole build. */
@@ -63,22 +99,17 @@ public final class MavenCommands {
 
     /** One module with the modules it needs, up to {@code phase}. */
     public static String module(String launcher, String path, String phase) {
-        return inModule(launcher, path, List.of(phase));
+        return line(launcher, inModule(path, List.of(phase)));
     }
 
     /** Selected tests ({@code Class#method}, comma-separated) of one module with Surefire. */
     public static String test(String launcher, String path, String selector) {
-        return inModule(launcher, path, testArgs(selector));
+        return line(launcher, inModule(path, testArgs(selector)));
     }
 
     /** Selected integration tests of one module with Failsafe; Surefire's unit tests are not run. */
     public static String integrationTest(String launcher, String path, String selector) {
-        return inModule(launcher, path, integrationTestArgs(selector));
-    }
-
-    /** A goal run from the command line ({@code goalArgs}: its properties, then {@code g:a:v:goal}) in one module. */
-    public static String goal(String launcher, String path, List<String> goalArgs) {
-        return inModule(launcher, path, goalArgs);
+        return line(launcher, inModule(path, integrationTestArgs(selector)));
     }
 
     /** The arguments that run the {@code selector} tests with Surefire. */
@@ -92,15 +123,16 @@ public final class MavenCommands {
                 "-Dsurefire.failIfNoSpecifiedTests=false", "verify");
     }
 
+    /** {@code -pl <path> -am} followed by {@code args}: one module and what it needs. */
+    public static List<String> inModule(String path, List<String> args) {
+        List<String> all = new ArrayList<>(List.of("-pl", path, "-am"));
+        all.addAll(args);
+        return all;
+    }
+
     /** {@code launcher} and {@code args} as one command line, quoted as described above. */
     public static String line(String launcher, List<String> args) {
         return args.isEmpty() ? launcher : launcher + " " + quoted(args);
-    }
-
-    private static String inModule(String launcher, String path, List<String> args) {
-        List<String> all = new ArrayList<>(List.of("-pl", path, "-am"));
-        all.addAll(args);
-        return line(launcher, all);
     }
 
     private static String quoted(List<String> args) {
@@ -108,7 +140,8 @@ public final class MavenCommands {
     }
 
     private static String quote(String arg) {
-        boolean quote = arg.startsWith("-D") || arg.isEmpty() || NEEDS_QUOTES.matcher(arg).find();
+        boolean quote = arg.startsWith("-D") || arg.startsWith("-P") || arg.isEmpty()
+                || NEEDS_QUOTES.matcher(arg).find();
         return quote ? '"' + arg.replace("\"", "\\\"") + '"' : arg;
     }
 }

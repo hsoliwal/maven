@@ -208,15 +208,20 @@ from a project's `.mvn/extensions.xml`. `maven-agent-plugin` (`tools/maven-agent
 `project.json` and `llms.txt` with the same command spellings (`MavenCommands`).
 
 Tests: `mvn verify` runs the offline unit tests (`*TestMain`: JSON escaping, truncation and field order, event
-order under parallel writers, the event cap, diagnostics in compiler, Checkstyle, javac and gcc output, Surefire
-reports, stack trimming, the digest byte for byte, linear-time redaction of 1 MB messages, one-line summary fields,
-quoted command spellings and reproduce commands of command-line goals, the `-l` log charset, removal of the previous
-build's files at session start, and the located problems of a POM failure).
+order under parallel writers, the event cap, diagnostics in compiler, Checkstyle, javac and gcc output and in `-T`
+logs, adversarial 1 MB lines within a time bound, Surefire reports, stack trimming, the digest byte for byte, linear
+redaction of credentials, the root, the home directory and the local repository, whole failure messages, reproduce
+commands with profiles, user properties (never secrets), `-f`, goals and shell-safe selectors, the launcher per
+shell, the `-l` log charset, removal of the previous build's files, private per-build staging, the located problems
+of a POM failure with session-start first, and the build hook's report read without recursion).
 
 `src/it/test_events.sh <extension.jar> <java-home>...` runs real offline builds of a three-module reactor (a compile
-error, a failing test, a warning) under a root whose name holds a space and a non-ASCII letter: nothing without the
-property, the summary under `-q`, events in order with file, line and column, the digest identical on a rerun, the
-warning from the `-l` log (read in Maven's charset on Java 17), skipped modules of a fail-fast build, the reproduce
-command run as is in Windows PowerShell, a killed build leaving none of the previous build's files, a command-line
-goal reproduced with its properties, a POM error with its file, line and column, and a green `clean verify` over the
-agent files.
+error, a failing test, a warning) under a root whose name holds a space and a non-ASCII letter, and of a second one
+(a missing dependency, an enforcer rule, a profile that fails on warnings, a test printing a 100 KB line with
+U+2028): nothing without the property, the summary under `-q`, events in order with file, line and column, the
+digest identical on a rerun, the warning from the `-l` log (read in Maven's charset on Java 17), skipped modules of a
+fail-fast build, the reproduce command run as is in Windows PowerShell, a killed build leaving none of the previous
+build's files, a command-line goal, a POM error, the wrapper's reproduce command rerun in bash, cmd.exe and
+PowerShell, a build started elsewhere with `-f`, a mistyped phase, a squatted staging path, whole dependency and rule
+messages, profile and property reproduce commands that fail again, a password that reaches no agent file, the long
+line in bounded time, and a green `clean verify` over the agent files.

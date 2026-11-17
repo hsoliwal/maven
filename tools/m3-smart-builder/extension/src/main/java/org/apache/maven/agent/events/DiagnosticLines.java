@@ -19,6 +19,7 @@
 package org.apache.maven.agent.events;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,13 +33,20 @@ import java.util.regex.Pattern;
  * level as in a mojo failure message), Checkstyle console ({@code [WARN] File.java:3:1: msg [Rule]}), javac
  * ({@code File.java:12: error: msg}) and gcc/clang-style ({@code file:12:5: warning: msg}). A javac
  * {@code symbol:} or {@code location:} line continues the diagnostic above it. Mojo headers
- * ({@code --- compiler:3.13.0:compile (default-compile) @ a ---}) set the mojo and project of what follows.
- * Javac warnings get their {@code -Xlint} key as rule. Line formats ported from a build-log recipe (Apache-2.0).
+ * ({@code --- compiler:3.13.0:compile (default-compile) @ a ---}) set the mojo and project of what follows; under
+ * {@code -T} a diagnostic whose file belongs to a module takes that module's last header instead. Javac warnings get
+ * their {@code -Xlint} key as rule. Line formats ported from a build-log recipe (Apache-2.0).
+ *
+ * <p>Every pattern runs in linear time: U+0085, U+2028 and U+2029 end a line like LF (Java's {@code .} matches none
+ * of them, which made the trailing groups fail after every candidate file name), each line is clipped to
+ * {@value #MAX_LINE_CHARS} characters, and the quantifiers that need no backtracking are possessive.
  */
 final class DiagnosticLines {
     static final String ERROR = "ERROR";
     static final String WARNING = "WARNING";
     static final String INFO = "INFO";
+    /** Characters of one line that are matched; real diagnostics are far shorter. */
+    static final int MAX_LINE_CHARS = 8192;
 
     /** One located diagnostic as read; {@code file} is the text of the output with '/' separators. */
     record Raw(String severity, String file, int line, int column, String rule, String message, String mojo,
@@ -48,18 +56,23 @@ final class DiagnosticLines {
         }
     }
 
-    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;]*[A-Za-z]");
-    private static final Pattern LEVEL = Pattern.compile("^\\[(ERROR|WARNING|WARN|INFO|DEBUG)\\]\\s*");
-    private static final Pattern HEADER =
-            Pattern.compile("^\\[INFO\\] --- ([\\w.-]+):([^:\\s]+):([\\w.-]+) \\(([^)]+)\\) @ ([\\w.-]+) ---$");
+    private static final Pattern LINE_END = Pattern.compile("\r\n|[\r\n\u0085\u2028\u2029]");
+    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;]*+[A-Za-z]");
+    private static final Pattern LEVEL = Pattern.compile("^\\[(ERROR|WARNING|WARN|INFO|DEBUG)\\]\\s*+");
+    private static final Pattern HEADER = Pattern.compile(
+            "^\\[INFO\\] --- ([\\w.-]++):([^:\\s]++):([\\w.-]++) \\(([^)]++)\\) @ ([\\w.-]++) ---$");
     // A file never starts with '[' or a blank, so a level token or an indented detail line is never a file name.
-    private static final Pattern MAVEN = Pattern.compile("^([^\\[\\s].*\\.\\w+):\\[(\\d{1,9}),(\\d{1,9})\\] (.+)$");
-    private static final Pattern JAVAC = Pattern.compile("^([^\\[\\s].*\\.java):(\\d{1,9}): (error|warning): (.+)$");
+    private static final Pattern MAVEN =
+            Pattern.compile("^([^\\[\\s].*\\.\\w++):\\[(\\d{1,9}+),(\\d{1,9}+)\\] (.++)$");
+    private static final Pattern JAVAC =
+            Pattern.compile("^([^\\[\\s].*\\.java):(\\d{1,9}+): (error|warning): (.++)$");
     private static final Pattern GCC =
-            Pattern.compile("^([^\\[\\s].*\\.\\w+):(\\d{1,9}):(\\d{1,9}): (error|warning|note): (.+)$");
+            Pattern.compile("^([^\\[\\s].*\\.\\w++):(\\d{1,9}+):(\\d{1,9}+): (error|warning|note): (.++)$");
     private static final Pattern CHECKSTYLE =
-            Pattern.compile("^([^\\[\\s].*\\.\\w+):(\\d{1,9}):(?:(\\d{1,9}):)? (.+?)(?: \\[(\\w+)\\])?$");
-    private static final Pattern CONTINUATION = Pattern.compile("^(symbol|location)\\s*:\\s*(.+)$");
+            Pattern.compile("^([^\\[\\s].*\\.\\w++):(\\d{1,9}+):(?:(\\d{1,9}+):)? (.++)$");
+    /** A Checkstyle message's trailing {@code [RuleName]}. */
+    private static final Pattern RULE = Pattern.compile("^(.*) \\[(\\w++)\\]$");
+    private static final Pattern CONTINUATION = Pattern.compile("^(symbol|location)\\s*+:\\s*+(.++)$");
     private static final Pattern DRIVE = Pattern.compile("^/[A-Za-z]:/.*");
     /** Javac warning message to -Xlint key, first match wins (javax.tools messages carry no key). */
     private static final List<Map.Entry<Pattern, String>> LINT = List.of(
@@ -75,13 +88,15 @@ final class DiagnosticLines {
             Map.entry(Pattern.compile("fall-through"), "fallthrough"),
             Map.entry(Pattern.compile("^division by zero"), "divzero"),
             Map.entry(Pattern.compile("finally clause cannot complete normally"), "finally"));
-    private static final Pattern LINT_PREFIX = Pattern.compile("^\\[([a-z-]+)\\]\\s*(.*)$");
+    private static final Pattern LINT_PREFIX = Pattern.compile("^\\[([a-z-]++)\\]\\s*+(.*+)$");
 
     /** A line split into its level token (null without one) and the text after it. */
     private record Line(String level, String body) {}
 
     private final String fallbackSeverity;
+    private final Function<String, Optional<String>> owner;
     private final List<Raw> found = new ArrayList<>();
+    private final Map<String, String> mojoByArtifact = new HashMap<>();
     private final List<Function<Line, Optional<Raw>>> formats =
             List.of(this::maven, this::javac, this::gcc, this::checkstyle);
     private String mojo;
@@ -90,25 +105,38 @@ final class DiagnosticLines {
 
     /** A reader whose unlevelled diagnostics get {@code fallbackSeverity}, in the given mojo and project. */
     DiagnosticLines(String fallbackSeverity, String mojo, String artifactId) {
+        this(fallbackSeverity, mojo, artifactId, file -> Optional.empty());
+    }
+
+    /**
+     * A reader that also knows the module of a file ({@code owner} gives its artifactId), so a diagnostic of an
+     * interleaved {@code -T} log takes the last mojo header of its own module.
+     */
+    DiagnosticLines(String fallbackSeverity, String mojo, String artifactId, Function<String, Optional<String>> owner) {
         this.fallbackSeverity = fallbackSeverity;
         this.mojo = mojo;
         this.artifactId = artifactId;
+        this.owner = owner;
     }
 
     /** The diagnostics of a whole text, such as a mojo failure message. */
     static List<Raw> parse(String text, String fallbackSeverity, String mojo, String artifactId) {
-        DiagnosticLines reader = new DiagnosticLines(fallbackSeverity, mojo, artifactId);
-        text.lines().forEach(reader::accept);
-        return reader.found();
+        return new DiagnosticLines(fallbackSeverity, mojo, artifactId).accept(text).found();
     }
 
-    /** Reads one line of output. */
-    DiagnosticLines accept(String rawLine) {
-        String line = ANSI.matcher(rawLine).replaceAll("").stripTrailing();
+    /** Reads output: one line, or several separated by CR, LF, CR LF, U+0085, U+2028 or U+2029. */
+    DiagnosticLines accept(String text) {
+        LINE_END.splitAsStream(ANSI.matcher(text).replaceAll("")).forEach(this::line);
+        return this;
+    }
+
+    private void line(String text) {
+        String line = (text.length() > MAX_LINE_CHARS ? text.substring(0, MAX_LINE_CHARS) : text).stripTrailing();
         Matcher header = HEADER.matcher(line);
         if (header.matches()) {
             mojo = header.group(1) + ":" + header.group(3);
             artifactId = header.group(5);
+            mojoByArtifact.put(artifactId, mojo);
             open = false;
         } else if (!(open && continued(line))) {
             Line split = split(line);
@@ -117,7 +145,6 @@ final class DiagnosticLines {
             raw.ifPresent(found::add);
             open = raw.isPresent();
         }
-        return this;
     }
 
     private static Line split(String line) {
@@ -139,7 +166,7 @@ final class DiagnosticLines {
         if (!m.matches() || found.isEmpty()) {
             return false;
         }
-        String extra = m.group(1) + ": " + m.group(2).trim().replaceAll("\\s+", " ");
+        String extra = m.group(1) + ": " + m.group(2).trim().replaceAll("\\s++", " ");
         found.set(found.size() - 1, found.get(found.size() - 1).continued(extra));
         return true;
     }
@@ -156,10 +183,13 @@ final class DiagnosticLines {
     /** {@code [WARN] File.java:3:1: msg [Rule]}; only with a level token, as Checkstyle prints it. */
     private Optional<Raw> checkstyle(Line line) {
         Matcher m = CHECKSTYLE.matcher(line.body());
-        return line.level() != null && m.matches()
-                ? Optional.of(raw(severity(line.level()), m.group(1), number(m.group(2)), number(m.group(3)),
-                        Optional.ofNullable(m.group(5)).orElse(""), m.group(4)))
-                : Optional.empty();
+        if (line.level() == null || !m.matches()) {
+            return Optional.empty();
+        }
+        Matcher rule = RULE.matcher(m.group(4));
+        boolean ruled = rule.matches();
+        return Optional.of(raw(severity(line.level()), m.group(1), number(m.group(2)), number(m.group(3)),
+                ruled ? rule.group(2) : "", ruled ? rule.group(1) : m.group(4)));
     }
 
     /** {@code File.java:12: error: msg}. */
@@ -183,7 +213,10 @@ final class DiagnosticLines {
         Matcher prefixed = LINT_PREFIX.matcher(message);
         String text = prefixed.matches() ? prefixed.group(2) : message;
         String key = !rule.isEmpty() ? rule : prefixed.matches() ? prefixed.group(1) : lintKey(text);
-        return new Raw(severity, path(file), line, column, key, text, mojo, artifactId);
+        String path = path(file);
+        Optional<String> module = owner.apply(path).filter(mojoByArtifact::containsKey);
+        return new Raw(severity, path, line, column, key, text, module.map(mojoByArtifact::get).orElse(mojo),
+                module.orElse(artifactId));
     }
 
     /** The -Xlint key of a javac warning message, or "" when it is not one. */
