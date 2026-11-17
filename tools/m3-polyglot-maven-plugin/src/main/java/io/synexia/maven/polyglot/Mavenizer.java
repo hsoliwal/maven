@@ -28,6 +28,10 @@ public final class Mavenizer {
             "node_modules", "target", "build", "dist", "out", "bin", "obj", "vendor", "venv", ".venv", "__pycache__");
     static final List<String> PHASES = List.of("validate", "compile", "test", "package");
     private static final Pattern SCRIPTS = Pattern.compile("\"scripts\"\\s*:\\s*\\{([^}]*)\\}", Pattern.DOTALL);
+    static final String CMAKE_BUILD = "build/cmake";
+    static final String CMAKE_CONFIG = "Debug";
+    /** clangd's project configuration naming the compile database; cdt-lsp reads and writes the same key. */
+    static final String CLANGD = "CompileFlags:\n  CompilationDatabase: " + CMAKE_BUILD + "\n";
 
     /** One native command bound to a phase. */
     public record Step(String phase, String name, String tool, List<String> args) {
@@ -51,27 +55,36 @@ public final class Mavenizer {
             return lines;
         }
         for (Project project : projects) {
-            String folder = relative(base, project.dir());
             if (project.maven()) {
-                lines.add("MAVEN " + folder + " (already a Maven project)");
-                continue;
+                lines.add("MAVEN " + relative(base, project.dir()) + " (already a Maven project)");
+            } else {
+                convert(base, project, groupId, version, write, lines);
             }
-            List<String> modules = new ArrayList<>();
-            for (Path module : project.modules()) modules.add(relative(project.dir(), module));
-            String pom = pom(groupId, artifactId(project.dir()), version, project.tools(), modules, project.steps());
-            emit(base, project.dir().resolve("pom.xml"), pom, write, lines);
-            if (mavenized(project.dir())) {
-                String kept = read(project.dir(), "pom.xml");
-                for (String module : modules) {
-                    if (!kept.contains("<module>" + xml(module) + "</module>")) {
-                        lines.add("MISSING-MODULE " + module + " in " + relative(base, project.dir().resolve("pom.xml"))
-                                + " (the pom is kept; add the module by hand)");
-                    }
-                }
-            }
-            if (!project.steps().isEmpty()) emit(base, project.dir().resolve("m3-build.tsv"), manifest(project.steps()), write, lines);
         }
         return lines;
+    }
+
+    /** The files of one converted folder: pom.xml (MISSING-MODULE lines for a kept one), m3-build.tsv, .clangd. */
+    private static void convert(Path base, Project project, String groupId, String version, boolean write,
+            List<String> lines) throws IOException {
+        List<String> modules = new ArrayList<>();
+        for (Path module : project.modules()) modules.add(relative(project.dir(), module));
+        String pom = pom(groupId, artifactId(project.dir()), version, project.tools(), modules, project.steps());
+        emit(base, project.dir().resolve("pom.xml"), pom, write, lines);
+        if (mavenized(project.dir())) missingModules(base, project.dir(), modules, lines);
+        if (!project.steps().isEmpty()) emit(base, project.dir().resolve("m3-build.tsv"), manifest(project.steps()), write, lines);
+        // clangd, and CDT's cdt-lsp editor, find the CMake compile database through .clangd.
+        if (project.tools().contains("cmake")) emit(base, project.dir().resolve(".clangd"), CLANGD, write, lines);
+    }
+
+    private static void missingModules(Path base, Path dir, List<String> modules, List<String> lines) throws IOException {
+        String kept = read(dir, "pom.xml");
+        for (String module : modules) {
+            if (!kept.contains("<module>" + xml(module) + "</module>")) {
+                lines.add("MISSING-MODULE " + module + " in " + relative(base, dir.resolve("pom.xml"))
+                        + " (the pom is kept; add the module by hand)");
+            }
+        }
     }
 
     private static void emit(Path base, Path file, String content, boolean write, List<String> lines) throws IOException {
@@ -150,11 +163,7 @@ public final class Mavenizer {
         List<Step> steps = new ArrayList<>();
         gradle(dir, steps);
         node(dir, steps);
-        if (has(dir, "Cargo.toml")) {
-            add(steps, "compile", "cargo", "build");
-            add(steps, "test", "cargo", "test");
-            add(steps, "package", "cargo", "build", "--release");
-        }
+        cargo(dir, steps);
         if (has(dir, "go.mod")) {
             add(steps, "compile", "go", "build", "./...");
             add(steps, "test", "go", "test", "./...");
@@ -204,6 +213,28 @@ public final class Mavenizer {
         if (test.find() && !test.group(1).contains("no test specified")) add(steps, "test", tool, "test");
     }
 
+    /**
+     * Cargo: with a Cargo.lock every step passes --locked; tests run through {@link CargoTestProvider}, which writes
+     * surefire reports, and do not stop at the first failing test binary; a [package] (not a virtual workspace) is
+     * also packaged as a .crate in target/package (uncommitted files allowed: the generated pom.xml is one).
+     */
+    private static void cargo(Path dir, List<Step> steps) throws IOException {
+        if (!has(dir, "Cargo.toml")) return;
+        String[] locked = has(dir, "Cargo.lock") ? new String[] {"--locked"} : new String[0];
+        add(steps, "compile", "cargo", with(locked, "build"));
+        steps.add(new Step("test", "cargo-test", CargoTestProvider.TOOL, List.of(with(locked, "test", "--no-fail-fast"))));
+        add(steps, "package", "cargo", with(locked, "build", "--release"));
+        if (read(dir, "Cargo.toml").matches("(?s)(.*\\n)?\\s*\\[package\\].*")) {
+            add(steps, "package", "cargo", with(locked, "package", "--allow-dirty", "--no-verify"));
+        }
+    }
+
+    private static String[] with(String[] tail, String... head) {
+        String[] all = java.util.Arrays.copyOf(head, head.length + tail.length);
+        System.arraycopy(tail, 0, all, head.length, tail.length);
+        return all;
+    }
+
     private static void make(Path dir, List<Step> steps) throws IOException {
         String file = has(dir, "GNUmakefile") ? "GNUmakefile" : has(dir, "Makefile") ? "Makefile" : null;
         if (file == null) return;
@@ -211,12 +242,21 @@ public final class Mavenizer {
         if (read(dir, file).matches("(?s)(.*\\n)?test\\s*:.*")) add(steps, "test", "make", "test");
     }
 
+    /**
+     * CMake: configure exports compile_commands.json (Makefile and Ninja generators; a Visual Studio generator
+     * ignores it); build and test name the configuration, which a multi-config generator needs (without -C, CTest
+     * reports "Not Run"); CTest writes JUnit XML to the module's target/surefire-reports (a relative
+     * --output-junit is resolved in the test directory).
+     */
     private static void cmake(Path dir, List<Step> steps) throws IOException {
         if (!has(dir, "CMakeLists.txt")) return;
-        add(steps, "validate", "cmake", "-S", ".", "-B", "build/cmake");
-        add(steps, "compile", "cmake", "--build", "build/cmake");
+        add(steps, "validate", "cmake", "-S", ".", "-B", CMAKE_BUILD, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
+        add(steps, "compile", "cmake", "--build", CMAKE_BUILD, "--config", CMAKE_CONFIG);
         String text = read(dir, "CMakeLists.txt");
-        if (text.contains("enable_testing") || text.contains("add_test")) add(steps, "test", "ctest", "--test-dir", "build/cmake");
+        if (text.contains("enable_testing") || text.contains("add_test")) {
+            add(steps, "test", "ctest", "--test-dir", CMAKE_BUILD, "-C", CMAKE_CONFIG, "--output-on-failure",
+                    "--output-junit", "../../target/surefire-reports/TEST-ctest.xml");
+        }
     }
 
     private static void python(Path dir, List<Step> steps) throws IOException {

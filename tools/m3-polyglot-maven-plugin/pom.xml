@@ -198,6 +198,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>cargo-test-report-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.CargoTestReportContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>eclipse-model-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
