@@ -131,6 +131,14 @@ and retain its own task/diagnostic lifecycle. The Gradle quality-bridge fork
 can invoke this exact class without loading Maven Core or copying the task
 engine. No separate caching, toolchain download or CodeQL execution is implicit.
 
+## Eclipse (m2e)
+
+The jar carries `META-INF/m2e/lifecycle-mapping-metadata.xml`. When Eclipse m2e imports a project, the `run`
+and `plan` executions go to the m2e fork's `org.eclipse.m2e.polyglot` connector, and `mavenize` is ignored. The
+connector reads the execution's `manifest` and registers an LSP4E language server for each language its tools
+build: rust-analyzer, gopls, clangd, typescript-language-server, pylsp, csharp-ls and sourcekit-lsp, each when it is
+on `PATH` and no installed IDE already serves that language. Eclipse never runs the tools; Maven does.
+
 ## Strict manifest v1
 
 UTF-8, LF lines, terminal LF and a maximum 1 MiB. One row per tab-separated

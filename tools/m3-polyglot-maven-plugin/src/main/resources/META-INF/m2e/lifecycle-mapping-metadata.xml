@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+  SPDX-License-Identifier: Apache-2.0
+
+  Eclipse m2e reads this file from the plugin jar. The run and plan goals are handed to the m2e fork's
+  org.eclipse.m2e.polyglot connector, which reads the task manifest (the goal's manifest parameter) and registers
+  a language server for each language its tools build. Eclipse never runs the tools itself; mavenize is ignored.
+-->
+<lifecycleMappingMetadata>
+  <pluginExecutions>
+    <pluginExecution>
+      <pluginExecutionFilter>
+        <groupId>io.synexia</groupId>
+        <artifactId>m3-polyglot-maven-plugin</artifactId>
+        <versionRange>[0.1.0-SNAPSHOT,)</versionRange>
+        <goals>
+          <goal>run</goal>
+          <goal>plan</goal>
+        </goals>
+      </pluginExecutionFilter>
+      <action>
+        <configurator>
+          <id>org.eclipse.m2e.polyglot.configurator</id>
+        </configurator>
+      </action>
+    </pluginExecution>
+    <pluginExecution>
+      <pluginExecutionFilter>
+        <groupId>io.synexia</groupId>
+        <artifactId>m3-polyglot-maven-plugin</artifactId>
+        <versionRange>[0.1.0-SNAPSHOT,)</versionRange>
+        <goals>
+          <goal>mavenize</goal>
+        </goals>
+      </pluginExecutionFilter>
+      <action>
+        <ignore />
+      </action>
+    </pluginExecution>
+  </pluginExecutions>
+</lifecycleMappingMetadata>
