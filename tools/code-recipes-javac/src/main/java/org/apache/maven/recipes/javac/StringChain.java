@@ -100,36 +100,47 @@ record StringChain(List<String> literals, List<String> values, List<String> befo
     /** The index after the closing delimiter, skipping escapes; -1 when there is none or a string spans lines. */
     private static int closing(String chars, int from, String delimiter) {
         int i = from;
-        while (i < chars.length()) {
-            char c = chars.charAt(i);
-            if (c == '\\') {
-                i += 2;
-            } else if (chars.startsWith(delimiter, i)) {
+        while (i >= 0 && i < chars.length()) {
+            if (chars.startsWith(delimiter, i)) {
                 return i + delimiter.length();
-            } else if (delimiter.length() == 1 && (c == '\n' || c == '\r')) {
-                return -1;
-            } else {
-                i++;
             }
+            i = nextInString(chars, i, delimiter);
         }
         return -1;
+    }
+
+    /** The index after one character (or escape) of a string body; -1 at a line end inside a one-line string. */
+    private static int nextInString(String chars, int i, String delimiter) {
+        char c = chars.charAt(i);
+        if (c == '\\') {
+            return i + 2;
+        }
+        return delimiter.length() == 1 && (c == '\n' || c == '\r') ? -1 : i + 1;
     }
 
     /** The index after whitespace and comments, or -1 for an unterminated block comment. */
     private static int skipSpace(String chars, int from) {
         int i = from;
         while (i >= 0 && i < chars.length()) {
-            if (Character.isWhitespace(chars.charAt(i))) {
-                i++;
-            } else if (chars.startsWith("//", i)) {
-                int lineEnd = indexOfLineEnd(chars, i);
-                i = lineEnd < 0 ? chars.length() : lineEnd;
-            } else if (chars.startsWith("/*", i)) {
-                int close = chars.indexOf("*/", i + 2);
-                i = close < 0 ? -1 : close + 2;
-            } else {
+            int next = afterSpace(chars, i);
+            if (next == i) {
                 return i;
             }
+            i = next;
+        }
+        return i;
+    }
+
+    /** The index after one whitespace character or comment at i; i when there is neither; -1 when unterminated. */
+    private static int afterSpace(String chars, int i) {
+        if (Character.isWhitespace(chars.charAt(i))) {
+            return i + 1;
+        } else if (chars.startsWith("//", i)) {
+            int lineEnd = indexOfLineEnd(chars, i);
+            return lineEnd < 0 ? chars.length() : lineEnd;
+        } else if (chars.startsWith("/*", i)) {
+            int close = chars.indexOf("*/", i + 2);
+            return close < 0 ? -1 : close + 2;
         }
         return i;
     }

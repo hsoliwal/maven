@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  * spaces, which javac splits into several plugin arguments, are read back whole.
  */
 class PluginRobustnessTest {
-    private static final String NOTICE = "[" + MavenRecipesPlugin.NAME + "]";
+    private static final String NOTICE = "[" + Javac.PLUGIN + "]";
     private static final String ROW = "p/A.java\t1\ttrue\t1\t0\tok\tANALYZE";
 
     @Test

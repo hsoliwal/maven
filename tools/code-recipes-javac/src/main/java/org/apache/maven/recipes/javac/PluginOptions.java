@@ -35,19 +35,24 @@ import java.util.regex.Pattern;
  * <p>javac splits the text after the plugin name on runs of whitespace and passes the pieces, without reading quotes
  * ({@code Arguments.getPluginOpts}, JDK 21). A piece that does not start with a known {@code key=} therefore continues
  * the value before it and is joined back with one space, so a path with single spaces arrives whole. A value may be
- * quoted ({@code "..."} or {@code '...'}) or a {@code file:} URI; the URI form also carries runs of spaces or tabs.
+ * quoted ({@code "..."} or {@code '...'}) or a {@code file:} URI. Only the URI form keeps runs of spaces or tabs: a
+ * census path that was joined from pieces is written only into an existing directory, so a collapsed run of spaces
+ * never creates a new one.
  *
  * @param census where {@code LST_CENSUS.tsv} is written when the compilation finishes, if anywhere
  * @param root the directory source paths are made relative to
  * @param buildDir the build directory: sources under it are generated and get no tree, as rewrite-maven-plugin skips
  *     every source root under the project's build directory
+ * @param check whether each conversion also compares an identity digest of javac's trees ({@code check=true})
+ * @param censusJoined whether javac split the census path at whitespace and it was joined back with single spaces
  */
-public record PluginOptions(Optional<Path> census, Path root, Path buildDir) {
+public record PluginOptions(Optional<Path> census, Path root, Path buildDir, boolean check, boolean censusJoined) {
     private static final String CENSUS = "census";
     private static final String ROOT = "root";
     private static final String BUILD_DIR = "buildDir";
+    private static final String CHECK = "check";
     private static final Pattern KEY =
-            Pattern.compile("^(" + CENSUS + "|" + ROOT + "|" + BUILD_DIR + ")=.*", Pattern.DOTALL);
+            Pattern.compile("^(" + CENSUS + "|" + ROOT + "|" + BUILD_DIR + "|" + CHECK + ")=.*", Pattern.DOTALL);
     private static final String DEFAULT_BUILD_DIR = "target";
 
     /**
@@ -59,13 +64,14 @@ public record PluginOptions(Optional<Path> census, Path root, Path buildDir) {
      *     that is no path, so a typo does not silently drop the census; the plugin turns it into a notice
      */
     public static PluginOptions parse(String... args) {
-        Map<String, String> values = values(joined(args));
+        List<String> options = joined(args);
+        Map<String, String> values = values(options);
         Path root = path(ROOT, values.getOrDefault(ROOT, System.getProperty("user.dir")));
         Path buildDir = Optional.ofNullable(values.get(BUILD_DIR))
                 .map(value -> path(BUILD_DIR, value))
                 .orElse(root.resolve(DEFAULT_BUILD_DIR));
-        return new PluginOptions(
-                Optional.ofNullable(values.get(CENSUS)).map(PluginOptions::censusPath), root, buildDir);
+        Optional<Path> census = Optional.ofNullable(values.get(CENSUS)).map(PluginOptions::censusPath);
+        return new PluginOptions(census, root, buildDir, check(values), wasJoined(CENSUS, options, args));
     }
 
     /** The arguments with every piece that starts no option appended to the one before it. */
@@ -81,12 +87,28 @@ public record PluginOptions(Optional<Path> census, Path root, Path buildDir) {
         return options;
     }
 
+    /** Whether the option was joined from several of javac's pieces. */
+    private static boolean wasJoined(String key, List<String> options, String... args) {
+        String prefix = key + "=";
+        return options.stream()
+                .filter(option -> option.startsWith(prefix))
+                .anyMatch(option -> Arrays.stream(args).noneMatch(option::equals));
+    }
+
+    private static boolean check(Map<String, String> values) {
+        String value = values.getOrDefault(CHECK, "false");
+        if (!value.equals("true") && !value.equals("false")) {
+            throw new IllegalArgumentException(CHECK + "='" + value + "' is neither true nor false");
+        }
+        return Boolean.parseBoolean(value);
+    }
+
     private static Map<String, String> values(List<String> options) {
         Map<String, String> values = new LinkedHashMap<>();
         options.forEach(option -> {
             if (!KEY.matcher(option).matches()) {
                 throw new IllegalArgumentException("unknown option '" + option + "' (expected " + CENSUS + "=<file>, "
-                        + ROOT + "=<dir> or " + BUILD_DIR + "=<dir>)");
+                        + ROOT + "=<dir>, " + BUILD_DIR + "=<dir> or " + CHECK + "=true)");
             }
             int equals = option.indexOf('=');
             values.put(option.substring(0, equals), unquoted(option.substring(equals + 1)));

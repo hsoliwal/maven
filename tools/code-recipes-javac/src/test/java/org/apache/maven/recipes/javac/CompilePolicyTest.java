@@ -34,7 +34,9 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  * javac's compile policy decides whether a file's trees are still undesugared when its last class is analyzed. The
  * default ({@code byTodo}) desugars each class before the next is attributed; {@code byfile} keeps a file together but
  * desugars a superclass early when a file processed before it needs it; {@code simple} analyzes every file before
- * desugaring any. The guard must turn each early desugar into a skipped row, never a wrong tree.
+ * desugaring any. The guard must turn each early desugar into a skipped row, never a wrong tree. The plugin sets no
+ * policy: {@code simple} gives the same class files for compiles that pass, but other diagnostics and class files for
+ * compiles that fail.
  */
 class CompilePolicyTest {
     private static final String SIMPLE = "-XDcompilePolicy=simple";
@@ -76,7 +78,7 @@ class CompilePolicyTest {
     }
 
     @TestFactory
-    Stream<DynamicTest> thePolicyOptionItselfChangesNoClassFile() {
+    Stream<DynamicTest> forPassingCompilesThePolicyOptionChangesNoClassFile() {
         return Fixtures.compiling().stream()
                 .map(fixture -> dynamicTest(fixture.name(), () -> {
                     Javac.Compilation byTodo = Javac.compile("policy-classes", fixture, Javac.Mode.NONE);
@@ -87,6 +89,31 @@ class CompilePolicyTest {
                     assertEquals(byTodo.classes(), byFile.classes());
                     assertEquals(byTodo.classes(), simple.classes());
                 }));
+    }
+
+    @Test
+    void forFailingCompilesThePolicyOptionChangesDiagnosticsAndClassFilesSoThePluginSetsNone() throws IOException {
+        Fixture flowAttr = IsolationFixtures.policy().get(0);
+        Fixture classfile = IsolationFixtures.policy().get(1);
+        assertEquals(
+                2,
+                Javac.compile("policy-failing", flowAttr, Javac.Mode.NONE)
+                        .diagnostics()
+                        .size());
+        assertEquals(
+                1,
+                Javac.compile("policy-failing", flowAttr, Javac.Mode.NONE, SIMPLE)
+                        .diagnostics()
+                        .size());
+        assertEquals(
+                java.util.Set.of("p/A.class"),
+                Javac.compile("policy-failing", classfile, Javac.Mode.NONE)
+                        .classes()
+                        .keySet());
+        assertEquals(
+                Map.of(),
+                Javac.compile("policy-failing", classfile, Javac.Mode.NONE, SIMPLE)
+                        .classes());
     }
 
     private static Fixture named(String name) {

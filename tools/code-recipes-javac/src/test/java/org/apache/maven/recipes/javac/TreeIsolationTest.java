@@ -67,15 +67,7 @@ class TreeIsolationTest {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         List<String> seen = new ArrayList<>();
         try (StandardJavaFileManager files = javac.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
-            List<String> options = List.of(
-                    "-proc:none",
-                    "-d",
-                    src.resolveSibling(plugin ? "classes-plugin" : "classes-plain")
-                            .toString());
-            List<Path> sources =
-                    fixture.files().keySet().stream().map(src::resolve).toList();
-            JavacTask task = (JavacTask)
-                    javac.getTask(null, files, null, options, null, files.getJavaFileObjectsFromPaths(sources));
+            JavacTask task = task(javac, files, src, fixture, plugin);
             if (plugin) {
                 Javac.registerPlugin(task, Javac.PluginArgs.DEFAULT.of(src.resolveSibling("census.tsv"), src));
             }
@@ -83,6 +75,15 @@ class TreeIsolationTest {
             assertTrue(task.call());
         }
         return seen;
+    }
+
+    private static JavacTask task(
+            JavaCompiler javac, StandardJavaFileManager files, Path src, Fixture fixture, boolean plugin) {
+        String classes =
+                src.resolveSibling(plugin ? "classes-plugin" : "classes-plain").toString();
+        List<Path> sources = fixture.files().keySet().stream().map(src::resolve).toList();
+        List<String> options = List.of("-proc:none", "-d", classes);
+        return (JavacTask) javac.getTask(null, files, null, options, null, files.getJavaFileObjectsFromPaths(sources));
     }
 
     private static TaskListener observer(List<String> seen) {
@@ -97,28 +98,38 @@ class TreeIsolationTest {
     }
 
     private static void record(JCCompilationUnit unit, List<String> seen) {
-        new TreeScanner() {
-            @Override
-            public void scan(JCTree tree) {
-                if (tree != null) {
-                    seen.add(tree.getTag() + " " + tree.type + " " + TreeInfo.symbolFor(tree));
-                }
-                super.scan(tree);
-            }
-
-            @Override
-            public void visitClassDef(JCClassDecl tree) {
-                if (tree.sym != null && tree.sym.isRecord()) {
-                    tree.sym.getRecordComponents().forEach(component -> components(component, seen));
-                }
-                super.visitClassDef(tree);
-            }
-        }.scan(unit);
+        new Recorder(seen).scan(unit);
     }
 
-    private static void components(RecordComponent component, List<String> seen) {
-        for (JCAnnotation annotation : component.getOriginalAnnos()) {
-            seen.add("record " + component + " " + annotation.annotationType + " " + annotation.annotationType.type);
+    /** Every node's tag, type and symbol, and the annotation trees of every record component with their types. */
+    private static final class Recorder extends TreeScanner {
+        private final List<String> seen;
+
+        Recorder(List<String> seen) {
+            this.seen = seen;
+        }
+
+        @Override
+        public void scan(JCTree tree) {
+            if (tree != null) {
+                seen.add(tree.getTag() + " " + tree.type + " " + TreeInfo.symbolFor(tree));
+            }
+            super.scan(tree);
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            if (tree.sym != null && tree.sym.isRecord()) {
+                tree.sym.getRecordComponents().forEach(this::components);
+            }
+            super.visitClassDef(tree);
+        }
+
+        private void components(RecordComponent component) {
+            for (JCAnnotation annotation : component.getOriginalAnnos()) {
+                seen.add(
+                        "record " + component + " " + annotation.annotationType + " " + annotation.annotationType.type);
+            }
         }
     }
 }

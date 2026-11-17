@@ -53,18 +53,25 @@ final class Javac {
     enum Mode {
         /** Plain javac: the oracle. */
         NONE,
-        /** {@code new MavenRecipesPlugin().init(task, ...)} before the task runs. */
+        /** {@code LstCollector.register(task, ...)} before the task runs, keeping every tree. */
         DIRECT,
-        /** {@code -processorpath <plugin classpath> -Xplugin:MavenRecipes census=... root=...}. */
+        /**
+         * {@code -processorpath <the compile's classpath>;<boot entry> -Xplugin:MavenRecipes census=... root=...}: the
+         * processor path holds the classpath's entries in the same order plus the boot entry (the wiring for an
+         * explicit {@code -proc:} or no classpath processor); the implementation comes from the test class path.
+         */
         XPLUGIN,
-        /** The plugin classpath appended to {@code -classpath}, with {@code -Xplugin:MavenRecipes ...}. */
+        /** The boot entry appended to {@code -classpath}, with {@code -Xplugin:MavenRecipes ...} (implicit processing). */
         XPLUGIN_CP
     }
 
+    /** The name of the plugin, as {@code -Xplugin:} takes it. */
+    static final String PLUGIN = "MavenRecipes";
+
     /** The plugin options of one compile, after the plugin name and separated by spaces as javac passes them. */
     interface PluginArgs {
-        /** {@code census=<census> root=<src>}, the README's configuration. */
-        PluginArgs DEFAULT = (census, src) -> "census=" + census + " root=" + src;
+        /** {@code census=<census> root=<src> check=true}: the README's configuration plus the tree tripwire. */
+        PluginArgs DEFAULT = (census, src) -> "census=" + census + " root=" + src + " check=true";
 
         String of(Path census, Path src);
     }
@@ -100,8 +107,7 @@ final class Javac {
     static Compilation compile(String group, Fixture fixture, Mode mode, PluginArgs pluginArgs, String... options)
             throws IOException {
         Path dir = WORK.resolve(group).resolve(fixture.name()).toAbsolutePath();
-        String label = mode.name().toLowerCase(Locale.ROOT) + "-"
-                + String.join("", options).replaceAll("\\W", "");
+        String label = label(mode, options);
         Path classes = dir.resolve("classes-" + label);
         Path census = dir.resolve("census-" + label + ".tsv");
         deleteCensus(census);
@@ -112,6 +118,11 @@ final class Javac {
         args.addAll(plugin(mode, args, pluginOptions));
         Optional<String> direct = mode == Mode.DIRECT ? Optional.of(pluginOptions) : Optional.empty();
         return run(new Run(src, fixture, args, direct, classes, census));
+    }
+
+    private static String label(Mode mode, String... options) {
+        return mode.name().toLowerCase(Locale.ROOT) + "-"
+                + String.join("", options).replaceAll("\\W", "");
     }
 
     /** One prepared compile: the fixture's sources, javac's arguments and where its outputs go. */
@@ -126,22 +137,29 @@ final class Javac {
         }
     }
 
-    private static List<String> plugin(Mode mode, List<String> args, String pluginOptions) throws IOException {
-        if (mode == Mode.XPLUGIN_CP) {
-            int classpath = args.lastIndexOf("-classpath") + 1;
-            args.set(classpath, args.get(classpath) + java.io.File.pathSeparator + pluginPath());
-            return List.of("-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+    private static List<String> plugin(Mode mode, List<String> args, String pluginOptions) {
+        if (mode == Mode.NONE || mode == Mode.DIRECT) {
+            return List.of();
         }
-        return mode == Mode.XPLUGIN ? xplugin(pluginOptions) : List.of();
+        int classpath = args.lastIndexOf("-classpath") + 1;
+        String withBoot = args.get(classpath) + java.io.File.pathSeparator + bootPath();
+        if (mode == Mode.XPLUGIN_CP) {
+            args.set(classpath, withBoot);
+            return List.of("-Xplugin:" + PLUGIN + " " + pluginOptions);
+        }
+        return List.of("-processorpath", withBoot, "-Xplugin:" + PLUGIN + " " + pluginOptions);
     }
 
-    private static List<String> xplugin(String pluginOptions) throws IOException {
-        return List.of("-processorpath", pluginPath(), "-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
-    }
-
-    /** Starts the plugin on a task as an in-process caller does, before the task runs. */
+    /** Starts the plugin on a task as an in-process caller does, before the task runs, keeping every tree. */
     static void registerPlugin(JavacTask task, String pluginOptions) {
-        new MavenRecipesPlugin().init(task, pluginOptions.split("\\s+"));
+        LstCollector.register(task, path -> true, pluginOptions.split("\\s+"));
+    }
+
+    /** The boot entry's classes: the javac Plugin registration and the classes built for Java 8. */
+    static String bootPath() {
+        return Path.of(System.getProperty("recipes.bootClasses", "target/boot-classes"))
+                .toAbsolutePath()
+                .toString();
     }
 
     private static List<String> arguments(Fixture fixture, Path dir, Path classes, String... options)
@@ -175,8 +193,7 @@ final class Javac {
             Optional<LstCollector> collector = LstCollector.of(task);
             boolean success = task.call();
             List<String> described = describe(diagnostics.getDiagnostics(), run.src());
-            return new Compilation(
-                    success, described, hashes(run.classes()), collector, run.censusText(), output.toString());
+            return new Compilation(success, described, hashes(run.classes()), collector, run.censusText(), "" + output);
         }
     }
 
@@ -185,11 +202,7 @@ final class Javac {
                 .map(d -> String.join(
                         "|",
                         d.getKind().name(),
-                        d.getSource() == null
-                                ? "-"
-                                : src.relativize(Path.of(d.getSource().toUri()))
-                                        .toString()
-                                        .replace('\\', '/'),
+                        source(d, src),
                         Long.toString(d.getLineNumber()),
                         Long.toString(d.getColumnNumber()),
                         String.valueOf(d.getCode()),
@@ -197,12 +210,21 @@ final class Javac {
                 .toList();
     }
 
-    /** Creates the directory or deletes what an earlier run left in it. */
-    static void emptyDirectory(Path dir) throws IOException {
+    private static String source(Diagnostic<? extends JavaFileObject> diagnostic, Path src) {
+        return diagnostic.getSource() == null
+                ? "-"
+                : src.relativize(Path.of(diagnostic.getSource().toUri()))
+                        .toString()
+                        .replace('\\', '/');
+    }
+
+    /** Creates the directory or deletes what an earlier run left in it; returns it. */
+    static Path emptyDirectory(Path dir) throws IOException {
         Files.createDirectories(dir);
         try (Stream<Path> walk = Files.walk(dir)) {
             walk.sorted(Comparator.reverseOrder()).filter(p -> !p.equals(dir)).forEach(Javac::delete);
         }
+        return dir;
     }
 
     private static void delete(Path path) {

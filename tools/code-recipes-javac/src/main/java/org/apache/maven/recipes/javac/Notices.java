@@ -29,8 +29,11 @@ import com.sun.tools.javac.util.Log;
  * plexus-compiler's javac output parser files as an informational message, not as a warning or an error.
  */
 final class Notices {
+    /** The plugin name given to {@code -Xplugin:}, as the boot entry declares it. */
+    static final String NAME = "MavenRecipes";
+
     /** The prefix of every notice line. */
-    static final String PREFIX = "[" + MavenRecipesPlugin.NAME + "] ";
+    static final String PREFIX = "[" + NAME + "] ";
 
     private Notices() {}
 

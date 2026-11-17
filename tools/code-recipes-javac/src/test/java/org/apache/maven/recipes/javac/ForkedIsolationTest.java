@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  * off with one notice), a capped heap, and a processor found on the classpath.
  */
 class ForkedIsolationTest {
-    private static final String NOTICE = "[" + MavenRecipesPlugin.NAME + "]";
+    private static final String NOTICE = "[" + Javac.PLUGIN + "]";
 
     @TestFactory
     Stream<DynamicTest> forkedJavacIsUnchangedOnTheReproducers() {
@@ -107,16 +107,18 @@ class ForkedIsolationTest {
         Path dir =
                 Javac.WORK.resolve("forked-isolation").resolve(fixture.name()).toAbsolutePath();
         Path src = fixture.write(dir);
-        ForkedJavacTest.Spec plainSpec =
-                new ForkedJavacTest.Spec(fixture, dir, src, javac, options, false, Javac.PluginArgs.DEFAULT);
-        ForkedJavacTest.Forked plain = ForkedJavacTest.fork(plainSpec);
-        ForkedJavacTest.Forked with = ForkedJavacTest.fork(
-                new ForkedJavacTest.Spec(fixture, dir, src, javac, options, true, Javac.PluginArgs.DEFAULT));
+        ForkedJavacTest.Forked plain = ForkedJavacTest.fork(spec(fixture, dir, src, javac, options, false));
+        ForkedJavacTest.Forked with = ForkedJavacTest.fork(spec(fixture, dir, src, javac, options, true));
         assertEquals(plain.exit(), with.exit(), with.output());
         assertEquals(notices, noticeLines(with.output()).size(), with.output());
         assertEquals(normalised(plain.output()), normalised(withoutNotices(with.output())));
         assertEquals(plain.classes(), with.classes());
         return with;
+    }
+
+    private static ForkedJavacTest.Spec spec(
+            Fixture fixture, Path dir, Path src, Path javac, List<String> options, boolean plugin) {
+        return new ForkedJavacTest.Spec(fixture, dir, src, javac, options, plugin, Javac.PluginArgs.DEFAULT);
     }
 
     private static List<String> noticeLines(String output) {

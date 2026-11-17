@@ -52,7 +52,7 @@ class StringFoldingTest {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         try (StandardJavaFileManager files = javac.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
             JavacTask task = (JavacTask) javac.getTask(null, files, null, List.of(), null, List.of());
-            new MavenRecipesPlugin().init(task);
+            LstCollector.register(task, path -> false);
             assertNull(Options.instance(((BasicJavacTask) task).getContext()).get("allowStringFolding"));
         }
     }

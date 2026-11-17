@@ -31,10 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
- * Oracle 2, maven-compiler-plugin's compile: plain javac with the same options. With the plugin (initialised
- * directly, or loaded through {@code -processorpath} and {@code -Xplugin:MavenRecipes}) javac must return the same
- * result, report the same diagnostics and write byte-identical class files, also for sources javac rejects and for
- * {@code -Werror}. The census of the two plugin modes must be the same text.
+ * Oracle 2, maven-compiler-plugin's compile: plain javac with the same options, under javac's default compile policy.
+ * With the plugin (registered directly, or the boot entry loaded through {@code -processorpath} and
+ * {@code -Xplugin:MavenRecipes}) javac must return the same result, report the same diagnostics and write
+ * byte-identical class files, also for sources javac rejects and for {@code -Werror}. The census of the two plugin
+ * modes must be the same text.
  */
 class JavacOutputParityTest {
     @TestFactory
@@ -57,14 +58,7 @@ class JavacOutputParityTest {
     static Stream<Fixture> allFixtures() {
         return Stream.of(
                         Fixtures.compiling(),
-                        List.of(
-                                Fixtures.module(),
-                                Fixtures.generated(),
-                                Fixtures.crossFileSuperclass(),
-                                Fixtures.rewrite8890CommentDefect(),
-                                FoldingFixtures.surrogates(),
-                                EdgeFixtures.spaced(),
-                                EdgeFixtures.generatedSourcesAncestor()),
+                        single(),
                         FoldingFixtures.stress(),
                         EdgeFixtures.encodings(),
                         EdgeFixtures.rewrite8890Defects(),
@@ -72,9 +66,20 @@ class JavacOutputParityTest {
                 .flatMap(List::stream);
     }
 
+    private static List<Fixture> single() {
+        return List.of(
+                Fixtures.module(),
+                Fixtures.generated(),
+                Fixtures.crossFileSuperclass(),
+                Fixtures.rewrite8890CommentDefect(),
+                FoldingFixtures.surrogates(),
+                EdgeFixtures.spaced(),
+                EdgeFixtures.generatedSourcesAncestor());
+    }
+
     private static void assertUnchanged(Fixture fixture, Javac.Mode mode) throws IOException {
-        Javac.Compilation plain = Javac.compile("javac-parity", fixture, Javac.Mode.NONE, CompilerTreeLstTest.BYFILE);
-        Javac.Compilation with = Javac.compile("javac-parity", fixture, mode, CompilerTreeLstTest.BYFILE);
+        Javac.Compilation plain = Javac.compile("javac-parity", fixture, Javac.Mode.NONE);
+        Javac.Compilation with = Javac.compile("javac-parity", fixture, mode);
         assertEquals(plain.success(), with.success(), with::output);
         assertEquals(plain.diagnostics(), with.diagnostics());
         assertEquals(plain.classes(), with.classes());
@@ -84,15 +89,14 @@ class JavacOutputParityTest {
     }
 
     private static void assertSameCensus(Fixture fixture) throws IOException {
-        Javac.Compilation direct = Javac.compile("census", fixture, Javac.Mode.DIRECT, CompilerTreeLstTest.BYFILE);
-        Javac.Compilation xplugin = Javac.compile("census", fixture, Javac.Mode.XPLUGIN, CompilerTreeLstTest.BYFILE);
+        Javac.Compilation direct = Javac.compile("census", fixture, Javac.Mode.DIRECT);
+        Javac.Compilation xplugin = Javac.compile("census", fixture, Javac.Mode.XPLUGIN);
         assertEquals(LstCensus.tsv(direct.collector().orElseThrow().census()), xplugin.census());
         assertTrue(xplugin.census().startsWith(LstCensus.HEADER + "\n"));
     }
 
     private static void assertNoTree(Fixture fixture) throws IOException {
-        Javac.Compilation compilation =
-                Javac.compile("failing", fixture, Javac.Mode.DIRECT, CompilerTreeLstTest.BYFILE);
+        Javac.Compilation compilation = Javac.compile("failing", fixture, Javac.Mode.DIRECT);
         assertFalse(compilation.success());
         List<FileLst> files = compilation.collector().orElseThrow().files();
         assertEquals(fixture.files().size(), files.size());

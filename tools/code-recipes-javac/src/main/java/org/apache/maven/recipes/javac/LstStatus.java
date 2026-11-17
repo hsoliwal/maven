@@ -36,12 +36,24 @@ public enum LstStatus {
     /** {@code module-info.java}: OpenRewrite has no tree for it, and its {@code JavaParser.accept} excludes it. */
     MODULE_INFO("skipped: module-info has no OpenRewrite tree"),
     /**
-     * javac desugared a class of the file before all its classes were analyzed (compile policy {@code byTodo}, or a
-     * superclass needed by another file under {@code byfile}); the trees no longer match the source.
+     * javac desugared a class of the file before all its classes were analyzed: under javac's default policy
+     * ({@code byTodo}) a file with several top-level classes, whose first class javac generates before it attributes
+     * the next; the trees no longer match the source. The plugin sets no compile policy, which would change javac's
+     * diagnostics and class output on failing compiles.
      */
-    DESUGARED("skipped: desugared before analysis finished; compile with -XDcompilePolicy=simple"),
+    DESUGARED("skipped: desugared before its last class was analyzed"),
     /** The compilation finished before every class of the file was analyzed. */
     INCOMPLETE("skipped: analysis incomplete"),
+    /**
+     * A tree was built, but javac did not generate every top-level class of the file although it reported no error
+     * (a compiler crash, {@code -proc:only}, a {@code should-stop} option, or an implicitly compiled source under
+     * {@code -implicit:none}); the detail gives how many classes were generated.
+     */
+    NOT_FINISHED("skipped: compile did not finish"),
+    /** The heap gate closed before the file: less free heap than the plugin requires; no trees for the rest. */
+    HEAP("skipped: heap headroom"),
+    /** The plugin stopped earlier in the compile (a failure of its own, contained); no trees for the rest. */
+    STOPPED("skipped: plugin stopped"),
     /** The conversion threw or reported an error; the detail follows the label. */
     FAILED("failed");
 

@@ -45,7 +45,7 @@ under the License.
     <recipes.jdk17 />
     <recipes.jdk25 />
     <!-- one line: surefire passes it to the forked test JVM as given; the same list the tests hand to a forked javac -->
-    <javacExports>--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</javacExports>
+    <javacExports>--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</javacExports>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -115,6 +115,11 @@ under the License.
         <version>3.10.2</version>
         <configuration>
           <java>
+            <includes>
+              <include>src/main/java/**/*.java</include>
+              <include>src/main/boot/**/*.java</include>
+              <include>src/test/java/**/*.java</include>
+            </includes>
             <palantirJavaFormat>
               <version>2.98.0</version>
             </palantirJavaFormat>
@@ -194,7 +199,7 @@ under the License.
             <goals><goal>copy-resources</goal></goals>
             <phase>process-classes</phase>
             <configuration>
-              <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+              <outputDirectory>${project.build.directory}/boot-classes</outputDirectory>
               <resources>
                 <resource><directory>src/main/javac-plugin</directory></resource>
               </resources>
@@ -217,10 +222,32 @@ under the License.
             <arg>--add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
             <arg>--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
             <arg>--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
+            <arg>--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
             <arg>--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
             <arg>--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
           </compilerArgs>
         </configuration>
+        <executions>
+          <execution>
+            <!-- the boot entry: class file version 52, so every javac can load it and its version gate runs before any
+                 class built for 21 is touched; release 8 has no com.sun.source, so source/target 8 -->
+            <id>boot</id>
+            <goals><goal>compile</goal></goals>
+            <!-- before default-compile, which then sets the project artifact's file back to target/classes -->
+            <phase>process-sources</phase>
+            <configuration>
+              <compileSourceRoots><root>${project.basedir}/src/main/boot</root></compileSourceRoots>
+              <outputDirectory>${project.build.directory}/boot-classes</outputDirectory>
+              <generatedSourcesDirectory>${project.build.directory}/generated-sources/boot</generatedSourcesDirectory>
+              <source>8</source>
+              <target>8</target>
+              <compilerArgs combine.self="override">
+                <arg>-Xlint:all,-options</arg>
+                <arg>-Werror</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -250,6 +277,7 @@ under the License.
             <recipes.pluginClasses>${project.build.outputDirectory}</recipes.pluginClasses>
             <recipes.workDir>${project.build.directory}/lst-tests</recipes.workDir>
             <recipes.javacExports>${javacExports}</recipes.javacExports>
+            <recipes.bootClasses>${project.build.directory}/boot-classes</recipes.bootClasses>
             <recipes.jdk17>${recipes.jdk17}</recipes.jdk17>
             <recipes.jdk25>${recipes.jdk25}</recipes.jdk25>
           </systemPropertyVariables>
@@ -259,6 +287,18 @@ under the License.
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.4.1</version>
+        <executions>
+          <execution>
+            <!-- maven-code-recipes-javac-<version>-boot.jar: the boot entry and its javac Plugin registration only -->
+            <id>boot</id>
+            <goals><goal>jar</goal></goals>
+            <phase>package</phase>
+            <configuration>
+              <classifier>boot</classifier>
+              <classesDirectory>${project.build.directory}/boot-classes</classesDirectory>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

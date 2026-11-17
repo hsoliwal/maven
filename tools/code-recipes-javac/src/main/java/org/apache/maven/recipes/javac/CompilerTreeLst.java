@@ -39,7 +39,6 @@ import org.openrewrite.FileAttributes;
 import org.openrewrite.internal.EncodingDetectingInputStream;
 import org.openrewrite.java.internal.DefaultJavaTypeFactory;
 import org.openrewrite.java.internal.JavaTypeCache;
-import org.openrewrite.java.internal.JavaTypeFactory;
 import org.openrewrite.java.isolated.ReloadableJava21ParserVisitor;
 import org.openrewrite.java.tree.J;
 import org.openrewrite.java.tree.Space;
@@ -51,25 +50,39 @@ import org.openrewrite.java.tree.Space;
  *
  * <p>The conversion is OpenRewrite's own {@link ReloadableJava21ParserVisitor} (rewrite-java-21, Apache-2.0), the
  * class rewrite's {@code Java21Parser} runs after its private javac; here it runs on the build's javac instead, and
- * {@link FoldedStrings} then splits the string chains javac's parser folded. One instance holds one
- * {@link JavaTypeCache} and serves one compilation. The tree's charset is the one javac decoded the file with
- * ({@link CompileCharset}).
+ * {@link FoldedStrings} then splits the string chains javac's parser folded. Each conversion runs inside an
+ * {@link IsolationScope}, so it only reads javac's state: it completes no class, attributes no Javadoc with javac's
+ * Attr, reports nothing and leaves javac's trees as they were. Each file gets a type cache of its own, so nothing of
+ * a file outlives its tree. The tree's charset is the one javac decoded the file with ({@link CompileCharset}).
  */
 public final class CompilerTreeLst {
     private static final String STRING = "java.lang.String";
+    private static final int RESERVE_BYTES = 1 << 20;
 
     private final Context context;
-    private final JavaTypeCache typeCache = new JavaTypeCache();
-    private final JavaTypeFactory typeFactory = new DefaultJavaTypeFactory(typeCache);
     private final ExecutionContext executionContext;
+    private final boolean check;
+    private final Optional<Context> docContext;
+    private byte[] reserve = new byte[RESERVE_BYTES];
 
     /**
      * @param context the javac context of the compile whose trees are converted
      * @param executionContext receives errors the conversion reports without throwing
      */
     public CompilerTreeLst(Context context, ExecutionContext executionContext) {
+        this(context, executionContext, false);
+    }
+
+    /**
+     * @param context the javac context of the compile whose trees are converted
+     * @param executionContext receives errors the conversion reports without throwing
+     * @param check whether every conversion also compares an identity digest of javac's trees
+     */
+    CompilerTreeLst(Context context, ExecutionContext executionContext, boolean check) {
         this.context = context;
         this.executionContext = executionContext;
+        this.check = check;
+        this.docContext = ShadowContext.of(context);
     }
 
     /**
@@ -81,6 +94,7 @@ public final class CompilerTreeLst {
      * @param ctx receives errors the conversion reports without throwing
      * @return the OpenRewrite tree
      * @throws IOException if javac cannot give the unit's character content
+     * @throws IsolationBreach if the conversion reached javac state it must not touch (restored)
      */
     public static J.CompilationUnit toLst(
             JavacTask task, CompilationUnitTree unit, Path relativeTo, ExecutionContext ctx) throws IOException {
@@ -97,13 +111,42 @@ public final class CompilerTreeLst {
      * @param root the directory the tree's source path is made relative to
      * @return the tree, whether it prints the exact source, and its method-call attribution counts
      * @throws IOException if javac cannot give the unit's character content
+     * @throws IsolationBreach if the conversion reached javac state it must not touch (restored)
      */
     public LstResult convert(JCCompilationUnit unit, Path root) throws IOException {
+        IsolationScope scope = IsolationScope.open(context, unit, docContext, check);
+        try {
+            return convert(scope.visitorContext(), unit, root);
+        } catch (RuntimeException | Error e) {
+            if (fatal(e)) {
+                reserve = null;
+            }
+            throw e;
+        } finally {
+            scope.close();
+        }
+    }
+
+    /**
+     * Whether a problem is a VirtualMachineError (OutOfMemoryError, StackOverflowError, InternalError), also when
+     * javac wrapped it ({@code ClientCodeException} around a file object's or listener's error).
+     */
+    static boolean fatal(Throwable problem) {
+        return problem instanceof VirtualMachineError || problem.getCause() instanceof VirtualMachineError;
+    }
+
+    /** Whether the memory held back for an OutOfMemoryError is still held (the first such error releases it). */
+    boolean reserved() {
+        return reserve != null;
+    }
+
+    private LstResult convert(Context visitorContext, JCCompilationUnit unit, Path root) throws IOException {
         JavaFileObject file = unit.getSourceFile();
         String text = file.getCharContent(true).toString();
         Optional<Path> path = SourcePaths.ofFile(file);
-        FoldedStrings.Result unfolded = FoldedStrings.unfold(
-                visit(unit, text, SourcePaths.relative(file, root), path), Optional.ofNullable(typeCache.get(STRING)));
+        JavaTypeCache types = new JavaTypeCache();
+        J.CompilationUnit visited = new Visit(visitorContext, types, executionContext).run(unit, text, root, path);
+        FoldedStrings.Result unfolded = FoldedStrings.unfold(visited, Optional.ofNullable(types.get(STRING)));
         // J.CompilationUnit.withCharset is declared to return SourceFile
         J.CompilationUnit lst = (J.CompilationUnit) unfolded.lst().withCharset(CompileCharset.of(file, context));
         boolean printEqual = unfolded.unsplit() == 0 && printsSource(lst, text, path);
@@ -117,14 +160,27 @@ public final class CompilerTreeLst {
                         + FoldedStrings.MAX_LITERALS + " literals, escaped surrogates, or unreadable)";
     }
 
-    private J.CompilationUnit visit(JCCompilationUnit unit, String text, Path sourcePath, Optional<Path> path) {
-        // UTF-8 carries any text javac decoded without loss; the unit's charset is set to the compile's afterwards
-        EncodingDetectingInputStream source = new EncodingDetectingInputStream(
-                new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
-        FileAttributes attributes = path.map(FileAttributes::fromPath).orElse(null);
-        ReloadableJava21ParserVisitor visitor = new ReloadableJava21ParserVisitor(
-                sourcePath, attributes, source, List.of(), typeFactory, executionContext, context);
-        return (J.CompilationUnit) visitor.scan(unit, Space.EMPTY);
+    /** One run of rewrite's parser visitor with a type cache of its own. */
+    private record Visit(Context visitorContext, JavaTypeCache types, ExecutionContext executionContext) {
+        J.CompilationUnit run(JCCompilationUnit unit, String text, Path root, Optional<Path> path) {
+            FileAttributes attributes = path.map(FileAttributes::fromPath).orElse(null);
+            Path sourcePath = SourcePaths.relative(unit.getSourceFile(), root);
+            ReloadableJava21ParserVisitor visitor = new ReloadableJava21ParserVisitor(
+                    sourcePath,
+                    attributes,
+                    utf8(text),
+                    List.of(),
+                    new DefaultJavaTypeFactory(types),
+                    executionContext,
+                    visitorContext);
+            return (J.CompilationUnit) visitor.scan(unit, Space.EMPTY);
+        }
+
+        /** UTF-8 carries any text javac decoded without loss; the unit's charset is set to the compile's afterwards. */
+        private static EncodingDetectingInputStream utf8(String text) {
+            return new EncodingDetectingInputStream(
+                    new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+        }
     }
 
     private static boolean printsSource(J.CompilationUnit lst, String text, Optional<Path> path) throws IOException {

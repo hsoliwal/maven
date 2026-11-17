@@ -39,7 +39,8 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 /**
  * The command-line javac of the running JDK, as a forked maven-compiler-plugin runs it: there is no
  * {@code DiagnosticListener} and no {@code JavacTask} API, so end positions and comments come only from javac's
- * reaction to the plugin's task listener. With {@code -processorpath} and {@code -Xplugin:MavenRecipes} it must exit
+ * reaction to the plugin's task listener. With the boot entry on the JVM class path ({@code -J--class-path}), the
+ * implementation as {@code impl=} URIs and {@code -Xplugin:MavenRecipes}, under javac's default policy, it must exit
  * the same, print the same and write the same class files as without, and write the census the in-process run writes.
  */
 class ForkedJavacTest {
@@ -61,14 +62,14 @@ class ForkedJavacTest {
         assertEquals(plain.exit(), with.exit());
         assertEquals(plain.output(), with.output());
         assertEquals(plain.classes(), with.classes());
-        Javac.Compilation inProcess = Javac.compile("forked", fixture, Javac.Mode.DIRECT, CompilerTreeLstTest.BYFILE);
+        Javac.Compilation inProcess = Javac.compile("forked", fixture, Javac.Mode.DIRECT);
         assertEquals(LstCensus.tsv(inProcess.collector().orElseThrow().census()), with.census());
     }
 
     /** Forks javac on the fixture, with the plugin and the given options or without it. */
     static Forked fork(Fixture fixture, Path dir, Path src, boolean plugin, Javac.PluginArgs pluginArgs)
             throws IOException, InterruptedException {
-        return fork(new Spec(fixture, dir, src, javac(), List.of(CompilerTreeLstTest.BYFILE), plugin, pluginArgs));
+        return fork(new Spec(fixture, dir, src, javac(), List.of(), plugin, pluginArgs));
     }
 
     /**
@@ -95,9 +96,7 @@ class ForkedJavacTest {
         Path classes = spec.dir().resolve("forked-classes-" + (spec.plugin() ? "plugin" : "plain"));
         Javac.emptyDirectory(classes);
         Path census = spec.dir().resolve("forked-census.tsv");
-        if (Files.isRegularFile(census)) {
-            Files.delete(census);
-        }
+        Files.deleteIfExists(census);
         List<String> command = command(spec, classes);
         if (spec.plugin()) {
             command.addAll(wiring(spec.pluginArgs().of(census, spec.src())));
@@ -105,14 +104,27 @@ class ForkedJavacTest {
         spec.fixture()
                 .files()
                 .keySet()
-                .forEach(path -> command.add(spec.src().resolve(path).toString()));
+                .forEach(path -> command.add("" + spec.src().resolve(path)));
         return run(command, spec.dir(), classes, census);
     }
 
     /** The options that wire the plugin into a forked javac. */
     static List<String> wiring(String pluginOptions) throws IOException {
         return List.of(
-                "-processorpath", Javac.pluginPath(), "-Xplugin:" + MavenRecipesPlugin.NAME + " " + pluginOptions);
+                "-J--class-path=" + Javac.bootPath(),
+                "-Xplugin:" + Javac.PLUGIN + " impl=" + implUris() + " " + pluginOptions);
+    }
+
+    /**
+     * The forked wiring: the boot entry on the JVM's class path ({@code -J--class-path}), where javac's processor
+     * class loader finds it through its parent without any javac option or path changing, and the implementation as
+     * {@code impl=} {@code file:} URIs, loaded in a class loader of its own.
+     */
+    static String implUris() throws IOException {
+        return Arrays.stream(Javac.pluginPath().split(java.io.File.pathSeparator))
+                .filter(entry -> !entry.isBlank())
+                .map(entry -> Path.of(entry).toAbsolutePath().toUri().toString())
+                .collect(java.util.stream.Collectors.joining("|"));
     }
 
     /** javac with the jdk.compiler exports, the output directory, the fixture's options and the extra ones. */
