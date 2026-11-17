@@ -83,6 +83,7 @@ final class ModuleStateDb implements AutoCloseable {
     private final Map<String, FileState> files = new TreeMap<>();
     private final Map<String, TaskState> tasks = new TreeMap<>();
     private int digestedFiles;
+    private boolean dirty;
 
     private ModuleStateDb(Path root, Storage storage, FileChannel leaseChannel, FileLock lease) {
         this.root = root;
@@ -229,10 +230,24 @@ final class ModuleStateDb implements AutoCloseable {
                 && prior.outputStamp.equals(outputStamp(task));
     }
 
+    /** Original immediate-publish contract (used by the single-task API and tests). */
     void record(TaskManifest.Task task, String current) throws IOException {
+        recordPending(task, current);
+        commit();
+    }
+
+    /** RocksDB WriteBatch-inspired staging: one module image publication per successful graph. */
+    void recordPending(TaskManifest.Task task, String current) throws IOException {
         String outputs = outputStamp(task);
+        if (outputs.isEmpty()) throw new IOException("cannot persist task without all declared outputs");
         tasks.put(task.name(), new TaskState(current, outputs));
+        dirty = true;
+    }
+
+    void commit() throws IOException {
+        if (!dirty) return;
         storage.write(encode());
+        dirty = false;
     }
 
     private String outputStamp(TaskManifest.Task task) throws IOException {
