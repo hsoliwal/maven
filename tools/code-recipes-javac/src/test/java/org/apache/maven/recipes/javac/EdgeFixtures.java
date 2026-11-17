@@ -37,9 +37,19 @@ final class EdgeFixtures {
      * given to the file manager and as {@code -encoding}.
      */
     static List<Fixture> encodings() {
-        return List.of(
-                encoded("latin1", "l/Lat.java", LATIN1, StandardCharsets.ISO_8859_1),
-                encoded("cp1252", "w/Win.java", CP1252, WINDOWS_1252));
+        Fixture latin1 = encoded("latin1", "l/Lat.java", LATIN1, StandardCharsets.ISO_8859_1);
+        Fixture cp1252 = encoded("cp1252", "w/Win.java", CP1252, WINDOWS_1252);
+        return List.of(latin1, cp1252, withRelease(latin1), withRelease(cp1252));
+    }
+
+    /**
+     * With {@code --release}, as maven-compiler-plugin passes it, javac replaces the file manager in its context by a
+     * delegating one that hides the charset (DelegatingJavaFileManager.installReleaseFileManager, JDK 21).
+     */
+    private static Fixture withRelease(Fixture fixture) {
+        List<String> options = new java.util.ArrayList<>(fixture.options());
+        options.addAll(List.of("--release", "21"));
+        return fixture.named(fixture.name() + "-release").withOptions(options.toArray(String[]::new));
     }
 
     /** The same sources compiled through the javax.tools API without a file manager charset: only -encoding. */

@@ -52,9 +52,12 @@ mvn -f tools/code-recipes-javac/pom.xml install
   `UnicodeText`) and decodes each literal; a chain is split only when the decoded values join to javac's value. A
   chain longer than 128 literals, one with escaped surrogates, or one it cannot read stays folded, and the file is a
   `print-mismatch` with that reason, so no wrong tree reaches a recipe.
-* The tree's charset is the one javac decoded the file with (`CompileCharset`): the charset of javac's file manager,
-  which maven-compiler-plugin sets in process, else `-encoding`, else the platform default. In a javax.tools compile
-  javac gives `-encoding` to the file manager only, not to the compiler's options.
+* The tree's charset is the one javac decoded the file with (`CompileCharset`): javac's file manager decodes with the
+  charset maven-compiler-plugin gives it in process, else with `-encoding`. A javax.tools compile gives `-encoding` to
+  the file manager only, not to the compiler's options, and with `--release` javac hides its file manager behind a
+  delegating one. The charset is therefore read from the file object: javac's `PathFileObject.openReader` wraps the
+  file in an `InputStreamReader` over the file manager's decoder, whose encoding is read without reading the file;
+  other file objects fall back to the file manager, `-encoding` and the platform default.
 * `LstCollector` counts the PARSE events of every file and builds a file's tree at the ANALYZE event of its last
   top-level class: attributed and flowed, not yet desugared. `package-info.java` gets its own ANALYZE event (javac
   gives the package an env for an annotation or a doc comment); a file without any type is built at COMPILATION
@@ -185,7 +188,7 @@ tag v8.89.0, except the two CommentTest cases of the known defect below, which u
 | `ForkedJavacTest` | forked command-line javac of the running JDK without the plugin | same exit code, output and class files; census equal to the in-process run, for the encoding and stress fixtures too |
 | `CompilePolicyTest` | javac's own compile states | the table above; the policy option changes no class file |
 | `StringFoldingTest` | the compile options and the census | the plugin sets no compiler option; a chain longer than 128 literals or with escaped surrogates is a `print-mismatch` without a tree |
-| `EncodingTest` | the file bytes and the classic parser with the same charset | ISO-8859-1 and windows-1252 sources, with the charset on the file manager or only as `-encoding`: status `ok`, the compile's charset, the exact bytes |
+| `EncodingTest` | the file bytes and the classic parser with the same charset | ISO-8859-1 and windows-1252 sources, with the charset on the file manager or only as `-encoding`, with and without `--release`, initialised directly and through `-Xplugin`: status `ok`, the compile's charset, the exact bytes |
 | `PluginRobustnessTest`, `PluginOptionsTest` | plain javac | paths with spaces in plain, quoted and URI form are read whole; a census that is a directory or lies under a file, an empty value and an unknown option leave result, diagnostics and class files unchanged and print one notice line, in process and forked |
 | `KnownRewriteDefectsTest` | the classic parser | the rewrite 8.89.0 defects below get no tree from either |
 

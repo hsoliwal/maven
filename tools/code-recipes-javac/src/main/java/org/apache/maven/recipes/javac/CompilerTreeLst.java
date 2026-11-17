@@ -105,7 +105,7 @@ public final class CompilerTreeLst {
         FoldedStrings.Result unfolded = FoldedStrings.unfold(
                 visit(unit, text, SourcePaths.relative(file, root), path), Optional.ofNullable(typeCache.get(STRING)));
         // J.CompilationUnit.withCharset is declared to return SourceFile
-        J.CompilationUnit lst = (J.CompilationUnit) unfolded.lst().withCharset(CompileCharset.of(context));
+        J.CompilationUnit lst = (J.CompilationUnit) unfolded.lst().withCharset(CompileCharset.of(file, context));
         boolean printEqual = unfolded.unsplit() == 0 && printsSource(lst, text, path);
         return new LstResult(lst, printEqual, MethodCalls.count(lst), detail(unfolded.unsplit()));
     }

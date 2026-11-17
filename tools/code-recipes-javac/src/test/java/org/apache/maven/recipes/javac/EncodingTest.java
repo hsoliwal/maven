@@ -53,6 +53,20 @@ class EncodingTest {
                 .map(fixture -> dynamicTest(fixture.name(), () -> assertEncoded(fixture)));
     }
 
+    /** Through {@code -Xplugin} the plugin starts after javac installed its {@code --release} file manager. */
+    @TestFactory
+    Stream<DynamicTest> throughXpluginTheCensusSaysOkAlsoWithRelease() {
+        return Stream.of(EdgeFixtures.encodings(), EdgeFixtures.encodingsWithoutManagerCharset())
+                .flatMap(List::stream)
+                .map(fixture -> dynamicTest(fixture.name(), () -> {
+                    Javac.Compilation compilation = Javac.compile("encoding", fixture, Javac.Mode.XPLUGIN);
+                    assertTrue(compilation.success(), compilation::output);
+                    String row =
+                            compilation.census().lines().skip(1).findFirst().orElse("<no row>");
+                    assertTrue(row.endsWith("\tok\tANALYZE"), row);
+                }));
+    }
+
     private static void assertEncoded(Fixture fixture) throws IOException {
         Charset charset = Charset.forName(fixture.options().get(1));
         Javac.Compilation compilation =
