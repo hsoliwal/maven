@@ -36,10 +36,20 @@ final class ReproduceCommand {
     private ReproduceCommand() {}
 
     /**
-     * The command for a failure of {@code kind} (compile, testCompile, test, integration-test, other) in the module at
-     * {@code path}; {@code phase} is the failed mojo's phase, used for other failures.
+     * The command for a failure of {@code kind} (compile, testCompile, test, integration-test, model, other) in the
+     * module at {@code path}; {@code phase} is the failed mojo's phase, used for other failures, and {@code goal} the
+     * properties and {@code g:a:v:goal} of a goal run from the command line (empty for a lifecycle execution).
      */
     static String of(String launcher, String kind, String path, List<Diagnostic> errors,
+            List<SurefireReports.TestCase> tests, String phase, List<String> goal) {
+        if (!goal.isEmpty()) {
+            return MavenCommands.goal(launcher, path, goal);
+        }
+        return "model".equals(kind) ? MavenCommands.line(launcher, List.of("validate"))
+                : lifecycle(launcher, kind, path, errors, tests, phase);
+    }
+
+    private static String lifecycle(String launcher, String kind, String path, List<Diagnostic> errors,
             List<SurefireReports.TestCase> tests, String phase) {
         switch (kind) {
             case "compile":
@@ -58,10 +68,14 @@ final class ReproduceCommand {
         }
     }
 
-    /** {@code a.BTest#adds+subtracts,a.CTest#x}; classes only above {@link #MAX_METHODS} tests. */
+    /**
+     * {@code a.BTest#adds+subtracts,a.CTest#x}; classes only above {@link #MAX_METHODS} tests. A nested class's
+     * {@code $} becomes {@code *}, which Surefire matches and no shell expands inside double quotes.
+     */
     static String selector(List<SurefireReports.TestCase> tests) {
         Map<String, Set<String>> byClass = new LinkedHashMap<>();
-        tests.forEach(t -> byClass.computeIfAbsent(t.className(), c -> new LinkedHashSet<>()).add(method(t.method())));
+        tests.forEach(t -> byClass.computeIfAbsent(t.className().replace('$', '*'), c -> new LinkedHashSet<>())
+                .add(method(t.method())));
         boolean methods = tests.size() <= MAX_METHODS;
         return byClass.entrySet().stream()
                 .map(e -> methods ? e.getKey() + "#" + String.join("+", e.getValue()) : e.getKey())

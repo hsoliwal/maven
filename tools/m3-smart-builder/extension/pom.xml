@@ -111,6 +111,18 @@
             <configuration><mainClass>org.apache.maven.agent.events.StackTrimmerTestMain</mainClass></configuration></execution>
           <execution><id>failure-digest-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>org.apache.maven.agent.events.FailureDigestTestMain</mainClass></configuration></execution>
+          <execution><id>redact-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.RedactTestMain</mainClass></configuration></execution>
+          <execution><id>summary-printer-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.SummaryPrinterTestMain</mainClass></configuration></execution>
+          <execution><id>maven-commands-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.MavenCommandsTestMain</mainClass></configuration></execution>
+          <execution><id>log-charset-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.LogCharsetTestMain</mainClass></configuration></execution>
+          <execution><id>session-start-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.SessionStartTestMain</mainClass></configuration></execution>
+          <execution><id>model-problems-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>org.apache.maven.agent.events.ModelProblemsTestMain</mainClass></configuration></execution>
         </executions>
       </plugin>
     </plugins>

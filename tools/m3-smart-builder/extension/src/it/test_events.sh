@@ -23,7 +23,13 @@
 #              event with its source line, failure.json/md with reproduce commands, byte-identical on a rerun
 #   log        -l build.log -Dmaven.events.log=build.log: the warning of c reaches the events from the log
 #   fail-fast  without -fae b and c are skipped and listed as skipped
+#   pwsh       (Windows) the digest's reproduce command, run as is in Windows PowerShell, reruns the failed test
+#   killed     a build killed while a test runs leaves none of the previous build's agent files behind
+#   cli        a goal run from the command line (default-cli) is reproduced by that goal and its properties
+#   pom        a dependency without a version: kind model, the POM problem with file, line and column
 #   green      fixed sources, clean verify: BUILD SUCCESS summary, failure files removed, no locked file on clean
+# The root directory's name holds a space and a non-ASCII letter, so the -l log of Maven on Java 17 (platform
+# charset) must be read in that charset for its paths to become root-relative.
 # Usage: test_events.sh <extension.jar> <java-home>... (each JDK runs every case). Needs mvn and, in the local
 # repository, compiler 3.13.0, surefire 3.2.5 with JUnit 4.13.2, resources 3.3.1, jar 3.4.1, clean 3.2.0.
 # WORK=<dir> keeps the fixture and the outputs there.
@@ -57,10 +63,31 @@ mvnx() { # mvnx <java home> <dir> <out> <args...>; exit status kept in $STATUS
     (cd "$dir" && JAVA_HOME="$jh" MAVEN_OPTS="-Dmaven.ext.class.path=$EXT" mvn -o -B -ntp -s "$T/settings.xml" "$@") > "$out" 2>&1
     STATUS=$?
 }
+slowtest() { # slowtest <root>: run in Maven's JVM (forkCount=0, working directory the root) while b/slow.flag exists, it writes the JVM pid to b/maven.pid and sleeps
+    printf 'package fix;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport org.junit.Test;\n\npublic class SlowTest {\n    @Test\n    public void waits() throws Exception {\n        if (Files.exists(Path.of("b", "slow.flag"))) {\n            Files.writeString(Path.of("b", "maven.pid"), Long.toString(ProcessHandle.current().pid()));\n            Thread.sleep(120_000L);\n        }\n    }\n}\n' > "$1/b/src/test/java/fix/SlowTest.java"
+}
+killed() { # killed <java home> <root> <out>: starts a build, kills Maven's JVM while SlowTest sleeps
+    local jh=$1 dir=$2 out=$3 n
+    touch "$dir/b/slow.flag"; rm -f "$dir/b/maven.pid"
+    mvnx "$jh" "$dir" "$out" -q -Dmaven.agent=true -DforkCount=0 -fae verify &
+    for n in $(seq 1 120); do [ -s "$dir/b/maven.pid" ] && break; sleep 1; done
+    [ -s "$dir/b/maven.pid" ] || fail "killed: the slow test never started: $(tail -5 "$out")"
+    if command -v taskkill > /dev/null; then taskkill //F //T //PID "$(cat "$dir/b/maven.pid")" > /dev/null
+    else kill -9 "$(cat "$dir/b/maven.pid")"; fi
+    wait
+    rm -f "$dir/b/slow.flag" "$dir/b/maven.pid"
+}
+pwsh_reproduce() { # pwsh_reproduce <java home> <root> <command> <out>: runs the command in Windows PowerShell
+    local ps1="$T/reproduce.ps1"
+    printf '\xef\xbb\xbfSet-Location -LiteralPath '"'"'%s'"'"'\r\n$env:JAVA_HOME = '"'"'%s'"'"'\r\n$env:MAVEN_OPTS = '"'"'-Dmaven.ext.class.path=%s'"'"'\r\n%s -o -B -ntp -s '"'"'%s'"'"'\r\nexit $LASTEXITCODE\r\n' \
+        "$(cygpath -w "$2")" "$(cygpath -w "$1")" "$(cygpath -w "$EXT")" "$3" "$(cygpath -w "$T/settings.xml")" > "$ps1"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ps1")" > "$4" 2>&1
+    STATUS=$?
+}
 has() { grep -q -- "$2" "$1" || fail "$3: no '$2' in $1"; }
 
 for JH in "$@"; do
-    N=$(basename "$JH"); R="$T/$N/r"; O="$T/$N/out"; mkdir -p "$O"; fixture "$R" broken
+    N=$(basename "$JH"); R="$T/$N/fx é dir"; O="$T/$N/out"; mkdir -p "$O"; fixture "$R" broken
     A="$R/target/agent"
 
     mvnx "$JH" "$R" "$O/off.txt" -q verify -fae
@@ -73,7 +100,7 @@ for JH in "$@"; do
     has "$O/quiet.txt" '^\[agent\] BUILD FAILURE' quiet
     has "$O/quiet.txt" '^\[agent\]   ERROR a/src/main/java/fix/Broken.java:5:16 cannot find symbol; symbol: variable missing' quiet
     has "$O/quiet.txt" '^\[agent\]   TEST fix.BTest#adds failed: java.lang.AssertionError: expected:<3> but was:<4> at b/src/test/java/fix/BTest.java:10' quiet
-    has "$O/quiet.txt" '^\[agent\]   reproduce: mvn -pl b -am -Dtest=fix.BTest#adds -Dsurefire.failIfNoSpecifiedTests=false test' quiet
+    has "$O/quiet.txt" '^\[agent\]   reproduce: mvn -pl b -am "-Dtest=fix.BTest#adds" "-Dsurefire.failIfNoSpecifiedTests=false" test' quiet
     E="$A/build-events.jsonl"
     [ -s "$E" ] && [ -s "$A/failure.json" ] && [ -s "$A/failure.md" ] && [ -s "$A/summary.txt" ] || fail "quiet: agent files missing"
     awk -F'"seq":' 'NR > 0 { split($2, s, ","); if (s[1] != NR) { print "seq " s[1] " at line " NR; exit 1 } }' "$E" || fail "quiet: seq order"
@@ -98,12 +125,50 @@ for JH in "$@"; do
     [ "$STATUS" = 1 ] || fail "log: exit $STATUS"
     has "$E" '"type":"diagnostic","project":"fix:c","source":"compiler","severity":"WARNING","file":"c/src/main/java/fix/C.java","line":5,"column":16,"rule":"removal"' log
     has "$O/build.log" '^\[agent\] BUILD FAILURE' log
+    has "$O/build.log" '^\[agent\] BUILD FAILURE.* diagnostics 1 error(s)' log
+    grep -q 'fx ' "$E" "$A/summary.txt" "$A/failure.json" && fail "log: the absolute root (not decoded or not removed) in the agent files"
     cp -r "$A" "$O/agent-log"
 
     mvnx "$JH" "$R" "$O/failfast.txt" -q -Dmaven.agent=true verify
     [ "$STATUS" = 1 ] || fail "fail-fast: exit $STATUS"
     has "$A/failure.json" '"skippedProjects":\["fix:b","fix:c"\]' fail-fast
     has "$O/failfast.txt" '^\[agent\] SKIPPED fix:c' fail-fast
+
+    if command -v powershell.exe > /dev/null; then
+        mvnx "$JH" "$R" "$O/quiet3.txt" -q -Dmaven.agent=true -fae verify
+        RB=$(sed -n 's/.*"path":"b","kind":"test".*"reproduce":"\(mvn -pl b [^}]*\)"}.*/\1/p' "$A/failure.json" | sed 's/\\"/"/g')
+        [ -n "$RB" ] || fail "pwsh: no reproduce command for b in failure.json"
+        pwsh_reproduce "$JH" "$R" "$RB" "$O/pwsh.txt"
+        [ "$STATUS" = 1 ] || fail "pwsh: exit $STATUS: $(tail -5 "$O/pwsh.txt")"
+        has "$O/pwsh.txt" 'Tests run: 1, Failures: 1, Errors: 0, Skipped: 0' pwsh
+        has "$O/pwsh.txt" 'BTest.adds' pwsh
+    else
+        echo "AGENT_EVENTS_TEST pwsh NOT RUN: no powershell.exe"
+    fi
+
+    slowtest "$R"
+    mvnx "$JH" "$R" "$O/before-kill.txt" -q -Dmaven.agent=true -fae verify
+    [ -s "$A/failure.json" ] && [ -s "$A/summary.txt" ] || fail "killed: no files from the build before"
+    killed "$JH" "$R" "$O/killed.txt"
+    [ -e "$A/failure.json" ] || [ -e "$A/failure.md" ] || [ -e "$A/summary.txt" ] || [ -e "$E" ] \
+        && fail "killed: files of the previous build left: $(ls "$A")"
+    rm -f "$R/b/src/test/java/fix/SlowTest.java"
+
+    mvnx "$JH" "$R" "$O/cli.txt" -q -Dmaven.agent=true -Dmaven.compiler.showWarnings=true -pl a compiler:compile
+    [ "$STATUS" = 1 ] || fail "cli: exit $STATUS"
+    has "$A/failure.json" '"reproduce":"mvn -pl a -am \\"-Dmaven.compiler.showWarnings=true\\" org.apache.maven.plugins:maven-compiler-plugin:3.13.0:compile"' cli
+
+    P="$T/$N/pom r"; fixture "$P" broken
+    pom "$P/b" b '<dependencies><dependency><groupId>junit</groupId><artifactId>junit</artifactId><scope>test</scope></dependency></dependencies>'
+    mvnx "$JH" "$P" "$O/pom.txt" -q -Dmaven.agent=true verify
+    [ "$STATUS" = 1 ] || fail "pom: exit $STATUS"
+    has "$O/pom.txt" "^\[agent\] FAILED \. () model: " pom
+    has "$O/pom.txt" "^\[agent\]   ERROR b/pom.xml:1:[0-9]* 'dependencies.dependency.version' for junit:junit:jar is missing" pom
+    has "$O/pom.txt" '^\[agent\]   reproduce: mvn validate' pom
+    has "$P/target/agent/failure.json" '"kind":"model"' pom
+    has "$P/target/agent/failure.json" '"file":"b/pom.xml","line":1,"column":[0-9]*,"severity":"ERROR"' pom
+    has "$P/target/agent/build-events.jsonl" '"type":"diagnostic","project":null,"source":"model","severity":"ERROR","file":"b/pom.xml","line":1' pom
+    cp -r "$P/target/agent" "$O/agent-pom"
 
     fixture "$R" fixed
     mvnx "$JH" "$R" "$O/green.txt" -q -Dstyle.color=never -Dmaven.agent=true clean verify

@@ -90,17 +90,21 @@ public final class FailureDigestTestMain {
         SurefireReports.TestCase subs = new SurefireReports.TestCase("fix.BTest", "subs(int)[2]", "error", 1, "", "", "");
         SurefireReports.TestCase other = new SurefireReports.TestCase("fix.CTest", "x", "failed", 1, "", "", "");
         Diagnostic testSource = new Diagnostic("fix:a", "compiler", "ERROR", "a/src/test/java/fix/T.java", 1, 1, "", "m", "");
-        Check.equal("mvn -pl a -am compile", ReproduceCommand.of("mvn", "compile", "a", List.of(), List.of(), "compile"),
+        Check.equal("mvn -pl a -am compile", ReproduceCommand.of("mvn", "compile", "a", List.of(), List.of(), "compile",
+                List.of()),
                 "compile failure");
         Check.equal("./mvnw -pl a -am test-compile", ReproduceCommand.of("./mvnw", "compile", "a", List.of(testSource),
-                List.of(), "compile"), "a compile error in a test source reruns test-compile");
-        Check.equal("mvn -pl b -am -Dtest=fix.BTest#adds+subs,fix.CTest#x -Dsurefire.failIfNoSpecifiedTests=false test",
-                ReproduceCommand.of("mvn", "test", "b", List.of(), List.of(adds, subs, other), "test"),
+                List.of(), "compile", List.of()), "a compile error in a test source reruns test-compile");
+        Check.equal("mvn -pl b -am \"-Dtest=fix.BTest#adds+subs,fix.CTest#x\" \"-Dsurefire.failIfNoSpecifiedTests=false\""
+                + " test", ReproduceCommand.of("mvn", "test", "b", List.of(), List.of(adds, subs, other), "test", List.of()),
                 "failed tests grouped by class, parameter suffixes removed");
-        Check.equal("mvn -pl b -am -Dit.test=fix.CTest#x -Dfailsafe.failIfNoSpecifiedTests=false verify",
-                ReproduceCommand.of("mvn", "integration-test", "b", List.of(), List.of(other), "integration-test"),
+        Check.equal("mvn -pl b -am \"-Dit.test=fix.CTest#x\" \"-Dfailsafe.failIfNoSpecifiedTests=false\""
+                + " \"-Dtest=NoUnitTestSelected\" \"-Dsurefire.failIfNoSpecifiedTests=false\" verify",
+                ReproduceCommand.of("mvn", "integration-test", "b", List.of(), List.of(other), "integration-test",
+                        List.of()),
                 "integration test");
-        Check.equal("mvn -pl . -am package", ReproduceCommand.of("mvn", "other", ".", List.of(), List.of(), "package"),
+        Check.equal("mvn -pl . -am package", ReproduceCommand.of("mvn", "other", ".", List.of(), List.of(), "package",
+                List.of()),
                 "another mojo reruns its phase");
     }
 

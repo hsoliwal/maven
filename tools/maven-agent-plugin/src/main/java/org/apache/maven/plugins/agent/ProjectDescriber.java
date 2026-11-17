@@ -58,13 +58,16 @@ final class ProjectDescriber {
         List<MavenProject> projects = session.getProjects();
         List<ProjectDescription.Module> modules = IntStream.range(0, projects.size())
                 .mapToObj(i -> module(i + 1, projects.get(i), phase)).collect(Collectors.toList());
-        String launcher = MavenCommands.launcher(root);
-        ProjectDescription.Commands commands = new ProjectDescription.Commands(MavenCommands.build(launcher),
-                MavenCommands.agent(launcher), MavenCommands.module(launcher, "<path>", phase),
-                MavenCommands.test(launcher, "<path>", "<Class>#<method>"));
+        ProjectDescription.Commands commands = commands(MavenCommands.launcher(root), phase);
         MavenProject top = session.getTopLevelProject();
         return new ProjectDescription(Optional.ofNullable(top.getName()).orElse(top.getArtifactId()),
                 Optional.ofNullable(top.getDescription()).orElse("").strip(), modules, commands);
+    }
+
+    /** The commands of a description, spelled by the extension's {@link MavenCommands}, their one owner. */
+    static ProjectDescription.Commands commands(String launcher, String phase) {
+        return new ProjectDescription.Commands(MavenCommands.build(launcher), MavenCommands.agent(launcher),
+                MavenCommands.module(launcher, "<path>", phase), MavenCommands.test(launcher, "<path>", "<Class>#<method>"));
     }
 
     private ProjectDescription.Module module(int index, MavenProject project, String phase) {

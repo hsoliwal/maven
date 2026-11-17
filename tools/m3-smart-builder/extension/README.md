@@ -186,8 +186,11 @@ With `-Dmaven.agent=true` the event spy `org.apache.maven.agent.events.BuildEven
 agent; without it (or `-Dmaven.events.file=...`) it records nothing.
 
 ```sh
-mvn -B -ntp -q -Dstyle.color=never -Dmaven.agent=true verify
+mvn -B -ntp -q "-Dstyle.color=never" "-Dmaven.agent=true" verify
 ```
+
+(the `-D` arguments are quoted for Windows PowerShell 5.1, which splits an unquoted `-Dkey.with.dots=value`; the
+property alone does not turn off colours or transfer progress, so keep `-B -ntp "-Dstyle.color=never"`)
 
 prints a short summary on standard output (also under `-q`; every line starts with `[agent]`) and writes, under
 `target/agent/`:
@@ -206,7 +209,14 @@ from a project's `.mvn/extensions.xml`. `maven-agent-plugin` (`tools/maven-agent
 
 Tests: `mvn verify` runs the offline unit tests (`*TestMain`: JSON escaping, truncation and field order, event
 order under parallel writers, the event cap, diagnostics in compiler, Checkstyle, javac and gcc output, Surefire
-reports, stack trimming, the digest byte for byte). `src/it/test_events.sh <extension.jar> <java-home>...` runs real
-offline builds of a three-module reactor (a compile error, a failing test, a warning): nothing without the property,
-the summary under `-q`, events in order with file, line and column, the digest identical on a rerun, the warning from
-the log, skipped modules of a fail-fast build, and a green `clean verify` over the agent files.
+reports, stack trimming, the digest byte for byte, linear-time redaction of 1 MB messages, one-line summary fields,
+quoted command spellings and reproduce commands of command-line goals, the `-l` log charset, removal of the previous
+build's files at session start, and the located problems of a POM failure).
+
+`src/it/test_events.sh <extension.jar> <java-home>...` runs real offline builds of a three-module reactor (a compile
+error, a failing test, a warning) under a root whose name holds a space and a non-ASCII letter: nothing without the
+property, the summary under `-q`, events in order with file, line and column, the digest identical on a rerun, the
+warning from the `-l` log (read in Maven's charset on Java 17), skipped modules of a fail-fast build, the reproduce
+command run as is in Windows PowerShell, a killed build leaving none of the previous build's files, a command-line
+goal reproduced with its properties, a POM error with its file, line and column, and a green `clean verify` over the
+agent files.

@@ -26,10 +26,17 @@ import java.util.regex.Pattern;
 /**
  * Message text fit for an agent file: no credentials of {@code scheme://user:password@host} URLs, no terminal
  * colours, and the build root's absolute path written relative, so files are portable and stable across checkouts.
+ * Every pattern runs in linear time: a scheme starts only where no scheme character precedes it and is at most 64
+ * characters long, and the possessive quantifiers never backtrack. Messages are clipped before they are redacted.
  */
 final class Redact {
-    private static final Pattern CREDENTIALS = Pattern.compile("([A-Za-z][A-Za-z0-9+.-]*://)[^/\\s@]+@");
-    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;]*[A-Za-z]");
+    private static final Pattern CREDENTIALS =
+            Pattern.compile("(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]{0,63}+://)[^/\\s@]{1,8192}+@");
+    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;]*+[A-Za-z]");
+    /** Characters kept before redaction, per character of the final bound, so redaction never meets a huge text. */
+    static final int PRE_CLIP_FACTOR = 4;
+    /** Characters kept before redaction besides {@link #PRE_CLIP_FACTOR}, for the root paths that redaction drops. */
+    static final int PRE_CLIP_SLACK = 4096;
 
     private Redact() {}
 
@@ -54,8 +61,11 @@ final class Redact {
         return clean(end < 0 ? text : text.substring(0, end), root, max);
     }
 
-    /** A whole message, cleaned, made root-relative and bounded. */
+    /** A whole message, clipped, cleaned, made root-relative and bounded. */
     static String clean(String message, Path root, int max) {
-        return JsonText.clip(paths(secrets(message == null ? "" : message), root).strip(), max);
+        String text = message == null ? "" : message;
+        int head = (int) Math.min(Integer.MAX_VALUE, (long) max * PRE_CLIP_FACTOR + PRE_CLIP_SLACK);
+        String clipped = text.length() > head ? JsonText.clip(text, head) : text;
+        return JsonText.clip(paths(secrets(clipped), root).strip(), max);
     }
 }

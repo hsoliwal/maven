@@ -21,6 +21,7 @@ package org.apache.maven.agent.events;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,8 +47,7 @@ final class SessionReport {
     static void write(BuildRecorder recorder, List<Throwable> exceptions) throws IOException {
         AgentSettings settings = recorder.settings();
         recorder.skipUnfinished();
-        scanLog(recorder);
-        recorder.diagnostics().flushRepeats();
+        diagnose(recorder, exceptions);
         List<BuildRecorder.FailureNote> notes = notes(recorder, exceptions);
         List<FailureDigest.Failure> failures = notes.stream().map(note -> failure(recorder, note))
                 .collect(Collectors.toList());
@@ -60,6 +60,14 @@ final class SessionReport {
         summary(recorder, outcome, failures, digest.isPresent());
     }
 
+    /** The diagnostics known only at the end: the log's, a POM failure's model problems, then the repeat counts. */
+    private static void diagnose(BuildRecorder recorder, List<Throwable> exceptions) throws IOException {
+        scanLog(recorder);
+        exceptions.forEach(e -> recorder.diagnostics().accept(modelProblems(e), recorder.index(), Optional.empty(),
+                "model"));
+        recorder.diagnostics().flushRepeats();
+    }
+
     /** Diagnostics of the {@code -l} log ({@code maven.events.log}), mostly the warnings a failure message lacks. */
     private static void scanLog(BuildRecorder recorder) throws IOException {
         Optional<Path> log = recorder.settings().eventsLog().filter(Files::isRegularFile);
@@ -67,8 +75,8 @@ final class SessionReport {
             return;
         }
         DiagnosticLines reader = new DiagnosticLines(DiagnosticLines.ERROR, "", "");
-        try (BufferedReader lines = new BufferedReader(
-                new InputStreamReader(Files.newInputStream(log.get()), StandardCharsets.UTF_8))) {
+        Charset charset = LogCharset.of(log.get(), LogCharset.candidates(), MAX_LOG_CHARS);
+        try (BufferedReader lines = new BufferedReader(new InputStreamReader(Files.newInputStream(log.get()), charset))) {
             long[] chars = {0};
             lines.lines().takeWhile(line -> (chars[0] += line.length() + 1) <= MAX_LOG_CHARS).forEach(reader::accept);
         }
@@ -84,9 +92,19 @@ final class SessionReport {
         notes.sort(Comparator.comparingInt(note -> recorder.index().byId(note.project())
                 .map(ReactorIndex.Module::index).orElse(Integer.MAX_VALUE)));
         if (notes.isEmpty()) {
-            exceptions.stream().limit(3).forEach(e -> notes.add(new BuildRecorder.FailureNote("", "other", "", "", e)));
+            exceptions.stream().limit(3).forEach(e -> notes.add(new BuildRecorder.FailureNote("",
+                    modelProblems(e).isEmpty() ? "other" : "model", "", "", List.of(), e)));
         }
         return notes;
+    }
+
+    /** The model problems of a POM failure; none when this Maven lacks the Maven 3 model classes. */
+    static List<DiagnosticLines.Raw> modelProblems(Throwable failure) {
+        try {
+            return ModelProblems.of(failure);
+        } catch (LinkageError absent) {
+            return List.of();
+        }
     }
 
     private static FailureDigest.Failure failure(BuildRecorder recorder, BuildRecorder.FailureNote note) {
@@ -98,7 +116,7 @@ final class SessionReport {
         List<FailureDigest.Item> items = errors.stream().limit(settings.printLimit()).map(d -> new FailureDigest.Item(d,
                 SourceWindow.read(settings.root(), d.file(), d.line(), settings.context()))).collect(Collectors.toList());
         String reproduce = ReproduceCommand.of(MavenCommands.launcher(settings.root()), note.kind(), path, errors,
-                tests.stream().map(TestResult::test).collect(Collectors.toList()), note.phase());
+                tests.stream().map(TestResult::test).collect(Collectors.toList()), note.phase(), note.goal());
         return new FailureDigest.Failure(module.map(ReactorIndex.Module::index).orElse(0), note.project(), path,
                 note.kind(), note.mojo(), message(note.cause(), settings), helpReference(note.cause()), items,
                 tests.stream().limit(settings.printLimit()).collect(Collectors.toList()), reproduce);
@@ -168,6 +186,19 @@ final class SessionReport {
         return new JsonText.Obj().put("total", recorder.index().modules().size())
                 .put("success", outcomeCount(recorder, "success")).put("failure", outcomeCount(recorder, "failure"))
                 .put("skipped", outcomeCount(recorder, "skipped"));
+    }
+
+    /**
+     * Removes the previous build's event stream and, in agent mode, its digest and summary before this build runs, so
+     * a build that is killed before its session end leaves none of them looking current.
+     */
+    static void removePrevious(AgentSettings settings) throws IOException {
+        Files.deleteIfExists(settings.eventsFile());
+        if (settings.agent()) {
+            Files.deleteIfExists(settings.agentDir().resolve("failure.json"));
+            Files.deleteIfExists(settings.agentDir().resolve("failure.md"));
+            Files.deleteIfExists(settings.agentDir().resolve("summary.txt"));
+        }
     }
 
     /** In agent mode: failure.json and failure.md after a failure, their removal after a green build. */
