@@ -139,6 +139,39 @@ connector reads the execution's `manifest` and registers an LSP4E language serve
 build: rust-analyzer, gopls, clangd, typescript-language-server, pylsp, csharp-ls and sourcekit-lsp, each when it is
 on `PATH` and no installed IDE already serves that language. Eclipse never runs the tools; Maven does.
 
+### Read-only Eclipse project model: Core, JDT, CDT, RustDT/Corrosion, PyDev
+
+`m3-polyglot:eclipse-model` is a **new, opt-in, read-only** goal. It needs no Maven project, never executes
+an Eclipse builder, compiler or LSP server, and neither edits nor generates `.project`, `.classpath`, `.cproject`,
+`.pydevproject` or Maven files. It produces a stable JSON `m3-eclipse-project-v1` snapshot of:
+
+| Eclipse owner | Maven-observable original facts | Ownership boundary |
+| --- | --- | --- |
+| Core/Resources | project name, ordered nature IDs and builder IDs, project references and linked-resource declarations | Keeps `IProjectDescription` and builder semantics in Eclipse; does not follow linked paths |
+| JDT | every `.classpath` entry's attributes, nested access rules and extra attributes | JDT resolves classpath containers, inclusion/exclusion and compiler state |
+| CDT | `.cproject` configuration identifiers and names | CDT resolves language settings, toolchains and managed build configurations |
+| RustDT / Corrosion | original nature IDs and `Cargo.toml` SHA-256 if present | Rust language tooling/Cargo stays authoritative; unknown nature IDs are preserved verbatim |
+| PyDev | `.pydevproject` interpreter/version properties and ordered Python source paths | PyDev resolves interpreter, PYTHONPATH and source folders |
+
+Each present recognized descriptor also gets a per-file SHA-256 digest; optional JDT/CDT/PyDev `.settings` files
+are fingerprinted without attempting to override their preferences. The parser fails closed on malformed XML,
+DOCTYPE/external entities, oversized descriptors and symlinked descriptor files. It never treats a nature ID as
+permission to run that builder. The model is an **interoperability surface**, not an implementation of the Eclipse
+Resources API, ECJ, CDT scanner discovery or PyDev's runtime.
+
+```sh
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:eclipse-model \
+  -Dm3.polyglot.eclipse.dir=/work/existing-eclipse-project
+
+# Portable API/CLI, without Maven, Eclipse or OSGi on the runtime classpath:
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli /work/existing-eclipse-project
+```
+
+The opt-in OpenRewrite registration recipe `io.synexia.maven.recipe.EnableEclipseModelInspection` only adds this
+plugin to a consuming POM; it does not bind goals, modify IDE metadata or install toolchains. Test full m2e/PDE,
+JDT, CDT and PyDev round trips independently before treating any live workspace behavior as supported.
+
 ## Strict manifest v1
 
 UTF-8, LF lines, terminal LF and a maximum 1 MiB. One row per tab-separated
@@ -226,8 +259,10 @@ not a license waiver or a guarantee of security/semantic equivalence.
 
 ## Qualification
 
-`verify.sh` compiles the pure Java engine with `--release 17 -Xlint:all -Werror`
-and runs four standalone contract suites (graph, providers, Mavenizer and CLI).
+`verify.sh` compiles the pure Java engine with `--release 17 -Xlint:all -Werror` on a full JDK,
+or with `-source 17 -target 17` on reduced JDK images without `javac`/`ct.sym`
+(the fallback cannot certify Java 17 API availability). It runs five standalone contract suites
+(graph, providers, Mavenizer, Eclipse model and CLI).
 This is not Maven plugin-descriptor
 qualification, real CodeQL extraction, real OpenRewrite application, or full
-Maven reactor verification. Those need independent CI execution.
+Maven reactor/m2e PDE verification. Those need independent CI execution.
