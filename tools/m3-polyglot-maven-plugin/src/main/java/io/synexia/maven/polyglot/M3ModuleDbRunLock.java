@@ -56,15 +56,7 @@ final class M3ModuleDbRunLock implements AutoCloseable {
         }
         Path root = requested.toRealPath();
         if (root.toString().length() > MAX_ROOT_CHARS) throw new IOException("module cache root exceeds limit");
-        Path directory = root.resolve(".m3");
-        if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)
-                && !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("module cache directory cannot be a symlink");
-        }
-        Files.createDirectories(directory);
-        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("module cache directory is not an ordinary directory");
-        }
+        stateDirectory(root);
         Path path = root.resolve(FILE);
         if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)
                 && !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -103,6 +95,20 @@ final class M3ModuleDbRunLock implements AutoCloseable {
             releaseJvmLease(properties, property, token);
             throw failure;
         }
+    }
+
+    /** Creates the ordinary {@code .m3} directory; consumer projects need no root .gitignore: it ignores itself. */
+    private static void stateDirectory(Path root) throws IOException {
+        Path directory = root.resolve(".m3");
+        if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)
+                && !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("module cache directory cannot be a symlink");
+        }
+        Files.createDirectories(directory);
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("module cache directory is not an ordinary directory");
+        }
+        StateFiles.ignoreSelf(directory);
     }
 
     Path root() { return root; }

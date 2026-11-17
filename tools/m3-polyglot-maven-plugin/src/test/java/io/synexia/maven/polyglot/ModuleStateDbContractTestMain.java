@@ -272,7 +272,8 @@ public final class ModuleStateDbContractTestMain {
 
     private static void statePathContract() {
         for (String path : List.of(ModuleStateDb.FILE, ModuleStateDb.EMBEDDED_FILE, ModuleStateDb.LOCK,
-                ModuleStateDb.MARKER, ModuleStateDb.NATIVE_DIRECTORY + "/blobs/hash", ".m3/module-state-123.tmp")) {
+                ModuleStateDb.MARKER, ModuleStateDb.NATIVE_DIRECTORY + "/blobs/hash", ".m3/module-state-123.tmp",
+                ".m3/.gitignore")) {
             require(ModuleStateDb.statePath(path), "owned state path excluded from build inputs: " + path);
         }
         for (String path : List.of(ModuleStateDb.SQLITE_FILE, ModuleStateDb.SQLITE_FILE + "-journal",
