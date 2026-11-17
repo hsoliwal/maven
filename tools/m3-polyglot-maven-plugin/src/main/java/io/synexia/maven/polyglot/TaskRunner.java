@@ -196,11 +196,14 @@ public final class TaskRunner {
                     if (!stamp.equals(after)) {
                         throw new IOException("module inputs changed while task ran: " + task.name());
                     }
-                    moduleState.record(task, after);
+                    moduleState.recordPending(task, after);
                 }
             }
             performed.add(task.name());
             }
+            // One durable commit for the entire successful module DAG.
+            // A failed/interrupting graph never publishes partially updated state.
+            if (moduleState != null) moduleState.commit();
             return List.copyOf(performed);
         }
     }
