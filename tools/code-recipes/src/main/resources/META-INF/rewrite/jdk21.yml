@@ -1,0 +1,33 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: org.apache.maven.recipes.Jdk21Baseline
+displayName: JDK 21 build baseline
+description: >-
+  Raises GitHub Actions `actions/setup-java` `java-version` values below 21 (scalars and the matrix lists, include
+  and exclude entries they refer to) to 21, marks the ones below 21 it cannot raise, and marks the Maven POM Java
+  levels above 21, which a JDK 21 build cannot compile.
+recipeList:
+  - org.apache.maven.recipes.SetupJavaMinimumVersion:
+      minimumJavaMajorVersion: 21
+  - org.apache.maven.recipes.FindSetupJavaVersionBelowMinimum:
+      minimumJavaMajorVersion: 21
+  - org.apache.maven.recipes.FindJavaLevelAboveMaximum:
+      maximumJavaMajorVersion: 21
