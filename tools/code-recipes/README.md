@@ -68,6 +68,7 @@ The dependency-free postimage check is:
 ```sh
 python3 tools/code-recipes/src/test/scripts/browserless_chromellm_pom.py pom.xml
 ```
+| `org.apache.maven.recipes.CommandlineToProcessLauncher` | search (Java) | none |
 
 ### SetupJavaMinimumVersion
 
@@ -292,6 +293,15 @@ new PatternIncludesArtifactFilter(includes, true)
 Search only: the filters take Maven 3 `Artifact`s and the matcher takes Maven 4 ones (a `Dependency` gives the type
 and the scope), so no call site changes without the code around it. Maven 3 plugins are not marked: they cannot call
 core services. Run it with `dryRun`.
+### CommandlineToProcessLauncher
+
+In sources that use the Maven 4 API (`org.apache.maven.api`), marks each `Commandline` constructor and each
+`Commandline` and `CommandLineUtils` call of plexus-utils (`org.codehaus.plexus.util.cli`) and maven-shared-utils
+(`org.apache.maven.shared.utils.cli`) with the `ProcessLauncher` or `ProcessLaunchRequest` builder call that replaces
+it, for example `/*~~(ProcessLauncher.tokenize(String))~~>*/CommandLineUtils.translateCommandline(argLine)`.
+Maven 3 plugins, plugins already on `ProcessLauncher` and other classes named `Commandline` are left alone. It does
+not rewrite: a `Commandline` is built over several statements and its checked exceptions differ. The full mapping
+and the parity tables of the service are in `impl/maven-impl/src/site/markdown/process-launcher.md`.
 
 ## Running the recipes on any repository
 
