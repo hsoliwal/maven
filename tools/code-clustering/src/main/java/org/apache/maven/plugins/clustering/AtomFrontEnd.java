@@ -44,6 +44,13 @@ public interface AtomFrontEnd {
      */
     List<Atom> atoms(Path root, List<Path> files) throws IOException;
 
+    /** The file's extension in lower case, without the dot; empty when it has none. Front ends choose files by it. */
+    static String extension(Path file) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+    }
+
     /** Discovered front ends, then javac, then lexical. */
     static List<AtomFrontEnd> all() {
         List<AtomFrontEnd> all = new ArrayList<>();

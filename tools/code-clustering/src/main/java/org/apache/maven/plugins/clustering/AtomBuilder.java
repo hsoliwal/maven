@@ -36,6 +36,7 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  * STRUCTURE gets the node kind only. LOGIC gets the kind, plus the name (declared names numbered) or the literal
  * value. SIMHASH is computed over the LOGIC tokens and EXACT over the source text, with CRLF read as LF. Kinds are
  * the front end's own vocabulary. Planes from different front ends are comparable only if they use the same kinds.
+ * {@link #lines} records where the atom is in its file, so that reports and editors can point at it.
  */
 public final class AtomBuilder {
     private final String path;
@@ -45,6 +46,8 @@ public final class AtomBuilder {
     private final Map<String, String> declared = new HashMap<>();
     private final List<String> structure = new ArrayList<>();
     private final List<String> logic = new ArrayList<>();
+    private int line;
+    private int endLine;
 
     private AtomBuilder(String path, String kind, String symbol, String source) {
         this.path = path;
@@ -94,9 +97,19 @@ public final class AtomBuilder {
         return this;
     }
 
+    /**
+     * The atom's first and last source lines, 1-based. Lines are not part of any plane. Without this call both are 0
+     * (unknown).
+     */
+    public AtomBuilder lines(int line, int endLine) {
+        this.line = line;
+        this.endLine = endLine;
+        return this;
+    }
+
     public Atom build() {
         return new Atom(path, kind, symbol, logic.size(), PlaneHash.sha256(source.replace("\r\n", "\n")),
                 PlaneHash.sha256(String.join(" ", logic)), PlaneHash.sha256(String.join(" ", structure)),
-                PlaneHash.simhash(logic));
+                PlaneHash.simhash(logic), line, endLine);
     }
 }

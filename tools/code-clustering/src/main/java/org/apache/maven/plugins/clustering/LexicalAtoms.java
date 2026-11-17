@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.Lexer.Kind;
@@ -41,7 +40,7 @@ import org.apache.maven.plugins.clustering.Lexer.Token;
  * indented as far or less, with their decorators. The planes follow the javac front end. LOGIC numbers the names
  * the atom declares: its own name, its parameters, and names bound by a declaration keyword, {@code :=}, a plain
  * assignment, or {@code in}/{@code of}. Other names and all literals are kept. STRUCTURE keeps keywords and
- * operators and reduces names and literals to their class.
+ * operators and reduces names and literals to their class. An atom's lines are those of its first and last tokens.
  */
 public final class LexicalAtoms {
     static final Set<String> BRACE = Set.of("c", "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "js", "mjs", "cjs", "jsx",
@@ -58,7 +57,7 @@ public final class LexicalAtoms {
     private LexicalAtoms() { }
 
     static boolean accepts(Path file) {
-        String ext = extension(file);
+        String ext = AtomFrontEnd.extension(file);
         return BRACE.contains(ext) || INDENTED.contains(ext);
     }
 
@@ -67,7 +66,7 @@ public final class LexicalAtoms {
         for (Path file : files) {
             String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
             String path = root.relativize(file).toString().replace('\\', '/');
-            boolean indented = INDENTED.contains(extension(file));
+            boolean indented = INDENTED.contains(AtomFrontEnd.extension(file));
             List<Token> tokens = Lexer.tokens(text, indented);
             if (indented) indentedAtoms(path, text, tokens, atoms);
             else braceAtoms(path, text, tokens, atoms);
@@ -89,7 +88,7 @@ public final class LexicalAtoms {
             } else if (t.equals("}") && !open.isEmpty()) {
                 Frame frame = open.pop();
                 if (frame.kind() != null) {
-                    atoms.add(atom(path, text, tokens.subList(frame.headerStart(), i + 1), frame, owners(open)));
+                    atoms.add(atom(path, text, tokens.subList(frame.headerStart(), i + 1), frame, owners(open), 0));
                 }
                 boundary = i + 1;
             } else if (t.equals(";")) {
@@ -207,7 +206,7 @@ public final class LexicalAtoms {
             String owner = owner(classes, classNames, i, indent);
             int paren = nameAt + 1 < span.size() && span.get(nameAt + 1).text().equals("(") ? nameAt + 1 : -1;
             Frame frame = new Frame(0, type ? "TYPE" : "METHOD", name, paren < 0 ? List.of() : group(span, paren));
-            atoms.add(atom(path, text, span, frame, owner));
+            atoms.add(atom(path, text, span, frame, owner, 0));
             if (type) {
                 classes.add(new int[] {i, last, indent});
                 classNames.add(name);
@@ -241,12 +240,17 @@ public final class LexicalAtoms {
         return String.join(".", chain);
     }
 
-    private static Atom atom(String path, String text, List<Token> span, Frame frame, String owner) {
+    /**
+     * The atom of a token span. Its lines run from the start of the first token to the end of the last, plus
+     * {@code lineBase} when the tokens come from a slice of the file that starts on line {@code lineBase + 1}.
+     */
+    private static Atom atom(String path, String text, List<Token> span, Frame frame, String owner, int lineBase) {
         int from = span.get(0).start();
         int to = span.get(span.size() - 1).end();
         String symbol = (owner.isEmpty() ? "" : owner + ".") + frame.name()
                 + ("METHOD".equals(frame.kind()) ? "(" + arity(frame.params()) + ")" : "");
-        AtomBuilder builder = AtomBuilder.atom(path, frame.kind(), symbol, text.substring(from, to));
+        AtomBuilder builder = AtomBuilder.atom(path, frame.kind(), symbol, text.substring(from, to))
+                .lines(lineBase + span.get(0).line(), lineBase + span.get(span.size() - 1).endLine());
         declared(span, frame).forEach(builder::declare);
         for (int i = 0; i < span.size(); i++) {
             Token t = span.get(i);
@@ -269,8 +273,12 @@ public final class LexicalAtoms {
      * server: the range's tokens go through the same plane rules as the lexical front end's own atoms.
      *
      * The symbol is written as the lexical front end writes it: {@code Owner.name(parameterCount)} for a METHOD,
-     * {@code Owner.Name} for a TYPE.
+     * {@code Owner.Name} for a TYPE. The atom's lines are those of the first and last tokens in the range, counted in
+     * the whole text, so a comment or blank line at either end of the range is not included.
      *
+     * @param text     the whole file
+     * @param from     the range's first character in {@code text}
+     * @param to       the end of the range in {@code text} (exclusive)
      * @param indented true for indentation languages (comments start with {@code #})
      * @param name     the symbol's own name, declared first
      * @param owner    the enclosing type names joined with {@code .}, or empty
@@ -279,13 +287,22 @@ public final class LexicalAtoms {
             boolean indented) {
         String source = text.substring(from, to);
         List<Token> span = trim(Lexer.tokens(source, indented));
+        int lineBase = lineOf(text, from) - 1;
+        if (span.isEmpty()) {
+            return AtomBuilder.atom(path, kind, (owner.isEmpty() ? "" : owner + ".") + name, source)
+                    .lines(lineBase + 1, lineOf(text, Math.max(from, to - 1))).build();
+        }
         int paren = -1;
         for (int i = 0; i + 1 < span.size() && paren < 0; i++) {
             if (span.get(i).text().equals(name) && span.get(i + 1).text().equals("(")) paren = i + 1;
         }
         Frame frame = new Frame(0, kind, name, paren < 0 ? List.of() : group(span, paren));
-        if (span.isEmpty()) return AtomBuilder.atom(path, kind, (owner.isEmpty() ? "" : owner + ".") + name, source).build();
-        return atom(path, source, span, frame, owner);
+        return atom(path, source, span, frame, owner, lineBase);
+    }
+
+    /** The 1-based line of a character offset. */
+    private static int lineOf(String text, int offset) {
+        return 1 + (int) text.chars().limit(offset).filter(c -> c == '\n').count();
     }
 
     private static int arity(List<Token> params) {
@@ -326,9 +343,4 @@ public final class LexicalAtoms {
         return declared;
     }
 
-    private static String extension(Path file) {
-        String name = file.getFileName().toString();
-        int dot = name.lastIndexOf('.');
-        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
 }

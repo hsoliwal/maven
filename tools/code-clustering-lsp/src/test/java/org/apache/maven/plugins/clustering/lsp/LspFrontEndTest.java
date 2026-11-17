@@ -41,7 +41,7 @@ import org.eclipse.lsp4j.services.LanguageClient;
 /**
  * The LSP front end against an in-process server over a loopback socket. It checks the initialize capabilities,
  * the symbols that become atoms (TYPE, METHOD, a qualified method name), the logic plane of a renamed copy, the
- * fallback to the lexical front end when the server cannot start, service discovery, and the configuration parser.
+ * fallback to the built-in front ends when the server cannot start, service discovery, and the configuration parser.
  * If clangd is on the PATH, it also atomizes a C++ file through it. Argument: a scratch directory.
  */
 public final class LspFrontEndTest {
@@ -82,13 +82,17 @@ public final class LspFrontEndTest {
             Atom sum = find(atoms, "sum(1)");
             Atom add = find(atoms, "add(1)");
             check("logic: renamed copy through the server", sum.logic().equals(add.logic()) && !sum.exact().equals(add.exact()));
+            Atom bag = find(atoms, "Bag");
+            Atom size = find(atoms, "Bag.size(1)");
+            check("lines from the server's ranges: Bag 1-5, Bag.size 2-4, sum 6-10", bag.line() == 1 && bag.endLine() == 5
+                    && size.line() == 2 && size.endLine() == 4 && sum.line() == 6 && sum.endLine() == 10);
         }
         serverThreads.shutdownNow();
         LspFrontEnd broken = new LspFrontEnd(Map.of("js", List.of("no-such-language-server-binary")), Duration.ofSeconds(5),
                 LspSession::start);
         List<Atom> fallback = AtomPlanes.scan(List.of(src), List.of(broken));
         check("fallback to lexical when the server cannot start: " + fallback.size(), fallback.size() == 4);
-        check("parse configuration", LspFrontEnd.parse("c,H=clangd;py=pyright-langserver --stdio;bad").equals(Map.of(
+        check("parse configuration", LspConfiguration.parse("c,H=clangd;py=pyright-langserver --stdio;bad", m -> { }).equals(Map.of(
                 "c", List.of("clangd"), "h", List.of("clangd"), "py", List.of("pyright-langserver", "--stdio"))));
         System.setProperty("clustering.lsp.servers", "js=x");
         check("service discovery", AtomFrontEnd.all().stream().anyMatch(f -> f.name().equals("lsp")));

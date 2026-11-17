@@ -32,8 +32,10 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 /**
  * Checks each plane on a fixture: an identical method shares the exact hash; a method with renamed locals and
  * parameters shares the logic hash but not the exact one; a method that differs only in a literal shares the structure
- * hash but not the logic one; a method with one extra statement is nearer on SimHash than an unrelated method. Then
- * checks the cluster and join tables and the command line. Runs as a main class (argument: a scratch directory).
+ * hash but not the logic one; a method with one extra statement is nearer on SimHash than an unrelated method. It
+ * checks the atoms' source lines (also with CRLF line ends), then the cluster and join tables, the command line, the
+ * atom table's line columns and reading a table written without them. Runs as a main class (argument: a scratch
+ * directory).
  */
 public final class CodeClusteringTest {
     private static final String SUM = "    int sum(int[] values) {\n        int total = 0;\n"
@@ -72,6 +74,10 @@ public final class CodeClusteringTest {
         check("structure: literal changed", sum.structure().equals(start.structure()) && !sum.logic().equals(start.logic()));
         check("simhash: extra statement nearer than unrelated code",
                 PlaneHash.hamming(sum.simhash(), logged.simhash()) < PlaneHash.hamming(sum.simhash(), name.simhash()));
+        Atom type = atoms.get("p/A.java#A");
+        check("javac lines: method 4-10, CRLF copy 4-10, type 3-" + A.lines().count(), sum.line() == 4
+                && sum.endLine() == 10 && copy.line() == 4 && copy.endLine() == 10 && type.line() == 3
+                && type.endLine() == A.lines().count());
         Path out = dir.resolve("out");
         String line = CodeClustering.cluster(out, List.of(src), 12, 3);
         String clusters = Files.readString(out.resolve("CLUSTERS.tsv"));
@@ -81,6 +87,8 @@ public final class CodeClusteringTest {
         check("STRUCTURE cluster", has(clusters, "STRUCTURE", "p/A.java#A.start(int[])"));
         joinAndCli(dir, src);
         families(dir);
+        setters(dir);
+        nearJoin(dir);
         LexicalAtomsTest.run(dir.resolve("lexical"));
         failures += LexicalAtomsTest.failures();
         PlaneCompareTest.run(dir.resolve("compare"), src, B);
@@ -89,6 +97,55 @@ public final class CodeClusteringTest {
         failures += FrontEndTest.failures();
         if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
         System.err.println("code clustering: all checks passed");
+    }
+
+    /**
+     * Member-select names are kept: setters that write different fields differ on LOGIC (they share STRUCTURE); the
+     * same setter with a renamed parameter shares LOGIC.
+     */
+    private static void setters(Path dir) throws Exception {
+        Path src = dir.resolve("setters");
+        Files.createDirectories(src.resolve("s"));
+        Files.writeString(src.resolve("s/Auth.java"), String.join("\n", "package s;", "class Auth {",
+                "    String password, passphrase;",
+                "    void setPassword(String password) { this.password = password; }",
+                "    void setPassphrase(String passphrase) { this.passphrase = passphrase; }",
+                "    void setSecret(String value) { this.password = value; }", "}", ""), StandardCharsets.UTF_8);
+        Map<String, Atom> atoms = AtomPlanes.scan(List.of(src)).stream()
+                .collect(Collectors.toMap(Atom::symbol, Function.identity()));
+        Atom password = atoms.get("Auth.setPassword(String)");
+        Atom passphrase = atoms.get("Auth.setPassphrase(String)");
+        Atom secret = atoms.get("Auth.setSecret(String)");
+        check("setters writing different fields differ on LOGIC", !password.logic().equals(passphrase.logic())
+                && password.structure().equals(passphrase.structure()));
+        check("renamed parameter, same field: same LOGIC", password.logic().equals(secret.logic()));
+    }
+
+    /**
+     * NEAR through the SimHash band index: distance 1 and distance 3 (differing bits spread over three bands) are found,
+     * a distant hash is ABSENT, and a tie goes to the first atom in path order whatever band found it.
+     */
+    private static void nearJoin(Path dir) throws Exception {
+        Atom a1 = synthetic("a/One.java", "00000000000000ff");
+        Atom a3 = synthetic("a/Three.java", "0001000100010000");
+        Atom far = synthetic("a/Far.java", "ffffffffffff0000");
+        Atom b1 = synthetic("b/Z.java", "00000000000000fe");
+        Atom b2 = synthetic("b/Y.java", "00000000000000fd");
+        Atom b3 = synthetic("b/X.java", "0000000000000000");
+        PlaneJoin.join(List.of(a1, a3, far), List.of(b1, b2, b3), dir.resolve("near"), 3);
+        String rows = Files.readString(dir.resolve("near/JOIN.tsv"));
+        check("near: distance 1, tie to first path", rows.contains("a/One.java\tMETHOD\tm()\tNEAR\tb/X.java")
+                || rows.contains("a/One.java\tMETHOD\tm()\tNEAR\tb/Y.java"));
+        check("near: distance 3 across three bands", rows.contains("a/Three.java\tMETHOD\tm()\tNEAR\tb/X.java"));
+        check("near: distant hash absent", rows.contains("a/Far.java\tMETHOD\tm()\tABSENT"));
+        Atom tieLow = synthetic("b/A.java", "00000000000000fe");
+        PlaneJoin.join(List.of(a1), List.of(b1, tieLow), dir.resolve("tie"), 3);
+        check("near: tie goes to first path", Files.readString(dir.resolve("tie/JOIN.tsv"))
+                .contains("a/One.java\tMETHOD\tm()\tNEAR\tb/A.java"));
+    }
+
+    private static Atom synthetic(String path, String simhash) {
+        return new Atom(path, "METHOD", "m()", 20, "exact:" + path, "logic:" + path, "structure:" + path, simhash, 0, 0);
     }
 
     /** A file that repeats A under another class name and other local names joins A's file family; B does not. */
@@ -131,6 +188,16 @@ public final class CodeClusteringTest {
         check("cli exit codes " + usage + cluster + join2, usage == 2 && cluster == 0 && join2 == 0);
         check("self join is all exact", bytes.toString(StandardCharsets.UTF_8).contains("joined 8 atoms: EXACT 8 "));
         check("atom table round trip", PlaneTables.readAtoms(tsv).equals(all));
+        check("atom table line columns", Files.readAllLines(tsv).get(0).endsWith("\tsimhash\tline\tend_line")
+                && PlaneTables.readAtoms(tsv).stream().anyMatch(a -> a.symbol().equals("A.sum(int[])") && a.line() == 4
+                && a.endLine() == 10));
+        Path old = dir.resolve("old/ATOM_HASHES.tsv");
+        Files.createDirectories(old.getParent());
+        Files.writeString(old, "path\tkind\tsymbol\ttokens\texact\tlogic\tstructure\tsimhash\n"
+                + "p/A.java\tMETHOD\tA.sum(int[])\t30\te\tl\ts\t0123456789abcdef\n", StandardCharsets.UTF_8);
+        List<Atom> read = PlaneTables.readAtoms(old);
+        check("old 8-column atom table reads with lines 0", read.size() == 1 && read.get(0).line() == 0
+                && read.get(0).endLine() == 0 && read.get(0).simhash().equals("0123456789abcdef"));
     }
 
     private static boolean has(String clusters, String plane, String members) {

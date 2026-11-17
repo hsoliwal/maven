@@ -40,8 +40,10 @@ import java.util.stream.Collectors;
  * hash or diff."
  */
 public final class PlaneTables {
-    static final String HEADER = "path\tkind\tsymbol\ttokens\texact\tlogic\tstructure\tsimhash";
+    static final String HEADER = "path\tkind\tsymbol\ttokens\texact\tlogic\tstructure\tsimhash\tline\tend_line";
     private static final char TAB = '\t';
+    /** Columns of a table written before the line columns were added. */
+    private static final int OLD_COLUMNS = 8;
 
     private PlaneTables() { }
 
@@ -49,23 +51,25 @@ public final class PlaneTables {
         StringBuilder out = new StringBuilder(HEADER).append('\n');
         for (Atom a : atoms) {
             out.append(String.join("\t", a.path(), a.kind(), a.symbol(), Integer.toString(a.tokens()), a.exact(),
-                    a.logic(), a.structure(), a.simhash())).append('\n');
+                    a.logic(), a.structure(), a.simhash(), Integer.toString(a.line()), Integer.toString(a.endLine())))
+                    .append('\n');
         }
         Files.createDirectories(file.toAbsolutePath().getParent());
         Files.writeString(file, out, StandardCharsets.UTF_8);
     }
 
+    /** Reads an atom table; a table without the line columns (8 columns) gives atoms with lines 0. */
     public static List<Atom> readAtoms(Path file) throws IOException {
         List<Atom> atoms = new ArrayList<>();
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8).subList(1, lines(file))) {
-            String[] c = line.split(String.valueOf(TAB), -1);
-            if (c.length >= 8) atoms.add(new Atom(c[0], c[1], c[2], Integer.parseInt(c[3]), c[4], c[5], c[6], c[7]));
+        List<String> rows = Files.readAllLines(file, StandardCharsets.UTF_8);
+        for (String row : rows.subList(Math.min(1, rows.size()), rows.size())) {
+            String[] c = row.split(String.valueOf(TAB), -1);
+            if (c.length < OLD_COLUMNS) continue;
+            boolean lines = c.length >= OLD_COLUMNS + 2;
+            atoms.add(new Atom(c[0], c[1], c[2], Integer.parseInt(c[3]), c[4], c[5], c[6], c[7],
+                    lines ? Integer.parseInt(c[8]) : 0, lines ? Integer.parseInt(c[9]) : 0));
         }
         return atoms;
-    }
-
-    private static int lines(Path file) throws IOException {
-        return Files.readAllLines(file, StandardCharsets.UTF_8).size();
     }
 
     /** Writes CLUSTERS.tsv and PLANE_SUMMARY.tsv; returns the summary line. */

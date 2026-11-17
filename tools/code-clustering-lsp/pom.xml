@@ -27,7 +27,8 @@ under the License.
   <name>Apache Maven Code Clustering: Language Server Front End</name>
   <description>An AtomFrontEnd for maven-code-clustering-plugin that asks language servers (through Eclipse LSP4J)
     for document symbols: any language with a server (clangd, rust-analyzer, Eclipse JDT LS, LemMinX, pyright, gopls)
-    is atomized by its own language core. Add it as a dependency of the plugin.</description>
+    is atomized by its own language core. Add it as a dependency of the plugin. It also holds a code-clustering
+    language server that shows the plugin's duplicates as diagnostics in any LSP client.</description>
   <licenses>
     <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url></license>
   </licenses>
@@ -73,6 +74,55 @@ under the License.
               <mainClass>org.apache.maven.plugins.clustering.lsp.LspFrontEndTest</mainClass>
               <classpathScope>test</classpathScope>
               <arguments><argument>${project.build.directory}/lsp-test</argument></arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>command-line-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.lsp.CommandLineTest</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>server-profile-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.lsp.ServerProfilesTest</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/profiles-test</argument></arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>symbol-mapping-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.lsp.SymbolMappingTest</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- Real servers when installed, else SKIP; -Dclustering.test.servers=<dir> adds an install directory. -->
+            <id>real-server-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.lsp.RealServersTest</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/real-servers</argument></arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>language-server-tests</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.clustering.lsp.ClusteringLanguageServerTest</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/language-server-test</argument></arguments>
             </configuration>
           </execution>
         </executions>

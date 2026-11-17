@@ -49,12 +49,13 @@ public final class PlaneJoin {
         Map<String, Atom> exact = index(b, Atom::exact);
         Map<String, Atom> logic = index(b, Atom::logic);
         Map<String, Atom> structure = index(b, Atom::structure);
+        Map<String, List<Atom>> bands = bands(b);
         StringBuilder rows = new StringBuilder("path\tkind\tsymbol\tplane\tmatch_path\tmatch_symbol\n");
         Map<String, int[]> counts = new TreeMap<>();
         Map<String, Map<String, Integer>> owners = new HashMap<>();
         int[] total = new int[ORDER.length];
         for (Atom atom : a) {
-            Match match = best(atom, exact, logic, structure, b, radius);
+            Match match = best(atom, exact, logic, structure, bands, radius);
             total[match.plane()]++;
             counts.computeIfAbsent(atom.path(), k -> new int[ORDER.length])[match.plane()]++;
             if (match.plane() <= 1) owners.computeIfAbsent(atom.path(), k -> new HashMap<>()).merge(match.atom().path(), 1, Integer::sum);
@@ -72,23 +73,49 @@ public final class PlaneJoin {
     private record Match(int plane, Atom atom) { }
 
     private static Match best(Atom atom, Map<String, Atom> exact, Map<String, Atom> logic, Map<String, Atom> structure,
-            List<Atom> b, int radius) {
+            Map<String, List<Atom>> bands, int radius) {
         String key = atom.kind() + ":";
         if (exact.containsKey(key + atom.exact())) return new Match(0, exact.get(key + atom.exact()));
         if (logic.containsKey(key + atom.logic())) return new Match(1, logic.get(key + atom.logic()));
         if (structure.containsKey(key + atom.structure())) return new Match(2, structure.get(key + atom.structure()));
         Atom near = null;
         int nearest = radius + 1;
-        for (Atom other : b) {
-            if (!other.kind().equals(atom.kind())) continue;
-            int distance = PlaneHash.hamming(atom.simhash(), other.simhash());
-            if (distance < nearest) {
-                nearest = distance;
-                near = other;
+        for (int band = 0; band < BANDS; band++) {
+            for (Atom other : bands.getOrDefault(bandKey(atom, band), List.of())) {
+                int distance = PlaneHash.hamming(atom.simhash(), other.simhash());
+                if (distance < nearest || distance == nearest && near != null && order(other, near) < 0) {
+                    nearest = distance;
+                    near = other;
+                }
             }
         }
         return near == null ? new Match(4, null) : new Match(3, near);
     }
+
+    /**
+     * NEAR candidates come from four 16-bit SimHash bands: two hashes within Hamming distance 3 agree on at least one
+     * whole band (pigeonhole), so for radius 3 or less no match is missed; a larger radius is searched approximately,
+     * as in the clusters. Ties go to the first atom in path and symbol order, so the result does not depend on
+     * which band found it.
+     */
+    private static Map<String, List<Atom>> bands(List<Atom> atoms) {
+        Map<String, List<Atom>> bands = new HashMap<>();
+        for (Atom atom : atoms) {
+            for (int band = 0; band < BANDS; band++) bands.computeIfAbsent(bandKey(atom, band), k -> new java.util.ArrayList<>()).add(atom);
+        }
+        return bands;
+    }
+
+    private static String bandKey(Atom atom, int band) {
+        return atom.kind() + band + atom.simhash().substring(band * 4, band * 4 + 4);
+    }
+
+    private static int order(Atom left, Atom right) {
+        int path = left.path().compareTo(right.path());
+        return path != 0 ? path : left.symbol().compareTo(right.symbol());
+    }
+
+    private static final int BANDS = 4;
 
     private static Map<String, Atom> index(List<Atom> atoms, Function<Atom, String> key) {
         Map<String, Atom> index = new LinkedHashMap<>();

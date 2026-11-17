@@ -32,7 +32,13 @@ import java.util.Set;
 final class Lexer {
     enum Kind { ID, KEYWORD, NUMBER, STRING, OP }
 
-    record Token(Kind kind, String text, int start, int end, int line) { }
+    /** A token; {@code line} is the 1-based line it starts on (a string literal may run over more lines). */
+    record Token(Kind kind, String text, int start, int end, int line) {
+        /** The 1-based line the token ends on. */
+        int endLine() {
+            return line + (int) text.chars().filter(c -> c == '\n').count();
+        }
+    }
 
     static final Set<String> KEYWORDS = Set.of("abstract", "and", "as", "async", "await", "break", "case", "catch",
             "class", "const", "continue", "def", "default", "defer", "del", "do", "elif", "else", "enum", "except",
@@ -131,13 +137,16 @@ final class Lexer {
         return false;
     }
 
+    /** A string literal; its token carries the line it starts on, and every newline inside it is counted. */
     private void string(char quote) {
         int from = pos;
+        int startLine = line;
         String fence = hashComments && text.startsWith(String.valueOf(quote).repeat(3), pos) ? String.valueOf(quote).repeat(3) : null;
         pos += fence == null ? 1 : 3;
         while (pos < text.length()) {
             char c = text.charAt(pos);
             if (c == '\\') {
+                if (pos + 1 < text.length() && text.charAt(pos + 1) == '\n') line++;
                 pos += 2;
                 continue;
             }
@@ -148,6 +157,7 @@ final class Lexer {
             if (c == '\n' && fence == null && quote != '`') {
                 if (quote == '\'') {
                     pos = from + 1;
+                    line = startLine;
                     add(Kind.OP, "'", from, from + 1);
                     return;
                 }
@@ -156,7 +166,8 @@ final class Lexer {
             if (c == '\n') line++;
             pos++;
         }
-        add(Kind.STRING, text.substring(from, Math.min(pos, text.length())), from, Math.min(pos, text.length()));
+        int end = Math.min(pos, text.length());
+        tokens.add(new Token(Kind.STRING, text.substring(from, end), from, end, startLine));
     }
 
     private void span(Kind kind, int from, java.util.function.IntPredicate part) {

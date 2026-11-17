@@ -20,66 +20,73 @@ package org.apache.maven.plugins.clustering.lsp;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 import org.apache.maven.plugins.clustering.LexicalAtoms;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SymbolInformation;
-import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 /**
- * Turns a server's document symbols into atoms. Class, interface, struct, enum and object symbols become TYPE atoms.
- * Method, function and constructor symbols become METHOD atoms. Other symbols are not atoms, but their children are
- * still visited. A qualified name such as {@code Point::norm} or {@code Point.norm} is split into owner and name.
- * Planes come from {@link LexicalAtoms#rangeAtom}: the server decides the boundaries, the shared rules give the
- * hashes. Positions are LSP line and UTF-16 character offsets, the same units as Java string indices.
+ * Turns a server's document symbols into atoms. A {@link SymbolMapping} decides which symbols become TYPE or METHOD
+ * atoms; for code, class-like symbols are TYPE atoms and method, function and constructor symbols are METHOD atoms.
+ * Other symbols are not atoms, but their children are still visited. For code, a qualified name such as
+ * {@code Point::norm} or {@code Point.norm} is split into owner and name. A TYPE atom is the owner of the atoms
+ * inside it. In the flat symbol form, the owner is the server's container name, and a symbol has children when
+ * another symbol's range lies inside its own. Planes come from {@link LexicalAtoms#rangeAtom}: the server decides the
+ * boundaries, the shared rules give the hashes. Positions are LSP line and UTF-16 character offsets, the same units
+ * as Java string indices.
  */
 final class SymbolAtoms {
-    private static final Set<SymbolKind> TYPES = Set.of(SymbolKind.Class, SymbolKind.Interface, SymbolKind.Struct,
-            SymbolKind.Enum, SymbolKind.Object);
-    private static final Set<SymbolKind> METHODS = Set.of(SymbolKind.Method, SymbolKind.Function, SymbolKind.Constructor);
-
     private final String path;
     private final String text;
     private final boolean indented;
+    private final SymbolMapping mapping;
     private final int[] lineStarts;
     private final List<Atom> atoms = new ArrayList<>();
 
-    private SymbolAtoms(String path, String text, boolean indented) {
+    private SymbolAtoms(String path, String text, boolean indented, SymbolMapping mapping) {
         this.path = path;
         this.text = text;
         this.indented = indented;
+        this.mapping = mapping;
         this.lineStarts = text.lines().count() == 0 ? new int[] {0} : starts(text);
     }
 
-    static List<Atom> atoms(List<Either<SymbolInformation, DocumentSymbol>> symbols, String path, String text, boolean indented) {
-        SymbolAtoms collector = new SymbolAtoms(path, text, indented);
+    static List<Atom> atoms(List<Either<SymbolInformation, DocumentSymbol>> symbols, String path, String text,
+            boolean indented, SymbolMapping mapping) {
+        SymbolAtoms collector = new SymbolAtoms(path, text, indented, mapping);
+        List<SymbolInformation> flat = symbols.stream().filter(Either::isLeft).map(Either::getLeft)
+                .collect(Collectors.toList());
         for (Either<SymbolInformation, DocumentSymbol> symbol : symbols) {
             if (symbol.isRight()) collector.visit(symbol.getRight(), "");
-            else collector.flat(symbol.getLeft());
+            else collector.flat(symbol.getLeft(), flat);
         }
         return collector.atoms;
     }
 
     private void visit(DocumentSymbol symbol, String owner) {
+        List<DocumentSymbol> children = symbol.getChildren() == null ? List.of() : symbol.getChildren();
         String[] split = split(owner, symbol.getName());
-        String kind = kind(symbol.getKind());
-        if (kind != null) add(kind, split[1], split[0], symbol.getRange());
-        String inner = "TYPE".equals(kind) ? join(split[0], split[1]) : owner;
-        if (symbol.getChildren() != null) symbol.getChildren().forEach(child -> visit(child, inner));
+        Optional<String> kind = mapping.kind(symbol.getKind(), () -> !children.isEmpty());
+        kind.ifPresent(k -> add(k, split[1], split[0], symbol.getRange()));
+        String inner = kind.filter("TYPE"::equals).isPresent() ? join(split[0], split[1]) : owner;
+        children.forEach(child -> visit(child, inner));
     }
 
     /** The flat, older symbol form (deprecated in LSP 3.16) that servers without hierarchical support still send. */
     @SuppressWarnings("deprecation")
-    private void flat(SymbolInformation symbol) {
-        String kind = kind(symbol.getKind());
-        if (kind == null) return;
+    private void flat(SymbolInformation symbol, List<SymbolInformation> all) {
+        Range range = symbol.getLocation().getRange();
+        Optional<String> kind = mapping.kind(symbol.getKind(),
+                () -> all.stream().anyMatch(other -> other != symbol && inside(other.getLocation().getRange(), range)));
+        if (kind.isEmpty()) return;
         String container = symbol.getContainerName() == null ? "" : symbol.getContainerName();
         String[] split = split(container, symbol.getName());
-        add(kind, split[1], split[0], symbol.getLocation().getRange());
+        add(kind.get(), split[1], split[0], range);
     }
 
     private void add(String kind, String name, String owner, Range range) {
@@ -88,16 +95,15 @@ final class SymbolAtoms {
         if (to > from) atoms.add(LexicalAtoms.rangeAtom(path, text, from, to, kind, name, owner, indented));
     }
 
-    private static String kind(SymbolKind kind) {
-        if (TYPES.contains(kind)) return "TYPE";
-        return METHODS.contains(kind) ? "METHOD" : null;
+    private String[] split(String owner, String name) {
+        return mapping.splitsNames() ? qualified(owner, name) : new String[] {owner, name};
     }
 
     /**
      * {@code Point::norm} under owner {@code ""} becomes owner {@code Point}, name {@code norm}. A qualifier that
      * repeats the enclosing owner ({@code Bag::size} inside {@code Bag}) is not added twice.
      */
-    private static String[] split(String owner, String name) {
+    private static String[] qualified(String owner, String name) {
         String plain = name.replace("::", ".");
         int paren = plain.indexOf('(');
         if (paren > 0) plain = plain.substring(0, paren);
@@ -106,6 +112,17 @@ final class SymbolAtoms {
         String qualifier = plain.substring(0, dot);
         boolean repeated = owner.equals(qualifier) || owner.endsWith("." + qualifier);
         return new String[] {repeated ? owner : join(owner, qualifier), plain.substring(dot + 1)};
+    }
+
+    /** True when {@code inner} lies inside {@code outer} and is not the same range. */
+    private static boolean inside(Range inner, Range outer) {
+        return !inner.equals(outer) && compare(outer.getStart(), inner.getStart()) <= 0
+                && compare(inner.getEnd(), outer.getEnd()) <= 0;
+    }
+
+    private static int compare(Position a, Position b) {
+        return a.getLine() != b.getLine() ? Integer.compare(a.getLine(), b.getLine())
+                : Integer.compare(a.getCharacter(), b.getCharacter());
     }
 
     private static String join(String owner, String name) {

@@ -23,6 +23,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -32,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.eclipse.lsp4j.ClientCapabilities;
+import org.eclipse.lsp4j.ConfigurationParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DocumentSymbol;
@@ -47,9 +50,11 @@ import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.TextDocumentClientCapabilities;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.WorkspaceClientCapabilities;
 import org.eclipse.lsp4j.WorkspaceFolder;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.services.JsonNotification;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -85,6 +90,8 @@ final class LspSession implements AutoCloseable {
         text.setDocumentSymbol(symbols);
         ClientCapabilities capabilities = new ClientCapabilities();
         capabilities.setTextDocument(text);
+        // An empty workspace object, not none: LemMinX 0.31 fails every request when it is missing.
+        capabilities.setWorkspace(new WorkspaceClientCapabilities());
         params.setCapabilities(capabilities);
         await(server.initialize(params));
         server.initialized(new InitializedParams());
@@ -161,8 +168,31 @@ final class LspSession implements AutoCloseable {
         }
     }
 
+    /**
+     * Eclipse JDT LS's own notifications, accepted and ignored so they are not logged as unsupported. Public, so the
+     * JSON-RPC layer may call it reflectively.
+     */
+    public interface JdtNotifications {
+        @JsonNotification("language/status")
+        default void status(Object params) { }
+
+        @JsonNotification("language/eventNotification")
+        default void event(Object params) { }
+
+        @JsonNotification("language/progressReport")
+        default void progress(Object params) { }
+
+        @JsonNotification("language/actionableNotification")
+        default void actionable(Object params) { }
+    }
+
     /** A client that answers server notifications and requests without user interaction. */
-    private static final class QuietClient implements LanguageClient {
+    private static final class QuietClient implements LanguageClient, JdtNotifications {
+        /** No settings: one {@code null} per item asked for, as the protocol allows. */
+        @Override public CompletableFuture<List<Object>> configuration(ConfigurationParams params) {
+            return CompletableFuture.completedFuture(new ArrayList<>(Collections.nCopies(params.getItems().size(), null)));
+        }
+
         @Override public void telemetryEvent(Object object) { }
 
         @Override public void publishDiagnostics(PublishDiagnosticsParams diagnostics) { }

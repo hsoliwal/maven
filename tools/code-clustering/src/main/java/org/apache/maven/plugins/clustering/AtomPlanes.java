@@ -20,6 +20,7 @@ package org.apache.maven.plugins.clustering;
 
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.LineMap;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
@@ -59,9 +60,12 @@ import javax.tools.ToolProvider;
 public final class AtomPlanes {
     private AtomPlanes() { }
 
-    /** One atom: where it is, what it is, its size in logic tokens, and its four planes. */
+    /**
+     * One atom: where it is, what it is, its size in logic tokens, its four planes, and its first and last source
+     * lines ({@code line}, {@code endLine}: 1-based, 0 when the front end does not know them).
+     */
     public record Atom(String path, String kind, String symbol, int tokens, String exact, String logic,
-            String structure, String simhash) { }
+            String structure, String simhash, int line, int endLine) { }
 
     /**
      * Atomizes every source file under the roots with the {@link AtomFrontEnd front ends}: discovered ones first, then
@@ -163,7 +167,9 @@ public final class AtomPlanes {
             long start = positions.getStartPosition(unit, node);
             long end = positions.getEndPosition(unit, node);
             if (start < 0 || end <= start || end > text.length()) return;
-            atoms.add(PlaneTokens.atom(node, path, kind, symbol, text.substring((int) start, (int) end)));
+            LineMap lines = unit.getLineMap();
+            atoms.add(PlaneTokens.atom(node, path, kind, symbol, text.substring((int) start, (int) end))
+                    .lines((int) lines.getLineNumber(start), (int) lines.getLineNumber(end - 1)).build());
         }
     }
 }

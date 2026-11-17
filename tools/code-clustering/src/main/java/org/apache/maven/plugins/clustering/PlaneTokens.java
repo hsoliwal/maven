@@ -27,17 +27,16 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
-import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
 
 /**
  * The javac walk of one atom into {@link AtomBuilder}: node kinds in pre-order. The names the atom declares (its own
  * name, parameters, locals, type parameters) are declared first, in tree order, so a consistent rename leaves the
- * LOGIC plane unchanged.
+ * LOGIC plane unchanged. The caller adds the source lines and builds the atom.
  */
 final class PlaneTokens {
     private PlaneTokens() { }
 
-    static Atom atom(Tree node, String path, String kind, String symbol, String source) {
+    static AtomBuilder atom(Tree node, String path, String kind, String symbol, String source) {
         AtomBuilder builder = AtomBuilder.atom(path, kind, symbol, source);
         if (node instanceof ClassTree type) builder.declare(type.getSimpleName().toString());
         if (node instanceof MethodTree method) builder.declare(method.getName().toString());
@@ -53,7 +52,7 @@ final class PlaneTokens {
             }
         }.scan(node, null);
         new Emitter(builder).scan(node, null);
-        return builder.build();
+        return builder;
     }
 
     /** One builder call per node: names and literals carry their text, every other node its kind only. */
@@ -70,9 +69,14 @@ final class PlaneTokens {
             return super.scan(node, unused);
         }
 
+        /**
+         * A member-select identifier ({@code this.total}, {@code list.add}) names a field, method or type of another
+         * owner, never a local the atom declares, so it is kept as written even when a local has the same name:
+         * {@code this.password = password} and {@code this.passphrase = passphrase} write different fields.
+         */
         private void emit(Tree node, String kind) {
             if (node instanceof IdentifierTree id) builder.name(kind, id.getName().toString());
-            else if (node instanceof MemberSelectTree select) builder.name(kind, select.getIdentifier().toString());
+            else if (node instanceof MemberSelectTree select) builder.literal(kind, select.getIdentifier().toString());
             else if (node instanceof VariableTree variable) builder.name(kind, variable.getName().toString());
             else if (node instanceof MethodTree method) builder.name(kind, method.getName().toString());
             else if (node instanceof ClassTree type) builder.name(kind, type.getSimpleName().toString());
