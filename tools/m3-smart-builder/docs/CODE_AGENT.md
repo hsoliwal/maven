@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Chrome AI Machine-Oriented Coding Agent (experimental)
+# Machine-Oriented Coding Agent (experimental)
 
 The `m3:code-agent` goal is an **additive, opt-in** continuation of the existing
 ChromeLLM `m3:build-hook`. It turns bounded, source-bound Java atom/pattern
@@ -100,7 +100,7 @@ contracts first; string/comment masking before regex; atomization before
 patternization; private-leaf transformation; FILE→PACKAGE→MODULE→REACTOR→API
 promotion only with real proof; deterministic recipes before probabilistic
 inference; and structural/logic/SimHash similarity strictly below compiler,
-tests and behavior proof in authority. No entire source text is sent to Chrome.
+tests and behavior proof in authority. No entire source text is sent to the model.
 
 ### Versioned machine law packet (M3 policy)
 
@@ -131,11 +131,11 @@ The four authority classes are deliberately distinct:
 - `EXTERNAL_GATE`: independent masking, API/ABI/JNI behavior, canon and
   hierarchical promotion proofs are required before claiming completion.
 
-Chrome receives the complete bounded policy packet and its authority labels,
+The model receives the complete bounded policy packet and its authority labels,
 not a request to invent arbitrary fixes. The policy is packaged with the Maven
 plugin so it is independently reviewable in the pull request and does not
 depend on hidden browser prompts. This is **operational distillation of coding
-discipline into rules and recipes**, not access to Chrome's model weights.
+discipline into rules and recipes**, not access to model weights.
 
 ## Use without a model
 
@@ -160,18 +160,17 @@ mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
   -Dm3.smart.preparationReport=.reports/preparation.json \
   -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
   -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
-  -Dm3.smart.llmBackend=chrome \
+  -Dm3.smart.llmBackend=cli \
   -Dm3.smart.chromeLlmJar=/approved/chromellm-standalone.jar \
-  -Dm3.smart.chromeBin=/approved/chrome \
-  -Dm3.smart.chromeProfile=/approved/dedicated-profile
+  -Dm3.smart.llamaBin=/approved/llama-cli \
+  -Dm3.smart.modelPath=/approved/model.gguf
 ```
 
-This reuses the existing ChromeLLM MCP stdio implementation. The default
-`m3.smart.chromeDownload=false` refuses lazy model acquisition; set it to
-`true` only when the operator approves the initial browser-managed download.
-CLI/JNI/bridge provider options are the same as existing build hooks. No cloud
-fallback is chosen. A model-backed invocation may fail when Chrome is not
-available, the model is not ready or the response is not valid JSON.
+This reuses the existing ChromeLLM MCP stdio implementation with local llama.cpp
+(`cli`, or `jni` with `m3.smart.jniLib`); there is no browser provider. The
+provider options are the same as the build hooks'. No cloud fallback is chosen.
+A model-backed invocation may fail when llama.cpp or the model is unavailable,
+or when the response is not valid JSON.
 
 The model sees only bounded counts, hashes and approved recipe metadata, not
 raw source text or log lines. The request demands one exact object:
@@ -192,7 +191,7 @@ patches and commands are rejected. Existing ChromeLLM MCP does not promise
 JSON Schema-constrained inference; strict validation on the Maven side is the
 fail-closed boundary.
 
-To replay a previously produced JSON candidate without starting Chrome, omit
+To replay a previously produced JSON candidate without starting a model, omit
 `m3.smart.llmBackend` and specify
 `-Dm3.smart.codeAgentCandidate=.reports/candidate.json`. Provider and file
 inputs are mutually exclusive. The goal rechecks source, preparation, atom
@@ -274,5 +273,5 @@ catalogue; model output alone must never populate it.
 
 This is an executable **recipe-nomination plus isolated replay** slice of the
 larger distillation workflow, not a model-weight exporter, autonomous
-source-writing agent, or claim that Chrome inference/real OpenRewrite/JUnit
+source-writing agent, or claim that model inference/real OpenRewrite/JUnit
 project verification was run by the synthetic offline tests.

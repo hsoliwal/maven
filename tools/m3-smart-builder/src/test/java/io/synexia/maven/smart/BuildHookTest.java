@@ -73,7 +73,9 @@ public final class BuildHookTest {
         require(run(base, "--phase", "pre-build", "--unknown", "value") == 2, "unknown options rejected");
         require(run(base, "--phase", "pre-build", "--phase", "pre-build") == 2, "duplicate options rejected");
         require(run(base, "--phase", "pre-build", "--backend", "none", "--allow-download", "true") == 2,
-                "download flag requires Chrome backend");
+                "browser download flag no longer exists");
+        require(run(base, "--phase", "pre-build", "--backend", "chrome") == 2, "chrome backend removed");
+        require(run(base, "--phase", "pre-build", "--backend", "bridge") == 2, "bridge backend removed");
         require(run(base, "--phase", "pre-build", "--build-dir", root.resolve("outside").toString()) == 2,
                 "output cannot escape project");
         Files.writeString(project.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
@@ -102,12 +104,12 @@ public final class BuildHookTest {
                 "preparation alone cannot override missing checkpoint evidence");
         Files.writeString(source.resolve("Example.java"),
                 "class Example { native void run(); } // intervening drift");
-        List<String> rejectedChrome = new ArrayList<>(preparationArgs);
-        rejectedChrome.addAll(List.of("--backend", "chrome",
+        List<String> rejectedProvider = new ArrayList<>(preparationArgs);
+        rejectedProvider.addAll(List.of("--backend", "cli",
                 "--chrome-llm-jar", "unavailable-agent.jar",
-                "--chrome-binary", "unavailable-chrome", "--chrome-profile", ".nonexistent-chrome-profile"));
-        require(run(rejectedChrome, "--phase", "pre-build") == 2,
-                "stale preparation refuses before any Chrome provider construction");
+                "--llama-bin", "unavailable-llama", "--model", ".nonexistent-model.gguf"));
+        require(run(rejectedProvider, "--phase", "pre-build") == 2,
+                "stale preparation refuses before any provider construction");
         Map<String, Object> blockedPreparation = report(project, "pre-build");
         require("blocked-preparation".equals(blockedPreparation.get("adviceStatus"))
                 && "CanonicalPreparationEvidenceRejected".equals(blockedPreparation.get("adviceErrorType")),
@@ -153,18 +155,6 @@ public final class BuildHookTest {
                 "--preparation-report", ".reports/preparation.json") == 2,
                 "preparation report alone cannot implicitly enable the gated mode");
 
-        // Bridge controls belong to the bridge backend; a bridge without the ChromeLLM module is a visible failure.
-        require(run(base, "--phase", "pre-build", "--bridge-url", "http://127.0.0.1:1/v1/") == 2,
-                "bridge URL requires backend bridge");
-        require(run(base, "--phase", "pre-build", "--backend", "chrome", "--bridge-token-file", "t") == 2,
-                "bridge token requires backend bridge");
-        require(run(base, "--phase", "pre-build", "--backend", "bridge", "--llama-bin", "x") == 2,
-                "native controls are refused with the bridge");
-        require(run(base, "--phase", "pre-build", "--backend", "bridge") == 2, "bridge needs the ChromeLLM module");
-        Map<String, Object> noModule = report(project, "pre-build");
-        require("bridge".equals(noModule.get("provider")) && "failed".equals(noModule.get("adviceStatus")),
-                "missing module recorded as a failed bridge advisory");
-
         // A CPU summarizer of the operator's choice: its lines join the facts; a failure is recorded, not raised.
         require(run(base, "--phase", "pre-build", "--summarizer-timeout-seconds", "5") == 2,
                 "summarizer timeout requires a summarizer");
@@ -197,34 +187,18 @@ public final class BuildHookTest {
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
             Path module = Path.of(fixture);
-            Path executable = Files.writeString(root.resolve("chrome executable"), "fixture only");
-            Path profile = root.resolve("dedicated profile");
-            McpAdviser.ChromeConfig chrome = new McpAdviser.ChromeConfig(module, executable, profile, true, true, 7);
-            String advice = McpAdviser.propose(chrome, "fixture chrome argument check");
-            require(advice.contains("backend=chrome"), "Chrome selected explicitly");
-            require(advice.contains("headless=true download=true"), "explicit browser options retained");
+            Path executable = Files.writeString(root.resolve("llama executable"), "fixture only");
+            Path valid = Files.writeString(root.resolve("mcp-valid.gguf"), "fixture model");
+            McpAdviser.Config cli = new McpAdviser.Config(module, "cli", executable, valid, 7);
+            String advice = McpAdviser.propose(cli, "fixture cli argument check");
+            require(advice.contains("backend=cli"), "cli selected explicitly");
             require(advice.contains("timeout=7"), "configured timeout reaches inference");
-            require(!Files.exists(profile), "fixture does not prepare or invent a real model");
             McpAdviser.Config nativeConfig = new McpAdviser.Config(module, "jni", executable, executable, 7);
             require(McpAdviser.propose(nativeConfig, "legacy").contains("fake MCP advisory"), "legacy native API preserved");
-            require(McpAdviser.proposeBridge(module, BuildHookMain.DEFAULT_BRIDGE_URL, null, 7, "bridge check")
-                    .contains("backend=bridge url=http://127.0.0.1:11435/v1/ token=none timeout=7"), "bridge selected explicitly");
-            Path token = Files.writeString(root.resolve("bridge token"), "fixture-token\n");
-            require(McpAdviser.proposeBridge(module, "http://127.0.0.1:9/v1/", token, 7, "bridge token check")
-                    .contains("url=http://127.0.0.1:9/v1/ token=file"), "bridge URL and token file reach the engine");
-            List<String> bridge = new ArrayList<>(base);
-            bridge.addAll(List.of("--backend", "bridge", "--chrome-llm-jar", module.toString(),
-                    "--bridge-token-file", token.toString(), "--timeout-seconds", "7"));
-            require(run(bridge, "--phase", "pre-build") == 0, "bridge hook completes");
-            Map<String, Object> bridged = report(project, "pre-build");
-            require("bridge".equals(bridged.get("provider")) && "available".equals(bridged.get("adviceStatus")),
-                    "bridge advice recorded");
-            require(String.valueOf(bridged.get("llmCandidate")).contains("token=file"), "bridge candidate recorded");
 
             List<String> live = new ArrayList<>(base);
-            live.addAll(List.of("--backend", "chrome", "--chrome-llm-jar", module.toString(),
-                    "--chrome-binary", executable.toString(), "--chrome-profile", profile.toString(),
-                    "--timeout-seconds", "7", "--headless", "true"));
+            live.addAll(List.of("--backend", "cli", "--chrome-llm-jar", module.toString(),
+                    "--llama-bin", executable.toString(), "--model", valid.toString(), "--timeout-seconds", "7"));
             require(run(live, "--phase", "post-build", "--build-outcome", "failure", "--log-file", "build.log") == 0,
                     "actual subprocess boundary completes post-build report");
             post = report(project, "post-build");
@@ -240,29 +214,29 @@ public final class BuildHookTest {
             require("failed".equals(post.get("adviceStatus")), "failed advice still leaves diagnostic facts");
             require("failure".equals(post.get("buildOutcome")), "provider failure cannot clear Maven failure");
             require("".equals(post.get("llmCandidate")), "failed reply must not become candidate text");
-            expectFailure(() -> McpAdviser.propose(chrome, "fixture wrong reply id"));
-            expectFailure(() -> McpAdviser.propose(chrome, "fixture invalid content"));
-            expectFailure(() -> McpAdviser.propose(new McpAdviser.ChromeConfig(module, executable,
-                    profile.resolve("bad-hello"), true, false, 7), "hello validation"));
+            expectFailure(() -> McpAdviser.propose(cli, "fixture wrong reply id"));
+            expectFailure(() -> McpAdviser.propose(cli, "fixture invalid content"));
+            Path badHello = Files.writeString(root.resolve("mcp-init-wrong-id.gguf"), "fixture model");
+            expectFailure(() -> McpAdviser.propose(new McpAdviser.Config(module, "cli", executable, badHello, 7),
+                    "hello validation"));
             long start = System.nanoTime();
-            expectFailure(() -> McpAdviser.propose(new McpAdviser.ChromeConfig(module, executable,
-                    profile, true, false, 1), "fixture timeout"));
+            expectFailure(() -> McpAdviser.propose(new McpAdviser.Config(module, "cli", executable, valid, 1),
+                    "fixture timeout"));
             require(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 8,
                     "deadline must retire the waiting provider process");
-            checkBlockedWriter(module, executable, profile);
+            checkBlockedWriter(module, executable, Files.writeString(root.resolve("mcp-blocked-writer.gguf"), "fixture model"));
         }
         System.out.println("BUILD HOOK TESTS PASS: " + checks);
     }
 
-    private static void checkBlockedWriter(Path module, Path executable, Path profile) throws Exception {
+    private static void checkBlockedWriter(Path module, Path executable, Path model) throws Exception {
         long start = System.nanoTime();
-        Path marker = Path.of(executable + ".blocked-writer");
+        Path marker = Path.of(model + ".blocked-writer");
         var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
         Thread caller = new Thread(() -> {
             try {
                 // Maximum admitted UTF-8 input; JSON escaping also fills the provider's input pipe.
-                McpAdviser.propose(new McpAdviser.ChromeConfig(module, executable,
-                        profile.resolve("blocked-writer"), true, false, 1), "\"".repeat(65_536));
+                McpAdviser.propose(new McpAdviser.Config(module, "cli", executable, model, 1), "\"".repeat(65_536));
             } catch (Throwable observed) { failure.set(observed); }
         }, "build-hook-blocked-writer-probe");
         caller.setDaemon(true);
@@ -292,7 +266,7 @@ public final class BuildHookTest {
                     "blocked writer must fail at the MCP deadline, not prompt admission");
             long pid = Long.parseLong(Files.readString(marker));
             require(ProcessHandle.of(pid).map(handle -> !handle.isAlive()).orElse(true),
-                    "blocked Chrome fixture process must be retired");
+                    "blocked fixture process must be retired");
             require(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 8,
                     "deadline must retire a provider that stops reading a full input pipe");
         } finally {

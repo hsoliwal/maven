@@ -98,13 +98,13 @@ public final class CodeAgentTest {
         require(run(options) == 0, "offline mode still works after failures");
         String fixtureJar = System.getProperty("m3.smart.fixtureJar");
         if (fixtureJar != null) {
-            Path executable = Files.writeString(project.resolve("synthetic-chrome-bin"), "not actually Chrome");
-            Path profile = project.resolve("evidence-observer");
-            List<String> chrome = new ArrayList<>(options);
-            chrome.addAll(List.of("--backend", "chrome", "--chrome-llm-jar", fixtureJar,
-                    "--chrome-binary", executable.toString(), "--chrome-profile", profile.toString(),
+            Path executable = Files.writeString(project.resolve("synthetic-llama-bin"), "not actually llama.cpp");
+            Path profile = Files.writeString(project.resolve("mcp-evidence-observer.gguf"), "fixture model");
+            List<String> provider = new ArrayList<>(options);
+            provider.addAll(List.of("--backend", "cli", "--chrome-llm-jar", fixtureJar,
+                    "--llama-bin", executable.toString(), "--model", profile.toString(),
                     "--timeout-seconds", "7"));
-            refused(chrome, project, "synthetic MCP prose cannot masquerade as a structured recipe nomination");
+            refused(provider, project, "synthetic MCP prose cannot masquerade as a structured recipe nomination");
             require(Files.exists(Path.of(profile + ".invoked")), "existing ChromeLLM MCP provider launched");
             String request = Files.readString(Path.of(profile + ".request"));
             require(request.contains("m3.smart.code-agent.candidate.v1") && request.contains(binding),

@@ -50,14 +50,6 @@ public final class PlanMojo extends AbstractMojo {
     private File jniLib;
     @Parameter(property = "m3.smart.modelPath")
     private File modelPath;
-    @Parameter(property = "m3.smart.chromeBin")
-    private File chromeBin;
-    @Parameter(property = "m3.smart.chromeProfile")
-    private File chromeProfile;
-    @Parameter(property = "m3.smart.chromeHeadless", defaultValue = "true")
-    private boolean chromeHeadless;
-    @Parameter(property = "m3.smart.chromeDownload", defaultValue = "false")
-    private boolean chromeDownload;
     @Parameter(property = "m3.smart.llmTimeoutSeconds", defaultValue = "120")
     private int llmTimeoutSeconds;
 
@@ -71,14 +63,6 @@ public final class PlanMojo extends AbstractMojo {
                 if (!Files.isRegularFile(candidateFile.toPath()) || Files.size(candidateFile.toPath()) > 32768)
                     throw new IllegalArgumentException("candidate input missing or over 32 KiB");
                 candidate = Files.readString(candidateFile.toPath(), StandardCharsets.UTF_8);
-            } else if ("chrome".equals(llmBackend)) {
-                if (llamaBin != null || jniLib != null || modelPath != null)
-                    throw new IllegalArgumentException("Chrome provider cannot use native model settings");
-                candidate = McpAdviser.propose(new McpAdviser.ChromeConfig(
-                        chromeLlmJar == null ? null : chromeLlmJar.toPath(),
-                        chromeBin == null ? null : chromeBin.toPath(),
-                        chromeProfile == null ? null : chromeProfile.toPath(),
-                        chromeHeadless, chromeDownload, llmTimeoutSeconds), PlanEngine.prompt(pom, m, profile));
             } else if (llmBackend != null) {
                 File bin = "jni".equals(llmBackend) ? jniLib : llamaBin;
                 McpAdviser.Config config = new McpAdviser.Config(

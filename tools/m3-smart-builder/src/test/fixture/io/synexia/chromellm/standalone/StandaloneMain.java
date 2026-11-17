@@ -32,31 +32,9 @@ public final class StandaloneMain {
         }
         java.util.Map<String, String> options = new java.util.HashMap<>();
         for (int i = 0; i < args.length; i += 2) options.put(args[i], args[i + 1]);
-        String profile = options.getOrDefault("--chrome-profile", "");
-        boolean observeEvidence = profile.endsWith("evidence-observer");
-        if (observeEvidence) Files.writeString(Path.of(profile + ".invoked"), "synthetic provider started\n");
-        boolean chrome = "chrome".equals(options.get("--backend"));
-        if (chrome) {
-            if (options.containsKey("--model") || options.containsKey("--jni-lib")
-                    || options.containsKey("--llama-bin") || !options.containsKey("--chrome-bin")
-                    || !options.containsKey("--chrome-profile"))
-                throw new IllegalArgumentException("mixed provider options");
-            var lines = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            if (!lines.readLine().contains("initialize")) throw new IllegalArgumentException("expected initialize");
-            String scenario = options.get("--chrome-profile").endsWith("bad-hello") ? "init-wrong-id" : "valid";
-            strictProtocolFixture(lines, scenario, options);
-            return;
-        }
-        if ("bridge".equals(options.get("--backend"))) {
-            if (options.containsKey("--model") || options.containsKey("--jni-lib") || options.containsKey("--llama-bin")
-                    || options.containsKey("--chrome-bin") || options.containsKey("--chrome-profile")
-                    || !options.containsKey("--bridge-url"))
-                throw new IllegalArgumentException("mixed provider options");
-            var lines = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            if (!lines.readLine().contains("initialize")) throw new IllegalArgumentException("expected initialize");
-            strictProtocolFixture(lines, "valid", options);
-            return;
-        }
+        String modelOption = options.getOrDefault("--model", "");
+        if (modelOption.endsWith("evidence-observer.gguf"))
+            Files.writeString(Path.of(modelOption + ".invoked"), "synthetic provider started\n");
         Path model = null;
         String backend = null;
         String nativeFlag = null;
@@ -135,9 +113,10 @@ public final class StandaloneMain {
             default -> "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\"}}";
         };
         System.out.println(initialize);
-        if (options.getOrDefault("--chrome-profile", "").endsWith("blocked-writer")) {
+        String model = options.getOrDefault("--model", "");
+        if (scenario.equals("blocked-writer")) {
             System.out.flush();
-            Files.writeString(Path.of(options.get("--chrome-bin") + ".blocked-writer"),
+            Files.writeString(Path.of(model + ".blocked-writer"),
                     Long.toString(ProcessHandle.current().pid()));
             Thread.sleep(15000);
             return;
@@ -145,22 +124,16 @@ public final class StandaloneMain {
         if (!scenario.startsWith("init-")) {
             if (!lines.readLine().contains("notifications/initialized"))
                 throw new IllegalArgumentException("expected notification");
-            String profile = options.getOrDefault("--chrome-profile", "");
-            boolean observeEvidence = profile.endsWith("evidence-observer");
+            boolean observeEvidence = model.endsWith("evidence-observer.gguf");
             String request = lines.readLine();
-            if (observeEvidence) Files.writeString(Path.of(profile + ".request"), request);
+            if (observeEvidence) Files.writeString(Path.of(model + ".request"), request);
             if (!request.contains("infer_text")) throw new IllegalArgumentException("expected infer_text");
             if (request.contains("fixture-provider-error")) scenario = "call-is-error";
             if (request.contains("fixture timeout")) Thread.sleep(15000);
             if (request.contains("fixture invalid content")) scenario = "call-nontext";
             if (request.contains("fixture wrong reply id")) scenario = "call-wrong-id";
             String timeout = request.replaceAll(".*\\\"timeoutSeconds\\\":([0-9]+).*", "$1");
-            String text = "fake MCP advisory" + ("chrome".equals(options.get("--backend"))
-                    ? " backend=chrome headless=" + options.get("--chrome-headless")
-                    + " download=" + options.get("--chrome-download") + " timeout=" + timeout
-                    : "bridge".equals(options.get("--backend"))
-                    ? " backend=bridge url=" + options.get("--bridge-url")
-                    + " token=" + (options.containsKey("--bridge-token-file") ? "file" : "none") + " timeout=" + timeout : "");
+            String text = "fake MCP advisory backend=" + options.get("--backend") + " timeout=" + timeout;
             String response = switch (scenario) {
                 case "call-wrong-id" -> "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"fake MCP advisory\"}]}}";
                 case "call-wrong-rpc" -> "{\"jsonrpc\":\"1.0\",\"id\":2,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"fake MCP advisory\"}]}}";

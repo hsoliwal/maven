@@ -34,7 +34,7 @@ Status: experimental. This project lives **outside the upstream Maven reactor** 
 - `m3:code-agent` optionally consumes a current-file-bound **structural/logic/SimHash atom ledger** and guides ChromeLLM with a versioned, digest-bound, 18-rule **M3 Machine-Oriented Programming law packet** packaged in the plugin. The hashes provide similarity signals, not proof; authority labels distinguish local gates, external producer statements, advisory evidence, and proof still outstanding. `m3:code-agent-verify` is a **separate**, explicitly approved, offline/pinned OpenRewrite `dryRun` → staged `run` → Maven `verify` → fixed-point replay workflow, restricted to FILE scope. It keeps original sources unchanged and does not authenticate semantic equivalence or promote recipes. See [code-agent contract](docs/CODE_AGENT.md).
 - New `m3:machine-fingerprints` produces this ledger locally from the JDK 21 javac syntax AST, after validating canonical preparation and atom/pattern checkpoints. It emits bounded per-atom structural, normalized-logic-cue, SimHash and syntactic contract hashes, with deterministic parallel per-file fan-in. This is syntax-only evidence, not physical atomization, compiler attribution or equivalence proof; the canonical owner can still supply a stronger independently verified ledger. See [code-agent contract](docs/CODE_AGENT.md).
 - The canon gate (`sh m3-build.sh canon <packet.tsv> <run-dir>` or `mvn m3:canon`) is the hard M3-SCALE run contract: task packet, fixed stage order diff, atom_pattern, lint, compile, test, runtime, scope locks, mandatory atomization and patternization of every changed file, idempotence and the output contract; any violation fails. See [the canon gate contract](docs/CANON_GATE.md).
-- Build hooks can require canonical Java atomization/patternization checkpoint manifests before inference using `m3.smart.requireAtomPattern=true` and `m3.smart.atomPatternManifest`. The gate validates current Java scope coverage and ordered digest binding; non-Java files remain assigned to their existing lanes. It does not authenticate host semantic/JIT proof execution. See [the receipt contract](docs/CHROME_BUILD_HOOKS.md#require-canonical-java-atomization-and-patternization-receipts).
+- Build hooks can require canonical Java atomization/patternization checkpoint manifests before inference using `m3.smart.requireAtomPattern=true` and `m3.smart.atomPatternManifest`. The gate validates current Java scope coverage and ordered digest binding; non-Java files remain assigned to their existing lanes. It does not authenticate host semantic/JIT proof execution. See [the receipt contract](docs/BUILD_ADVICE_HOOKS.md#require-canonical-java-atomization-and-patternization-receipts).
 
 ## Manifest v1
 
@@ -80,30 +80,25 @@ mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:plan \
     -Dm3.smart.llamaBin=/approved/llama-cli -Dm3.smart.modelPath=/approved/model.gguf
 ```
 
-For the browser-managed Chrome AI model, select the explicit `chrome` provider as
-described below. The existing candidate-file route remains available unchanged.
+There is no browser provider: the `chrome` and `bridge` providers were removed on 2026-11-17. The existing
+candidate-file route remains available unchanged.
 
 ## Verification
 
-`scripts/verify.sh` compiles the dependency-free Java core and runs its offline tests with JDK 21. It also executes the Mojo adapter bodies against minimal Maven API stubs. These adapter tests do not qualify Maven plugin descriptor generation or real Maven API injection. The Maven verification goal explicitly binds its test fixture root to `${project.build.directory}`, independent of the caller's working directory. The code-agent verifier uses a synthetic Maven executable in offline tests; a genuine OpenRewrite run is a distinct qualification. A real Maven plugin build, a real ChromeLLM MCP session, a browser extension test, network artifact fetching and native GPU execution require separate evidence. Never treat the offline fixtures as those qualifications.
+`scripts/verify.sh` compiles the dependency-free Java core and runs its offline tests with JDK 21. It also executes the Mojo adapter bodies against minimal Maven API stubs. These adapter tests do not qualify Maven plugin descriptor generation or real Maven API injection. The Maven verification goal explicitly binds its test fixture root to `${project.build.directory}`, independent of the caller's working directory. The code-agent verifier uses a synthetic Maven executable in offline tests; a genuine OpenRewrite run is a distinct qualification. A real Maven plugin build, a real ChromeLLM MCP session, network artifact fetching and native GPU execution require separate evidence. Never treat the offline fixtures as those qualifications.
 
 ## Scope boundaries and repository ownership
 
 `hsoliwal/maven` owns this opt-in plugin and plugin goal semantics. `hsoliwal/ChromeLLM` owns MCP stdio, lazy GGUF and JNI providers. `hsoliwal/dawn` and `hsoliwal/synexia-llmcpp` own native WebGPU components. `hsoliwal/com.synexia` owns reusable recipes, pattern evaluation and proof policy. Do not merge these contracts into a single mutable Maven Core file.
 
-## Chrome AI build hooks
+## Build advice hooks
 
-The existing provider now supports explicit Chrome built-in AI for `m3:plan`,
-`m3:diagnose` and the additive `m3:build-hook` goal. The reusable Action and Java
-command invoke it before and after a build, including after failed compilation.
-See [Chrome build hooks](docs/CHROME_BUILD_HOOKS.md) for setup, lazy download,
-failure preservation and the distinct synthetic/live qualification lanes.
-`m3:build-hook` also takes the `bridge` provider (a loopback chat-completions
-endpoint in front of an already provisioned Chrome model), an operator-chosen CPU
-summarizer whose lines join the facts, and `failOnError=false` for binding the hook
-into a POM's lifecycle without letting advice change the build result.
+`m3:plan`, `m3:diagnose` and the additive `m3:build-hook` goal ask the local llama.cpp provider (`cli` or `jni`)
+before and after a build, including after failed compilation. See [Build advice hooks](docs/BUILD_ADVICE_HOOKS.md)
+for setup, failure preservation, the operator-chosen CPU summarizer whose lines join the facts, and
+`failOnError=false` for binding the hook into a POM's lifecycle without letting advice change the build result.
 
-## Chrome AI coding agent — pinned OpenRewrite recipes
+## Coding agent — pinned OpenRewrite recipes
 
 `m3:code-agent` reuses the already installed ChromeLLM provider and existing
 Java preparation/atom checkpoint verifiers. Without a provider it emits a
@@ -117,10 +112,10 @@ mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
   -Dm3.smart.preparationReport=.reports/preparation.json \
   -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
   -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
-  -Dm3.smart.llmBackend=chrome \
+  -Dm3.smart.llmBackend=cli \
   -Dm3.smart.chromeLlmJar=/approved/chromellm-standalone.jar \
-  -Dm3.smart.chromeBin=/approved/chrome \
-  -Dm3.smart.chromeProfile=/approved/dedicated-profile
+  -Dm3.smart.llamaBin=/approved/llama-cli \
+  -Dm3.smart.modelPath=/approved/model.gguf
 ```
 
 See [the complete input, replay and promotion contract](docs/CODE_AGENT.md).

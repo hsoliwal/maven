@@ -37,14 +37,6 @@ public final class BuildHookMojo extends AbstractMojo {
     private String llmBackend;
     @Parameter(property = "m3.smart.chromeLlmJar")
     private File chromeLlmJar;
-    @Parameter(property = "m3.smart.chromeBin")
-    private File chromeBin;
-    @Parameter(property = "m3.smart.chromeProfile")
-    private File chromeProfile;
-    @Parameter(property = "m3.smart.chromeHeadless", defaultValue = "true")
-    private boolean chromeHeadless;
-    @Parameter(property = "m3.smart.chromeDownload", defaultValue = "false")
-    private boolean chromeDownload;
     @Parameter(property = "m3.smart.llamaBin")
     private File llamaBin;
     @Parameter(property = "m3.smart.jniLib")
@@ -53,10 +45,6 @@ public final class BuildHookMojo extends AbstractMojo {
     private File modelPath;
     @Parameter(property = "m3.smart.llmTimeoutSeconds", defaultValue = "120")
     private int llmTimeoutSeconds;
-    @Parameter(property = "m3.smart.bridgeUrl")
-    private String bridgeUrl;
-    @Parameter(property = "m3.smart.bridgeTokenFile")
-    private File bridgeTokenFile;
     @Parameter(property = "m3.smart.summarizer")
     private String summarizer;
     @Parameter(property = "m3.smart.summarizerTimeoutSeconds")
@@ -80,23 +68,17 @@ public final class BuildHookMojo extends AbstractMojo {
         args.addAll(List.of("--preparation-required", Boolean.toString(preparationRequired)));
         add(args, "--preparation-report", preparationReport);
         add(args, "--chrome-llm-jar", chromeLlmJar);
-        add(args, "--chrome-binary", chromeBin);
-        add(args, "--chrome-profile", chromeProfile);
         add(args, "--llama-bin", llamaBin);
         add(args, "--jni-lib", jniLib);
         add(args, "--model", modelPath);
-        if ("chrome".equals(llmBackend)) args.addAll(List.of("--headless", Boolean.toString(chromeHeadless),
-                "--allow-download", Boolean.toString(chromeDownload)));
-        if ("bridge".equals(llmBackend) && bridgeUrl != null && !bridgeUrl.isBlank()) args.addAll(List.of("--bridge-url", bridgeUrl));
-        if ("bridge".equals(llmBackend)) add(args, "--bridge-token-file", bridgeTokenFile);
         if (summarizer != null && !summarizer.isBlank()) {
             args.addAll(List.of("--summarizer", summarizer));
             if (summarizerTimeoutSeconds != null) args.addAll(List.of("--summarizer-timeout-seconds", summarizerTimeoutSeconds.toString()));
         }
         int status = BuildHookMain.run(args.toArray(String[]::new), System.out, System.err);
         if (status == 0) return;
-        if (failOnError) throw new MojoExecutionException("Chrome AI build hook failed with status " + status);
-        getLog().warn("Chrome AI build hook did not complete (status " + status + "); the build result is unchanged");
+        if (failOnError) throw new MojoExecutionException("Build advice hook failed with status " + status);
+        getLog().warn("Build advice hook did not complete (status " + status + "); the build result is unchanged");
     }
 
     private static void add(List<String> args, String name, File value) {

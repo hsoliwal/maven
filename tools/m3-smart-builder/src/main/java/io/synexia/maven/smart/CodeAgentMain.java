@@ -18,9 +18,7 @@ import java.util.Set;
 public final class CodeAgentMain {
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
             "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence", "--candidate-file",
-            "--backend", "--chrome-llm-jar", "--chrome-binary", "--chrome-profile", "--headless",
-            "--allow-download", "--llama-bin", "--jni-lib", "--model", "--timeout-seconds",
-            "--bridge-url", "--bridge-token-file");
+            "--backend", "--chrome-llm-jar", "--llama-bin", "--jni-lib", "--model", "--timeout-seconds");
     private static final Set<String> CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
     private static final String CANDIDATE_SCHEMA = "m3.smart.code-agent.candidate.v1";
 
@@ -70,7 +68,7 @@ public final class CodeAgentMain {
             if (candidate != null && candidate.getBytes(StandardCharsets.UTF_8).length > 8_192)
                 throw new IOException("oversized model nomination");
 
-            // An interactive Chrome session may outlive a source edit; never publish stale nominations.
+            // A model call may outlive a source edit; never publish stale nominations.
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source,
                     path(base, options.get("--preparation-report"))))
                     || !atom.equals(AtomPatternEvidence.inspect(base, source,
@@ -172,32 +170,20 @@ public final class CodeAgentMain {
         if (timeout < 1 || timeout > 600) throw new IllegalArgumentException("timeout outside 1..600");
         Path jar = path(base, required(options, "--chrome-llm-jar"));
         return switch (backend) {
-            case "chrome" -> McpAdviser.propose(new McpAdviser.ChromeConfig(jar,
-                    path(base, required(options, "--chrome-binary")),
-                    path(base, required(options, "--chrome-profile")),
-                    bool(options, "--headless", true), bool(options, "--allow-download", false), timeout), prompt);
             case "cli", "jni" -> McpAdviser.propose(new McpAdviser.Config(jar, backend,
                     path(base, required(options, backend.equals("jni") ? "--jni-lib" : "--llama-bin")),
                     path(base, required(options, "--model")), timeout), prompt);
-            case "bridge" -> McpAdviser.proposeBridge(jar,
-                    options.getOrDefault("--bridge-url", BuildHookMain.DEFAULT_BRIDGE_URL),
-                    options.containsKey("--bridge-token-file") ? path(base, options.get("--bridge-token-file")) : null,
-                    timeout, prompt);
             default -> throw new IllegalArgumentException("unknown backend");
         };
     }
 
     private static void validateProvider(Map<String, String> options, String provider) {
-        if (!Set.of("none", "chrome", "cli", "jni", "bridge").contains(provider))
+        if (!Set.of("none", "cli", "jni").contains(provider))
             throw new IllegalArgumentException("invalid provider");
         if (options.containsKey("--candidate-file") && !provider.equals("none"))
             throw new IllegalArgumentException("candidate file and model are exclusive");
-        if (!provider.equals("chrome") && Set.of("--chrome-binary", "--chrome-profile", "--headless", "--allow-download")
-                .stream().anyMatch(options::containsKey)) throw new IllegalArgumentException("wrong Chrome controls");
         if (!Set.of("cli", "jni").contains(provider) && Set.of("--llama-bin", "--jni-lib", "--model")
                 .stream().anyMatch(options::containsKey)) throw new IllegalArgumentException("wrong native controls");
-        if (!provider.equals("bridge") && Set.of("--bridge-url", "--bridge-token-file")
-                .stream().anyMatch(options::containsKey)) throw new IllegalArgumentException("wrong bridge controls");
         if (provider.equals("none") && options.containsKey("--chrome-llm-jar"))
             throw new IllegalArgumentException("unexpected provider module");
         if (provider.equals("cli") && options.containsKey("--jni-lib")

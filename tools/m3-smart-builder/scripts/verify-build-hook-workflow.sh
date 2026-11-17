@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
 # SPDX-License-Identifier: Apache-2.0
-# Actual failed Maven compilation bracketed by the product action entry point.
-# Inference uses the named protocol fixture, never a real browser/model.
+# Actual failed Maven compilation bracketed by the build-hook entry point (BuildHookMain, cli backend).
+# Inference uses the named protocol fixture, never a real model.
 set -euo pipefail
 tool=$(cd -- "$(dirname -- "$0")/.." && pwd)
-repository=$(cd -- "$tool/../.." && pwd)
 work=$(mktemp -d "$tool/target/hook-workflow.XXXXXX")
 project="$work/project with spaces"
 mkdir -p "$project/src/main/java"
@@ -17,32 +16,36 @@ cat > "$project/pom.xml" <<'POM'
 </project>
 POM
 printf '%s\n' 'class Broken { MissingType value; }' > "$project/src/main/java/Broken.java"
-printf '%s\n' 'synthetic browser path, never executable' > "$work/browser"
-export HOOK_ACTION_PATH="$repository/.github/actions/chrome-ai"
-export HOOK_PROJECT="$project" HOOK_BUILD_DIR=.reports HOOK_BACKEND=chrome
-export HOOK_MODULE="$tool/target/mcp-fixture.jar" HOOK_CHROME="$work/browser" HOOK_PROFILE="$work/evidence-observer"
-export HOOK_HEADLESS=true HOOK_DOWNLOAD=false HOOK_TIMEOUT=30 HOOK_SOURCE=src
-export HOOK_REQUIRE_ATOM_PATTERN=true HOOK_ATOM_PATTERN_MANIFEST=synthetic-checkpoints.tsv
-export GITHUB_OUTPUT="$work/action-outputs"
-test -f "$HOOK_MODULE"
+printf '%s\n' 'synthetic llama.cpp path, never executed' > "$work/llama"
+model="$work/mcp-evidence-observer.gguf"
+printf '%s\n' 'synthetic model' > "$model"
+module="$tool/target/mcp-fixture.jar"
+test -f "$module"
+hook() { # hook <phase> [extra BuildHookMain options...]
+    local phase=$1; shift
+    java -cp "$tool/target/jdk-only" io.synexia.maven.smart.BuildHookMain --phase "$phase" \
+        --project-dir "$project" --build-dir .reports --source-root src \
+        --backend cli --chrome-llm-jar "$module" --llama-bin "$work/llama" --model "$model" \
+        --timeout-seconds 30 --require-atom-pattern true "$@"
+}
 # This fixture checks structure and source binding, not semantic proof authenticity.
 java -cp "$tool/target/jdk-only" io.synexia.maven.smart.AtomPatternEvidenceTest \
   --write-action-fixture "$project" src
-if HOOK_PHASE=pre-build HOOK_ATOM_PATTERN_MANIFEST=absent.tsv bash "$HOOK_ACTION_PATH/run.sh"; then
+if hook pre-build --atom-pattern-manifest absent.tsv; then
   printf '%s\n' 'Missing required evidence unexpectedly reached inference' >&2
   exit 1
 fi
-test ! -e "$HOOK_PROFILE.invoked"
+test ! -e "$model.invoked"
 set +e
 (
   set -e
-  HOOK_PHASE=pre-build bash "$HOOK_ACTION_PATH/run.sh"
+  hook pre-build --atom-pattern-manifest synthetic-checkpoints.tsv
   status=0
   "${HOOK_TEST_MAVEN:-mvn}" -B -ntp -f "$project/pom.xml" clean verify > "$project/build.log" 2>&1 || status=$?
   printf '%s' "$status" > "$work/maven-status"
   outcome=success
   [[ $status == 0 ]] || outcome=failure
-  HOOK_PHASE=post-build HOOK_BUILD_OUTCOME="$outcome" HOOK_LOG=build.log bash "$HOOK_ACTION_PATH/run.sh"
+  hook post-build --atom-pattern-manifest synthetic-checkpoints.tsv --build-outcome "$outcome" --log-file build.log
   exit "$status"
 )
 workflow_status=$?
