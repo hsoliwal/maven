@@ -10,7 +10,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
-/** Opt-in Chrome coding-agent recipe nomination; no source mutation or build lifecycle binding. */
+/** Opt-in coding-agent recipe nomination; no source mutation or build lifecycle binding. */
 @Mojo(name = "code-agent", threadSafe = true, requiresProject = true)
 public final class CodeAgentMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.basedir}", readonly = true, required = true)
@@ -35,14 +35,6 @@ public final class CodeAgentMojo extends AbstractMojo {
     private String llmBackend;
     @Parameter(property = "m3.smart.chromeLlmJar")
     private File chromeLlmJar;
-    @Parameter(property = "m3.smart.chromeBin")
-    private File chromeBin;
-    @Parameter(property = "m3.smart.chromeProfile")
-    private File chromeProfile;
-    @Parameter(property = "m3.smart.chromeHeadless", defaultValue = "true")
-    private boolean chromeHeadless = true;
-    @Parameter(property = "m3.smart.chromeDownload", defaultValue = "false")
-    private boolean chromeDownload;
     @Parameter(property = "m3.smart.llamaBin")
     private File llamaBin;
     @Parameter(property = "m3.smart.jniLib")
@@ -51,10 +43,6 @@ public final class CodeAgentMojo extends AbstractMojo {
     private File modelPath;
     @Parameter(property = "m3.smart.llmTimeoutSeconds", defaultValue = "120")
     private int llmTimeoutSeconds = 120;
-    @Parameter(property = "m3.smart.bridgeUrl")
-    private String bridgeUrl;
-    @Parameter(property = "m3.smart.bridgeTokenFile")
-    private File bridgeTokenFile;
 
     @Override public void execute() throws MojoExecutionException {
         if (baseDir == null || buildDir == null || sourceRoot == null || preparationReport == null
@@ -71,15 +59,9 @@ public final class CodeAgentMojo extends AbstractMojo {
         add(args, "--machine-evidence", machineEvidence);
         if (requireMachineEvidence) args.addAll(List.of("--require-machine-evidence", "true"));
         add(args, "--chrome-llm-jar", chromeLlmJar);
-        add(args, "--chrome-binary", chromeBin);
-        add(args, "--chrome-profile", chromeProfile);
         add(args, "--llama-bin", llamaBin);
         add(args, "--jni-lib", jniLib);
         add(args, "--model", modelPath);
-        if ("chrome".equals(llmBackend)) args.addAll(List.of("--headless", Boolean.toString(chromeHeadless),
-                "--allow-download", Boolean.toString(chromeDownload)));
-        if (bridgeUrl != null) args.addAll(List.of("--bridge-url", bridgeUrl));
-        add(args, "--bridge-token-file", bridgeTokenFile);
         int status = CodeAgentMain.run(args.toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 code-agent refused (status " + status + ")");
     }

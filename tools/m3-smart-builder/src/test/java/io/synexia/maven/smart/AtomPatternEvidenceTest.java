@@ -237,14 +237,15 @@ public final class AtomPatternEvidenceTest {
             Files.writeString(root.resolve("build.log"), "[ERROR] cannot find symbol\n");
             sources.put("src/A.java", "class A { private int value() { return 1; } } // DO_NOT_DISCLOSE_SOURCE\n");
             sources.put("src/nested/B.java", "class B {}\n");
-            Path profile = root.resolve("evidence-observer");
+            Path profile = root.resolve("mcp-evidence-observer.gguf");
             invoked = Path.of(profile + ".invoked");
             request = Path.of(profile + ".request");
             arguments.addAll(List.of("--project-dir", root.toString(), "--build-dir", ".reports", "--source-root", "src"));
             if (hasProvider()) {
-                Path executable = Files.writeString(root.resolve("chrome-fixture"), "synthetic executable\n");
-                arguments.addAll(List.of("--backend", "chrome", "--chrome-llm-jar", System.getProperty("m3.smart.fixtureJar"),
-                        "--chrome-binary", executable.toString(), "--chrome-profile", profile.toString(), "--timeout-seconds", "7"));
+                Path executable = Files.writeString(root.resolve("llama-fixture"), "synthetic executable\n");
+                Files.writeString(profile, "fixture model\n");
+                arguments.addAll(List.of("--backend", "cli", "--chrome-llm-jar", System.getProperty("m3.smart.fixtureJar"),
+                        "--llama-bin", executable.toString(), "--model", profile.toString(), "--timeout-seconds", "7"));
             }
         }
 

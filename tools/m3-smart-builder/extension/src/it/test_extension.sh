@@ -51,7 +51,7 @@ D="$T/d"; mkdir -p "$D"
 printf '<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>fix</groupId><artifactId>declared</artifactId><version>1</version><packaging>pom</packaging><build><plugins><plugin><groupId>io.synexia</groupId><artifactId>m3-smart-maven-plugin</artifactId><version>0.1.0-SNAPSHOT</version><executions><execution><id>own</id><phase>validate</phase><goals><goal>build-hook</goal></goals><configuration><phase>pre-build</phase></configuration></execution></executions></plugin></plugins></build></project>\n' > "$D/pom.xml"
 mvnx "$J21" "$D" declared.log -Dchromellm.advice=true validate || fail "declared: build not green"
 grep -q 'bound before and after 0 project(s)' "$T/declared.log" || fail "declared: the extension bound a declared plugin"
-[ "$(grep -c 'Chrome AI pre-build report' "$T/declared.log")" = 1 ] || fail "declared: the hook ran more than once"
+[ "$(grep -c 'Build advice pre-build report' "$T/declared.log")" = 1 ] || fail "declared: the hook ran more than once"
 
 P="$T/p"; reactor "$P" ""
 mvnx "$J21" "$P" noplugin.log -Dchromellm.advice=true "-Dmaven.repo.local=$T/empty-repo" validate || fail "no plugin: build not green: $(grep ERROR "$T/noplugin.log" | head -2)"

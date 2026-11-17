@@ -176,22 +176,21 @@ public final class SmartBuilderAdapterTest {
         int count = 7;
         String fixture = System.getProperty("m3.smart.fixtureJar");
         if (fixture != null) {
-            Path browser = Files.writeString(project.resolve("browser fixture"), "not an executable");
+            Path llama = Files.writeString(project.resolve("llama fixture"), "not an executable");
+            Path model = Files.writeString(project.resolve("mcp-valid.gguf"), "fixture model");
             for (Object mojo : java.util.List.of(plan, diagnose, hook)) {
-                set(mojo, "llmBackend", "chrome");
+                set(mojo, "llmBackend", "cli");
                 set(mojo, "chromeLlmJar", Path.of(fixture).toFile());
-                set(mojo, "chromeBin", browser.toFile());
-                set(mojo, "chromeProfile", project.resolve("chrome profile").toFile());
-                set(mojo, "chromeHeadless", true);
-                set(mojo, "chromeDownload", false);
+                set(mojo, "llamaBin", llama.toFile());
+                set(mojo, "modelPath", model.toFile());
                 set(mojo, "llmTimeoutSeconds", 7);
             }
             plan.execute();
             diagnose.execute();
             hook.execute();
             for (String name : java.util.List.of("plan.json", "diagnose.json", "post-build.json")) {
-                require(Files.readString(build.resolve("m3-smart").resolve(name)).contains("backend=chrome headless=true download=false timeout=7"),
-                        "Maven adapter must select the real Chrome protocol arguments: " + name);
+                require(Files.readString(build.resolve("m3-smart").resolve(name)).contains("backend=cli timeout=7"),
+                        "Maven adapter must select the real provider protocol arguments: " + name);
                 count++;
             }
         }

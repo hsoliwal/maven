@@ -52,17 +52,6 @@ public final class McpAdviser {
             if (timeoutSeconds < 1 || timeoutSeconds > 600) throw new IllegalArgumentException("MCP timeout outside 1..600 seconds");
         }
     }
-    /** Additive Chrome provider configuration; the native Config contract is unchanged. */
-    public record ChromeConfig(Path moduleJar, Path executable, Path profile, boolean headless,
-                               boolean allowDownload, int timeoutSeconds) {
-        public ChromeConfig {
-            if (moduleJar == null || !Files.isRegularFile(moduleJar)
-                    || executable == null || !Files.isRegularFile(executable) || profile == null)
-                throw new IllegalArgumentException("explicit existing module/browser and dedicated profile required");
-            if (timeoutSeconds < 1 || timeoutSeconds > 600)
-                throw new IllegalArgumentException("MCP timeout outside 1..600 seconds");
-        }
-    }
     private McpAdviser() { }
 
     /** Java 21 child entry for the optional Maven completion pass; stdout is candidate text only. */
@@ -133,24 +122,6 @@ public final class McpAdviser {
                 config.backend().equals("jni") ? "--jni-lib" : "--llama-bin", config.binary().toString(),
                 "--model", config.model().toString()));
         return propose(command, config.timeoutSeconds(), prompt);
-    }
-
-    public static String propose(ChromeConfig config, String prompt) throws Exception {
-        List<String> command = command(config.moduleJar());
-        command.addAll(List.of("--backend", "chrome", "--chrome-bin", config.executable().toString(),
-                "--chrome-profile", config.profile().toAbsolutePath().normalize().toString(),
-                "--chrome-headless", Boolean.toString(config.headless()),
-                "--chrome-download", Boolean.toString(config.allowDownload())));
-        return propose(command, config.timeoutSeconds(), prompt);
-    }
-
-    /** Additive bridge provider: ChromeLLM's loopback chat-completions backend; a null token file sends none. */
-    public static String proposeBridge(Path moduleJar, String url, Path tokenFile, int timeoutSeconds, String prompt) throws Exception {
-        if (moduleJar == null || !Files.isRegularFile(moduleJar) || url == null || url.isBlank() || timeoutSeconds < 1 || timeoutSeconds > 600) throw new IllegalArgumentException("explicit module, bridge URL and 1..600 s timeout required");
-        List<String> command = command(moduleJar);
-        command.addAll(List.of("--backend", "bridge", "--bridge-url", url));
-        if (tokenFile != null) command.addAll(List.of("--bridge-token-file", tokenFile.toString()));
-        return propose(command, timeoutSeconds, prompt);
     }
 
     private static List<String> command(Path moduleJar) {

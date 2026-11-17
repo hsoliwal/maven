@@ -189,7 +189,7 @@ public final class CodeAgentVerifyMain {
                     "semanticProofAuthenticated", "verificationAuthenticated"))
                 || !"m3.smart.code-agent.v1".equals(report.get("schema"))
                 || !"review-only".equals(report.get("mode")) || !"proposed".equals(report.get("status"))
-                || !Set.of("candidate-file", "chrome", "cli", "jni", "bridge")
+                || !Set.of("candidate-file", "cli", "jni")
                         .contains(report.get("candidateOrigin"))
                 || !(report.get("candidateSha256") instanceof String hash && hash.matches("[0-9a-f]{64}"))
                 || !Set.of("HIGH", "MEDIUM", "LOW").contains(report.get("modelConfidence"))
