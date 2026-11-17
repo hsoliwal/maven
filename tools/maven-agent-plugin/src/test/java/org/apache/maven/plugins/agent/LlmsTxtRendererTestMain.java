@@ -91,14 +91,39 @@ public final class LlmsTxtRendererTestMain {
         equal(true, json.endsWith("\"commands\":{\"build\":\"mvn verify\",\"agent\":\"mvn -B -ntp -q"
                 + " \\\"-Dstyle.color=never\\\" \\\"-Dmaven.agent=true\\\" verify\",\"module\":\"mvn -pl <path> -am verify\","
                 + "\"test\":\"mvn -pl <path> -am \\\"-Dtest=<Class>#<method>\\\" \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\""
-                + " test\"}}\n"), "commands: " + json);
+                + " test\",\"integrationTest\":\"mvn -pl <path> -am \\\"-Dit.test=<Class>#<method>\\\""
+                + " \\\"-Dfailsafe.failIfNoSpecifiedTests=false\\\" \\\"-Dtest=NoUnitTestSelected\\\""
+                + " \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\" verify\"}}\n"), "commands: " + json);
         equal(true, LlmsTxtMojo.same(GOLDEN.replace("\n", "\r\n"), GOLDEN), "a CRLF checkout of the same file is current");
         equal(false, LlmsTxtMojo.same(GOLDEN.replace("fix:c", "fix:d"), GOLDEN), "a changed file is stale");
         equal(false, json.contains("Three modules."), "the POM description is not part of project.json");
         equal("exec:java", new ProjectDescription.Goal("x", "org.codehaus.mojo:exec-maven-plugin:3.5.0", "java", "e")
                 .shortName(), "prefix of a *-maven-plugin");
         equal("odd:go", new ProjectDescription.Goal("x", "g:odd:1", "go", "e").shortName(), "an unconventional name");
+        equal(false, text.contains("One integration test") || text.contains("mvnw.cmd"), "no Failsafe, no wrapper");
+        failsafeAndWrapper();
         System.out.println("LlmsTxtRendererTestMain PASS");
+    }
+
+    /** A module that binds failsafe:integration-test gets the integration-test command; the wrapper its spellings. */
+    private static void failsafeAndWrapper() {
+        List<ProjectDescription.Goal> it = List.of(JAR.get(0), JAR.get(1), new ProjectDescription.Goal(
+                "integration-test", PLUGINS + "failsafe-plugin:3.2.5", "integration-test", "default"));
+        ProjectDescription base = fixture();
+        List<ProjectDescription.Module> modules = new java.util.ArrayList<>(base.modules());
+        ProjectDescription.Module c = modules.get(3);
+        modules.set(3, new ProjectDescription.Module(c.index(), c.id(), c.path(), c.packaging(), c.version(),
+                c.dependsOn(), c.sourceRoots(), c.testRoots(), it));
+        String text = LlmsTxtRenderer.render(new ProjectDescription(base.name(), base.description(), modules,
+                ProjectDescriber.commands("./mvnw", "verify")));
+        equal(true, text.contains("- One integration test (Failsafe, no unit tests): `./mvnw -pl <path> -am"
+                + " \"-Dit.test=<Class>#<method>\" \"-Dfailsafe.failIfNoSpecifiedTests=false\" \"-Dtest=NoUnitTestSelected\""
+                + " \"-Dsurefire.failIfNoSpecifiedTests=false\" verify`\n"), "integration-test command:\n" + text);
+        equal(true, text.contains("- Launcher: `./mvnw` as bash runs it; PowerShell and cmd.exe start it as"
+                + " `.\\mvnw.cmd`\n"), "wrapper per shell:\n" + text);
+        equal(true, new ProjectDescription(base.name(), base.description(), modules, ProjectDescriber.commands("mvn",
+                "verify")).json().contains("\"integrationTest\":\"mvn -pl <path> -am \\\"-Dit.test=<Class>#<method>"),
+                "project.json integrationTest command");
     }
 
     private static void equal(Object expected, Object actual, String what) {

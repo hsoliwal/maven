@@ -22,7 +22,7 @@ Describes a build for coding agents. Nothing of the build runs: the goals are Ma
 
 | Goal | Writes |
 | --- | --- |
-| `agent:describe-project` | `target/agent/project.json`: modules in reactor order with module dependencies, source and test roots and the goals bound up to `agent.phase` (default `verify`), and the commands to build, build in agent mode, build one module and run one test |
+| `agent:describe-project` | `target/agent/project.json`: modules in reactor order with module dependencies, source and test roots and the goals bound up to `agent.phase` (default `verify`), and the commands to build, build in agent mode, build one module, run one test and run one integration test (Failsafe, no unit tests); `llms.txt` adds the integration-test command when a module binds `failsafe:integration-test`, and with the Maven Wrapper the launcher's spelling per shell (`./mvnw` in bash, `.\mvnw.cmd` in PowerShell and cmd.exe) |
 | `agent:llms-txt` | `llms.txt` in the top-level project: the same description in the [llms.txt](https://llmstxt.org) layout, with Build, Test, Results, Modules and Plugin goals sections |
 
 ```sh

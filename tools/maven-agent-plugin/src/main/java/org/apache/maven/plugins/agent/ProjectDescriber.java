@@ -66,8 +66,9 @@ final class ProjectDescriber {
 
     /** The commands of a description, spelled by the extension's {@link MavenCommands}, their one owner. */
     static ProjectDescription.Commands commands(String launcher, String phase) {
-        return new ProjectDescription.Commands(MavenCommands.build(launcher), MavenCommands.agent(launcher),
-                MavenCommands.module(launcher, "<path>", phase), MavenCommands.test(launcher, "<path>", "<Class>#<method>"));
+        return new ProjectDescription.Commands(launcher, MavenCommands.build(launcher), MavenCommands.agent(launcher),
+                MavenCommands.module(launcher, "<path>", phase), MavenCommands.test(launcher, "<path>", "<Class>#<method>"),
+                MavenCommands.integrationTest(launcher, "<path>", "<Class>#<method>"));
     }
 
     private ProjectDescription.Module module(int index, MavenProject project, String phase) {
