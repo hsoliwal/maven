@@ -40,6 +40,9 @@ class BrowserlessChromeLLMAdviceTest implements RewriteTest {
                 """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.example</groupId>
+                  <artifactId>advice-fixture</artifactId>
+                  <version>1.0.0</version>
                   <profiles>
                     <profile>
                       <id>chromellm-advice</id>
@@ -82,6 +85,9 @@ class BrowserlessChromeLLMAdviceTest implements RewriteTest {
                 """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.example</groupId>
+                  <artifactId>advice-fixture</artifactId>
+                  <version>1.0.0</version>
                   <profiles>
                     <profile>
                       <id>chromellm-advice</id>
@@ -121,6 +127,9 @@ class BrowserlessChromeLLMAdviceTest implements RewriteTest {
                 """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.example</groupId>
+                  <artifactId>advice-fixture</artifactId>
+                  <version>1.0.0</version>
                   <profiles>
                     <profile>
                       <id>unrelated-advice</id>
