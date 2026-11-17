@@ -83,8 +83,8 @@ public final class TaskRunner {
             boolean incremental,
             String stateBackend,
             Consumer<String> log) throws IOException, InterruptedException {
-        if (!java.util.Set.of("legacy", "file", "m3db").contains(stateBackend)) {
-            throw new IllegalArgumentException("state backend must be legacy, file or m3db");
+        if (!java.util.Set.of("legacy", "file", "m3db", "sqlite", "h2", "derby").contains(stateBackend)) {
+            throw new IllegalArgumentException("state backend must be legacy, file, m3db, sqlite, h2 or derby");
         }
         if (!incremental && !"legacy".equals(stateBackend)) {
             throw new IllegalArgumentException("module state DB requires incremental execution");
@@ -102,10 +102,10 @@ public final class TaskRunner {
             throw new IOException("polyglot workspace is not a directory: " + root);
         }
         List<TaskManifest.Task> tasks = plan.order(target);
-        ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
-                ? ModuleStateDb.open(root, stateBackend) : null;
-        List<String> performed = new ArrayList<>(tasks.size());
-        for (TaskManifest.Task task : tasks) {
+        try (ModuleStateDb moduleState = incremental && !dryRun && !"legacy".equals(stateBackend)
+                ? ModuleStateDb.open(root, stateBackend) : null) {
+            List<String> performed = new ArrayList<>(tasks.size());
+            for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
                     + " prerequisites=" + task.prerequisites().size()
                     + " inputs=" + task.inputs().size() + " outputs=" + task.outputs().size());
@@ -187,12 +187,22 @@ public final class TaskRunner {
                 }
             }
             if (stamp != null) {
-                if (moduleState == null) InputStamps.record(task, root, stamp);
-                else moduleState.record(task, stamp);
+                if (moduleState == null) {
+                    InputStamps.record(task, root, stamp);
+                } else {
+                    // Seqlock-style validation: a successful process is not
+                    // enough if the declared inputs/tool changed while it ran.
+                    String after = moduleState.stamp(task);
+                    if (!stamp.equals(after)) {
+                        throw new IOException("module inputs changed while task ran: " + task.name());
+                    }
+                    moduleState.record(task, after);
+                }
             }
             performed.add(task.name());
+            }
+            return List.copyOf(performed);
         }
-        return List.copyOf(performed);
     }
 
     /**
