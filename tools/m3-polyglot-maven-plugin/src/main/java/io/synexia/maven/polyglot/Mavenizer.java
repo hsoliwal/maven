@@ -318,32 +318,40 @@ public final class Mavenizer {
             for (String module : modules) text.append("    <module>").append(xml(module)).append("</module>\n");
             text.append("  </modules>\n");
         }
-        if (!steps.isEmpty()) {
-            // Opt-in profile for stock Maven, which lacks the fork's lifecycle extension.
-            // Merely generating a POM must never execute native tools or download packages.
-            text.append("  <profiles>\n")
-                    .append("    <profile><id>m3-polyglot</id>\n")
-                    .append("      <build><plugins><plugin>\n")
-                    .append("        <groupId>io.synexia</groupId>\n")
-                    .append("        <artifactId>m3-polyglot-maven-plugin</artifactId>\n")
-                    .append("        <version>0.1.0-SNAPSHOT</version>\n")
-                    .append("        <executions>\n");
-            for (String phase : PHASES) {
-                if (steps.stream().noneMatch(step -> phase.equals(step.phase()))) continue;
-                text.append("          <execution>\n")
-                        .append("            <id>m3-polyglot-").append(phase).append("</id>\n")
-                        .append("            <phase>").append(phase).append("</phase>\n")
-                        .append("            <goals><goal>run</goal></goals>\n")
-                        .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
-                        .append("          </execution>\n");
-            }
-            if (DotnetSteps.packs(steps)) attach(text);
-            text.append("        </executions>\n")
-                    .append("      </plugin></plugins></build>\n")
-                    .append("    </profile>\n")
-                    .append("  </profiles>\n");
-        }
+        if (!steps.isEmpty()) profile(text, steps);
         return text.append("</project>\n").toString();
+    }
+
+    /** The opt-in m3-polyglot profile: one run execution per phase with steps, then the attach execution. */
+    private static void profile(StringBuilder text, List<Step> steps) {
+        // Opt-in profile for stock Maven, which lacks the fork's lifecycle extension.
+        // Merely generating a POM must never execute native tools or download packages.
+        text.append("  <profiles>\n")
+                .append("    <profile><id>m3-polyglot</id>\n")
+                .append("      <build><plugins><plugin>\n")
+                .append("        <groupId>io.synexia</groupId>\n")
+                .append("        <artifactId>m3-polyglot-maven-plugin</artifactId>\n")
+                .append("        <version>0.1.0-SNAPSHOT</version>\n")
+                .append("        <executions>\n");
+        runExecutions(text, steps);
+        if (DotnetSteps.packs(steps)) attach(text);
+        text.append("        </executions>\n")
+                .append("      </plugin></plugins></build>\n")
+                .append("    </profile>\n")
+                .append("  </profiles>\n");
+    }
+
+    /** One run execution for each phase that has steps, with the phase as its target. */
+    private static void runExecutions(StringBuilder text, List<Step> steps) {
+        for (String phase : PHASES) {
+            if (steps.stream().noneMatch(step -> phase.equals(step.phase()))) continue;
+            text.append("          <execution>\n")
+                    .append("            <id>m3-polyglot-").append(phase).append("</id>\n")
+                    .append("            <phase>").append(phase).append("</phase>\n")
+                    .append("            <goals><goal>run</goal></goals>\n")
+                    .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
+                    .append("          </execution>\n");
+        }
     }
 
     /** After the package run, attach the packages it wrote (declared later, so it runs later in the phase). */

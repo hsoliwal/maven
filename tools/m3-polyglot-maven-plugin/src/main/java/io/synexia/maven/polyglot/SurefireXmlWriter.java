@@ -22,13 +22,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
  * Writes a {@link TestSuiteReport} in the surefire report format ({@code TEST-<suite>.xml}: testsuite with tests,
  * failures, errors, skipped and time; testcase with failure, error or skipped children and system-out), which the
- * surefire report plugin, CI servers and IDEs read. Ported from the native-build plugin's writer, unchanged in output.
+ * surefire report plugin, CI servers and IDEs read. Ported from the native-build plugin's writer; it is the one writer
+ * of this plugin (cargo test, TRX). A failure or error message with more than one line (a stack trace) is also the
+ * element's text, and its first line the message attribute; a report replaces the old file in one move.
  */
 public final class SurefireXmlWriter {
     private SurefireXmlWriter() {}
@@ -38,11 +41,17 @@ public final class SurefireXmlWriter {
         return "TEST-" + suite.replaceAll("[^A-Za-z0-9._-]", "_") + ".xml";
     }
 
-    /** Writes the report into {@code directory}, creating it; returns the file. */
+    /** Writes the report into {@code directory}, creating it, through a temporary file moved into place. */
     public static Path write(TestSuiteReport report, Path directory) throws IOException {
         Path file = directory.resolve(fileName(report.name()));
         Files.createDirectories(directory);
-        Files.writeString(file, render(report), StandardCharsets.UTF_8);
+        Path temp = Files.createTempFile(directory, ".surefire-", ".tmp");
+        try {
+            Files.writeString(temp, render(report), StandardCharsets.UTF_8);
+            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            Files.deleteIfExists(temp);
+        }
         return file;
     }
 
@@ -67,13 +76,26 @@ public final class SurefireXmlWriter {
     }
 
     private static String detail(TestSuiteReport.Case c) {
-        String message = escape(c.message());
+        String message = escape(firstLine(c.message()));
         return switch (c.status()) {
-            case FAILED -> "    <failure message=\"" + message + "\" type=\"native\"/>\n";
-            case ERRORED -> "    <error message=\"" + message + "\" type=\"native\"/>\n";
+            case FAILED -> problem("failure", message, c.message());
+            case ERRORED -> problem("error", message, c.message());
             case SKIPPED -> "    <skipped message=\"" + message + "\"/>\n";
             case PASSED -> "";
         };
+    }
+
+    /** A failure or error element; a message of more than one line is its text too. */
+    private static String problem(String element, String message, String text) {
+        String open = "    <" + element + " message=\"" + message + "\" type=\"native\"";
+        String trace = text.strip();
+        return trace.indexOf('\n') < 0 ? open + "/>\n" : open + ">" + escape(trace) + "</" + element + ">\n";
+    }
+
+    private static String firstLine(String text) {
+        String stripped = text.strip();
+        int end = stripped.indexOf('\n');
+        return (end < 0 ? stripped : stripped.substring(0, end)).strip();
     }
 
     private static String time(double seconds) {

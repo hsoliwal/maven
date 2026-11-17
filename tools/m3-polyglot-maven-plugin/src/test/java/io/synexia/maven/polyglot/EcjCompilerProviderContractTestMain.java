@@ -84,6 +84,12 @@ public final class EcjCompilerProviderContractTestMain {
         Files.writeString(root.resolve("tools/ecj.zip"), "x", StandardCharsets.UTF_8);
         refuses(() -> EcjCompilerProvider.verified(root.resolve("tools/ecj.zip"), null), "not a jar");
         refuses(() -> EcjCompilerProvider.verified(root.resolve("tools/none.jar"), null), "missing jar");
+        selectsTheJarOfTheSystemProperty(root, jar);
+        passed++;
+    }
+
+    /** Without an argument the jar comes from the system property, and the refusal says how to configure it. */
+    private static void selectsTheJarOfTheSystemProperty(Path root, Path jar) throws Exception {
         String saved = System.getProperty(EcjCompilerProvider.JAR_PROPERTY);
         try {
             System.clearProperty(EcjCompilerProvider.JAR_PROPERTY);
@@ -95,19 +101,13 @@ public final class EcjCompilerProviderContractTestMain {
             if (saved == null) System.clearProperty(EcjCompilerProvider.JAR_PROPERTY);
             else System.setProperty(EcjCompilerProvider.JAR_PROPERTY, saved);
         }
-        passed++;
     }
 
     /** A real ECJ compile through the runner, when a jar is given; otherwise reports NOT_RUN. */
     private static String liveCompile(Path root) throws Exception {
         String jar = System.getProperty(EcjCompilerProvider.JAR_PROPERTY, "");
         if (jar.isBlank()) return "NOT_RUN (set -D" + EcjCompilerProvider.JAR_PROPERTY + "=<ecj.jar>)";
-        Files.createDirectories(root.resolve("src/demo"));
-        Files.createDirectories(root.resolve("target"));
-        Files.writeString(root.resolve("src/demo/Ok.java"), "package demo;\npublic class Ok { int one() { return 1; } }\n",
-                StandardCharsets.UTF_8);
-        Files.writeString(root.resolve("src/demo/Bad.java"), "package demo;\npublic class Bad { int n = \"s\"; }\n",
-                StandardCharsets.UTF_8);
+        writeLiveSources(root);
         TaskManifest plan = TaskManifest.load(manifest(root));
         TaskRunner.run(plan, root, "ok", false, Duration.ofSeconds(300), line -> { });
         require(Files.isRegularFile(root.resolve("target/classes/demo/Ok.class")), "ECJ wrote the class file");
@@ -120,6 +120,16 @@ public final class EcjCompilerProviderContractTestMain {
                 "the failing compile still leaves ECJ's diagnostics");
         passed++;
         return "PASS (" + log.replaceAll("(?s).*name=\"Eclipse Compiler for Java\\(TM\\)\" version=\"([^\"]+)\".*", "$1") + ")";
+    }
+
+    /** A class that compiles and one with a type error, under src/demo; and the target folder. */
+    private static void writeLiveSources(Path root) throws IOException {
+        Files.createDirectories(root.resolve("src/demo"));
+        Files.createDirectories(root.resolve("target"));
+        Files.writeString(root.resolve("src/demo/Ok.java"), "package demo;\npublic class Ok { int one() { return 1; } }\n",
+                StandardCharsets.UTF_8);
+        Files.writeString(root.resolve("src/demo/Bad.java"), "package demo;\npublic class Bad { int n = \"s\"; }\n",
+                StandardCharsets.UTF_8);
     }
 
     private static Path manifest(Path root) throws IOException {

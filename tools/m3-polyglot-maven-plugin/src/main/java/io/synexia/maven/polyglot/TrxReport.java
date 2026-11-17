@@ -28,24 +28,18 @@ import org.xml.sax.helpers.DefaultHandler;
  * The test results of a Visual Studio TRX file, as {@code dotnet test --logger trx} writes it (VSTest with xUnit,
  * NUnit or MSTest). Each top-level {@code UnitTestResult} is one test case; its class comes from the
  * {@code TestMethod} of the {@code UnitTest} it names. Results nested under {@code InnerResults} (MSTest data rows)
- * are not separate cases. A document type declaration is refused, so no entity or external file is ever read.
+ * are not separate cases. A document type declaration is refused, so no entity or external file is ever read. The
+ * cases are {@link TestSuiteReport} cases: the message is the error message followed by the stack trace.
  */
 final class TrxReport {
     static final String NAMESPACE = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
     static final long MAX_BYTES = 64L * 1024 * 1024;
     private static final Pattern DURATION = Pattern.compile("(?:(\\d+)\\.)?(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)");
 
-    /** Outcomes as surefire counts them. */
-    enum Status { PASSED, FAILED, ERRORED, SKIPPED }
-
-    /** One test case: its class, its name within the class, outcome, seconds, message, stack trace and output. */
-    record Case(String className, String name, Status status, double seconds, String message, String detail,
-            String output) { }
-
     private TrxReport() { }
 
     /** The cases of one TRX file, in file order. */
-    static List<Case> read(Path file) throws IOException {
+    static List<TestSuiteReport.Case> read(Path file) throws IOException {
         if (Files.size(file) > MAX_BYTES) throw new IOException("TRX file is over 64 MiB: " + file);
         Document document = parse(file);
         Element run = document.getDocumentElement();
@@ -53,7 +47,7 @@ final class TrxReport {
             throw new IOException("not a TRX TestRun document: " + file);
         }
         Map<String, String> classes = classes(run);
-        List<Case> cases = new ArrayList<>();
+        List<TestSuiteReport.Case> cases = new ArrayList<>();
         for (Element result : children(child(run, "Results"), "UnitTestResult")) cases.add(toCase(result, classes));
         return List.copyOf(cases);
     }
@@ -86,24 +80,27 @@ final class TrxReport {
         return classes;
     }
 
-    private static Case toCase(Element result, Map<String, String> classes) {
+    private static TestSuiteReport.Case toCase(Element result, Map<String, String> classes) {
         String className = classes.getOrDefault(result.getAttribute("testId"), "dotnet");
         String name = result.getAttribute("testName");
         if (name.startsWith(className + ".")) name = name.substring(className.length() + 1);
         Element output = child(result, "Output");
         Element error = child(output, "ErrorInfo");
-        return new Case(className, name, status(result.getAttribute("outcome")),
-                seconds(result.getAttribute("duration")), text(child(error, "Message")),
-                text(child(error, "StackTrace")), text(child(output, "StdOut")));
+        String message = (text(child(error, "Message")) + "\n" + text(child(error, "StackTrace"))).strip();
+        return new TestSuiteReport.Case(className, name, seconds(result.getAttribute("duration")),
+                status(result.getAttribute("outcome")), message, text(child(output, "StdOut")));
     }
 
-    /** VSTest outcomes: Passed and PassedButRunAborted pass; Failed fails; Error, Timeout, Aborted are errors. */
-    static Status status(String outcome) {
+    /**
+     * VSTest outcomes: Passed, PassedButRunAborted, Completed and Warning pass; Failed fails; Error, Timeout, Aborted
+     * and NotRunnable (the test could not run) are errors; NotExecuted, Inconclusive and the others are skipped.
+     */
+    static TestSuiteReport.Status status(String outcome) {
         return switch (outcome) {
-            case "Passed", "PassedButRunAborted" -> Status.PASSED;
-            case "Failed" -> Status.FAILED;
-            case "Error", "Timeout", "Aborted" -> Status.ERRORED;
-            default -> Status.SKIPPED;
+            case "Passed", "PassedButRunAborted", "Completed", "Warning" -> TestSuiteReport.Status.PASSED;
+            case "Failed" -> TestSuiteReport.Status.FAILED;
+            case "Error", "Timeout", "Aborted", "NotRunnable" -> TestSuiteReport.Status.ERRORED;
+            default -> TestSuiteReport.Status.SKIPPED;
         };
     }
 

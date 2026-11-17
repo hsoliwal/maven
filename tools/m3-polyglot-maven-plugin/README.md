@@ -277,14 +277,17 @@ and `package` run the native commands:
 
 Test reports. CTest writes its JUnit XML itself (`--output-junit`, CMake 3.21+) to
 `target/surefire-reports/TEST-ctest.xml`. Cargo has no stable report format (libtest's JUnit and JSON formats need
-nightly), so the `cargo-test` task uses the built-in `@m3:cargo:interpreter:rust` provider: it starts
-`CargoTestReport` in a JVM of the running JDK, which runs the original `cargo test`, echoes its output, reads the
+nightly), so the `cargo-test` task uses the built-in `@m3:cargo:interpreter:rust` provider: it starts the
+`libtest` format of the surefire report runner (`SurefireReportMain`, the same command as
+`@m3:surefire:interpreter:libtest <reports> <tool> <argument>...`) in a JVM of the running JDK, which runs the
+original `cargo test` (`CargoTestReport`), echoes its output, reads the
 stable libtest lines (`test <name> ... ok|FAILED|ignored`, the `---- <name> stdout ----` failure sections, the
 `test result:` line, cargo's `Running` and `Doc-tests` lines) and writes one surefire report per test binary
 (`TEST-<crate>_<source>.xml`, `TEST-<crate>_doc-tests.xml`) into `target/surefire-reports`, next to cargo's own
 `target/debug`. A binary that ends without a result line (a crash) gets an error case. Cargo's exit status is kept:
 failing tests fail the build after their reports are written. The report writer (`SurefireXmlWriter`,
-`TestSuiteReport`) is the native-build plugin's, ported here so both use one copy.
+`TestSuiteReport`) is the native-build plugin's, ported here so both use one copy; it is the only surefire writer
+of this plugin, for cargo test and TRX alike, and replaces each report file in one move.
 
 clangd and CDT. A mavenized CMake folder also gets a `.clangd` file (`CompileFlags: CompilationDatabase:
 build/cmake`), so clangd, and CDT's LSP editor (cdt-lsp, which reads and writes the same key), find the compile
@@ -423,7 +426,7 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
 | `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)) |
-| `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results |
+| `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results; `@m3:surefire:interpreter:libtest` runs cargo test and reports its output |
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
 | `patternizer` | Structural, logic and pattern-evidence argv | SPI only; provider required |
@@ -555,9 +558,11 @@ A mavenized .NET folder runs `dotnet test --logger trx --results-directory targe
 `@m3:surefire:interpreter:trx`. That provider removes old `*.trx` files from the results folder, runs the tool,
 converts the TRX files it wrote into `target/surefire-reports/TEST-<class>.xml`, and ends with the tool's exit
 status: failing tests fail the build and still leave their reports, as with surefire. A TRX `UnitTestResult` is
-one test case of its `TestMethod`'s class; `Passed` passes, `Failed` fails, `Error`/`Timeout`/`Aborted` are errors,
-`NotExecuted` and other outcomes are skipped; MSTest data rows (`InnerResults`) are not separate cases. A TRX file
-with a document type declaration is refused. `@m3:surefire:transpiler:trx <results> <reports>` only converts.
+one test case of its `TestMethod`'s class; `Passed`, `PassedButRunAborted`, `Completed` and `Warning` pass,
+`Failed` fails, `Error`/`Timeout`/`Aborted`/`NotRunnable` are errors, `NotExecuted` and other outcomes are skipped;
+MSTest data rows (`InnerResults`) are not separate cases. A failure's message is the TRX error message followed by
+its stack trace: the first line is the `message` attribute, the whole text the element's text. A TRX file with a
+document type declaration is refused. `@m3:surefire:transpiler:trx <results> <reports>` only converts.
 
 `dotnet pack --output target/nuget` runs in `package`. The `m3-polyglot:attach` goal attaches every `.nupkg` and
 `.snupkg` there to the project (type `nupkg`/`snupkg`, classifier the package id read from its `.nuspec`), so
