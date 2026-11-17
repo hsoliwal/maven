@@ -37,7 +37,9 @@ import org.apache.maven.api.services.ResourceFilterRequest;
  * matcher; an expression is searched for in a window of 255 characters plus the lengths of the escape string and
  * of all delimiters; when several begin tokens match, the last declared one wins. Unlike maven-filtering, an escape
  * string at the end of the input is copied as is (maven-filtering appends {@code U+FFFF}). Values come from the
- * given resolver, which returns empty for an unresolved expression; the expression is then copied unchanged.
+ * given resolver, which returns empty for an unresolved expression; such an expression is copied with only the
+ * expressions of earlier declared delimiters inside it replaced, as maven-filtering does through
+ * plexus-interpolation.
  */
 final class ResourceFilterReader extends Reader {
 
@@ -163,9 +165,61 @@ final class ResourceFilterReader extends Reader {
         }
         String text = new String(buffer, start, length);
         consume(length);
-        String body = text.substring(
-                delimiter.begin().length(), length - delimiter.end().length());
-        return emit(resolver.apply(body).orElse(text));
+        return emit(value(text, delimiter).orElseGet(() -> reread(text)));
+    }
+
+    /** The value of an expression written with both tokens of its delimiter, empty when unresolved. */
+    private Optional<String> value(String expression, Delimiter delimiter) {
+        return resolver.apply(expression.substring(
+                delimiter.begin().length(),
+                expression.length() - delimiter.end().length()));
+    }
+
+    /**
+     * An unresolved expression read again as maven-filtering does: it hands the whole text to plexus-interpolation
+     * {@code MultiDelimiterStringSearchInterpolator}, which takes each time the first declared delimiter whose begin
+     * token occurs, so that an expression of an earlier declared delimiter inside the text is replaced, as
+     * {@code ${b}} in {@code @x ${b} y@}, while the text around it is kept.
+     */
+    private String reread(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        int from = 0;
+        while (from < text.length()) {
+            from = rereadNext(text, from, out);
+        }
+        return out.toString();
+    }
+
+    /** Appends the text from {@code from} to the end of its next expression; returns the index after that. */
+    private int rereadNext(String text, int from, StringBuilder out) {
+        Optional<Delimiter> first = delimiters.stream()
+                .filter(d -> text.indexOf(d.begin(), from) >= 0)
+                .findFirst();
+        int begin = first.map(d -> text.indexOf(d.begin(), from)).orElse(-1);
+        int end = first.map(d -> text.indexOf(d.end(), begin + d.begin().length()))
+                .orElse(-1);
+        if (end < 0) {
+            out.append(text, from, text.length());
+            return text.length();
+        }
+        int after = end + first.get().end().length();
+        appendExpression(text, from, begin, text.substring(begin, after), first.get(), out);
+        return after;
+    }
+
+    /**
+     * The text from {@code from} and the value of the expression at {@code begin}; after an escape string, the
+     * text without it and the expression itself. The whole text, already unresolved, is not looked up again.
+     */
+    private void appendExpression(
+            String text, int from, int begin, String expression, Delimiter delimiter, StringBuilder out) {
+        boolean escaped =
+                escape != null && begin - escape.length() >= from && text.startsWith(escape, begin - escape.length());
+        out.append(text, from, escaped ? begin - escape.length() : begin);
+        out.append(
+                escaped || expression.equals(text)
+                        ? expression
+                        : value(expression, delimiter).orElse(expression));
     }
 
     /** Length of the expression with both tokens, or -1 when its end is not found before EOL, EOF or the window. */

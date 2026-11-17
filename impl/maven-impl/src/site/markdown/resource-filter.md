@@ -89,7 +89,12 @@ equivalent: callers resolve filter files and project values in the callback.
   string and of all delimiters; a longer expression is copied as written.
 * The body is resolved as `${body}` by the `Interpolator`, so `${a:-default}`, `${a:+alternate}` and nested
   `${...}` in property values work. A leading `.` is dropped. A body with `$`, braces or a backslash is looked up as
-  is. An unresolved expression is copied unchanged; a cycle fails the copy.
+  is. A cycle fails the copy.
+* An unresolved expression is copied with only the expressions of earlier declared delimiters inside it replaced, as
+  maven-filtering does by handing it to plexus-interpolation: with the default delimiters `${*}` and `@`, the
+  `${b}` in `dev@example.org,build=${b},ops@example.org` is replaced although it lies between two `@`, while `@a@`
+  in `${x @a@ y}` is not, since `${*}` is declared first. An escape string before such an inner expression is
+  removed and the expression copied literally.
 * The escape string before a begin token is removed and the expression is copied literally (`\${a}` gives `${a}`);
   before any other character the escape string is kept.
 * Characters between expressions are copied as read, so `\n`, `\r\n`, `\r` and a byte order mark are preserved.
@@ -98,7 +103,7 @@ equivalent: callers resolve filter files and project values in the callback.
 
 ## Parity with maven-filtering
 
-`ResourceFilterParityTest` runs 41 texts (delimiters, escapes, line endings, windows, values) through
+`ResourceFilterParityTest` runs 50 texts (delimiters, escapes, line endings, windows, values) through
 maven-filtering 3.5.0 `MultiDelimiterInterpolatorFilterReaderLineEnding` (wired as `BaseFilter.Wrapper` wires it, in
 4 configurations), `InterpolatorFilterReaderLineEnding` (wired as `MavenResourcesExecution.addFilerWrapperWithEscaping`)
 and plexus-utils `InterpolationFilterReader`, and writes `target/resource-filter-parity/READER_PARITY.tsv`.
@@ -109,7 +114,8 @@ asserted to stay different:
 | case | maven-filtering 3.5.0 | ResourceFilter |
 |---|---|---|
 | escape string at the end of the input | appends `U+FFFF` | copies the escape string |
-| begin token starting with the first character of a multi-character escape string (`#{a}`, escape `##`) | not recognised when it is the first declared delimiter | recognised |
+| escape string before an expression inside an unresolved expression (`@x \${a} y@`) | removes the character before the escape string (`@x\${a} y@`) | removes the escape string (`@x ${a} y@`) |
+| begin token starting with the first character of a multi-character escape string (`#{a}`, `#{x <<a>> y}`, escape `##`) | not recognised when it is the first declared delimiter | recognised |
 | `${a:-x}`, `${a:+x}` | looks up the name `a:-x` | Interpolator operators |
 | a property value containing a custom delimiter (`@b@`) | expanded | kept (only `${...}` is expanded in values) |
 | a value containing `\{`, `\}` or `$__` | kept | unescaped by the Interpolator |
