@@ -27,7 +27,8 @@ under the License.
   <packaging>jar</packaging>
   <name>Apache Maven Code Recipes</name>
   <description>The fork's home for OpenRewrite recipes: build baseline changes (GitHub Actions setup-java levels)
-    and searches (POM Java levels a JDK cannot compile, maven-filtering calls to move to the core ResourceFilter),
+    and searches (POM Java levels a JDK cannot compile, maven-filtering calls to move to the core ResourceFilter, artifact
+    filters to move to the core ArtifactMatcherFactory),
     runnable on any repository through rewrite-maven-plugin.
   </description>
   <licenses>

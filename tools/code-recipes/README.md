@@ -41,6 +41,7 @@ what was checked and why.
 | `org.apache.maven.recipes.Jdk21CiLeg` | composite (`META-INF/rewrite/jdk21.yml`) | the two above at 21 |
 | `org.apache.maven.recipes.UseCoreResourceFilter` | search (Java) | none |
 | `org.apache.maven.recipes.BrowserlessChromeLLMAdvice` | change (XML + final comment rewrite) | none |
+| `org.apache.maven.recipes.UseArtifactMatcherFactory` | search (Java) | none |
 
 ### BrowserlessChromeLLMAdvice
 
@@ -258,6 +259,39 @@ Search only: a `MavenResourcesExecution` holds model `Resource`s where the reque
 site has no `ResourceFilter` handle, so no call is rewritten one to one. Maven 3 plugins are not marked, since they
 cannot use Maven 4 services. The service and its parity with maven-filtering are described in the site page
 `impl/maven-impl/src/site/markdown/resource-filter.md`.
+
+### UseArtifactMatcherFactory
+
+Lists the artifact filters of Maven 4 plugins that the core `ArtifactMatcherFactory` service (Maven 4.2.0,
+`org.apache.maven.api.services`) can replace. In Java source files that use a type of the Maven 4 API
+(`org.apache.maven.api..*`), it marks each constructor call of these classes with the `ArtifactMatcherRequest` that
+selects the same artifacts:
+
+| Constructor | Request |
+|---|---|
+| `PatternIncludesArtifactFilter(patterns[, transitive])` | `.includes(patterns)[.transitive(transitive)]` |
+| `PatternExcludesArtifactFilter(patterns[, transitive])` | `.excludes(patterns)[.transitive(transitive)]` |
+| `collection.ScopeFilter(include, exclude)` | `.includeScope(include).excludeScope(exclude)` |
+| `collection.GroupIdFilter(include, exclude)` | `.includeValues(Coordinate.GROUP_ID, ...)`, `.excludeValues(...)`, `.groupIdPrefixMatch(true)` |
+| `collection.GroupIdFilter(include, exclude, exactMatch)` | the same, with `.groupIdPrefixMatch(!exactMatch)` (nothing for `true`) |
+| `collection.ArtifactIdFilter`, `TypeFilter`, `ClassifierFilter` | `.includeValues(...)` and `.excludeValues(...)` of `ARTIFACT_ID`, `TYPE`, `CLASSIFIER` |
+| dependency plugin `utils.filters.GroupIdFilter(include, exclude, true)` | `.includeValues(Coordinate.GROUP_ID, ...)`, `.excludeValues(...)` |
+
+A comma-separated literal becomes `List.of("a", "b")` and another expression `List.of(expr.split(","))`; a `null`
+or empty literal sets nothing, as in the filters. The dependency plugin's `GroupIdFilter` without an exact match is
+marked as having no 1:1 request: it matches nested group ids by segment (`org.example` matches `org.example.foo`
+but not `org.examples`), while `groupIdPrefixMatch(true)` matches any prefix. Strict pattern filters are not marked.
+
+```java
+// before
+new PatternIncludesArtifactFilter(includes, true)
+// marked
+/*~~(ArtifactMatcherFactory: ArtifactMatcherRequest.builder().includes(includes).transitive(true).build())~~>*/new PatternIncludesArtifactFilter(includes, true)
+```
+
+Search only: the filters take Maven 3 `Artifact`s and the matcher takes Maven 4 ones (a `Dependency` gives the type
+and the scope), so no call site changes without the code around it. Maven 3 plugins are not marked: they cannot call
+core services. Run it with `dryRun`.
 
 ## Running the recipes on any repository
 
