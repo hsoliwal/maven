@@ -22,7 +22,9 @@ An `AtomFrontEnd` for the [code clustering plugin](../code-clustering/README.md)
 [language server](#language-server) that shows the plugin's duplicates in any LSP client. The front end lets each
 language be split into atoms by its own language core, through a language server and Eclipse LSP4J. Each Eclipse
 language core connects with one switch, `-Dclustering.lsp.profiles=jdt,cdt,pydev,wtp,rust` (or `all`), and so do
-Go, TypeScript/JavaScript, C# and Swift: `-Dclustering.lsp.profiles=go,typescript,csharp,swift`.
+Go, TypeScript/JavaScript, C# and Swift: `-Dclustering.lsp.profiles=go,typescript,csharp,swift`, and the languages
+of the other Eclipse language plug-ins, Groovy-Eclipse, Kotlin for Eclipse, PDT, Che4z COBOL and Erlide:
+`-Dclustering.lsp.profiles=groovy,kotlin,php,cobol,erlang`.
 
 For each file, the server's `textDocument/documentSymbol` answer sets the atom boundaries, and the plugin's shared
 rules (`LexicalAtoms.rangeAtom`) compute the four planes from the tokens in each range.
@@ -170,10 +172,76 @@ requests wait up to 120 s by default. Its `File` and `Namespace` symbols are not
 | Found by | `clustering.lsp.swift.home` / `SWIFT_HOME` (the toolchain's `usr` directory: `bin/sourcekit-lsp`), else `sourcekit-lsp` on the PATH. On macOS, `xcrun --find sourcekit-lsp` prints the binary; give its directory's parent as the home. |
 | Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=Sources -Dclustering.lsp.profiles=swift` |
 
+### Groovy (Groovy-Eclipse)
+
+| | |
+|---|---|
+| Profile | `groovy` (alias `groovy-eclipse`); server id `groovy`; extensions `groovy gvy gy gsh` |
+| Server | groovy-language-server (Apache-2.0) |
+| Install | Build it (`./gradlew build` gives `build/libs/groovy-language-server-all.jar`), or install it with Mason, which adds a `groovy-language-server` launcher |
+| Found by | the newest `groovy-language-server*-all.jar` in `clustering.lsp.groovy.home` / `GROOVY_HOME`, its `build/libs` or its `lib` (run with the Java that runs Maven), else the `groovy-language-server` launcher (see [Launchers](#launchers)) |
+| Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src/main/groovy -Dclustering.lsp.profiles=groovy -Dclustering.lsp.groovy.home=/opt/groovy-language-server` |
+
+Requests wait up to 120 s by default: the server starts a JVM and scans the class path.
+
+### Kotlin (Kotlin for Eclipse)
+
+| | |
+|---|---|
+| Profile | `kotlin` (alias `kt`); server id `kotlin`; extensions `kt kts` |
+| Server | kotlin-language-server (MIT), else JetBrains' kotlin-lsp (Apache-2.0), run with `--stdio` |
+| Install | Unpack `server.zip` from the kotlin-language-server releases (it has `bin/kotlin-language-server` and `bin/kotlin-language-server.bat`), or install kotlin-lsp from JetBrains |
+| Found by | the `kotlin-language-server` launcher in `clustering.lsp.kotlin.home` / `KOTLIN_HOME` or on the PATH, else the `kotlin-lsp` launcher (see [Launchers](#launchers)) |
+| Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src/main/kotlin -Dclustering.lsp.profiles=kotlin -Dclustering.lsp.kotlin.home=/opt/kotlin-language-server/server` |
+
+kotlin-language-server indexes the workspace before it answers, so its requests wait up to 180 s by default.
+
+### PHP (PDT)
+
+| | |
+|---|---|
+| Profile | `php` (alias `pdt`); server id `php`; extensions `php phtml` |
+| Server | phpactor (MIT), run as `phpactor language-server`; else intelephense, run with `--stdio` |
+| Install | `phpactor.phar` from the phpactor releases (it needs PHP), or `npm install --prefix <dir> intelephense` |
+| Found by | the `phpactor` launcher in `clustering.lsp.php.home` / `PHP_HOME` or on the PATH; else intelephense from an npm prefix in the same home (`node_modules/intelephense/lib/intelephense.js`, run with `node` from the PATH), else `intelephense` on the PATH |
+| Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src -Dclustering.lsp.profiles=php` |
+
+intelephense is closed source with a free tier; it is used only when phpactor is not installed. This module ships
+neither.
+
+### COBOL (Che4z)
+
+| | |
+|---|---|
+| Profile | `cobol` (alias `che4z`); server id `cobol`; extensions `cbl cob cpy cobol` |
+| Server | the Eclipse Che4z COBOL Language Support server (EPL-2.0) |
+| Install | Unpack the COBOL Language Support `.vsix` (a zip file); it holds `extension/server/jar/server.jar`. Mason installs a `cobol-language-support` launcher for the native build instead |
+| Found by | `server.jar` in `clustering.lsp.cobol.home` / `COBOL_HOME`, under `extension/server/jar`, `server/jar`, `jar` or the home itself (run with the Java that runs Maven), else the `cobol-language-support` launcher |
+| Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src/main/cobol -Dclustering.lsp.profiles=cobol -Dclustering.lsp.cobol.home=/opt/cobol-language-support` |
+
+The server asks its client for copybooks and dialect settings through its own requests; this front end does not
+answer them, so symbols that need a copybook may be missing.
+
+### Erlang (Erlide)
+
+| | |
+|---|---|
+| Profile | `erlang` (alias `erlide`); server id `erlang`; extensions `erl hrl` |
+| Server | ELP, the Erlang Language Platform (Apache-2.0 or MIT), run as `elp server`; else erlang_ls (Apache-2.0, archived) |
+| Install | An `elp` release binary for Linux or macOS, or `rebar3 escriptize` in erlang_ls |
+| Found by | the `elp` launcher in `clustering.lsp.erlang.home` / `ERLANG_HOME` or on the PATH, else the `erlang_ls` launcher |
+| Example | `mvn code-clustering:cluster -Dclustering.sourceDirectories=src -Dclustering.lsp.profiles=erlang` |
+
+### Launchers
+
+A launcher is found in `<home>/bin`, then `<home>`, then on the PATH, as a native program (`name.exe` on Windows).
+On Windows, a `name.cmd` or `name.bat` script is found there next, and run with `cmd.exe /c`, because a script
+needs a shell. The launcher names are the ones Mason installs.
+
 ### How a server's command is found
 
 For each server id (`jdt`, `cdt`, `pydev`, `wtp.xml`, `wtp.html`, `wtp.css`, `wtp.json`, `rust`, `go`, `typescript`,
-`csharp`, `swift`), in this order:
+`csharp`, `swift`, `groovy`, `kotlin`, `php`, `cobol`, `erlang`), in this order:
 
 1. the system property `clustering.lsp.<id>.command`, for example
    `"-Dclustering.lsp.cdt.command='C:/Program Files/LLVM/bin/clangd.exe' --log=error"` (see [Quoting](#quoting));
@@ -183,8 +251,8 @@ For each server id (`jdt`, `cdt`, `pydev`, `wtp.xml`, `wtp.html`, `wtp.css`, `wt
    `go install` or `dotnet tool install --global` writes to, as in the tables above.
 
 A server that is not found is skipped with one warning, and its files go to the built-in front ends. Requests wait
-at most `clustering.lsp.<id>.timeoutSeconds`, else `clustering.lsp.timeoutSeconds`, else 60 s (180 s for `jdt`,
-120 s for `csharp`).
+at most `clustering.lsp.<id>.timeoutSeconds`, else `clustering.lsp.timeoutSeconds`, else 60 s (180 s for `jdt` and
+`kotlin`, 120 s for `csharp`, `groovy` and `cobol`).
 The language servers run as separate processes, without a shell; one process runs per server and source root.
 
 ### Explicit servers
@@ -331,7 +399,11 @@ and the launcher on the PATH) and a JDT LS install, including the Java version i
 before `GOBIN`, `GOBIN` before `GOPATH`, any `GOPATH` entry, `~/go/bin`), typescript-language-server (an npm prefix,
 the launcher on the PATH), csharp-ls (a `--tool-path` home, `~/.dotnet/tools`, `DOTNET_CLI_HOME`) and sourcekit-lsp
 (a toolchain home before the PATH); the aliases `ts`, `js`, `javascript` and `cs`; and the languageIds of the new
-extensions, in profiles and in explicit entries.
+extensions, in profiles and in explicit entries. For the Groovy, Kotlin, PHP, COBOL and Erlang profiles it checks
+the aliases and languageIds, the newest groovy-language-server jar in a home before the PATH, the Che4z
+`server.jar` of an unpacked VSIX, kotlin-language-server before kotlin-lsp (whatever the PATH order), a `.bat`
+launcher run with `cmd.exe /c` on Windows and never elsewhere, phpactor with `language-server` before intelephense
+from an npm prefix, and `elp server` before erlang_ls.
 
 `SymbolMappingTest` feeds LSP4J `DocumentSymbol` and `SymbolInformation` objects, with the trees and ranges the real
 servers returned for its fixture files, through each mapping: code (JDT LS, clangd, pylsp, rust-analyzer, gopls,
@@ -366,4 +438,5 @@ checks `minTokens` from the options, the system property and the default, and th
 ## Notices
 
 This module depends on Eclipse LSP4J (`org.eclipse.lsp4j`, EPL-2.0) and Gson (Apache-2.0) as binary
-dependencies. The language servers are separate programs under their own licenses. They are run, not linked.
+dependencies. The language servers are separate programs under their own licenses. They are run, not linked, and
+none is shipped; intelephense is closed source and is run only when the user installed it.

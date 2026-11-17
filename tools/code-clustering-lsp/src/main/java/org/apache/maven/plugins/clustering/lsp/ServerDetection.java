@@ -42,11 +42,20 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
  *       {@code .cmd} file that needs a shell, the script next to it is run with {@code node} instead;</li>
  *   <li>pylsp in a virtual environment ({@code <home>/Scripts/pylsp.exe} or {@code <home>/bin/pylsp});</li>
  *   <li>the LemMinX uber jar ({@code org.eclipse.lemminx-*-uber.jar}, run with this JVM's java) or a native
- *       {@code lemminx} binary.</li>
+ *       {@code lemminx} binary;</li>
+ *   <li>a server jar run with this JVM's java: groovy-language-server's {@code groovy-language-server*-all.jar}, the
+ *       Che4z COBOL Language Support {@code server.jar};</li>
+ *   <li>a launcher with its arguments ({@code phpactor language-server}, {@code elp server}): a native executable in
+ *       {@code <home>/bin}, {@code <home>} or on the PATH, and on Windows else a {@code .cmd} or {@code .bat} launcher
+ *       there, run with {@code cmd.exe /c};</li>
+ *   <li>alternatives in order: kotlin-language-server, else {@code kotlin-lsp --stdio}; phpactor, else intelephense
+ *       (an npm package); ELP, else erlang_ls.</li>
  * </ul>
  */
 final class ServerDetection {
     private static final Pattern LEMMINX_JAR = Pattern.compile("org\\.eclipse\\.lemminx.*uber\\.jar");
+    private static final Pattern GROOVY_JAR = Pattern.compile("groovy-language-server.*-all\\.jar");
+    private static final List<String> WINDOWS_LAUNCHERS = List.of(".cmd", ".bat");
     private static final String STDIO = "--stdio";
 
     private ServerDetection() { }
@@ -113,6 +122,77 @@ final class ServerDetection {
                 .filter(f -> LEMMINX_JAR.matcher(f.getFileName().toString()).matches()).sorted().reduce((a, b) -> b);
         if (jar.isPresent()) return List.of(lookup.runningJava().toString(), "-jar", jar.get().toString());
         return executable(lookup, homes, "lemminx");
+    }
+
+    /** groovy-language-server: its all-in-one jar in a home directory (run with this JVM), else its launcher. */
+    static List<String> groovy(Lookup lookup, List<Path> homes) throws Unresolved {
+        Optional<Path> jar = homes.stream().flatMap(h -> Stream.of(h, h.resolve("build").resolve("libs"), h.resolve("lib")))
+                .flatMap(ServerDetection::files).filter(f -> GROOVY_JAR.matcher(f.getFileName().toString()).matches())
+                .sorted().reduce((a, b) -> b);
+        if (jar.isPresent()) return List.of(lookup.runningJava().toString(), "-jar", jar.get().toString());
+        return launcher(lookup, homes, "groovy-language-server", List.of());
+    }
+
+    /** kotlin-language-server (the launcher in the distribution's {@code bin}), else JetBrains' kotlin-lsp. */
+    static List<String> kotlin(Lookup lookup, List<Path> homes) throws Unresolved {
+        return first(lookup, homes, "neither kotlin-language-server nor kotlin-lsp is on the PATH", List.of(
+                (l, h) -> launcher(l, h, "kotlin-language-server", List.of()),
+                (l, h) -> launcher(l, h, "kotlin-lsp", List.of(STDIO))));
+    }
+
+    /** phpactor (MIT), else intelephense (closed source, free tier) from an npm prefix or the PATH. */
+    static List<String> php(Lookup lookup, List<Path> homes) throws Unresolved {
+        return first(lookup, homes, "neither phpactor nor intelephense is on the PATH", List.of(
+                (l, h) -> launcher(l, h, "phpactor", List.of("language-server")),
+                (l, h) -> npm(l, h, "intelephense", "intelephense", "lib/intelephense.js")));
+    }
+
+    /** The Che4z COBOL Language Support {@code server.jar} in a home directory (run with this JVM), else its launcher. */
+    static List<String> cobol(Lookup lookup, List<Path> homes) throws Unresolved {
+        Optional<Path> jar = homes.stream().flatMap(h -> Stream.of(h.resolve("extension").resolve("server").resolve("jar"),
+                h.resolve("server").resolve("jar"), h.resolve("jar"), h)).map(dir -> dir.resolve("server.jar"))
+                .filter(Files::isRegularFile).findFirst();
+        if (jar.isPresent()) return List.of(lookup.runningJava().toString(), "-jar", jar.get().toString());
+        return launcher(lookup, homes, "cobol-language-support", List.of());
+    }
+
+    /** ELP ({@code elp server}), else erlang_ls. */
+    static List<String> erlang(Lookup lookup, List<Path> homes) throws Unresolved {
+        return first(lookup, homes, "neither elp nor erlang_ls is on the PATH", List.of(
+                (l, h) -> launcher(l, h, "elp", List.of("server")),
+                (l, h) -> launcher(l, h, "erlang_ls", List.of())));
+    }
+
+    /**
+     * A program and its arguments: a native executable in the home directories or on the PATH; on Windows, else a
+     * {@code .cmd} or {@code .bat} launcher in the home directories or on the PATH, run with {@code cmd.exe /c}.
+     */
+    static List<String> launcher(Lookup lookup, List<Path> homes, String name, List<String> arguments) throws Unresolved {
+        List<String> program = inHomes(lookup, homes, name).or(() -> lookup.onPath(name)).map(p -> List.of(p.toString()))
+                .or(() -> windowsLauncher(lookup, homes, name))
+                .orElseThrow(() -> missing(name + " is not on the PATH", homes));
+        return Stream.concat(program.stream(), arguments.stream()).toList();
+    }
+
+    /** The command of the first alternative that is found; else unresolved with {@code none}. */
+    static List<String> first(Lookup lookup, List<Path> homes, String none, List<ServerSpec.Detector> alternatives)
+            throws Unresolved {
+        for (ServerSpec.Detector alternative : alternatives) {
+            try {
+                return alternative.detect(lookup, homes);
+            } catch (Unresolved e) {
+                // not installed: try the next alternative
+            }
+        }
+        throw missing(none, homes);
+    }
+
+    private static Optional<List<String>> windowsLauncher(Lookup lookup, List<Path> homes, String name) {
+        if (!lookup.windows()) return Optional.empty();
+        Stream<Path> inHomes = homes.stream().flatMap(h -> Stream.of(h.resolve("bin"), h))
+                .flatMap(dir -> WINDOWS_LAUNCHERS.stream().map(ext -> dir.resolve(name + ext))).filter(Files::isRegularFile);
+        Stream<Path> onPath = WINDOWS_LAUNCHERS.stream().map(ext -> lookup.fileOnPath(name + ext)).flatMap(Optional::stream);
+        return Stream.concat(inHomes, onPath).findFirst().map(p -> List.of("cmd.exe", "/c", p.toAbsolutePath().toString()));
     }
 
     private static List<String> node(Lookup lookup, Path script) throws Unresolved {

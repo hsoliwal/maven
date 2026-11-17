@@ -44,6 +44,7 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
 public final class ServerProfilesTest {
     private static final Checks CHECKS = new Checks("server profiles");
     private static final boolean WINDOWS = Lookup.system().windows();
+    private static final List<String> LANGUAGE_PLUGINS = List.of("groovy", "kotlin", "php", "cobol", "erlang");
 
     private ServerProfilesTest() { }
 
@@ -51,6 +52,7 @@ public final class ServerProfilesTest {
         Path dir = Path.of(args.length > 0 ? args[0] : "target/profiles-test").toAbsolutePath();
         Files.createDirectories(dir);
         selection();
+        languagePluginSelection();
         order(dir);
         configured(dir);
         timeouts();
@@ -75,8 +77,9 @@ public final class ServerProfilesTest {
         warnings.clear();
         CHECKS.check("aliases ts, js, javascript, cs; go and swift by name", ServerProfiles.names("swift,ts js JavaScript CS go",
                 warnings::add).equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
-        CHECKS.check("all has nine profiles, the new ones last", ServerProfiles.NAMES.size() == 9
-                && ServerProfiles.NAMES.subList(5, 9).equals(List.of("go", "typescript", "csharp", "swift")));
+        CHECKS.check("all has fourteen profiles: go to swift, then the Eclipse language plug-in ones",
+                ServerProfiles.NAMES.size() == 14 && ServerProfiles.NAMES.subList(5, 9).equals(List.of("go", "typescript",
+                "csharp", "swift")) && ServerProfiles.NAMES.subList(9, 14).equals(LANGUAGE_PLUGINS));
         CHECKS.check("go, typescript, csharp and swift: one server each, with the profile's id",
                 ServerProfiles.select("go,typescript,csharp,swift", warnings::add).stream().map(ServerSpec::id).toList()
                         .equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
@@ -89,6 +92,23 @@ public final class ServerProfilesTest {
         CHECKS.check("go, csharp, swift languageIds", ServerProfiles.server("go").languageIds().equals(Map.of("go", "go"))
                 && ServerProfiles.server("csharp").languageIds().equals(Map.of("cs", "csharp", "csx", "csharp"))
                 && ServerProfiles.server("swift").languageIds().equals(Map.of("swift", "swift")));
+    }
+
+    /** The profiles of Groovy-Eclipse, Kotlin for Eclipse, PDT, Che4z COBOL and Erlide: aliases and languageIds. */
+    private static void languagePluginSelection() {
+        List<String> warnings = new ArrayList<>();
+        CHECKS.check("aliases groovy-eclipse, kt, pdt, che4z, erlide; lemminx is wtp", ServerProfiles.names(
+                "erlide che4z,PDT kt groovy-eclipse lemminx", warnings::add).equals(List.of("wtp", "groovy", "kotlin", "php",
+                "cobol", "erlang")) && warnings.isEmpty());
+        CHECKS.check("one server each, with the profile's id", ServerProfiles.select(String.join(",", LANGUAGE_PLUGINS),
+                warnings::add).stream().map(ServerSpec::id).toList().equals(LANGUAGE_PLUGINS) && warnings.isEmpty());
+        CHECKS.check("groovy, kotlin, php, cobol, erlang languageIds", ServerProfiles.server("groovy").languageIds()
+                .equals(Map.of("groovy", "groovy", "gvy", "groovy", "gy", "groovy", "gsh", "groovy"))
+                && ServerProfiles.server("kotlin").languageIds().equals(Map.of("kt", "kotlin", "kts", "kotlin"))
+                && ServerProfiles.server("php").languageIds().equals(Map.of("php", "php", "phtml", "php"))
+                && ServerProfiles.server("cobol").languageIds().equals(Map.of("cbl", "cobol", "cob", "cobol", "cpy", "cobol",
+                "cobol", "cobol")) && ServerProfiles.server("erlang").languageIds().equals(Map.of("erl", "erlang", "hrl",
+                "erlang")));
     }
 
     /** property > environment > detection; home before PATH; the home property before the home variable. */
@@ -181,6 +201,10 @@ public final class ServerProfilesTest {
         go(dir);
         csharp(dir);
         typescriptAndSwift(dir, bin, node);
+        groovy(dir);
+        cobol(dir);
+        kotlin(dir);
+        phpAndErlang(dir, bin, node);
     }
 
     /** gopls: a home directory, the PATH, then GOBIN, else each GOPATH entry's bin, else ~/go/bin. */
@@ -253,6 +277,81 @@ public final class ServerProfilesTest {
                 "sourcekit-lsp"))));
         CHECKS.check("swift: sourcekit-lsp on the PATH", command(swift, Map.of(), Map.of("PATH", onPath.toString()))
                 .equals(List.of(exeName(onPath, "sourcekit-lsp"))));
+    }
+
+    /** groovy-language-server: the newest -all jar in a home, run with this JVM, before the launcher on the PATH. */
+    private static void groovy(Path dir) throws Exception {
+        String java = Lookup.system().runningJava().toString();
+        Path libs = dir.resolve("groovy/home/build/libs");
+        file(libs.resolve("groovy-language-server-0.9-all.jar"));
+        Path newest = file(libs.resolve("groovy-language-server-1.0-all.jar"));
+        file(libs.resolve("groovy-language-server-1.1.jar"));
+        Path onPath = exe(dir.resolve("groovy/path"), "groovy-language-server").getParent();
+        CHECKS.check("groovy: the newest -all jar in GROOVY_HOME/build/libs, before the PATH", command(ServerProfiles.server(
+                "groovy"), Map.of(), Map.of("GROOVY_HOME", dir.resolve("groovy/home").toString(), "PATH", onPath.toString()))
+                .equals(List.of(java, "-jar", newest.toString())));
+        CHECKS.check("groovy: else groovy-language-server on the PATH", command(ServerProfiles.server("groovy"), Map.of(),
+                Map.of("PATH", onPath.toString())).equals(List.of(exeName(onPath, "groovy-language-server"))));
+    }
+
+    /** The Che4z COBOL Language Support server.jar in a home, run with this JVM; else the launcher. */
+    private static void cobol(Path dir) throws Exception {
+        Path jar = file(dir.resolve("cobol/vsix/extension/server/jar/server.jar"));
+        file(dir.resolve("cobol/vsix/server.jar"));
+        CHECKS.check("cobol: an unpacked VSIX's extension/server/jar/server.jar first", command(ServerProfiles.server(
+                "cobol"), Map.of("clustering.lsp.cobol.home", dir.resolve("cobol/vsix").toString()), Map.of())
+                .equals(List.of(Lookup.system().runningJava().toString(), "-jar", jar.toString())));
+        Path launcher = exe(dir.resolve("cobol/path"), "cobol-language-support").getParent();
+        CHECKS.check("cobol: else cobol-language-support on the PATH", command(ServerProfiles.server("cobol"), Map.of(),
+                Map.of("PATH", launcher.toString())).equals(List.of(exeName(launcher, "cobol-language-support"))));
+        CHECKS.check("cobol: nothing found names the launcher", unresolved(ServerProfiles.server("cobol"), Map.of(),
+                Map.of()).contains("cobol-language-support"));
+    }
+
+    /** kotlin-language-server before kotlin-lsp; on Windows the distribution's .bat launcher through cmd.exe /c. */
+    private static void kotlin(Path dir) throws Exception {
+        ServerSpec kotlin = ServerProfiles.server("kotlin");
+        Path lsp = exe(dir.resolve("kotlin/lsp"), "kotlin-lsp").getParent();
+        Path kls = exe(dir.resolve("kotlin/kls"), "kotlin-language-server").getParent();
+        String path = lsp + (WINDOWS ? ";" : ":") + kls;
+        CHECKS.check("kotlin: kotlin-language-server first, though kotlin-lsp comes first on the PATH", command(kotlin,
+                Map.of(), Map.of("PATH", path)).equals(List.of(exeName(kls, "kotlin-language-server"))));
+        CHECKS.check("kotlin: else kotlin-lsp --stdio", command(kotlin, Map.of(), Map.of("PATH", lsp.toString()))
+                .equals(List.of(exeName(lsp, "kotlin-lsp"), "--stdio")));
+        CHECKS.check("kotlin: nothing found names both", unresolved(kotlin, Map.of(), Map.of()).contains("neither "
+                + "kotlin-language-server nor kotlin-lsp"));
+        kotlinLauncher(dir, lsp);
+    }
+
+    /** The distribution's kotlin-language-server.bat: through cmd.exe /c on Windows, never run elsewhere. */
+    private static void kotlinLauncher(Path dir, Path lsp) throws Exception {
+        ServerSpec kotlin = ServerProfiles.server("kotlin");
+        Path server = dir.resolve("kotlin/server");
+        Path bat = file(server.resolve("bin/kotlin-language-server.bat"));
+        List<String> expected = WINDOWS ? List.of("cmd.exe", "/c", bat.toAbsolutePath().toString())
+                : List.of(exeName(lsp, "kotlin-lsp"), "--stdio");
+        CHECKS.check("kotlin: KOTLIN_HOME/bin/kotlin-language-server.bat " + (WINDOWS ? "through cmd.exe /c"
+                : "is not run outside Windows"), command(kotlin, Map.of(), Map.of("KOTLIN_HOME", server.toString(), "PATH",
+                lsp.toString())).equals(expected));
+    }
+
+    /** phpactor before intelephense (an npm package); elp before erlang_ls; each with its own arguments. */
+    private static void phpAndErlang(Path dir, Path nodeBin, String node) throws Exception {
+        Path npm = dir.resolve("php/npm");
+        Path script = file(npm.resolve("node_modules/intelephense/lib/intelephense.js"));
+        Path phpactor = exe(dir.resolve("php/phpactor"), "phpactor").getParent();
+        Map<String, String> env = Map.of("PHP_HOME", npm.toString(), "PATH", nodeBin + (WINDOWS ? ";" : ":") + phpactor);
+        CHECKS.check("php: phpactor language-server first", command(ServerProfiles.server("php"), Map.of(), env)
+                .equals(List.of(exeName(phpactor, "phpactor"), "language-server")));
+        CHECKS.check("php: else intelephense from PHP_HOME (an npm prefix), run with node", command(ServerProfiles.server(
+                "php"), Map.of(), Map.of("PHP_HOME", npm.toString(), "PATH", nodeBin.toString()))
+                .equals(List.of(node, script.toString(), "--stdio")));
+        Path elp = exe(dir.resolve("erlang/elp"), "elp").getParent();
+        Path els = exe(dir.resolve("erlang/els"), "erlang_ls").getParent();
+        CHECKS.check("erlang: elp server first", command(ServerProfiles.server("erlang"), Map.of(), Map.of("PATH",
+                els + (WINDOWS ? ";" : ":") + elp)).equals(List.of(exeName(elp, "elp"), "server")));
+        CHECKS.check("erlang: else erlang_ls", command(ServerProfiles.server("erlang"), Map.of(), Map.of("PATH",
+                els.toString())).equals(List.of(exeName(els, "erlang_ls"))));
     }
 
     /** The CSS server's launcher on the PATH: run directly, or on Windows the script beside the .cmd with node. */
