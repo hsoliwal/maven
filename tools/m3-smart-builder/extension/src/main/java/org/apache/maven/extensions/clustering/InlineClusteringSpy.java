@@ -98,7 +98,7 @@ public final class InlineClusteringSpy extends AbstractEventSpy {
         if (!on(property(session, project, "clustering.inline"))) return;
         Optional<Path> jar = pluginJar(session, project);
         if (jar.isEmpty()) return;
-        CompilerWiring wiring = new CompilerWiring(session, project, mojo, toolchains.get());
+        CompilerWiring wiring = new CompilerWiring(session, project, mojo, toolchains);
         Optional<String> blocked = wiring.blocked(coordinatesProblem(session, project));
         if (blocked.isPresent()) {
             LOG.info("Inline code clustering skipped for {} {}: {}", project.getArtifactId(), mojo.getExecutionId(), blocked.get());

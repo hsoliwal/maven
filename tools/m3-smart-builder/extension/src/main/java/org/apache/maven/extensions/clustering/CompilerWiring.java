@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.inject.Provider;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecution;
@@ -77,9 +78,9 @@ final class CompilerWiring {
     private final MavenProject project;
     private final MojoExecution mojo;
     private final CompilerConfig config;
-    private final ToolchainManager toolchains;
+    private final Provider<ToolchainManager> toolchains;
 
-    CompilerWiring(MavenSession session, MavenProject project, MojoExecution mojo, ToolchainManager toolchains) {
+    CompilerWiring(MavenSession session, MavenProject project, MojoExecution mojo, Provider<ToolchainManager> toolchains) {
         this.session = session;
         this.project = project;
         this.mojo = mojo;
@@ -125,7 +126,7 @@ final class CompilerWiring {
     }
 
     private boolean toolchain() {
-        return toolchains != null && toolchains.getToolchainFromBuildContext("jdk", session) != null;
+        return ToolchainContext.jdk(toolchains, session, project);
     }
 
     /** The plugin configured already, or a processor path in the compiler arguments (javac uses the last one). */

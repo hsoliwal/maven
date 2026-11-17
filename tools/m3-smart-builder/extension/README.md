@@ -121,7 +121,9 @@ It leaves an execution alone, logged at INFO with the reason, when the plugin ca
   would be lost), and compiles single sources in its incremental modes; it is not wired until a 4.x wiring exists;
 - `fork` or `executable` (a forked javac), or a JDK toolchain (a toolchain javac): `jdkToolchain`, or a toolchain
   that any plugin stored in the build context (`ToolchainManager.getToolchainFromBuildContext`, which covers
-  maven-toolchains-plugin and other selectors). In both cases the javac version is unknown;
+  maven-toolchains-plugin and other selectors). Maven 4's toolchain manager looks the project up in the mojo
+  execution scope, which MojoStarted precedes, and throws there; the spy then reads the build contexts where that
+  manager keeps them (the session data, by project; `ToolchainContext`). In both cases the javac version is unknown;
 - Maven running below Java 17;
 - a processor path given in `compilerArgs`, `compilerArgument` or the `compilerArguments` map (`processorpath`,
   `processor-path`, `processor-module-path`, any number of dashes): javac uses the last processor path it is given,
