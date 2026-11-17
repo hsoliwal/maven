@@ -36,10 +36,11 @@ findings do not fail `Report#accepted()`.
 
 ## Compatibility boundaries
 
-- The Maven Enforcer plugin remains authoritative for existing
-  `<requireMavenVersion>`, `<requireJavaVersion>`, `dependencyConvergence`, and
-  other legacy rule semantics. This native subset is **not** a full Enforcer
-  parser, goal replacement, or a claim of Enforcer configuration parity.
+- The Maven Enforcer plugin remains authoritative for every rule the native
+  subset cannot express exactly (`dependencyConvergence`, `bannedDependencies`,
+  `requireFilesExist`, Java upper bounds, and the rest). An enforcer execution is
+  absorbed (see below) only when all of its rules map exactly; this is not a full
+  Enforcer parser or a claim of Enforcer configuration parity.
 - The `DependencyResolverResult` supplied by the caller must cover the intended
   selection; a scoped or filtered result cannot prove a project-wide absence
   of snapshots. The service never resolves dependencies itself.
@@ -49,7 +50,34 @@ findings do not fail `Report#accepted()`.
 - Policy results and request rules are immutable; the evaluator retains no
   project, session, artifact or graph state between calls.
 
+## Native evaluation in every build (enforcer absorbed)
+
+`NativeBuildPolicyParticipant` (maven-core) calls this service for every project
+before any goal runs, with no plugin declaration and no POM change:
+
+- Rules come from the project's `maven-enforcer-plugin` executions (goal
+  `enforce`, configuration of the execution or the plugin) and from properties:
+  `maven.policy.mavenVersion` (minimum or range), `maven.policy.javaFeature`
+  (integer) and `maven.policy.severity` (`ERROR` default, or `WARN`).
+- `requireMavenVersion` maps unchanged. `requireJavaVersion` maps only when it is
+  exactly a minimum feature: `17`, `17.0`, `1.8`, `[17,)`, `[1.8,)`; patch levels,
+  exclusive and upper bounds stay with the plugin. A rule's `<level>` and an
+  execution's `<fail>false</fail>` become the severity.
+- An execution whose rules all map is removed from the build: the plugin is neither
+  resolved nor run. Other executions are kept and the plugin evaluates them.
+- An `ERROR` finding fails the build before any goal with
+  `Native build policy failed`, one line per project and rule; `WARN` findings
+  are logged. `-Dmaven.policy.native=false` leaves everything to the plugin.
+
 ## Validation
+
+`NativeBuildPolicyParticipantTest` covers the Java mapping (including what must
+stay with the plugin), properties, rule levels, `fail=false`, and that only fully
+covered executions are absorbed. `apache-maven/src/it/test_native_policy.sh` runs the
+distribution offline with an empty local repository: a covered execution builds
+green without the plugin, unmet Java and Maven rules fail natively, properties and
+`WARN` work, an uncovered rule and `maven.policy.native=false` leave the plugin in
+charge, and stock Maven cannot build the covered case offline.
 
 `DefaultBuildPolicyServiceTest` tests minimum/range comparisons through Maven's
 `VersionParser`, Java runtime feature checks, severity, failure on incomplete
