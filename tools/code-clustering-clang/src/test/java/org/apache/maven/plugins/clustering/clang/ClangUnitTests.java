@@ -84,7 +84,19 @@ public final class ClangUnitTests {
                 g.equals(List.of("clang", "--driver-mode=g++", "-Iinc", "-DX=1", "-std=c++17", "-I" + dir.resolve("stubs"),
                         "-fsyntax-only", "-Xclang", "-ast-dump=json", "-fno-color-diagnostics", "-w", "-ferror-limit=0",
                         "-fno-delayed-template-parsing", src.toString())));
+        sideOutputs(dir, clang, src);
         borrowedAndCl(dir, clang, src, gnu);
+    }
+
+    /** Options that make clang write into the build folder: -MJ (a database fragment) and -Wp,-M... (a .d file). */
+    private static void sideOutputs(Path dir, Path clang, Path src) {
+        CompileCommand side = new CompileCommand(dir, src, List.of("clang", "-MJ", "mj.json", "-MJjoined.json",
+                "-Wp,-MMD,side.d", "-Wp,-MD,other.d", "-Wp,-D_FORTIFY_SOURCE=2", "-c", "src/a.cpp", "-o", "a.o"),
+                Optional.empty());
+        List<String> s = AstCommand.of(clang, side, src, List.of());
+        check("side outputs: -MJ <file>, -MJ<file> and -Wp,-M... dropped; other -Wp, kept " + s,
+                s.equals(List.of("clang", "-Wp,-D_FORTIFY_SOURCE=2", "-fsyntax-only", "-Xclang", "-ast-dump=json",
+                        "-fno-color-diagnostics", "-w", "-ferror-limit=0", "-fno-delayed-template-parsing", src.toString())));
     }
 
     private static void borrowedAndCl(Path dir, Path clang, Path src, CompileCommand gnu) {

@@ -1,0 +1,841 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.surefire.junitplatform;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.UncheckedIOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.apache.maven.plugin.surefire.log.api.ConsoleLogger;
+import org.apache.maven.surefire.api.provider.AbstractProvider;
+import org.apache.maven.surefire.api.provider.CommandChainReader;
+import org.apache.maven.surefire.api.provider.ProviderParameters;
+import org.apache.maven.surefire.api.report.ReporterException;
+import org.apache.maven.surefire.api.report.ReporterFactory;
+import org.apache.maven.surefire.api.report.Stoppable;
+import org.apache.maven.surefire.api.report.TestOutputReportEntry;
+import org.apache.maven.surefire.api.report.TestReportListener;
+import org.apache.maven.surefire.api.suite.RunResult;
+import org.apache.maven.surefire.api.testset.TestListResolver;
+import org.apache.maven.surefire.api.testset.TestSetFailedException;
+import org.apache.maven.surefire.api.util.ReflectionUtils;
+import org.apache.maven.surefire.api.util.ScanResult;
+import org.apache.maven.surefire.api.util.TestsToRun;
+import org.apache.maven.surefire.shared.utils.StringUtils;
+import org.junit.platform.commons.JUnitException;
+import org.junit.platform.engine.ConfigurationParameters;
+import org.junit.platform.engine.DiscoverySelector;
+import org.junit.platform.engine.Filter;
+import org.junit.platform.engine.FilterResult;
+import org.junit.platform.engine.TestDescriptor;
+import org.junit.platform.engine.TestSource;
+import org.junit.platform.engine.UniqueId;
+import org.junit.platform.engine.discovery.ClassNameFilter;
+import org.junit.platform.engine.support.descriptor.ClassSource;
+import org.junit.platform.engine.support.descriptor.MethodSource;
+import org.junit.platform.launcher.EngineFilter;
+import org.junit.platform.launcher.LauncherDiscoveryRequest;
+import org.junit.platform.launcher.PostDiscoveryFilter;
+import org.junit.platform.launcher.TagFilter;
+import org.junit.platform.launcher.TestExecutionListener;
+import org.junit.platform.launcher.TestIdentifier;
+import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
+
+import static java.util.Arrays.stream;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+import static java.util.logging.Level.WARNING;
+import static java.util.stream.Collectors.toList;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.EXCLUDEDGROUPS_PROP;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.EXCLUDES_SCAN_LIST;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.EXCLUDE_JUNIT5_ENGINES_PROP;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.GROUPS_PROP;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.INCLUDES_SCAN_LIST;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.INCLUDE_JUNIT5_ENGINES_PROP;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.JUNIT4_ONLY_DETECTED;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.JUNIT_VINTAGE_DETECTED;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.RUN_ORDER_PROP;
+import static org.apache.maven.surefire.api.booter.ProviderParameterNames.RUN_ORDER_RANDOM_SEED_PROP;
+import static org.apache.maven.surefire.api.report.ConsoleOutputCapture.startCapture;
+import static org.apache.maven.surefire.api.report.RunMode.NORMAL_RUN;
+import static org.apache.maven.surefire.api.report.RunMode.RERUN_TEST_AFTER_FAILURE;
+import static org.apache.maven.surefire.api.testset.TestListResolver.optionallyWildcardFilter;
+import static org.apache.maven.surefire.api.util.TestsToRun.fromClass;
+import static org.apache.maven.surefire.api.util.internal.ConcurrencyUtils.runIfZeroCountDown;
+import static org.apache.maven.surefire.shared.utils.StringUtils.isBlank;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectUniqueId;
+import static org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder.request;
+
+/**
+ * JUnit 5 Platform Provider.
+ *
+ * @since 2.22.0
+ */
+public class JUnitPlatformProvider extends AbstractProvider {
+    static final String CONFIGURATION_PARAMETERS = "configurationParameters";
+
+    private static final String JUNIT_RANDOM_SEED = "junit.jupiter.execution.order.random.seed";
+
+    static final String METHOD_ORDER_DEFAULT = "junit.jupiter.testmethod.order.default";
+
+    static final String CLASS_ORDER_DEFAULT = "junit.jupiter.testclass.order.default";
+
+    private static final String VINTAGE_ENGINE_ID = "junit-vintage";
+
+    private final ProviderParameters parameters;
+
+    private final LauncherSessionFactory launcherSessionFactory;
+
+    private final Filter<?>[] filters;
+
+    private Set<String> enclosingClassNames;
+
+    private Map<String, String> configurationParameters = new HashMap<>();
+
+    private boolean excludeTestNgEngine;
+
+    // groups only TestNG can use, we warn about them when the tests start
+    private final List<String> testNgOnlyGroups = new ArrayList<>();
+
+    private final CommandChainReader commandsReader;
+
+    public JUnitPlatformProvider(ProviderParameters parameters) {
+        this(parameters, LauncherSessionFactory.DEFAULT);
+    }
+
+    JUnitPlatformProvider(ProviderParameters parameters, LauncherSessionFactory launcherSessionFactory) {
+        this.parameters = parameters;
+        this.launcherSessionFactory = launcherSessionFactory;
+        filters = newFilters();
+        parameters.getProviderProperties().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("junit.vintage.execution.parallel"))
+                .forEach(entry -> getConfigurationParameters().put(entry.getKey(), entry.getValue()));
+        getConfigurationParameters().putAll(newConfigurationParameters());
+        setupRunOrder();
+
+        // don't start a thread in CommandReader while we are in in-plugin process
+        commandsReader = parameters.isInsideFork() ? parameters.getCommandReader() : null;
+
+        parameters.getProviderProperties().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("testng."))
+                .forEach(entry -> getConfigurationParameters().put(entry.getKey(), entry.getValue()));
+        // testng compatibility parameters
+        String groups = parameters.getProviderProperties().get(GROUPS_PROP);
+        if (groups != null) {
+            getConfigurationParameters().put("testng.groups", groups);
+        }
+
+        //        configurationParameters.put("testng.useDefaultListeners", "true");
+
+        Optional.ofNullable(parameters.getProviderProperties().get("listener"))
+                .ifPresent(listener -> getConfigurationParameters().put("testng.listeners", listener));
+
+        Optional.ofNullable(parameters.getProviderProperties().get("reporter"))
+                .ifPresent(reporter -> getConfigurationParameters()
+                        .compute(
+                                "testng.listeners", (key, value) -> value == null ? reporter : value + "," + reporter));
+
+        String excludeGroups = parameters.getProviderProperties().get(EXCLUDEDGROUPS_PROP);
+        if (excludeGroups != null) {
+            getConfigurationParameters().put("testng.excludedGroups", excludeGroups);
+        }
+
+        // dataproviderthreadcount
+        Optional.ofNullable(parameters.getProviderProperties().get("dataproviderthreadcount"))
+                .ifPresent(dataproviderthreadcount ->
+                        getConfigurationParameters().put("testng.dataProviderThreadCount", dataproviderthreadcount));
+    }
+
+    private void setupRunOrder() {
+        String runOrder = parameters.getProviderProperties().get(RUN_ORDER_PROP);
+        if (runOrder != null) {
+            if (runOrder.equals("random")) {
+                setDefaultOrderers(
+                        "org.junit.jupiter.api.MethodOrderer$Random", "org.junit.jupiter.api.ClassOrderer$Random");
+                Optional.ofNullable(parameters.getProviderProperties().get(RUN_ORDER_RANDOM_SEED_PROP))
+                        .ifPresent(seed -> getConfigurationParameters().putIfAbsent(JUNIT_RANDOM_SEED, seed));
+            } else if (runOrder.equals("alphabetical")) {
+                setDefaultOrderers(
+                        "org.junit.jupiter.api.MethodOrderer$MethodName",
+                        "org.junit.jupiter.api.ClassOrderer$ClassName");
+            } else if (runOrder.equals("reversealphabetical")) {
+                setDefaultOrderers(
+                        "org.apache.maven.surefire.junitplatform.ReverseOrdering$ReverseMethodOrder",
+                        "org.apache.maven.surefire.junitplatform.ReverseOrdering$ReverseClassOrder");
+            }
+        }
+    }
+
+    /**
+     * Sets the JUnit orderers for runOrder, unless one is already set (Quarkus sets its own, for example).
+     */
+    private void setDefaultOrderers(String methodOrderer, String classOrderer) {
+        // what JUnit finds by itself: system properties and junit-platform.properties
+        ConfigurationParameters configuredElsewhere = request().build().getConfigurationParameters();
+        setOrdererIfMissing(METHOD_ORDER_DEFAULT, methodOrderer, configuredElsewhere);
+        setOrdererIfMissing(CLASS_ORDER_DEFAULT, classOrderer, configuredElsewhere);
+    }
+
+    private void setOrdererIfMissing(String key, String orderer, ConfigurationParameters configuredElsewhere) {
+        if (!configuredElsewhere.get(key).isPresent()) {
+            getConfigurationParameters().putIfAbsent(key, orderer);
+        }
+    }
+
+    @Override
+    public Iterable<Class<?>> getSuites() {
+        try (LauncherSessionAdapter launcherSession = launcherSessionFactory.openSession()) {
+            return scanClasspath(launcherSession.getLauncher());
+        }
+    }
+
+    @Override
+    public RunResult invoke(Object forkTestSet) throws TestSetFailedException, ReporterException {
+        ReporterFactory reporterFactory = parameters.getReporterFactory();
+        final RunResult runResult;
+        TestReportListener<TestOutputReportEntry> runListener = reporterFactory.createTestReportListener();
+        warnAboutTestNgOnlyGroups(runListener);
+        CancellationTokenAdapter cancellationToken = CancellationTokenAdapter.tryCreate();
+        Stoppable stoppable = prepareFailFastSupport(cancellationToken, runListener);
+        RunListenerAdapter adapter = new RunListenerAdapter(runListener, stoppable);
+        adapter.setRunMode(NORMAL_RUN);
+        startCapture(adapter);
+        setupJunitLogger();
+
+        try (LauncherSessionAdapter launcherSession = launcherSessionFactory.openSession(cancellationToken)) {
+            LauncherAdapter launcher = launcherSession.getLauncher();
+            if (forkTestSet instanceof TestsToRun) {
+                // The TestNG engine is not skipped here on purpose: reading the classes eagerly would
+                // advance the iteration state which TestsToRun exposes through iterated().
+                invokeAllTests(launcher, (TestsToRun) forkTestSet, adapter);
+            } else if (forkTestSet instanceof Class) {
+                Class<?> testClass = (Class<?>) forkTestSet;
+                excludeTestNgEngineIfPossible(Collections.singletonList(testClass.getName()));
+                invokeAllTests(launcher, fromClass(testClass), adapter);
+            } else if (forkTestSet == null) {
+                invokeAllTests(launcher, scanClasspath(launcher), adapter);
+            } else {
+                throw new IllegalArgumentException("Unexpected value of forkTestSet: " + forkTestSet);
+            }
+        } finally {
+            runResult = reporterFactory.close();
+        }
+        return runResult;
+    }
+
+    void warnAboutTestNgOnlyGroups(ConsoleLogger logger) {
+        if (!testNgOnlyGroups.isEmpty()) {
+            logger.warning("These groups are not valid JUnit tag expressions, so they only filter TestNG tests: "
+                    + String.join(", ", testNgOnlyGroups));
+        }
+    }
+
+    private static void setupJunitLogger() {
+        Logger logger = Logger.getLogger("org.junit");
+        if (logger.getLevel() == null) {
+            logger.setLevel(WARNING);
+        }
+    }
+
+    private TestsToRun scanClasspath(LauncherAdapter launcher) {
+        ScanResult scanResult = parameters.getScanResult();
+        List<String> candidateClassNames = scannedClassNames(scanResult);
+        excludeTestNgEngineIfPossible(candidateClassNames);
+        Set<String> testNgClassNames =
+                TestNgTestClassDetector.findTestNgTestClasses(parameters.getTestClassLoader(), candidateClassNames);
+        TestPlanScannerFilter filter =
+                new TestPlanScannerFilter(launcher, allFilters(), candidateClassNames, testNgClassNames);
+        TestsToRun scannedClasses = scanResult.applyFilter(filter, parameters.getTestClassLoader());
+        return parameters.getRunOrderCalculator().orderTestClasses(scannedClasses);
+    }
+
+    private static List<String> scannedClassNames(ScanResult scanResult) {
+        int size = scanResult.size();
+        List<String> classNames = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            classNames.add(scanResult.getClassName(i));
+        }
+        return classNames;
+    }
+
+    private void invokeAllTests(LauncherAdapter launcher, TestsToRun testsToRun, RunListenerAdapter adapter)
+            throws TestSetFailedException {
+
+        if (commandsReader != null) {
+            commandsReader.addShutdownListener(__ -> testsToRun.markTestSetFinished());
+            commandsReader.awaitStarted();
+        }
+
+        execute(launcher, testsToRun, adapter);
+
+        // Rerun failing tests if requested
+        int count = parameters.getTestRequest().getRerunFailingTestsCount();
+        if (count > 0 && adapter.hasFailingTests()) {
+            adapter.setRunMode(RERUN_TEST_AFTER_FAILURE);
+            for (int i = 0; i < count; i++) {
+                // Replace the "discoveryRequest" so that it only specifies the failing tests
+                LauncherDiscoveryRequest discoveryRequest = buildLauncherDiscoveryRequestForRerunFailures(adapter);
+                // Reset adapter's recorded failures and invoke the failed tests again
+                adapter.reset();
+                launcher.executeWithoutCancellationToken(discoveryRequest, adapter);
+                // If no tests fail in the rerun, we're done
+                if (!adapter.hasFailingTests()) {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void execute(LauncherAdapter launcher, TestsToRun testsToRun, RunListenerAdapter adapter) {
+        List<TestExecutionListener> testExecutionListeners = new ArrayList<>();
+        testExecutionListeners.add(adapter);
+        testExecutionListeners.addAll(createTestExecutionListeners());
+
+        if (testsToRun.allowEagerReading() && !runsOneClassAtATime()) {
+            List<DiscoverySelector> selectors = new ArrayList<>();
+            testsToRun.iterator().forEachRemaining(c -> selectors.add(selectClass(c.getName())));
+
+            LauncherDiscoveryRequestBuilder builder = newRequest().selectors(selectors);
+            launcher.execute(builder.build(), testExecutionListeners.toArray(new TestExecutionListener[0]));
+        } else {
+            testsToRun.iterator().forEachRemaining(c -> {
+                LauncherDiscoveryRequestBuilder builder = newRequest().selectors(selectClass(c.getName()));
+                launcher.execute(builder.build(), testExecutionListeners.toArray(new TestExecutionListener[0]));
+            });
+        }
+    }
+
+    /**
+     * JUnit 3 and 4 classes run one at a time, as they did up to 3.5.x. Running them all together keeps every
+     * test in memory, which is too much for big suites (#3511). Classes running in parallel still run together.
+     */
+    private boolean runsOneClassAtATime() {
+        Map<String, String> configuration = getConfigurationParameters();
+        boolean parallelClasses = Boolean.parseBoolean(configuration.get("junit.vintage.execution.parallel.enabled"))
+                && Boolean.parseBoolean(configuration.get("junit.vintage.execution.parallel.classes"));
+        return Boolean.parseBoolean(parameters.getProviderProperties().get(JUNIT4_ONLY_DETECTED)) && !parallelClasses;
+    }
+
+    /**
+     * Instantiates the listeners configured through the {@code listener} provider property.
+     * A class name may refer to a JUnit Platform {@link TestExecutionListener}, a JUnit 4
+     * {@code org.junit.runner.notification.RunListener}, or a TestNG listener. TestNG listeners
+     * are ignored here because they are forwarded to the TestNG engine through the
+     * {@code testng.listeners} configuration parameter instead.
+     *
+     * @return the configured JUnit Platform {@link TestExecutionListener}s, or an empty list
+     *     if none were declared
+     */
+    private List<TestExecutionListener> createTestExecutionListeners() {
+        String listeners = parameters.getProviderProperties().get("listener");
+        if (listeners == null) {
+            return Collections.emptyList();
+        }
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        List<Object> runListeners = new ArrayList<>();
+        List<TestExecutionListener> testExecutionListeners = new ArrayList<>();
+        for (String listener : stream(listeners.split(","))
+                .map(String::trim)
+                .filter(trimmed -> !trimmed.isEmpty())
+                .collect(toList())) {
+            TestExecutionListener testExecutionListener = instantiateTestExecutionListener(cl, listener);
+            if (testExecutionListener != null) {
+                testExecutionListeners.add(testExecutionListener);
+            } else {
+                Object runListener = instantiateJUnit4RunListener(cl, listener);
+                if (runListener != null) {
+                    runListeners.add(runListener);
+                }
+                // otherwise ignored as we may be in a TestNG context
+            }
+        }
+        if (!runListeners.isEmpty()) {
+            testExecutionListeners.add(new JUnit4ListenersAdapter(runListeners));
+        }
+        return testExecutionListeners;
+    }
+
+    private TestExecutionListener instantiateTestExecutionListener(ClassLoader cl, String listener) {
+        try {
+            Class<?> listenerClass = cl.loadClass(listener);
+            if (!TestExecutionListener.class.isAssignableFrom(listenerClass)) {
+                return null;
+            }
+            return ReflectionUtils.instantiate(cl, listener, TestExecutionListener.class);
+        } catch (ClassNotFoundException e) {
+            // the configured class is not on the classpath
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Object instantiateJUnit4RunListener(ClassLoader cl, String listener) {
+        try {
+            Class<?> runListenerClass = cl.loadClass("org.junit.runner.notification.RunListener");
+            return ReflectionUtils.instantiate(cl, listener, runListenerClass);
+        } catch (ClassCastException | ClassNotFoundException c) {
+            // ignored as we may be in not-JUnit 4 context like testng
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    LauncherDiscoveryRequest buildLauncherDiscoveryRequestForRerunFailures(RunListenerAdapter adapter) {
+        LauncherDiscoveryRequestBuilder builder = newRequest();
+        LinkedHashSet<TestIdentifier> failures =
+                new LinkedHashSet<>(adapter.getFailures().keySet());
+        LinkedHashSet<UniqueId> failureIds = failures.stream()
+                .map(TestIdentifier::getUniqueId)
+                .map(UniqueId::parse)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        adapter.setRerunTestIds(failureIds);
+        LinkedHashSet<String> classNames = new LinkedHashSet<>();
+
+        for (TestIdentifier identifier : failures) {
+            // Runner-backed Vintage tests may expose only a ClassSource and may not
+            // support rediscovery from a leaf UniqueId. Rediscover their owning class
+            // and retain the failed branch with a post-discovery filter instead.
+            Optional<ClassSource> classSource =
+                    identifier.getSource().filter(ClassSource.class::isInstance).map(ClassSource.class::cast);
+            if (classSource.isPresent()) {
+                classNames.add(classSource.get().getClassName());
+            } else {
+                builder.selectors(selectUniqueId(identifier.getUniqueId()));
+            }
+        }
+
+        if (!classNames.isEmpty()) {
+            classNames.forEach(className -> builder.selectors(selectClass(className)));
+            builder.filters((PostDiscoveryFilter) testDescriptor -> {
+                UniqueId candidateId = testDescriptor.getUniqueId();
+                boolean isFailureOrRelatedContainer = failureIds.stream()
+                        .anyMatch(failureId -> candidateId.hasPrefix(failureId) || failureId.hasPrefix(candidateId));
+                return FilterResult.includedIf(
+                        isFailureOrRelatedContainer,
+                        () -> "Failed test or related container",
+                        () -> "Not a failed test");
+            });
+        }
+        return builder.build();
+    }
+
+    private LauncherDiscoveryRequestBuilder newRequest() {
+
+        return request().filters(allFilters()).configurationParameters(getConfigurationParameters());
+    }
+
+    /**
+     * @return the include/exclude filters, extended by an engine filter which keeps the TestNG engine out of
+     *     the request when it was proven that it cannot contribute any test
+     */
+    private Filter<?>[] allFilters() {
+        if (!excludeTestNgEngine) {
+            return filters;
+        }
+        Filter<?>[] allFilters = Arrays.copyOf(filters, filters.length + 1);
+        allFilters[filters.length] = EngineFilter.excludeEngines(TestNgTestClassDetector.TESTNG_ENGINE_ID);
+        return allFilters;
+    }
+
+    /**
+     * Excludes the TestNG engine when none of the given classes could be a TestNG test class. The engine must
+     * never be skipped for a class which was not inspected, so this is only ever called with the complete set
+     * of classes which is about to be handed over to the platform.
+     *
+     * @param classNames the names of every class which is about to be handed over to the platform
+     */
+    private void excludeTestNgEngineIfPossible(Collection<String> classNames) {
+        excludeTestNgEngine =
+                TestNgTestClassDetector.canExcludeTestNgEngine(parameters.getTestClassLoader(), classNames);
+    }
+
+    private Filter<?>[] newFilters() {
+        List<Filter<?>> filters = new ArrayList<>();
+
+        Optional<String> includesList =
+                Optional.ofNullable(parameters.getProviderProperties().get(INCLUDES_SCAN_LIST));
+        Optional<String> excludesList =
+                Optional.ofNullable(parameters.getProviderProperties().get(EXCLUDES_SCAN_LIST));
+        if (includesList.isPresent() || excludesList.isPresent()) {
+            // The plugin already applied includes/excludes (and -Dtest) when scanning the test classes directory.
+            // Engines may still discover classes on their own, so the same patterns are re-applied here, and they
+            // must be matched exactly like the scanner does: against the class file path (pkg/Name.class), which
+            // is also what the documentation describes for %regex[...] patterns.
+            TestListResolver scanListResolver = new TestListResolver(
+                    includesList.map(Collections::singletonList).orElse(Collections.emptyList()),
+                    excludesList.map(Collections::singletonList).orElse(Collections.emptyList()));
+            String includedReason = "Included by includes/excludes " + scanListResolver;
+            String excludedReason = "Not included by includes/excludes " + scanListResolver;
+            ClassNameFilter classNameFilter =
+                    className -> scanListResolver.shouldRun(TestListResolver.toClassFileName(className), null)
+                            ? FilterResult.included(includedReason)
+                            : FilterResult.excluded(excludedReason);
+            filters.add(includeEnclosingClasses(classNameFilter));
+        }
+
+        filters.addAll(newGroupFilters());
+
+        of(optionallyWildcardFilter(parameters.getTestRequest().getTestListResolver()))
+                .filter(f -> !f.isEmpty())
+                .filter(f -> !f.isWildcard())
+                .map(TestMethodFilter::new)
+                .ifPresent(filters::add);
+
+        getPropertiesList(INCLUDE_JUNIT5_ENGINES_PROP)
+                .map(EngineFilter::includeEngines)
+                .ifPresent(filters::add);
+
+        getPropertiesList(EXCLUDE_JUNIT5_ENGINES_PROP)
+                .map(EngineFilter::excludeEngines)
+                .ifPresent(filters::add);
+
+        return filters.toArray(new Filter<?>[0]);
+    }
+
+    /**
+     * Builds the filters for groups and excludedGroups. TestNG tests are left alone, TestNG gets the groups too
+     * and filters its own tests.
+     */
+    private List<PostDiscoveryFilter> newGroupFilters() {
+        Optional<PostDiscoveryFilter> includeTags =
+                getTagExpressions(GROUPS_PROP).map(TagFilter::includeTags);
+        Optional<PostDiscoveryFilter> excludeTags =
+                getTagExpressions(EXCLUDEDGROUPS_PROP).map(TagFilter::excludeTags);
+        Optional<Class<?>> categoryClass = getCategoryClass();
+        List<PostDiscoveryFilter> groupFilters = new ArrayList<>();
+        if (!Boolean.parseBoolean(parameters.getProviderProperties().get(JUNIT_VINTAGE_DETECTED))) {
+            includeTags.ifPresent(groupFilters::add);
+            excludeTags.ifPresent(groupFilters::add);
+            if (categoryClass.isPresent()) {
+                getPropertiesList(EXCLUDEDGROUPS_PROP)
+                        .map(strings -> byEngine(
+                                getExcludeCategoryFilter(strings, categoryClass),
+                                descriptor -> FilterResult.included("Not a JUnit 4 test")))
+                        .ifPresent(groupFilters::add);
+            }
+        } else if (categoryClass.isPresent()) {
+            // JUnit 4 tests use @Category, all other tests use tags (#3468, #3503)
+            PostDiscoveryFilter noTagExpression = descriptor -> FilterResult.included("No tag expression to match");
+            getPropertiesList(GROUPS_PROP)
+                    .map(strings -> byEngine(
+                            getIncludeCategoryFilter(strings, categoryClass), includeTags.orElse(noTagExpression)))
+                    .ifPresent(groupFilters::add);
+            getPropertiesList(EXCLUDEDGROUPS_PROP)
+                    .map(strings -> byEngine(
+                            getExcludeCategoryFilter(strings, categoryClass), excludeTags.orElse(noTagExpression)))
+                    .ifPresent(groupFilters::add);
+        }
+        return groupFilters.stream()
+                .map(JUnitPlatformProvider::leaveTestNgTestsAlone)
+                .collect(toList());
+    }
+
+    /**
+     * Returns the groups JUnit can parse as tag expressions. With TestNG, a group can also be a regular expression
+     * JUnit can't parse, like {@code (?!slow).*}. We leave those to TestNG instead of failing the run.
+     */
+    private Optional<List<String>> getTagExpressions(String key) {
+        Optional<List<String>> groups = getPropertiesList(key);
+        if (!groups.isPresent() || parameters.getProviderProperties().get("testng.version") == null) {
+            return groups;
+        }
+        List<String> tagExpressions = new ArrayList<>();
+        for (String group : groups.get()) {
+            if (isTagExpression(group)) {
+                tagExpressions.add(group);
+            } else {
+                testNgOnlyGroups.add(group);
+            }
+        }
+        return tagExpressions.isEmpty() ? empty() : of(tagExpressions);
+    }
+
+    private static boolean isTagExpression(String group) {
+        try {
+            TagFilter.includeTags(group);
+            return true;
+        } catch (JUnitException e) {
+            // not PreconditionViolationException, JUnit 5.4 and older don't have it
+            return false;
+        }
+    }
+
+    /**
+     * Gives back the names of the classes that enclose a scanned class. They are only looked up the first time
+     * someone asks, because most runs never need them.
+     */
+    private synchronized Set<String> getEnclosingClassNames() {
+        if (enclosingClassNames == null) {
+            enclosingClassNames = findEnclosingClassNames();
+        }
+        return enclosingClassNames;
+    }
+
+    private Set<String> findEnclosingClassNames() {
+        Set<String> names = new LinkedHashSet<>();
+        ScanResult scanResult = parameters.getScanResult();
+        for (int i = 0; i < scanResult.size(); i++) {
+            String className = scanResult.getClassName(i);
+            try {
+                Class<?> testClass = parameters.getTestClassLoader().loadClass(className);
+                for (Class<?> enclosingClass = testClass.getEnclosingClass();
+                        enclosingClass != null;
+                        enclosingClass = enclosingClass.getEnclosingClass()) {
+                    names.add(enclosingClass.getName());
+                }
+            } catch (ClassNotFoundException | LinkageError e) {
+                // Java 8 and 11 can throw an IllegalAccessError here (#3511), so use the class name instead.
+                addEnclosingClassNamesFromBinaryName(className, names);
+            }
+        }
+        return names;
+    }
+
+    private static void addEnclosingClassNamesFromBinaryName(String className, Set<String> names) {
+        for (int dollar = className.lastIndexOf('$'); dollar > 0; dollar = className.lastIndexOf('$', dollar - 1)) {
+            names.add(className.substring(0, dollar));
+        }
+    }
+
+    private ClassNameFilter includeEnclosingClasses(ClassNameFilter classNameFilter) {
+        return className -> {
+            FilterResult result = classNameFilter.apply(className);
+            if (result.included() || !getEnclosingClassNames().contains(className)) {
+                return result;
+            }
+            return FilterResult.included("Enclosing class of an included test class");
+        };
+    }
+
+    Filter<?>[] getFilters() {
+        return filters;
+    }
+
+    PostDiscoveryFilter getIncludeCategoryFilter(List<String> categories, Optional<Class<?>> categoryClass) {
+        return testDescriptor -> hasCategory(testDescriptor, categoryClass, categories)
+                ? FilterResult.included("Category found")
+                : FilterResult.excluded("Does not have category annotation");
+    }
+
+    PostDiscoveryFilter getExcludeCategoryFilter(List<String> categories, Optional<Class<?>> categoryClass) {
+        return testDescriptor -> hasCategory(testDescriptor, categoryClass, categories)
+                ? FilterResult.excluded("Does have exclude category annotation")
+                : FilterResult.included("Does not have category excluded found");
+    }
+
+    /**
+     * Uses the first filter for JUnit 4 tests and the second one for everything else.
+     */
+    private static PostDiscoveryFilter byEngine(PostDiscoveryFilter vintageFilter, PostDiscoveryFilter otherFilter) {
+        return testDescriptor -> isFromEngine(testDescriptor, VINTAGE_ENGINE_ID)
+                ? vintageFilter.apply(testDescriptor)
+                : otherFilter.apply(testDescriptor);
+    }
+
+    /**
+     * TestNG tests always pass here, TestNG checks their groups itself.
+     */
+    private static PostDiscoveryFilter leaveTestNgTestsAlone(PostDiscoveryFilter filter) {
+        return testDescriptor -> isFromEngine(testDescriptor, TestNgTestClassDetector.TESTNG_ENGINE_ID)
+                ? FilterResult.included("TestNG matches the groups itself")
+                : filter.apply(testDescriptor);
+    }
+
+    private static boolean isFromEngine(TestDescriptor testDescriptor, String engineId) {
+        return testDescriptor
+                .getUniqueId()
+                .getEngineId()
+                .filter(engineId::equals)
+                .isPresent();
+    }
+
+    private boolean hasCategory(
+            TestDescriptor testDescriptor, Optional<Class<?>> categoryClass, List<String> categories) {
+        if (!categoryClass.isPresent()) {
+            return false;
+        }
+        TestSource source = testDescriptor.getSource().orElse(null);
+        if (source instanceof MethodSource) {
+            MethodSource methodSource = (MethodSource) source;
+            return hasCategoryAnnotationValue(methodSource::getJavaMethod, categoryClass.get(), categories)
+                    || hasCategoryAnnotationValue(methodSource::getJavaClass, categoryClass.get(), categories);
+        }
+        if (source instanceof ClassSource) {
+            return hasCategoryAnnotationValue(((ClassSource) source)::getJavaClass, categoryClass.get(), categories);
+        }
+        return false;
+    }
+
+    private boolean hasCategoryAnnotationValue(
+            Supplier<? extends AnnotatedElement> element, Class<?> categoryClass, List<String> categories) {
+        AnnotatedElement annotatedElement;
+        try {
+            annotatedElement = element.get();
+        } catch (RuntimeException e) {
+            // not always real code, a Spock feature name is not a Java method
+            return false;
+        }
+        return hasCategoryAnnotationValue(annotatedElement.getAnnotations(), categoryClass, categories);
+    }
+
+    private boolean hasCategoryAnnotationValue(
+            Annotation[] annotations, Class<?> categoryClass, List<String> categories) {
+        Optional<Annotation> anno = stream(annotations)
+                .filter(annotation -> annotation.annotationType().equals(categoryClass))
+                .findFirst();
+        if (anno.isPresent()) {
+            List<String> catValues = getCategoryValueClassName(of(anno.get()));
+            catValues.addAll(getCategoryValueClassSimpleName(of(anno.get())));
+            return catValues.stream().anyMatch(categories::contains);
+        }
+        return false;
+    }
+
+    private Optional<Class<?>> getCategoryClass() {
+        return getClass("org.junit.experimental.categories.Category");
+    }
+
+    private Optional<Class<?>> getClass(String className) {
+        Thread currentThread = Thread.currentThread();
+        try {
+            return Optional.of(currentThread.getContextClassLoader().loadClass(className));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private List<String> getCategoryValueClassName(Optional<Object> instance) {
+        Optional<Class<?>> optionalClass = getCategoryClass();
+        if (optionalClass.isPresent()) {
+            try {
+                Class<?>[] classes =
+                        (Class<?>[]) optionalClass.get().getMethod("value").invoke(instance.get());
+                return stream(classes).map(Class::getName).collect(Collectors.toList());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private List<String> getCategoryValueClassSimpleName(Optional<Object> instance) {
+        Optional<Class<?>> optionalClass = getCategoryClass();
+        if (optionalClass.isPresent()) {
+            try {
+                Class<?>[] classes =
+                        (Class<?>[]) optionalClass.get().getMethod("value").invoke(instance.get());
+                return stream(classes).map(Class::getSimpleName).collect(Collectors.toList());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private Map<String, String> newConfigurationParameters() {
+        String content = parameters.getProviderProperties().get(CONFIGURATION_PARAMETERS);
+        if (content == null) {
+            return new HashMap<>();
+        }
+        try (StringReader reader = new StringReader(content)) {
+            Map<String, String> result = new HashMap<>();
+            Properties props = new Properties();
+            props.load(reader);
+            props.stringPropertyNames().forEach(key -> result.put(key, props.getProperty(key)));
+            return result;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Error reading " + CONFIGURATION_PARAMETERS, e);
+        }
+    }
+
+    Map<String, String> getConfigurationParameters() {
+        return configurationParameters;
+    }
+
+    private Optional<List<String>> getPropertiesList(String key) {
+        String property = parameters.getProviderProperties().get(key);
+        return isBlank(property)
+                ? empty()
+                : of(stream(property.split("[,]+"))
+                        .filter(StringUtils::isNotBlank)
+                        .map(String::trim)
+                        .collect(toList()));
+    }
+
+    private Stoppable prepareFailFastSupport(
+            CancellationTokenAdapter cancellationToken, TestReportListener<?> runListener) {
+        int skipAfterFailureCount = parameters.getSkipAfterFailureCount();
+        if (skipAfterFailureCount > 0) {
+
+            AtomicBoolean loggedFailedAttempt = new AtomicBoolean(false);
+            Runnable cancellation =
+                    () -> cancelExecution(cancellationToken, runListener, loggedFailedAttempt, skipAfterFailureCount);
+
+            if (commandsReader != null) {
+                // Register for signals from other forks
+                commandsReader.addSkipNextTestsListener(__ -> cancellation.run());
+            }
+
+            AtomicInteger remainingFailures = new AtomicInteger(skipAfterFailureCount);
+            return () -> {
+                runIfZeroCountDown(cancellation, remainingFailures);
+                runListener.testExecutionSkippedByUser();
+            };
+        }
+        return Stoppable.NOOP;
+    }
+
+    private static void cancelExecution(
+            CancellationTokenAdapter cancellationToken,
+            ConsoleLogger consoleLogger,
+            AtomicBoolean loggedFailedAttempt,
+            int skipAfterFailureCount) {
+
+        if (cancellationToken != null) {
+            cancellationToken.cancel();
+        } else if (loggedFailedAttempt.compareAndSet(false, true)) {
+            consoleLogger.warning(String.format(
+                            "An attempt was made to cancel the current test run due to the configured skipAfterFailureCount of %d. ",
+                            skipAfterFailureCount)
+                    + "However, the version of JUnit Platform on the runtime classpath does not support cancellation. "
+                    + "Please update to 6.0.0 or later!");
+        }
+    }
+}

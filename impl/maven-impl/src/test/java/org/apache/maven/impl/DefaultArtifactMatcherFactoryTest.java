@@ -156,6 +156,17 @@ class DefaultArtifactMatcherFactoryTest {
     }
 
     @Test
+    void rangesThatCanHoldNoVersionAreRejectedAsInMaven3() {
+        List.of("[1.0,1.0)", "(1.0,1.0]", "(1.0,1.0.0.Final]", "[1.0,2.0),(3.0,3.0)")
+                .forEach(range -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> factory.createIncludeOnlyMatcher(List.of("a:b:c:d:" + range)),
+                        range));
+        assertTrue(
+                factory.createIncludeOnlyMatcher(List.of("*:*:*:*:[1.1,1.1]")).matches(jar));
+    }
+
+    @Test
     void firstMatchingPatternDecides() {
         ArtifactMatcher includes = factory.createIncludeOnlyMatcher(List.of("!*:*:test-jar", "org.example"));
         assertTrue(includes.matches(jar));

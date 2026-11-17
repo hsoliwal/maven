@@ -84,7 +84,9 @@ negates a pattern, and the first pattern of a list that matches decides.
 | `*`, `*:*`, `*:*:*`, empty | every artifact |
 
 A pattern with more than five tokens, or with no token (`:`), and an invalid version range are rejected with an
-`IllegalArgumentException` when the matcher is created. Version ranges use the Maven 4 `VersionParser`.
+`IllegalArgumentException` when the matcher is created. Version ranges use the Maven 4 `VersionParser`. A range
+with two equal bounds that excludes one of them, such as `[1.0,1.0)` or `(1.0,1.0.0.Final]`, is invalid too: it can
+hold no version, and the Maven 3 `VersionRange` rejects it, although the Maven 4 parser alone would accept it.
 
 With `transitive(true)`, an artifact that no pattern matches is decided by the first element of its dependency
 trail that a pattern matches (`matches(artifact, trail)`, the trail running from the root project to the artifact,
@@ -125,7 +127,7 @@ maven-common-artifact-filters 3.4.0 (test scope) and through the service, and wr
 | wildcards: every pattern over `a b * ?` up to 5 characters against every group id over `a b` up to 5 | 173,355 | 0 |
 | negation and order (pattern pairs) | 1,088 | 0 |
 | dependency trails | 170 | 0 |
-| version ranges | 370 | 0 |
+| version ranges, including the empty ranges Maven 3 rejects | 374 | 0 |
 | missed criteria, and the upstream duplicate-pattern vector | 6 + 2 | 0 |
 | 3.4.0 duplicate-pattern report, asserted as the known difference | 1 | 0 |
 | `ScopeFilter` | 81 | 0 |

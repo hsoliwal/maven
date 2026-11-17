@@ -35,7 +35,7 @@ import org.apache.maven.plugins.clustering.clang.ClangRun.Status;
  * Runs the installed clang (PATH, {@code CLANG}, {@code -Dclustering.clang.executable} or the LLVM folders) on
  * fixtures with a compile_commands.json: C++ (constructor, destructor, operator, out-of-line member, macro-made
  * function, template with two instantiations, lambda and local class, {@code #if 0}, a branch chosen by a
- * {@code -D} flag of the database), a header that borrows its source's entry, C ({@code (void)}, variadic),
+ * {@code -D} flag of the database, used {@code = default} members), a header that borrows its source's entry, C ({@code (void)}, variadic),
  * Objective-C, and a file whose header is missing (lexical fallback, then stub headers). Prints SKIP without clang.
  */
 public final class ClangRealTests {
@@ -126,7 +126,16 @@ public final class ClangRealTests {
             "int sum(int a, int b) { int t = a + b; return t * 16; }",
             "int add(int x, int y) { int s = x + y; return s * 0x10; }",
             "int add3(int x, int y) { int s = x + y + 3; return s * 16; }",
-            "int sub(int x, int y) { int s = x + y; return s * 17; }") + "\n";
+            "int sub(int x, int y) { int s = x + y; return s * 17; }",
+            "struct Copy {",
+            "  int v;",
+            "  Copy() : v(1) {}",
+            "  Copy(const Copy&) = default;",
+            "  Copy& operator=(const Copy&) = default;",
+            "  ~Copy();",
+            "};",
+            "Copy::~Copy() = default;",
+            "int copies() { Copy a; Copy b(a); b = a; return b.v; }") + "\n";
 
     private static final String OBJC = String.join("\n", "@interface Root { int v; }", "- (int)value;",
             "- (int)add:(int)a to:(int)b;", "@end", "@implementation Root", "- (int)value { return v; }",
@@ -140,6 +149,15 @@ public final class ClangRealTests {
         check("operator==", line(atoms, "Point.operator==(1)") == 7);
         check("out-of-line member owned by its class", line(atoms, "Point.norm(0)") == 10);
         cppPreprocessor(atoms);
+        defaulted(atoms);
+    }
+
+    /** Clang gives an odr-used {@code = default} member a body of generated nodes; it is still no atom. */
+    private static void defaulted(List<Atom> atoms) {
+        check("= default members (used, in the class and out of line) are no atoms", Checks.count(atoms, "Copy.Copy(1)") == 0
+                && Checks.count(atoms, "Copy.operator=(1)") == 0 && Checks.count(atoms, "Copy.~Copy(0)") == 0);
+        check("a written constructor of that class and the user of the defaults are", line(atoms, "Copy.Copy(0)") == 28
+                && line(atoms, "copies(0)") == 34);
     }
 
     private static void cppPreprocessor(List<Atom> atoms) {

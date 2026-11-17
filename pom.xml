@@ -107,9 +107,10 @@ under the License.
     <!-- The plugins the extension binds, built and installed with the fork: build-hook and the polyglot lifecycle. -->
     <module>tools/m3-smart-builder</module>
     <module>tools/m3-polyglot-maven-plugin</module>
-    <!-- Code clustering (atoms, hash planes, clusters, baseline compare) and its language-server front end. -->
+    <!-- Code clustering (atoms, hash planes, clusters, baseline compare), its language-server and clang AST front ends. -->
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
+    <module>tools/code-clustering-clang</module>
     <module>apache-maven</module>
   </modules>
 
@@ -874,10 +875,16 @@ under the License.
               <exclude>src/test/projects/**</exclude>
               <exclude>src/test/remote-repo/**</exclude>
               <exclude>its/**</exclude>
+              <!-- Imported plugin repositories: each keeps its upstream licence check, run by its own build
+                   under -Pplugins. -->
+              <exclude>plugins/**</exclude>
               <exclude>**/*.odg</exclude>
               <exclude>**/*.svg</exclude>
               <exclude>.asf.yaml</exclude>
               <exclude>.mvn/**</exclude>
+              <!-- apache-maven boot-repository seeds: their .mvn/maven.config marks each seed as a root
+                   directory (one CLI option per line, no comment syntax). -->
+              <exclude>src/boot-seed/*/.mvn/**</exclude>
               <exclude>.jbang/**</exclude>
               <exclude>.claude/**</exclude>
               <exclude>.worktrees/**</exclude>
@@ -1475,6 +1482,14 @@ under the License.
       <id>run-its</id>
       <modules>
         <module>its</module>
+      </modules>
+    </profile>
+    <profile>
+      <!-- Plugins imported with full history under plugins/. Off by default so that core builds stay fast;
+           the distribution build passes -Pplugins (see plugins/pom.xml and apache-maven/pom.xml). -->
+      <id>plugins</id>
+      <modules>
+        <module>plugins</module>
       </modules>
     </profile>
     <profile>

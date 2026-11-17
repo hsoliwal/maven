@@ -6,7 +6,7 @@ set -eu
 
 usage() {
   cat <<'USAGE'
-Usage: sh m3-build.sh [quick|test|verify|full|it] [Maven arguments...]
+Usage: sh m3-build.sh [quick|test|verify|full|it|dist] [Maven arguments...]
        sh m3-build.sh resume <module> [Maven arguments...]
        sh m3-build.sh canon <packet.tsv> <run-dir>
 
@@ -16,6 +16,8 @@ Default: verify. Maven options alone also use verify.
   verify  Run the configured verification lifecycle.
   full    Clean outputs, then verify.
   it      Verify with Maven's existing run-its integration-test profile.
+  dist    Verify with -Pplugins: build the inline plugins under plugins/ and the
+          distribution with their boot repository.
   resume  Verify starting at a reactor module, using Maven -rf.
   canon   Run the hard canon gate: the packet's stages run in the fixed order
           diff, atom_pattern, lint, compile, test, runtime; any packet, scope,
@@ -38,7 +40,7 @@ USAGE
 mode=verify
 case "${1-}" in
   help|-h|--help) usage; exit 0 ;;
-  quick|test|verify|full|it|resume|canon) mode=$1; shift ;;
+  quick|test|verify|full|it|dist|resume|canon) mode=$1; shift ;;
   ''|-*) ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -49,6 +51,7 @@ case "$mode" in
   verify) set -- verify "$@" ;;
   full) set -- clean verify "$@" ;;
   it) set -- verify -Prun-its "$@" ;;
+  dist) set -- verify -Pplugins "$@" ;;
   resume)
     case "${1-}" in
       ''|-*) echo 'resume requires a module selector, for example :maven-core.' >&2; exit 2 ;;

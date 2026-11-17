@@ -146,7 +146,11 @@ class ArtifactMatcherFactoryParityTest {
             "[1.0-SNAPSHOT,1.0]",
             "[1.0-alpha,1.0]",
             "(1.0-rc1,1.0.1)",
-            "[1.0-sp1,2)");
+            "[1.0-sp1,2)",
+            "[1.0,1.0)",
+            "(1.0,1.0]",
+            "(1.0,1.0.0.Final]",
+            "[1.0,2.0),(3.0,3.0)");
 
     private static final List<String> VERSIONS = List.of(
             "0.9",

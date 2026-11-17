@@ -67,15 +67,27 @@ public interface ProcessLaunchRequest extends Request<ProtoSession> {
 
     /**
      * How the command line is handed to the operating system.
+     * <p>
+     * A shell interprets the line, so some arguments do not arrive as given; use {@link #NONE} for values the build
+     * does not control. On Windows no shell keeps a {@code "} inside an argument: {@code say "hi" there} arrives as
+     * {@code say hi there}, and a lone {@code "} merges the argument with the next one.
      */
     enum Shell {
         /** The program and its arguments go to {@link ProcessBuilder} directly, without a shell. */
         NONE,
         /** {@link #CMD} when {@link OsService#isWindows()}, otherwise {@link #SH}, as {@code Commandline} does. */
         DEFAULT,
-        /** {@code cmd.exe /X /C "..."} with the quoting of maven-shared-utils {@code CmdShell}. */
+        /**
+         * {@code cmd.exe /X /C "..."} with the quoting of maven-shared-utils {@code CmdShell}. As with
+         * {@code CmdShell}, {@code cmd.exe} expands {@code %VAR%}, drops empty arguments, cuts the line at a newline,
+         * lets a trailing backslash in a quoted item escape its closing quote, runs a command after an embedded
+         * {@code "} followed by {@code &}, and refuses a line longer than about 8191 characters with exit code 1.
+         */
         CMD,
-        /** {@code powershell.exe} ({@code pwsh} off Windows) {@code -NoProfile -NonInteractive -Command & '...'}. */
+        /**
+         * {@code powershell.exe} ({@code pwsh} off Windows) {@code -NoProfile -NonInteractive -Command & '...'}.
+         * Every single quote character of PowerShell is doubled; empty arguments are dropped.
+         */
         POWERSHELL,
         /** {@code /bin/sh -c '...'} with the quoting of maven-shared-utils {@code BourneShell}. */
         SH,
@@ -483,7 +495,9 @@ public interface ProcessLaunchRequest extends Request<ProtoSession> {
         }
 
         /**
-         * Sets whether standard error is merged into standard output.
+         * Sets whether standard error is merged into standard output. When merged, the error lines go to the
+         * {@linkplain #outputConsumer(Consumer) output consumer} and the {@linkplain #errorConsumer(Consumer) error
+         * consumer} is not called.
          *
          * @param redirectErrorStream true to merge
          * @return this builder

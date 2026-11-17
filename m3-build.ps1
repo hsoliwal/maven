@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('quick', 'test', 'verify', 'full', 'it', 'resume', 'help')]
+    [ValidateSet('quick', 'test', 'verify', 'full', 'it', 'dist', 'resume', 'help')]
     [string]$Mode = 'verify',
     [string]$Module,
     [string]$ResumeFrom,
@@ -18,12 +18,13 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Help -or $Mode -eq 'help') {
     @'
-Usage: ./m3-build.ps1 [-Mode quick|test|verify|full|it] [-Module <selector>]
+Usage: ./m3-build.ps1 [-Mode quick|test|verify|full|it|dist] [-Module <selector>]
                       [-Threads <count>] [-Maven <executable>] [-ExtraArgs <array>]
        ./m3-build.ps1 -Mode resume -ResumeFrom <selector> [-ExtraArgs <array>]
 
 Default: verify. quick packages without running tests; full runs clean verify.
 it activates Maven's existing run-its integration-test profile for verify.
+dist verifies with -Pplugins: the inline plugins and the distribution with their boot repository.
 -Module selects a reactor project and its prerequisites (-pl/-am).
 resume delegates to Maven -rf and cannot be combined with -Module.
 Parallel execution is opt-in through -Threads or explicit Maven arguments.
@@ -93,6 +94,7 @@ $goals = switch ($Mode) {
     'verify' { @('verify') }
     'full'   { @('clean', 'verify') }
     'it'     { @('verify', '-Prun-its') }
+    'dist'   { @('verify', '-Pplugins') }
     'resume' { @('verify', '-rf', $ResumeFrom) }
 }
 $mavenArgs = @('-B', '-ntp')
