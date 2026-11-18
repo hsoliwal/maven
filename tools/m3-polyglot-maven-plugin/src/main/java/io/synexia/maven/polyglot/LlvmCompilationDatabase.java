@@ -34,9 +34,12 @@ public final class LlvmCompilationDatabase {
             Set.of(".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm");
     private static final Set<String> NON_OBJECT_FLAGS =
             Set.of("-E", "-S", "-fsyntax-only", "-M", "-MM");
-    private static final Set<String> NEXT_OPERAND = Set.of("-o", "-MF", "-MT", "-MQ",
-            "-I", "-isystem", "-iquote", "-include", "-imacros", "-x", "-isysroot",
-            "--sysroot", "-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker");
+    private static final Set<String> NEXT_OPERAND = Set.of("-o", "-MF", "-MJ",
+            "-serialize-diagnostics", "-MT", "-MQ", "-I", "-isystem",
+            "-iquote", "-idirafter", "-include", "-include-pch", "-imacros",
+            "-ivfsoverlay", "-iframework", "-F", "-x", "-isysroot",
+            "--sysroot", "-resource-dir", "-Xclang", "-Xpreprocessor",
+            "-Xassembler", "-Xlinker");
     private static final int MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
     private static final String RELATIVE_OUTPUT = "target/m3-llvm/compile_commands.json";
 
@@ -138,7 +141,10 @@ public final class LlvmCompilationDatabase {
         var candidates = new ArrayList<Path>();
         String operandOf = null;
         String objectName = null;
+        var sidecars = new ArrayList<String>();
         boolean compileOnly = false;
+        boolean dependencyFile = false;
+        boolean explicitDepfile = false;
         for (String arg : task.arguments()) {
             // Check *before* consuming the operand of -Xclang/-include/-o etc.
             // A forwarded @file could otherwise bypass the response-file gate.
@@ -149,6 +155,13 @@ public final class LlvmCompilationDatabase {
                 if ("-o".equals(operandOf)) {
                     if (objectName != null) throw new IOException("duplicate LLVM -o output: " + task.name());
                     objectName = arg;
+                } else if ("-MF".equals(operandOf)) {
+                    if (explicitDepfile) throw new IOException("duplicate LLVM -MF depfile: " + task.name());
+                    explicitDepfile = true;
+                    sidecars.add(arg);
+                } else if ("-MJ".equals(operandOf)
+                        || "-serialize-diagnostics".equals(operandOf)) {
+                    sidecars.add(arg);
                 }
                 operandOf = null;
                 continue;
@@ -159,6 +172,10 @@ public final class LlvmCompilationDatabase {
             }
             if ("-c".equals(arg)) {
                 compileOnly = true;
+                continue;
+            }
+            if ("-MD".equals(arg) || "-MMD".equals(arg)) {
+                dependencyFile = true;
                 continue;
             }
             if (NON_OBJECT_FLAGS.contains(arg) || "--".equals(arg)) {
@@ -191,20 +208,31 @@ public final class LlvmCompilationDatabase {
         if (!compileOnly || candidates.size() != 1 || objectName == null || objectName.isBlank()) {
             throw new IOException("Clang export requires -c, exactly one source and an explicit -o: " + task.name());
         }
-        Path object = cwd.resolve(objectName).normalize();
-        if (!object.startsWith(root)) {
-            throw new IOException("Clang output escapes module: " + task.name());
+        if (dependencyFile && !explicitDepfile) {
+            throw new IOException("Clang -MD/-MMD needs explicit, declared -MF: " + task.name());
         }
-        Path checkedObject = InputStamps.checked(root, root.relativize(object).toString());
-        boolean owned = false;
-        for (String output : task.outputs()) {
-            if (checkedObject.equals(InputStamps.checked(root, output))) {
-                owned = true;
-                break;
+        // A compilation database is not an output receipt, but silently
+        // permitting Clang-generated sidecars outside M3's ownership would
+        // conceal source-to-artifact dependencies from the build graph.
+        var outputNames = new ArrayList<String>();
+        outputNames.add(objectName);
+        outputNames.addAll(sidecars);
+        for (String declaredName : outputNames) {
+            Path output = cwd.resolve(declaredName).normalize();
+            if (!output.startsWith(root)) {
+                throw new IOException("Clang output escapes module: " + task.name());
             }
-        }
-        if (!owned) {
-            throw new IOException("Clang -o output is not a declared M3 output: " + checkedObject);
+            Path checkedOutput = InputStamps.checked(root, root.relativize(output).toString());
+            boolean owned = false;
+            for (String declared : task.outputs()) {
+                if (checkedOutput.equals(InputStamps.checked(root, declared))) {
+                    owned = true;
+                    break;
+                }
+            }
+            if (!owned) {
+                throw new IOException("Clang-generated output is not a declared M3 output: " + checkedOutput);
+            }
         }
         return candidates.get(0);
     }
