@@ -34,12 +34,29 @@ public final class LlvmCompilationDatabase {
             Set.of(".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm");
     private static final Set<String> NON_OBJECT_FLAGS =
             Set.of("-E", "-S", "-fsyntax-only", "-M", "-MM");
+    // These modes can create additional artifacts with compiler-derived names
+    // not identified by the task's ordinary -o/-MF/-MJ declarations. They must
+    // not be represented as completely owned M3 native compiler tasks.
+    private static final Set<String> IMPLICIT_OUTPUT_FLAGS = Set.of(
+            "-save-temps", "--save-temps", "-ftime-trace", "-gsplit-dwarf",
+            "-fprofile-arcs", "-ftest-coverage", "--coverage",
+            "-fprofile-instr-generate", "-fprofile-generate",
+            "-fsave-optimization-record", "-fmodules", "-fmodule-output");
+    private static final List<String> IMPLICIT_OUTPUT_PREFIXES = List.of(
+            "-save-temps=", "--save-temps=", "-ftime-trace=",
+            "-foptimization-record-file", "-fsave-optimization-record=",
+            "-fmodules-cache-path=", "-fmodule-output=",
+            "-fprofile-instr-generate=", "-fprofile-generate=",
+            "-gsplit-dwarf=");
+    // Arbitrary cc1/plugin forwarded options can create files which the
+    // public Clang driver argument model cannot infer reliably.
+    private static final Set<String> OPAQUE_FORWARDED_OPTIONS =
+            Set.of("-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker");
     private static final Set<String> NEXT_OPERAND = Set.of("-o", "-MF", "-MJ",
             "-serialize-diagnostics", "-MT", "-MQ", "-I", "-isystem",
             "-iquote", "-idirafter", "-include", "-include-pch", "-imacros",
             "-ivfsoverlay", "-iframework", "-F", "-x", "-isysroot",
-            "--sysroot", "-resource-dir", "-Xclang", "-Xpreprocessor",
-            "-Xassembler", "-Xlinker");
+            "--sysroot", "-resource-dir");
     private static final int MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
     private static final String RELATIVE_OUTPUT = "target/m3-llvm/compile_commands.json";
 
@@ -145,6 +162,8 @@ public final class LlvmCompilationDatabase {
         boolean compileOnly = false;
         boolean dependencyFile = false;
         boolean explicitDepfile = false;
+        boolean explicitFragment = false;
+        boolean explicitDiagnostics = false;
         for (String arg : task.arguments()) {
             // Check *before* consuming the operand of -Xclang/-include/-o etc.
             // A forwarded @file could otherwise bypass the response-file gate.
@@ -159,12 +178,43 @@ public final class LlvmCompilationDatabase {
                     if (explicitDepfile) throw new IOException("duplicate LLVM -MF depfile: " + task.name());
                     explicitDepfile = true;
                     sidecars.add(arg);
-                } else if ("-MJ".equals(operandOf)
-                        || "-serialize-diagnostics".equals(operandOf)) {
+                } else if ("-MJ".equals(operandOf)) {
+                    if (explicitFragment) throw new IOException("duplicate LLVM -MJ fragment: " + task.name());
+                    explicitFragment = true;
+                    sidecars.add(arg);
+                } else if ("-serialize-diagnostics".equals(operandOf)) {
+                    if (explicitDiagnostics) {
+                        throw new IOException("duplicate LLVM diagnostic file: " + task.name());
+                    }
+                    explicitDiagnostics = true;
                     sidecars.add(arg);
                 }
                 operandOf = null;
                 continue;
+            }
+            // LLVM/Clang accepts joined spellings: -ofoo.o, -MFfoo.d and
+            // -MJfragment.json. Those files are real outputs, not inert flags.
+            if (arg.startsWith("-MF") && arg.length() > 3) {
+                if (explicitDepfile) throw new IOException("duplicate LLVM -MF depfile: " + task.name());
+                explicitDepfile = true;
+                sidecars.add(arg.substring(3));
+                continue;
+            }
+            if (arg.startsWith("-MJ") && arg.length() > 3) {
+                if (explicitFragment) throw new IOException("duplicate LLVM -MJ fragment: " + task.name());
+                explicitFragment = true;
+                sidecars.add(arg.substring(3));
+                continue;
+            }
+            if (arg.startsWith("-o") && arg.length() > 2) {
+                if (objectName != null) throw new IOException("duplicate LLVM -o output: " + task.name());
+                objectName = arg.substring(2);
+                continue;
+            }
+            if (OPAQUE_FORWARDED_OPTIONS.contains(arg)
+                    || IMPLICIT_OUTPUT_FLAGS.contains(arg)
+                    || IMPLICIT_OUTPUT_PREFIXES.stream().anyMatch(arg::startsWith)) {
+                throw new IOException("unqualified Clang output/forwarding option: " + arg);
             }
             if (NEXT_OPERAND.contains(arg)) {
                 operandOf = arg;

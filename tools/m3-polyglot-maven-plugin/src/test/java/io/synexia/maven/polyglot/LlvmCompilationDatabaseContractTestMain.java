@@ -11,6 +11,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 /** Deterministic compiler database contracts without Maven CLI or native LLVM. */
@@ -126,6 +127,57 @@ public final class LlvmCompilationDatabaseContractTestMain {
                             + "arg\tclang-c\t-serialize-diagnostics\n"
                             + "arg\tclang-c\ttarget/hello.dia\n")),
                     root, "all"), "Clang diagnostic sidecar cannot remain untracked");
+            // Real Clang accepts -ofoo.o -MFfoo.d -MJfoo.json. Their
+            // native byproducts must be declared with exactly the same ownership
+            // as the corresponding separated options.
+            String joined = depfileAndFragment
+                    .replace("arg\tclang-c\t-o\narg\tclang-c\ttarget/hello.o\n",
+                            "arg\tclang-c\t-otarget/hello.o\n")
+                    .replace("arg\tclang-c\t-MF\narg\tclang-c\ttarget/hello.d\n",
+                            "arg\tclang-c\t-MFtarget/hello.d\n")
+                    .replace("arg\tclang-c\t-MJ\narg\tclang-c\ttarget/hello.json\n",
+                            "arg\tclang-c\t-MJtarget/hello.json\n");
+            String joinedJson = LlvmCompilationDatabase.render(load(root, joined), root, "all");
+            check(joinedJson.contains("\"-otarget/hello.o\"")
+                            && joinedJson.contains("\"-MFtarget/hello.d\"")
+                            && joinedJson.contains("\"-MJtarget/hello.json\""),
+                    "native Clang joined output and sidecar options remain literal argv");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, joined.replace("output\tclang-c\ttarget/hello.d\n", "")),
+                    root, "all"), "joined -MF sidecar requires a declared M3 output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, joined.replace("output\tclang-c\ttarget/hello.json\n", "")),
+                    root, "all"), "joined -MJ fragment requires a declared M3 output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, joined.replace("arg\tclang-c\t-otarget/hello.o\n",
+                            "arg\tclang-c\t-otarget/unknown.o\n")),
+                    root, "all"), "joined Clang -o must match the declared M3 output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, joined.replace("arg\tclang-c\t-otarget/hello.o\n",
+                            "arg\tclang-c\t-o\narg\tclang-c\ttarget/hello.o\n"
+                            + "arg\tclang-c\t-otarget/hello.o\n")),
+                    root, "all"), "mixed joined and separated -o options cannot conflict");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, joined.replace("arg\tclang-c\t-MFtarget/hello.d\n",
+                            "arg\tclang-c\t-MFtarget/hello.d\n"
+                            + "arg\tclang-c\t-MFtarget/hello.d\n")),
+                    root, "all"), "duplicated joined depfile options cannot be admitted");
+
+            for (String sideEffect : List.of(
+                    "-save-temps=obj", "-save-temps", "-ftime-trace",
+                    "-ftime-trace=granularity", "-gsplit-dwarf",
+                    "--coverage", "-fprofile-arcs", "-ftest-coverage",
+                    "-fsave-optimization-record",
+                    "-foptimization-record-file=target/optimization.yaml",
+                    "-fmodules-cache-path=target/modules", "-fmodule-output=target/out.pcm",
+                    "-fprofile-instr-generate", "-fprofile-generate",
+                    "-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker")) {
+                refuses(() -> LlvmCompilationDatabase.render(
+                        load(root, valid.replace("arg\tclang-c\t-c\n",
+                                "arg\tclang-c\t-c\narg\tclang-c\t" + sideEffect + "\n")),
+                        root, "all"),
+                        "implicit or opaque compiler side effect is not fully declared: " + sideEffect);
+            }
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
             Files.delete(root.resolve("src/hello.c"));
