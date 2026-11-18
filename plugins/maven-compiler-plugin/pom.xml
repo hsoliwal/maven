@@ -68,17 +68,32 @@ under the License.
 
   <properties>
     <mavenVersion>3.9.16</mavenVersion>
-    <plexusCompilerVersion>2.17.0</plexusCompilerVersion>
+    <!-- in-tree: plugins/shared/plexus-compiler -->
+    <plexusCompilerVersion>${project.version}</plexusCompilerVersion>
 
     <groovyVersion>2.4.21</groovyVersion>
     <groovyEclipseCompilerVersion>3.7.0</groovyEclipseCompilerVersion>
     <groovy-eclipse-batch>2.5.14-02</groovy-eclipse-batch>
-    <plexus-java.version>1.6.0</plexus-java.version>
+    <!-- in-tree: plugins/shared/plexus-languages -->
+    <plexus-java.version>${project.version}</plexus-java.version>
     <javaVersion>8</javaVersion>
     <maven.it.failure.ignore>false</maven.it.failure.ignore>
     <project.build.outputTimestamp>2026-08-30T16:09:54Z</project.build.outputTimestamp>
     <invoker.junitPackageName>org.apache.maven.plugins.compiler.its</invoker.junitPackageName>
   </properties>
+
+  <!-- Libraries this plugin reaches only transitively, pinned to the in-tree copies under
+       plugins/shared/ so the plugin's whole run-time closure is built here. -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-xml -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-xml</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -115,7 +130,8 @@ under the License.
     <dependency>
       <groupId>org.apache.maven.shared</groupId>
       <artifactId>maven-shared-utils</artifactId>
-      <version>3.4.2</version>
+      <!-- in-tree: plugins/shared/maven-shared-utils -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
@@ -125,7 +141,8 @@ under the License.
     <dependency>
       <groupId>org.apache.maven.shared</groupId>
       <artifactId>maven-shared-incremental</artifactId>
-      <version>1.1</version>
+      <!-- in-tree: plugins/shared/maven-shared-incremental -->
+      <version>${project.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.maven</groupId>
@@ -169,8 +186,10 @@ under the License.
       <scope>runtime</scope>
     </dependency>
     <dependency>
+      <!-- in-tree: plugins/shared/plexus-utils -->
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>
