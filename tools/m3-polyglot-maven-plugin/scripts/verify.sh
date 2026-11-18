@@ -95,6 +95,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmRealTestsMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjCompilerProvider.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
@@ -135,6 +136,8 @@ java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.LlvmCompilerSelectionContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.LlvmRealTestsMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.CargoTestReportContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
