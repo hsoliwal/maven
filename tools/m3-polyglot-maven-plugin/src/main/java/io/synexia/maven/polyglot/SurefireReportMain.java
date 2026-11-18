@@ -10,24 +10,49 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Entry point of {@link SurefireReportProvider}: {@code <results> <reports> [<tool> <argument>...]}, paths relative
- * to the current folder. With a tool, old {@code *.trx} files directly in the results folder are removed, the tool
- * runs (looked up as the task runner looks up bare tool names), and the conversion follows whatever its exit
- * status; the process then exits with that status. Prints one {@code M3-SUREFIRE} summary line.
+ * Entry point of {@link SurefireReportProvider} and {@link CargoTestProvider}: {@code <format> <argument>...}, paths
+ * relative to the current folder.
+ * <ul>
+ *   <li>{@code trx <results> <reports> [<tool> <argument>...]}: with a tool, old {@code *.trx} files directly in the
+ *       results folder are removed and the tool runs (looked up as the task runner looks up bare tool names); the TRX
+ *       files are then converted whatever its exit status, one report per test class. Prints one
+ *       {@code M3-SUREFIRE} summary line.</li>
+ *   <li>{@code libtest <reports> <tool> <argument>...}: {@link CargoTestReport} runs the tool, echoes its output and
+ *       writes one report per test binary.</li>
+ * </ul>
+ * The process exits with the tool's status (0 without a tool). Every report goes through {@link SurefireXmlWriter}.
  */
 public final class SurefireReportMain {
+    /** The TRX format. */
+    static final String TRX = "trx";
+    /** The libtest output format of cargo test. */
+    static final String LIBTEST = "libtest";
+
     private SurefireReportMain() { }
 
     public static void main(String[] args) throws IOException, InterruptedException {
         System.exit(run(List.of(args), Path.of("").toAbsolutePath()));
     }
 
-    /** Runs the optional tool, converts its TRX files; returns the tool's exit status (0 without a tool). */
+    /** Runs the format's tool and writes its reports; returns the tool's exit status (0 without a tool). */
     static int run(List<String> args, Path directory) throws IOException, InterruptedException {
-        if (args.size() < 2) throw new IOException("usage: <results> <reports> [<tool> <argument>...]");
+        if (args.size() >= 3 && LIBTEST.equals(args.get(0))) {
+            return CargoTestReport.run(directory.resolve(args.get(1)).normalize(), args.subList(2, args.size()),
+                    System.out);
+        }
+        if (args.size() < 3 || !TRX.equals(args.get(0))) {
+            throw new IOException("usage: trx <results> <reports> [<tool> <argument>...] | libtest <reports> <tool>"
+                    + " <argument>...");
+        }
+        return trx(args.subList(1, args.size()), directory);
+    }
+
+    private static int trx(List<String> args, Path directory) throws IOException, InterruptedException {
         Path results = directory.resolve(SurefireReportProvider.relative(args.get(0))).normalize();
         Path reports = directory.resolve(SurefireReportProvider.relative(args.get(1))).normalize();
         int exit = 0;
@@ -39,16 +64,25 @@ public final class SurefireReportMain {
         return exit;
     }
 
-    /** Converts every TRX file of {@code results}; returns the summary line. */
+    /** Converts every TRX file of {@code results}, one report per test class; returns the summary line. */
     static String convert(Path results, Path reports) throws IOException {
         List<Path> files = trx(results);
-        List<TrxReport.Case> cases = new ArrayList<>();
+        List<TestSuiteReport.Case> cases = new ArrayList<>();
         for (Path file : files) cases.addAll(TrxReport.read(file));
-        List<Path> written = files.isEmpty() ? List.of() : SurefireXml.write(cases, reports);
+        List<TestSuiteReport> suites = suites(cases);
+        for (TestSuiteReport suite : suites) SurefireXmlWriter.write(suite, reports);
+        TestSuiteReport all = new TestSuiteReport("all", cases);
         return "M3-SUREFIRE trx=" + files.size() + " tests=" + cases.size()
-                + " failures=" + count(cases, TrxReport.Status.FAILED)
-                + " errors=" + count(cases, TrxReport.Status.ERRORED)
-                + " skipped=" + count(cases, TrxReport.Status.SKIPPED) + " reports=" + written.size();
+                + " failures=" + all.count(TestSuiteReport.Status.FAILED)
+                + " errors=" + all.count(TestSuiteReport.Status.ERRORED)
+                + " skipped=" + all.count(TestSuiteReport.Status.SKIPPED) + " reports=" + suites.size();
+    }
+
+    /** One suite per class name, in name order, each with its cases in the given order. */
+    static List<TestSuiteReport> suites(List<TestSuiteReport.Case> cases) {
+        Map<String, List<TestSuiteReport.Case>> byClass = new TreeMap<>();
+        for (TestSuiteReport.Case c : cases) byClass.computeIfAbsent(c.className(), name -> new ArrayList<>()).add(c);
+        return byClass.entrySet().stream().map(e -> new TestSuiteReport(e.getKey(), e.getValue())).toList();
     }
 
     /** The TRX file itself, or the {@code *.trx} files directly in the folder, in name order; none when absent. */
@@ -66,9 +100,5 @@ public final class SurefireReportMain {
         argv.set(0, TaskRunner.resolveTool(command.get(0), directory));
         Process process = new ProcessBuilder(argv).directory(directory.toFile()).inheritIO().start();
         return process.waitFor();
-    }
-
-    private static long count(List<TrxReport.Case> cases, TrxReport.Status status) {
-        return cases.stream().filter(c -> c.status() == status).count();
     }
 }

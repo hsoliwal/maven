@@ -64,7 +64,6 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/DotnetSteps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TrxReport.java \
-  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireXml.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/NugetPackages.java \
