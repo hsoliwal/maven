@@ -2,3 +2,4 @@ io.synexia.maven.polyglot.M3RocksDbBackendProvider
 io.synexia.maven.polyglot.M3MapDbBackendProvider
 io.synexia.maven.polyglot.M3LmdbBackendProvider
 io.synexia.maven.polyglot.M3LevelDbBackendProvider
+io.synexia.maven.polyglot.M3DerbyBackendProvider
