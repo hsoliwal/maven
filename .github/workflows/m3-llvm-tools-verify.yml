@@ -74,5 +74,9 @@ jobs:
           M3_LLVM_PIPELINE_HOME: /usr/lib/llvm-18
         run: |
           set -euo pipefail
-          java -cp "tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/classes:tools/m3-polyglot-maven-plugin/target/classes" \
+          plugin=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          provider=tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar
+          test -s "$plugin"
+          test -s "$provider"
+          java -cp "tools/m3-llvm-tools-provider/target/test-classes:$plugin:$provider" \
             io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
