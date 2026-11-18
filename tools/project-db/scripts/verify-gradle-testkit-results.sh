@@ -4,10 +4,10 @@
 # this source file in the SHA-256 verified Gradle consumer artifact.
 set -eu
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    echo 'usage: verify-gradle-testkit-results.sh TEST_RESULT_DIRECTORY [pruned-symlink]' >&2
+    echo 'usage: verify-gradle-testkit-results.sh TEST_RESULT_DIRECTORY [pruned-symlink|current-nine]' >&2
     exit 2
 fi
-if [ "$#" -eq 2 ] && [ "$2" != "pruned-symlink" ]; then
+if [ "$#" -eq 2 ] && [ "$2" != "pruned-symlink" ] && [ "$2" != "current-nine" ]; then
     echo 'unsupported Gradle TestKit admission mode' >&2
     exit 2
 fi
