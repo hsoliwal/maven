@@ -106,6 +106,11 @@ public final class LlvmWasmCoffIntegrationTestMain {
             run(graph, workspace, cache);
             verify(workspace);
 
+            // A Windows DLL export also creates an import library. Both files
+            // belong to this task and must be declared, validated and rebuilt.
+            Files.delete(workspace.resolve("target/m3.lib"));
+            run(graph, workspace, cache);
+            verify(workspace);
             Files.delete(workspace.resolve("target/m3.dll"));
             run(graph, workspace, cache);
             verify(workspace);
@@ -152,8 +157,10 @@ public final class LlvmWasmCoffIntegrationTestMain {
                         "-c", "coff.c", "-o", "target/m3.obj"),
                 List.of(), List.of("coff.c"), List.of("target/m3.obj"));
         task(out, "coff-link", "@m3:llvm-tools:linker:coff", home,
-                List.of("/dll", "/noentry", "/nodefaultlib", "/out:target/m3.dll", "target/m3.obj"),
-                List.of("coff-c"), List.of("target/m3.obj"), List.of("target/m3.dll"));
+                List.of("/dll", "/noentry", "/nodefaultlib", "/out:target/m3.dll",
+                        "/implib:target/m3.lib", "target/m3.obj"),
+                List.of("coff-c"), List.of("target/m3.obj"),
+                List.of("target/m3.dll", "target/m3.lib"));
         out.append("task\tall\t-\t.\n")
                 .append("dep\tall\twasm-link\n")
                 .append("dep\tall\tcoff-link\n");
@@ -182,7 +189,7 @@ public final class LlvmWasmCoffIntegrationTestMain {
 
     private static void verify(Path workspace) throws Exception {
         for (String name : List.of("target/m3.wasm.o", "target/m3.wasm",
-                "target/m3.obj", "target/m3.dll")) {
+                "target/m3.obj", "target/m3.dll", "target/m3.lib")) {
             Path file = workspace.resolve(name);
             require(Files.isRegularFile(file) && Files.size(file) > 0,
                     "LLVM produced nonempty declared output " + name);
@@ -208,6 +215,12 @@ public final class LlvmWasmCoffIntegrationTestMain {
                 "COFF DLL is x86-64, with IMAGE_FILE_DLL characteristic");
         require(contains(coff, "m3_answer"),
                 "COFF DLL retains exported m3_answer");
+        byte[] importLibrary = Files.readAllBytes(workspace.resolve("target/m3.lib"));
+        require(importLibrary.length >= 8 && Arrays.equals(Arrays.copyOf(importLibrary, 8),
+                        new byte[] {'!', '<', 'a', 'r', 'c', 'h', '>', '\n'}),
+                "COFF import library is a valid archive with its own declared output");
+        require(contains(importLibrary, "m3_answer"),
+                "COFF import library contains the exported function name");
     }
 
     private static boolean contains(byte[] bytes, String needle) {
