@@ -179,6 +179,8 @@ public final class Mavenizer {
             add(steps, "test", "meson", "test", "-C", "build/meson");
         }
         python(dir, steps);
+        erlang(dir, steps);
+        composer(dir, steps);
         DotnetSteps.add(dir, steps);
         if (has(dir, "MODULE.bazel") || has(dir, "WORKSPACE") || has(dir, "WORKSPACE.bazel")) {
             add(steps, "compile", "bazel", "build", "//...");
@@ -193,6 +195,35 @@ public final class Mavenizer {
             if (read(dir, "build.xml").matches("(?s).*<target[^>]*name\\s*=\\s*\"test\".*")) add(steps, "test", "ant", "test");
         }
         return steps;
+    }
+
+    /**
+     * Eclipse Erlide/rebar3 projects retain Rebar3 as the original Erlang
+     * compiler/build authority. Only an explicitly selected Maven polyglot
+     * lifecycle runs these commands. Rebar3 may fetch declared dependencies;
+     * planning or generating a POM never invokes it.
+     */
+    private static void erlang(Path dir, List<Step> steps) {
+        if (!has(dir, "rebar.config")) return;
+        add(steps, "compile", "rebar3", "compile");
+        if (Files.isDirectory(dir.resolve("test"), LinkOption.NOFOLLOW_LINKS)) {
+            add(steps, "test", "rebar3", "eunit");
+        }
+    }
+
+    /**
+     * Eclipse PDT projects retain Composer's original PHP project validation.
+     * Do not infer dependency installation, execute arbitrary composer scripts
+     * or claim that PHP requires a Java-style compile/package phase. A declared
+     * PHPUnit configuration makes a test goal available; the installed binary
+     * remains Composer's responsibility.
+     */
+    private static void composer(Path dir, List<Step> steps) {
+        if (!has(dir, "composer.json")) return;
+        add(steps, "validate", "composer", "validate", "--no-check-publish");
+        if (has(dir, "phpunit.xml") || has(dir, "phpunit.xml.dist")) {
+            add(steps, "test", "composer", "exec", "phpunit");
+        }
     }
 
     private static void gradle(Path dir, List<Step> steps) {
@@ -254,7 +285,16 @@ public final class Mavenizer {
      */
     private static void cmake(Path dir, List<Step> steps) throws IOException {
         if (!has(dir, "CMakeLists.txt")) return;
-        add(steps, "validate", "cmake", "-S", ".", "-B", CMAKE_BUILD, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
+        List<String> configure = new ArrayList<>(List.of("-S", ".", "-B", CMAKE_BUILD,
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"));
+        String llvmHome = LlvmCompilerProvider.configuredHome();
+        if (llvmHome != null && !llvmHome.isBlank()) {
+            // Explicit selection only: CMake's own toolchain stays authoritative otherwise. The
+            // compile_commands.json consumed by Clang atomization must describe this same compiler.
+            configure.add("-DCMAKE_C_COMPILER=" + LlvmCompilerProvider.resolve(llvmHome, "clang", dir));
+            configure.add("-DCMAKE_CXX_COMPILER=" + LlvmCompilerProvider.resolve(llvmHome, "clang++", dir));
+        }
+        add(steps, "validate", "cmake", configure.toArray(String[]::new));
         add(steps, "compile", "cmake", "--build", CMAKE_BUILD, "--config", CMAKE_CONFIG);
         String text = read(dir, "CMakeLists.txt");
         if (text.contains("enable_testing") || text.contains("add_test")) {

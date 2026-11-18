@@ -409,7 +409,7 @@ jobs:
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
       - name: Maven plugin descriptor, compile and contract verification
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
-      - name: Required LLVM C and C++ native execution
+      - name: Required real Clang C and C++ native regression
         shell: bash
         run: |
           set -euo pipefail
@@ -417,6 +417,20 @@ jobs:
           command -v clang++
           java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes \
             io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required
+      - name: Packaged LLVM Maven consumer plan, execute and check output
+        shell: bash
+        run: |
+          set -euo pipefail
+          LLVM_ROOT="$(dirname "$(dirname "$(command -v clang)")")"
+          mkdir -p tools/m3-polyglot-maven-plugin/examples/llvm/target
+          M3_LLVM_HOME="$LLVM_ROOT" mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/examples/llvm/pom.xml \
+            io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:plan
+          M3_LLVM_HOME="$LLVM_ROOT" mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/examples/llvm/pom.xml \
+            io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run
+          RESULT="$(tools/m3-polyglot-maven-plugin/examples/llvm/target/hello)"
+          test "$RESULT" = "Maven built this with LLVM"
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes

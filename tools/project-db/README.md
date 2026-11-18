@@ -153,17 +153,26 @@ all take `--store DIR` and `--persistent`.
 
 ## Real Gradle consumer TestKit in Maven's CI
 
-The project database's cross-fork workflow runs a second, independent
-JDK 17/21 job for the **actual Gradle fork consumer**, not just an
-in-process Maven test. It builds and verifies the original Maven
-polyglot `IndexStore` and project database JARs from the current
-Maven source, then checks out a **reviewed immutable Gradle consumer
-revision**, `e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`, with a sparse
-checkout of the wrapper and quality-bridge sources. The Gradle wrapper
-pins the 9.9.1 binary distribution by SHA-256.
+The project database's cross-fork workflow retains two JDK 17/21
+matrices: the source-owned Maven engine/DB contract and the **actual
+Gradle TestKit consumer**. Each JDK Maven owner job builds and verifies
+the original Maven polyglot `IndexStore` and project database **once**.
+Only after those tests succeed does the job stage both original JARs,
+a `SOURCE_RECEIPT.tsv` carrying the **exact GitHub source SHA** and
+**producing JDK lane**, plus a `SHA256SUMS` receipt sealing all three
+files, and upload them together in `qualified-maven-jars-jdk-<java>`.
+The matching Gradle job declares `needs: project-db-native-gradle`,
+downloads its own JDK's qualified artifacts, runs `sha256sum -c SHA256SUMS`,
+and rejects a source SHA or JDK mismatch **before** executing the
+consumer. It no longer reruns Maven `install` and `verify` a second time.
 
-The job sets `M3_POLYGLOT_JAR` and `M3_PROJECT_DB_JAR` to those
-source-built JARs before executing:
+The consumer checks out **reviewed immutable Gradle revision**
+`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`, with a sparse
+checkout of only its wrapper and quality-bridge sources. The Gradle
+wrapper pins the 9.9.1 binary distribution by SHA-256.
+
+The Gradle job sets `M3_POLYGLOT_JAR` and `M3_PROJECT_DB_JAR`
+to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
 
 ~~~sh
 ./gradlew --no-daemon --stacktrace --console=plain \
@@ -176,6 +185,14 @@ without a POM, source-line/build provenance, and changed/unchanged
 source handling. The wrapper and its plugins still need network access
 on the Actions runner. Failed or successful TestKit XML reports are
 retained as workflow artifacts for review.
+
+The two source-built JAR artifacts and `SHA256SUMS` are retained
+for seven days; Gradle TestKit XML/HTML reports for fourteen days.
+This handoff reduces duplicate Maven build computation without creating
+a new storage owner or allowing the Gradle job to continue after a
+failed Maven owner job. A receipt authenticates the transferred artifact
+bytes; it does not prove a compiler ABI, a native toolchain closure,
+a Gradle build-cache hit, or behavioral equivalence on Windows/macOS.
 
 The immutable Gradle SHA is intentionally not `master`. A newer
 Gradle bridge source revision requires an explicit pin-update and

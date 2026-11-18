@@ -19,20 +19,29 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-/** Planning-only contracts use deliberately non-program tool bytes; native execution has its own test. */
+/** Installation contracts use non-program tool bytes; the OS must reject a non-executable fixture. */
 public final class LlvmInstallationSelectionContractTestMain {
     private static int checks;
 
     private LlvmInstallationSelectionContractTestMain() { }
 
     public static void main(String[] args) throws Exception {
-        if ((args.length == 3 || args.length == 4) && "--probe-lookup".equals(args[0])) {
-            List<String> flags = args.length == 4
-                    ? List.of(LlvmCompilerProvider.SHA256 + args[3], "a.c") : List.of("a.c");
+        if (args.length >= 3 && "--probe-lookup".equals(args[0])) {
+            List<String> flags = List.of(args).subList(3, args.length);
+            if ("REFUSE_UNSELECTED_PIN".equals(args[2])) {
+                try {
+                    M3ToolProviders.command(task("c", flags), Path.of(args[1]));
+                } catch (IOException expected) {
+                    if (!expected.getMessage().contains("requires a selected home or bin")) throw expected;
+                    return;
+                }
+                throw new AssertionError("SHA pin must not search the task directory or PATH");
+            }
             List<String> command = M3ToolProviders.command(task("c", flags), Path.of(args[1]));
             if (!command.get(0).equals(args[2])) throw new AssertionError("unexpected child lookup: " + command);
             return;
         }
+        checks = 0;
         Path root = Files.createTempDirectory("m3 llvm provider ");
         String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
         try {
@@ -42,13 +51,13 @@ public final class LlvmInstallationSelectionContractTestMain {
             preservesArguments(root, home);
             preservesLegacyBinSelection(root);
             selectsConfiguredHome(root, home);
-            selectsEnvironmentCwdAndPath(root, home);
+            selectsEnvironmentAndRefusesUnselectedPins(root, home);
             validatesExecutablePin(root, home);
             rejectsMalformedOptions(root);
             preservesDriverSymlink(root);
             windowsDriverNames(root);
             plansWithoutExecutionOrState(root, home);
-            System.out.println("PASS: " + checks + " LLVM provider contract assertions");
+            System.out.println("PASS: " + checks + " LLVM installation selection assertions");
         } finally {
             restore(LlvmCompilerProvider.HOME_PROPERTY, previous);
             erase(root);
@@ -86,12 +95,14 @@ public final class LlvmInstallationSelectionContractTestMain {
                 checks++;
             }
         }
-        List<String> literal = List.of("--", "--m3-llvm-home=literal-input.c", "--m3-llvm-unknown=literal-input.c");
-        require(M3ToolProviders.command(task("c", literal), root).subList(1, 4).equals(literal),
-                "provider-looking filenames after -- stay literal");
-        require(M3ToolProviders.command(task("objcpp", args), root)
-                        .equals(M3ToolProviders.command(task("objc++", args), root)),
-                "legacy objcpp and additive objc++ select identical compiler commands");
+        String digest = InputStamps.fileSha256(home.resolve("bin").resolve(filename("clang")));
+        List<String> directives = List.of("-c", "--", LlvmCompilerProvider.HOME_ARGUMENT + home,
+                LlvmCompilerProvider.SHA256_ARGUMENT + digest, "src/file with spaces.c");
+        require(M3ToolProviders.command(task("c", directives), root).equals(List.of(
+                home.resolve("bin").resolve(filename("clang")).toString(), "-c", "--", "src/file with spaces.c")),
+                "home and digest directives are consumed in every position while compiler argv stays ordered");
+        refuses(() -> M3ToolProviders.command(task("c", List.of("--", "--m3-llvm-unknown=value")), root),
+                "unknown adapter directives remain errors after the compiler delimiter");
     }
 
     private static void preservesLegacyBinSelection(Path root) throws Exception {
@@ -105,29 +116,27 @@ public final class LlvmInstallationSelectionContractTestMain {
         require(M3ToolProviders.command(task("llvm-ir", List.of(selector + absentBin, "-filetype=obj", "a.ll")), root)
                         .equals(List.of(absentBin.resolve(filename("llc")).toString(), "-filetype=obj", "a.ll")),
                 "legacy bin and llvm-ir retain llc dispatch");
-        List<String> afterDelimiter = List.of("--", selector + absentBin, "--m3-llvm-home=literal.c",
-                "--m3-llvm-sha256=literal.c", "a.c");
+        List<String> afterDelimiter = List.of("--", selector + absentBin, "a.c");
         require(M3ToolProviders.command(task("c", afterDelimiter), root).equals(List.of(
-                absentBin.resolve(filename("clang")).toString(), "--", "--m3-llvm-home=literal.c",
-                "--m3-llvm-sha256=literal.c", "a.c")),
-                "legacy bin is consumed after -- while new provider-looking filenames remain literal");
+                absentBin.resolve(filename("clang")).toString(), "--", "a.c")),
+                "legacy bin is consumed after -- without consuming the compiler delimiter");
         String saved = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
         try {
             System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("invalid home").toString());
             require(M3ToolProviders.command(task("c", List.of(selector + absentBin, "a.c")), root).get(0)
                             .equals(absentBin.resolve(filename("clang")).toString()),
-                    "legacy explicit bin overrides the newer home property without probing it");
+                    "explicit bin overrides the shared home property without probing it");
         } finally {
             restore(LlvmCompilerProvider.HOME_PROPERTY, saved);
         }
         refuses(() -> M3ToolProviders.command(task("c", List.of(selector + absentBin,
-                LlvmCompilerProvider.SHA256 + "0".repeat(64), "a.c")), root),
+                LlvmCompilerProvider.SHA256_ARGUMENT + "0".repeat(64), "a.c")), root),
                 "a digest requires a real executable even with legacy bin planning");
     }
 
     private static void selectsConfiguredHome(Path root, Path home) throws Exception {
         Path other = fakeHome(root.resolve("another LLVM"));
-        List<String> explicit = List.of(LlvmCompilerProvider.HOME + "another LLVM", "-c", "src/hello.c");
+        List<String> explicit = List.of(LlvmCompilerProvider.HOME_ARGUMENT + "another LLVM", "-c", "src/hello.c");
         List<String> command = M3ToolProviders.command(task("c", explicit), root);
         require(command.equals(List.of(other.resolve("bin").resolve(filename("clang")).toString(), "-c", "src/hello.c")),
                 "task home overrides property and is relative to module, not working directory");
@@ -141,27 +150,54 @@ public final class LlvmInstallationSelectionContractTestMain {
         } finally {
             System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, home.toString());
         }
-        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.HOME + "absent", "a.c")), root),
+        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.HOME_ARGUMENT + "absent", "a.c")), root),
                 "configured missing home must not fall back to PATH");
         Path emptyHome = Files.createDirectories(root.resolve("no compilers/bin")).getParent();
-        refuses(() -> M3ToolProviders.command(task("fortran", List.of(LlvmCompilerProvider.HOME + emptyHome, "a.f90")), root),
+        refuses(() -> M3ToolProviders.command(task("fortran", List.of(LlvmCompilerProvider.HOME_ARGUMENT + emptyHome, "a.f90")), root),
                 "missing Flang must not fall back to a different frontend");
+        Path fallback = fakeHome(root.resolve("older Flang installation"));
+        Path flangNew = fallback.resolve("bin").resolve(filename("flang-new"));
+        Files.move(fallback.resolve("bin").resolve(filename("flang")), flangNew);
+        String digest = InputStamps.fileSha256(flangNew);
+        require(M3ToolProviders.command(task("fortran", List.of(LlvmCompilerProvider.HOME_ARGUMENT + fallback,
+                LlvmCompilerProvider.SHA256_ARGUMENT + digest, "a.f90")), root).equals(List.of(flangNew.toString(), "a.f90")),
+                "home selection pins and preserves the flang-new fallback driver");
         if (!windows()) {
             Path nonExecutable = Files.createDirectories(root.resolve("non executable/bin")).resolve("clang");
             Files.writeString(nonExecutable, "non-executable", StandardCharsets.UTF_8);
             require(!Files.isExecutable(nonExecutable), "fixture is not executable");
-            refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.HOME
-                    + nonExecutable.getParent().getParent(), "a.c")), root), "non executable driver");
+            String selected = LlvmCompilerProvider.HOME_ARGUMENT + nonExecutable.getParent().getParent();
+            require(M3ToolProviders.command(task("c", List.of(selected, "a.c")), root).get(0)
+                    .equals(nonExecutable.toString()), "regular-file selection does not execute the driver");
+            Files.writeString(root.resolve("permission.c"), "int main(void) { return 0; }\n", StandardCharsets.UTF_8);
+            Path manifest = root.resolve("permission.tsv");
+            Files.writeString(manifest, TaskManifest.MAGIC + "\n"
+                    + "task\tpermission\t@m3:llvm:compiler:c\t.\n"
+                    + "arg\tpermission\t" + selected + "\n"
+                    + "arg\tpermission\tpermission.c\n"
+                    + "arg\tpermission\t-o\n"
+                    + "arg\tpermission\tpermission.o\n"
+                    + "input\tpermission\tpermission.c\n"
+                    + "output\tpermission\tpermission.o\n", StandardCharsets.UTF_8);
+            try {
+                TaskRunner.run(TaskManifest.load(manifest), root, "permission", false,
+                        Duration.ofSeconds(3), line -> { });
+                throw new AssertionError("non-executable driver must fail at process launch");
+            } catch (IOException expected) {
+                require(expected.getMessage().startsWith("cannot start tool for target permission"),
+                        "execute permission failure propagates through the actual runner");
+            }
+            require(!Files.exists(root.resolve("permission.o")), "refused driver creates no compiler output");
         }
     }
 
     private static void validatesExecutablePin(Path root, Path home) throws Exception {
         Path compiler = home.resolve("bin").resolve(filename("clang"));
         String expected = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(compiler)));
-        List<String> args = List.of(LlvmCompilerProvider.SHA256 + expected.toUpperCase(Locale.ROOT), "-c", "a.c");
+        List<String> args = List.of(LlvmCompilerProvider.SHA256_ARGUMENT + expected.toUpperCase(Locale.ROOT), "-c", "a.c");
         require(M3ToolProviders.command(task("c", args), root).equals(List.of(compiler.toString(), "-c", "a.c")),
                 "uppercase digest accepted and stripped from compiler argv");
-        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.SHA256 + "0".repeat(64), "a.c")), root),
+        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.SHA256_ARGUMENT + "0".repeat(64), "a.c")), root),
                 "wrong executable bytes");
         byte[] original = Files.readAllBytes(compiler);
         try {
@@ -173,26 +209,38 @@ public final class LlvmInstallationSelectionContractTestMain {
     }
 
     /** Fresh JVMs own controlled environments; no reflective mutation of System.getenv. */
-    private static void selectsEnvironmentCwdAndPath(Path root, Path propertyHome) throws Exception {
+    private static void selectsEnvironmentAndRefusesUnselectedPins(Path root, Path propertyHome) throws Exception {
         Path module = Files.createDirectories(root.resolve("lookup module"));
         Path cwd = Files.createDirectories(module.resolve("nested build"));
         Path cwdDriver = fakeTool(cwd.resolve(filename("clang")));
         Path envHome = fakeHome(module.resolve("environment LLVM"));
         Path pathHome = fakeHome(module.resolve("PATH LLVM"));
+        Path taskHome = fakeHome(module.resolve("task LLVM"));
+        List<String> flags = List.of("a.c");
         lookupChild(module, null, "environment LLVM", pathHome.resolve("bin"),
-                envHome.resolve("bin").resolve(filename("clang")).toString(), null);
-        lookupChild(module, propertyHome, envHome.toString(), pathHome.resolve("bin"),
-                propertyHome.resolve("bin").resolve(filename("clang")).toString(), null);
-        lookupChild(module, null, null, pathHome.resolve("bin"), filename("clang"), null);
+                envHome.resolve("bin").resolve(filename("clang")).toString(), flags);
+        lookupChild(module, propertyHome.toString(), envHome.toString(), pathHome.resolve("bin"),
+                propertyHome.resolve("bin").resolve(filename("clang")).toString(), flags);
+        lookupChild(module, " ", envHome.toString(), pathHome.resolve("bin"),
+                envHome.resolve("bin").resolve(filename("clang")).toString(), flags);
+        lookupChild(module, propertyHome.toString(), envHome.toString(), pathHome.resolve("bin"),
+                taskHome.resolve("bin").resolve(filename("clang")).toString(),
+                List.of(LlvmCompilerProvider.HOME_ARGUMENT + "task LLVM", "a.c"));
+        lookupChild(module, propertyHome.toString(), envHome.toString(), pathHome.resolve("bin"),
+                taskHome.resolve("bin").resolve(filename("clang")).toString(),
+                List.of(LlvmCompilerProvider.BIN_ARGUMENT + "task LLVM/bin", "a.c"));
+        lookupChild(module, null, null, pathHome.resolve("bin"), filename("clang"), flags);
         String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(cwdDriver)));
-        lookupChild(module, null, null, pathHome.resolve("bin"), cwdDriver.toString(), digest);
+        List<String> pinned = List.of(LlvmCompilerProvider.SHA256_ARGUMENT + digest, "a.c");
+        lookupChild(module, null, null, pathHome.resolve("bin"), "REFUSE_UNSELECTED_PIN", pinned);
+        lookupChild(module, null, null, pathHome.resolve("bin"), cwdDriver.toString(),
+                List.of(LlvmCompilerProvider.BIN_ARGUMENT + "nested build", LlvmCompilerProvider.SHA256_ARGUMENT + digest, "a.c"));
         Files.delete(cwdDriver);
-        lookupChild(module, null, null, pathHome.resolve("bin"),
-                pathHome.resolve("bin").resolve(filename("clang")).toString(), digest);
-        lookupChild(module, null, null, Files.createDirectories(module.resolve("empty PATH")), filename("clang"), null);
+        lookupChild(module, null, null, pathHome.resolve("bin"), "REFUSE_UNSELECTED_PIN", pinned);
+        lookupChild(module, null, null, Files.createDirectories(module.resolve("empty PATH")), filename("clang"), flags);
     }
 
-    private static void lookupChild(Path workspace, Path propertyHome, String envHome, Path path, String expected, String digest)
+    private static void lookupChild(Path workspace, String propertyHome, String envHome, Path path, String expected, List<String> flags)
             throws Exception {
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", windows() ? "java.exe" : "java").toString());
@@ -205,16 +253,17 @@ public final class LlvmInstallationSelectionContractTestMain {
         command.add(String.join(java.io.File.pathSeparator, classpath));
         command.add(LlvmInstallationSelectionContractTestMain.class.getName());
         command.addAll(List.of("--probe-lookup", workspace.toString(), expected));
-        if (digest != null) command.add(digest);
+        command.addAll(flags);
         ProcessBuilder builder = new ProcessBuilder(command).directory(workspace.toFile()).inheritIO();
-        builder.environment().keySet().removeIf(key -> key.equalsIgnoreCase("LLVM_HOME") || key.equalsIgnoreCase("PATH")
+        builder.environment().keySet().removeIf(key -> key.equalsIgnoreCase("M3_LLVM_HOME")
+                || key.equalsIgnoreCase("LLVM_HOME") || key.equalsIgnoreCase("PATH")
                 || key.equals("JAVA_TOOL_OPTIONS") || key.equals("JDK_JAVA_OPTIONS") || key.equals("_JAVA_OPTIONS"));
         builder.environment().put("PATH", path.toString());
-        if (envHome != null) builder.environment().put("LLVM_HOME", envHome);
+        if (envHome != null) builder.environment().put("M3_LLVM_HOME", envHome);
         Process child = builder.start();
         try {
             require(child.waitFor(30, TimeUnit.SECONDS), "bounded fresh-JVM tool lookup");
-            require(child.exitValue() == 0, "environment, cwd and PATH resolution in fresh JVM");
+            require(child.exitValue() == 0, "canonical installation precedence and explicit-directory pinning in fresh JVM");
         } finally {
             if (child.isAlive()) {
                 child.destroyForcibly();
@@ -229,21 +278,25 @@ public final class LlvmInstallationSelectionContractTestMain {
                 List.of(LlvmCompilerProvider.BIN_ARGUMENT),
                 List.of(LlvmCompilerProvider.BIN_ARGUMENT + " "),
                 List.of(LlvmCompilerProvider.BIN_ARGUMENT + "a", LlvmCompilerProvider.BIN_ARGUMENT + "b", "a.c"),
-                List.of(LlvmCompilerProvider.BIN_ARGUMENT + "a", LlvmCompilerProvider.HOME + "b", "a.c"),
-                List.of(LlvmCompilerProvider.HOME + "a", LlvmCompilerProvider.BIN_ARGUMENT + "b", "a.c"),
+                List.of(LlvmCompilerProvider.BIN_ARGUMENT + "a", LlvmCompilerProvider.HOME_ARGUMENT + "b", "a.c"),
+                List.of(LlvmCompilerProvider.HOME_ARGUMENT + "a", LlvmCompilerProvider.BIN_ARGUMENT + "b", "a.c"),
                 List.of(LlvmCompilerProvider.BIN_ARGUMENT + "a"),
-                List.of(LlvmCompilerProvider.HOME),
-                List.of(LlvmCompilerProvider.HOME + " "),
-                List.of(LlvmCompilerProvider.HOME + "a", LlvmCompilerProvider.HOME + "b"),
-                List.of(LlvmCompilerProvider.SHA256),
-                List.of(LlvmCompilerProvider.SHA256 + "abc"),
-                List.of(LlvmCompilerProvider.SHA256 + "g".repeat(64)),
-                List.of(LlvmCompilerProvider.SHA256 + "0".repeat(64), LlvmCompilerProvider.SHA256 + "1".repeat(64)),
+                List.of(LlvmCompilerProvider.HOME_ARGUMENT),
+                List.of(LlvmCompilerProvider.HOME_ARGUMENT + " "),
+                List.of(LlvmCompilerProvider.HOME_ARGUMENT + "a", LlvmCompilerProvider.HOME_ARGUMENT + "b"),
+                List.of(LlvmCompilerProvider.SHA256_ARGUMENT),
+                List.of(LlvmCompilerProvider.SHA256_ARGUMENT + "abc"),
+                List.of(LlvmCompilerProvider.SHA256_ARGUMENT + "g".repeat(64)),
+                List.of(LlvmCompilerProvider.SHA256_ARGUMENT + "0".repeat(64), LlvmCompilerProvider.SHA256_ARGUMENT + "1".repeat(64)),
                 List.of("--m3-llvm-download=latest"),
-                List.of("--m3-llvm-home", "tools"))) {
+                List.of("--m3-llvm-home", "tools"),
+                List.of("--", LlvmCompilerProvider.HOME_ARGUMENT + "a", LlvmCompilerProvider.BIN_ARGUMENT + "b", "a.c"),
+                List.of("--", LlvmCompilerProvider.HOME_ARGUMENT + "a", LlvmCompilerProvider.HOME_ARGUMENT + "b", "a.c"),
+                List.of("--", LlvmCompilerProvider.SHA256_ARGUMENT + "abc", "a.c"))) {
             refuses(() -> M3ToolProviders.command(task("c", args), root), "malformed provider options " + args);
         }
         refuses(() -> M3ToolProviders.command(task("java", List.of("A.java")), root), "unsupported Java frontend");
+        refuses(() -> M3ToolProviders.command(task("objcxx", List.of("a.mm")), root), "unadvertised Objective-C++ spelling");
         var interpreter = new TaskManifest.Task("bad", "@m3:llvm:interpreter:c", ".", List.of(), List.of(),
                 List.of("src/hello.c"), List.of("target/out"));
         refuses(() -> M3ToolProviders.command(interpreter, root), "unsupported interpreter role");
@@ -260,8 +313,8 @@ public final class LlvmInstallationSelectionContractTestMain {
         Path clang = fakeTool(home.resolve("bin/clang"));
         Files.createSymbolicLink(home.resolve("bin/clang++"), Path.of("clang"));
         String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(clang)));
-        List<String> command = M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME + home,
-                LlvmCompilerProvider.SHA256 + digest, "a.cpp")), root);
+        List<String> command = M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME_ARGUMENT + home,
+                LlvmCompilerProvider.SHA256_ARGUMENT + digest, "a.cpp")), root);
         require(command.get(0).equals(home.resolve("bin/clang++").toString()), "clang++ argv[0] survives symlink validation");
     }
 
@@ -270,7 +323,7 @@ public final class LlvmInstallationSelectionContractTestMain {
         try {
             System.setProperty("os.name", "Windows test");
             Path home = fakeHome(root.resolve("Windows LLVM"));
-            require(M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME + home, "a.cpp")), root)
+            require(M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME_ARGUMENT + home, "a.cpp")), root)
                     .get(0).equals(home.resolve("bin/clang++.exe").toString()), "Windows executable suffix planning");
         } finally {
             restore("os.name", original);
@@ -282,7 +335,7 @@ public final class LlvmInstallationSelectionContractTestMain {
         Path manifest = planRoot.resolve("m3-build.tsv");
         Files.writeString(manifest, TaskManifest.MAGIC + "\n"
                 + "task\tcompile\t@m3:llvm:compiler:c\t.\n"
-                + "arg\tcompile\t" + LlvmCompilerProvider.HOME + home + "\n"
+                + "arg\tcompile\t" + LlvmCompilerProvider.HOME_ARGUMENT + home + "\n"
                 + "arg\tcompile\tsrc/not-created-yet.c\n"
                 + "input\tcompile\tsrc/not-created-yet.c\n"
                 + "output\tcompile\ttarget/not-created.o\n", StandardCharsets.UTF_8);
@@ -294,7 +347,7 @@ public final class LlvmInstallationSelectionContractTestMain {
         require(messages.size() == 1 && messages.get(0).startsWith("PLAN compile"), "no execution or state reuse claimed");
         require(paths(planRoot).equals(before), "planning creates no source, output, cache or module-state file");
         Files.writeString(manifest, Files.readString(manifest, StandardCharsets.UTF_8).replace(
-                LlvmCompilerProvider.HOME + home, LlvmCompilerProvider.BIN_ARGUMENT + "future LLVM/bin"),
+                LlvmCompilerProvider.HOME_ARGUMENT + home, LlvmCompilerProvider.BIN_ARGUMENT + "future LLVM/bin"),
                 StandardCharsets.UTF_8);
         messages.clear();
         require(TaskRunner.run(TaskManifest.load(manifest), planRoot, "compile", true,

@@ -23,6 +23,13 @@ public interface M3ModuleDbBackendProvider {
     /** Stable, versioned backend identifier, e.g. ext-rocksdb-v1. */
     String id();
 
+    /**
+     * Fail before opening the module's M3 generation if the explicitly named
+     * optional driver/native runtime is not installed. Existing third-party
+     * providers remain binary/source compatible through this default method.
+     */
+    default void verifyAvailable(Path moduleRoot) throws IOException { }
+
     /** Return the sealed image or null on a cold module. Never return partially committed bytes. */
     byte[] read(Path moduleRoot) throws IOException;
 

@@ -90,6 +90,70 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | SQLite JDBC | `sqlite` | Preserves `.m3/module-state.sqlite` and local transaction sidecars; requires an explicit `org.sqlite.JDBC` runtime dependency |
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |
 | External portable storage | `ext-*` | Preserves the public `M3ModuleDbBackendProvider` SPI; the selected trusted provider must be installed and independently qualified |
+| RocksDB JNI (optional) | `ext-rocksdb-v1` | `.m3/module-state-ext-rocksdb-v1/` with native RocksDB LSM/WAL; explicitly install `org.rocksdb:rocksdbjni`; sync-WAL put |
+| MapDB (optional) | `ext-mapdb-v1` | `.m3/module-state-ext-mapdb-v1.db` with transactional MapDB file store; explicitly install `org.mapdb:mapdb`; `DB.commit()` |
+| LMDB (optional) | `ext-lmdb-v1` | `.m3/module-state-ext-lmdb-v1/` with LmdbJava native mapped environment; explicitly install `org.lmdbjava:lmdbjava`; read/write transactions |
+| LevelDB (pure Java, optional) | `ext-leveldb-v1` | `.m3/module-state-ext-leveldb-v1/` with Iq80 LevelDB's Java LSM/WAL engine; explicitly install `org.iq80.leveldb:leveldb:0.12`; synchronous writes |
+
+The optional donor engines are *real driver adapters*, not only conceptual
+donors. The four choices cover a native LSM implementation (RocksDB), a
+transactional Java mapped-file store (MapDB), native memory-mapped MVCC
+(LMDB), and a pure-Java LevelDB LSM store. They use the original
+`M3ModuleDbBackendProvider` with a `ServiceLoader` registration, and keep
+the M3 receipt image format, hashes, module generation and exclusive Maven
+module lease unchanged. RocksDB writes the entire sealed
+snapshot with synchronous WAL durability; MapDB explicitly enables WAL and
+commits its stored `byte[]` value; LMDB copies read buffers before releasing a
+read-only transaction and commits a native write transaction. Neither source
+code nor native libraries from these donors are embedded in the default plugin.
+
+**Driver installation is explicit.** For a consuming Maven plugin declaration,
+add a selected database driver as a plugin dependency; for example:
+
+```xml
+<plugin>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-polyglot-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <dependencies>
+    <dependency>
+      <groupId>org.rocksdb</groupId>
+      <artifactId>rocksdbjni</artifactId>
+      <version>11.8.1</version>
+    </dependency>
+  </dependencies>
+</plugin>
+```
+
+Then explicitly select
+`-Dm3.polyglot.incrementalState=ext-rocksdb-v1`. The separate standard Maven
+lifecycle extension accepts `-Dm3.lifecycle.backend=ext-rocksdb-v1`, but in
+that case the selected provider **and its runtime dependencies must be visible
+to the core extension's own classloader**, not just a different plugin realm.
+There is no cross-realm silent fallback. To test actual drivers
+without changing the plugin's production dependency graph, run:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-portable-engines verify
+```
+
+That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0, LmdbJava
+0.9.3, and Iq80 LevelDB 0.12, and executes a **require-all**
+persistence/restart/revocation/backend switch suite. The LMDB adapter targets the actual **LmdbJava 0.9.3** API:
+`Env.Builder.open(File, EnvFlags...)`, `Env.openDbi(String, DbiFlags...)`,
+and `Dbi.put(Txn, key, value, PutFlags...)`. These methods differ from the
+unreleased LmdbJava 1.0 builder API, so a different runtime fails compatibility
+preflight instead of silently opening an unexpected layout. MapDB and LMDB
+also **open existing collections without create flags on reads**; only an
+explicit write may create the store. All four donor adapters preflight their
+required public method signatures before the M3 module-state generation is
+opened, so incompatible runtime JARs are refused rather than admitted. Without the profile, the default JDK-only contract checks
+registration and path safety, then reports `NOT_RUN` for unavailable native
+runtimes. A module must never silently substitute another backend. Driver
+compatibility and native crash-recovery qualification are separate from
+Java source compilation.
+
+
 
 For the recognized **native M3IndexDB blob/ref directory layout**, the `m3db` backend now
 performs bounded, conservative mark-and-sweep compaction under the existing
@@ -351,7 +415,11 @@ and `package` run the native commands:
 | Gradle build or settings file | `assemble`, `test` (with `gradlew` when the wrapper is there) |
 | Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
 | `Package.swift` | `swift build`, `swift test` |
+| `rebar.config` (Erlide/Erlang) | `rebar3 compile`; `rebar3 eunit` only when a `test/` directory exists |
+| `composer.json` (Eclipse PDT/PHP) | `composer validate --no-check-publish`; `composer exec phpunit` only for a present `phpunit.xml` / `.dist` |
 | `build.xml` | `ant`, `ant test` when a `test` target exists |
+
+For Erlide and PDT, Mavenizer emits an opt-in native tool plan only. Rebar3 may fetch its declared dependencies during an explicit original Rebar3 compile; Composer validation does not install packages, and PHPUnit execution assumes existing installed dependencies. Mavenizer does not download or compile anything on detection, does not rewrite original `rebar.config`/`composer.json`, and does not infer arbitrary scripts or PHP compilation from file extensions. The existing m2e polyglot tool registry already recognizes `rebar3` and `composer` and yields to an installed Erlide/PDT language service.
 
 Test reports. CTest writes its JUnit XML itself (`--output-junit`, CMake 3.21+) to `target/ctest/ctest-junit.xml`,
 and the `ctest-test` task runs it through `@m3:surefire:interpreter:junit`, which converts the file into
@@ -501,6 +569,30 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 The opt-in OpenRewrite registration recipe `io.synexia.maven.recipe.EnableEclipseModelInspection` only adds this
 plugin to a consuming POM; it does not bind goals, modify IDE metadata or install toolchains. Test full m2e/PDE,
 JDT, CDT and PyDev round trips independently before treating any live workspace behavior as supported.
+
+## Universal Eclipse language descriptor facts (additive)
+
+The existing `EclipseProjectModel` now fingerprints additional build
+**authoring descriptors** for native, interpreted, JVM and Eclipse PDE
+languages. It recognizes project-local `META-INF/MANIFEST.MF`,
+`plugin.xml`, `fragment.xml`, `feature.xml`, `build.properties`,
+`category.xml`, `*.target`, `*.product`, CMake/Make/Meson files,
+Cargo lockfiles, Go module files, Swift packages, Python project metadata,
+Node/TypeScript manifests, and Maven/Gradle project declarations.
+
+The source belongs to its original language/Eclipse plugin. The Maven
+model records SHA-256 hashes of bounded, explicitly selected files only,
+without running parsers for foreign languages, visiting build output trees,
+following symlinks or installing SDKs. Dynamic target/product documents
+are limited to 128 immediate project files, and added root descriptors have
+a combined 32 MiB byte budget. Pre-existing `m3-eclipse-project-v1` JSON
+fields and the existing `m3EclipseModel` Gradle proxy remain compatible;
+only new entries appear in `descriptorSha256` when these files exist.
+
+These hashes are **not** a complete fingerprint of CDT effective flags,
+JDT classpaths, Rust feature resolutions, PDE/Tycho p2 target contents,
+annotation processors or generated outputs. Build-cache admission still
+requires independent facts from the native source owners and M3File/M3DB.
 
 ## Eclipse language-plugin build owner registry (v1)
 
@@ -660,7 +752,7 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
-| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)); `@m3:llvm:compiler:{c,cpp,objc,objcpp,objc++,fortran,llvm-ir}` delegates to Clang, Flang and `llc` ([LLVM toolchain](docs/LLVM_TOOLCHAIN.md)) |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)); `@m3:llvm:compiler:{c,cpp,objc,objcpp,fortran,llvm-ir}` delegates to original Clang, Flang and `llc` drivers ([LLVM toolchain](docs/LLVM_TOOLCHAIN.md), [fork configuration](#llvm-fork-compiler-toolchain)) |
 | `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results; `@m3:surefire:interpreter:libtest` runs cargo test and reports its output; `@m3:surefire:interpreter:junit` runs CTest and normalises its JUnit XML |
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
@@ -676,9 +768,7 @@ need their own complete execution evidence.
 
 The optional [LLVM compiler adapter](docs/LLVM_TOOLCHAIN.md) selects the original
 `clang`, `clang++`, `flang` or `llc` executable from PATH, or from a task's explicit
-`--m3-llvm-bin=<directory>` argument. The additive home/digest options described
-below retain the existing `objcpp`, `llvm-ir`/`llc`, bin-selector and unconfigured
-no-installation planning contracts. It can use a separately built, pinned
+`--m3-llvm-bin=<directory>` argument. It can use a separately built, pinned
 [hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project) toolchain without
 bundling LLVM or overriding CMake/Ninja native build ownership. Native header,
 sysroot and compiler dependency coverage is not automatically inferred.
@@ -737,6 +827,86 @@ providers should exchange qualified IDs/digests and reference original source
 owners. The `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite
 recipe opt-in registers this Maven plugin in a consuming POM without binding
 any goal to the default lifecycle.
+
+### LLVM fork compiler toolchain
+
+The built-in `llvm` provider delegates to installed LLVM executables; it does **not** copy LLVM sources into Maven,
+compile LLVM implicitly, load LLVM into the Maven JVM, or replace the existing Clang AST atomizer. The selected
+source donor is [hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project), pinned for the initial
+integration to commit `591f3d1edf0a9ee718d17a0ee70dd013b3c01908` (2026-11-18). Its license is
+Apache-2.0 WITH LLVM-exception. The source commit identifies the intended build input; it is **not** proof that an
+arbitrary installed binary was built from that commit. Pin each actual compiler executable with its SHA-256.
+
+Build/install the needed LLVM projects from that checked-out commit using LLVM's CMake build process, then
+set `-Dm3.llvm.home=/absolute/path/to/llvm-install` or `M3_LLVM_HOME` to the toolchain root containing `bin/`.
+The same property/environment points `code-clustering-clang` at that fork's `bin/clang` for AST evidence.
+An individual task can override the root with `--m3-llvm-home=<root>` (relative to its workspace or absolute).
+Existing tasks may instead set `--m3-llvm-bin=<directory>` to use the selected bin directory directly; that
+explicit selector takes precedence over a global home and retains the original compiler flags. If no toolchain
+is selected at all, the original PATH behavior is preserved. Neither Maven nor this provider fetches a toolchain
+or silently falls back to a different clang on PATH when an explicit home is absent.
+
+If `m3-polyglot:mavenize` finds an existing CMake project while the shared LLVM home is selected, its newly
+generated `cmake-validate` task supplies `-DCMAKE_C_COMPILER=<llvm>/bin/clang` and
+`-DCMAKE_CXX_COMPILER=<llvm>/bin/clang++`. The original `compile_commands.json` then describes the toolchain
+whose AST the Clang front end reads. Without explicit LLVM selection the original CMake generator flags are
+unchanged. Existing POMs, task manifests, `.clangd` files and native build descriptors are **never overwritten**;
+configuration changes to an already-mavenized project require a separately reviewed recipe/change.
+
+| Task tool | Original tool | Notes |
+| --- | --- | --- |
+| `@m3:llvm:compiler:c` | `bin/clang` | C compilation |
+| `@m3:llvm:compiler:cpp` | `bin/clang++` | C++ compilation and linking |
+| `@m3:llvm:compiler:objc` | `bin/clang` | Objective-C source (`.m`, or caller-supplied `-x objective-c`) |
+| `@m3:llvm:compiler:objcpp` | `bin/clang++` | Objective-C++ source (`.mm`, or caller-supplied `-x objective-c++`) |
+| `@m3:llvm:compiler:fortran` | `bin/flang` (or `flang-new`) | Available only if Flang was built |
+| `@m3:llvm:compiler:llvm-ir` | `bin/llc` | LLVM IR to assembly/object; task supplies `-filetype=obj` if required |
+
+Example `m3-build.tsv` for a source file already present in the consuming project (literal tabs between columns):
+
+```text
+M3-POLYGLOT-TASKS-V1
+task	compile	@m3:llvm:compiler:c	.
+arg	compile	--m3-llvm-home=/opt/m3-llvm
+arg	compile	--m3-llvm-sha256=<sha256-of-bin-clang>
+arg	compile	-c
+arg	compile	src/main/c/example.c
+arg	compile	-o
+arg	compile	target/example.o
+input	compile	src/main/c/example.c
+output	compile	target/example.o
+```
+
+`--m3-llvm-bin`, `--m3-llvm-home` and `--m3-llvm-sha256` are provider directives consumed in planning, not
+passed to Clang. Explicit home and bin selectors cannot be used together on the same task.
+The digest must be 64 hexadecimal digits of the selected actual executable's bytes. Wrong digests, missing tools,
+duplicate/unknown adapter directives, missing arguments and undeclared/overlapping outputs fail during `plan` as
+well as `run`; execution uses a direct argument vector, never a shell. Task outputs still need their normal parent
+directories and explicit source/header/library/tool dependencies. A task's compiler selection and content are
+already covered by the original verified runner and its build-cache fingerprint; provider tasks do not use the
+incremental task-skip shortcut. Linking, tests, ABI validation, recipe replay, contract-risk and fixed-point evidence
+remain separate promotion gates. The existing
+`io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite recipe is reused for opt-in POM registration.
+
+The provider preserves the `clang++` **invocation path**, including when it is a symlink to `clang`; the
+digest check follows the symlink to hash the real executable bytes. This matters because the original Clang driver
+can select C++ defaults from its invoked name. The explicit real-LLVM verification suite is included in `verify`
+and the dependency-free `scripts/verify.sh`:
+
+```sh
+M3_LLVM_REAL_TEST_HOME=/absolute/path/to/llvm-install \
+  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+```
+
+The [packaged Maven consumer example](examples/llvm/README.md) uses two explicit
+tasks to compile a C17 source and link the object, including a tracked header
+and Clang depfile. It relies on the existing `plan`/`run` goals and accepts
+`m3.llvm.home`, not an implicit lifecycle binding.
+
+It runs C, C++, Objective-C, Objective-C++, Fortran and LLVM IR **through the Maven TaskRunner**, checks that dry
+runs do not create outputs, pins each compiler executable's SHA-256, and verifies actual nonempty object files.
+Without that explicit variable, the suite reports `NOT RUN` rather than asserting LLVM was compiled. Cross-platform
+native ABI/linking, source-to-binary provenance, and the full Maven reactor remain distinct qualification gates.
 
 ### ECJ, the Eclipse Compiler for Java
 
@@ -918,28 +1088,3 @@ H2 and SQLite gate described in the [portable database contract](docs/M3_PORTABL
 and runs those default suites in separate JVMs with their complete test classpath.
 Real CodeQL extraction, real OpenRewrite application, full Maven reactor execution and m2e/PDE
 behavior have separate runtime acceptance gates.
-
-## LLVM installation selection and native qualification
-
-The existing `llvm` compiler provider now also accepts `objc++` as an alias for
-`objcpp`, `--m3-llvm-home=<installation>` and the optional executable pin
-`--m3-llvm-sha256=<64 hex characters>`. `llvm-ir` continues to select `llc`;
-`c`/`objc` select `clang`, `cpp`/`objcpp`/`objc++` select `clang++`, and `fortran`
-selects `flang`. Original compiler arguments retain their order and boundaries.
-
-A task's existing `--m3-llvm-bin=<directory>` or its new home selector takes
-precedence over `m3.polyglot.llvm.home` and then `LLVM_HOME`. Supplying both task
-selectors is refused. Home selection or a digest requires an available executable;
-unconfigured and unpinned legacy-bin commands preserve planning before the tools
-are installed. An executable digest does not pin the whole SDK, linker or runtime.
-
-LLVM tasks retain the existing `@m3` rule: they always execute and cannot restore
-cached outputs or publish reusable provider generations. Unverified dependents
-also execute. Explicit `-MD -MF` flags preserve depfiles as declared outputs; no
-new dependency scanner, cache engine or native skipping rule is introduced.
-
-[LLVM toolchain details](docs/LLVM_TOOLCHAIN.md) describe selector precedence,
-legacy compatibility, digest limitations, C compilation/linking, the pinned
-`hsoliwal/llvm-project` source and the existing Clang atomizer handoff. The runnable
-Maven consumer in `examples/llvm` complements the preserved `examples/llvm-native`
-Clang-to-LLVM-IR-to-`llc` example. No LLVM implementation or binary is bundled.

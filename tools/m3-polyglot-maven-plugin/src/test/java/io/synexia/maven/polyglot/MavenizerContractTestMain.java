@@ -27,6 +27,7 @@ public final class MavenizerContractTestMain {
         Path temp = Files.createTempDirectory("mavenizer-test-");
         try {
             detectsEachToolFamily(temp.resolve("detect"));
+            selectsForkLLVMForCMake(temp.resolve("llvm-cmake"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
             mavenizesAGradleMultiProjectBuildAsOneProject(temp.resolve("gradle-multi"));
             pointsClangdAtTheCMakeCompileDatabase(temp.resolve("clangd"));
@@ -43,6 +44,7 @@ public final class MavenizerContractTestMain {
         detectsCargo(root);
         detectsNativeTools(root);
         detectsPython(root);
+        detectsErlangAndPhp(root);
         detectsDotnet(root);
         attachesOnlyDotnetPackages(root);
         detectsJvmBuildTools(root);
@@ -86,6 +88,39 @@ public final class MavenizerContractTestMain {
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
     }
 
+    private static void selectsForkLLVMForCMake(Path root) throws Exception {
+        Path project = dir(root, "source", "CMakeLists.txt", "project(x LANGUAGES C CXX)\n");
+        Path toolchain = Files.createDirectories(root.resolve("fork llvm/bin"));
+        String extension = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+        Path c = Files.writeString(toolchain.resolve("clang" + extension), "fixture clang");
+        Path cpp = Files.writeString(toolchain.resolve("clang++" + extension), "fixture clang++");
+        String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+        try {
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("fork llvm").toString());
+            expect(project, "validate cmake-validate cmake [-S, ., -B, build/cmake, "
+                    + "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, -DCMAKE_C_COMPILER=" + c.toRealPath()
+                    + ", -DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "]",
+                    "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
+            Path output = project.resolve("m3-build.tsv");
+            Mavenizer.mavenize(project, "org.example", "1", true);
+            String emitted = Files.readString(output);
+            require(emitted.contains("arg\tcmake-validate\t-DCMAKE_C_COMPILER=" + c.toRealPath() + "\n")
+                    && emitted.contains("arg\tcmake-validate\t-DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "\n"),
+                    "real generated task manifest retains each LLVM executable path as one argument");
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("absent").toString());
+            try {
+                Mavenizer.steps(project);
+                throw new AssertionError("missing LLVM home must fail closed");
+            } catch (IOException expected) {
+                require(expected.getMessage().contains("LLVM driver not found"), "specific missing LLVM refusal");
+            }
+        } finally {
+            if (previous == null) System.clearProperty(LlvmCompilerProvider.HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, previous);
+        }
+        passed++;
+    }
+
     private static void detectsPython(Path root) throws Exception {
         Path python = dir(root, "python", "pyproject.toml", "[project]\nname='x'\n");
         Files.createDirectories(python.resolve("tests"));
@@ -94,6 +129,39 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "pytest", "pyproject.toml", "[tool.pytest.ini_options]\n"),
                 "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
                 "test python-test python [-m, pytest]");
+    }
+
+    private static void detectsErlangAndPhp(Path root) throws Exception {
+        // Known native build descriptors only; never guess an Erlang/PHP compiler
+        // from an Eclipse nature or from a source file extension.
+        Path erlang = dir(root, "erlang", "rebar.config", "{erl_opts, [debug_info]}.\n");
+        expect(erlang, "compile rebar3-compile rebar3 [compile]");
+        Files.createDirectories(erlang.resolve("test"));
+        expect(erlang, "compile rebar3-compile rebar3 [compile]",
+                "test rebar3-test rebar3 [eunit]");
+        Path php = dir(root, "php", "composer.json", "{\"name\":\"example/app\"}");
+        expect(php, "validate composer-validate composer [validate, --no-check-publish]");
+        Files.writeString(php.resolve("phpunit.xml"), "<phpunit/>");
+        expect(php, "validate composer-validate composer [validate, --no-check-publish]",
+                "test composer-test composer [exec, phpunit]");
+        expect(dir(root, "phpunit-alone", "phpunit.xml", "<phpunit/>"));
+
+        // Mavenizing may write *only* source-owned POM and strict task manifest;
+        // external Rebar3 and Composer processes remain explicitly opt-in.
+        var planned = Mavenizer.mavenize(php, "org.example", "1.0-SNAPSHOT", false);
+        require(planned.contains("PLAN pom.xml") && planned.contains("PLAN m3-build.tsv"),
+                "PHP project Mavenizer plan is read-only");
+        require(!Files.exists(php.resolve("pom.xml")) && !Files.exists(php.resolve("vendor")),
+                "planning never invokes Composer or downloads packages");
+        Mavenizer.mavenize(php, "org.example", "1.0-SNAPSHOT", true);
+        String emitted = Files.readString(php.resolve("m3-build.tsv"));
+        require(emitted.contains("task\tcomposer-validate\tcomposer\t.\n")
+                && emitted.contains("arg\tcomposer-test\tphpunit\n"),
+                "native PHP commands preserved as strict argument-vector tasks");
+        require(Files.readString(php.resolve("pom.xml")).contains("<id>m3-polyglot</id>"),
+                "native language lifecycle activation remains an explicit Maven profile");
+        require(!Files.exists(php.resolve("vendor")),
+                "Mavenizer never runs Composer install as a side effect");
     }
 
     private static void detectsDotnet(Path root) throws Exception {

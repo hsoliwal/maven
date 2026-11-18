@@ -20,6 +20,11 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/BuildCache.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3PortableDbRuntime.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3RocksDbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3MapDbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3LmdbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3LevelDbBackendProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbRunLock.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleJdbcStorage.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DbModuleStore.java \
@@ -64,8 +69,6 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java \
-  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestOutput.java \
@@ -77,6 +80,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/TaskEngineContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableEngineConformanceTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PackedReceiptContractTestMain.java \
@@ -90,6 +94,10 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmRealTestsMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjCompilerProvider.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
@@ -104,6 +112,8 @@ compile -d "$DEST" \
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PackedReceiptContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3ReceiptArrayModelTestMain
@@ -124,6 +134,14 @@ java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBui
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.LlvmCompilerSelectionContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.LlvmRealTestsMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.PolyglotCli plan "$ROOT/examples/llvm" "$ROOT/examples/llvm/m3-build.tsv" all
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.CargoTestReportContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
@@ -141,6 +159,5 @@ java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
 java "-Dm3.polyglot.llvm.test.home=${M3_POLYGLOT_LLVM_TEST_HOME:-}" \
   -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain
-# LLVM command planning always runs; native cases explicitly report NOT_RUN if no toolchain is available.
+# Additional installation-selection contracts reuse the shared LLVM provider.
 java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.LlvmInstallationSelectionContractTestMain
-java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain

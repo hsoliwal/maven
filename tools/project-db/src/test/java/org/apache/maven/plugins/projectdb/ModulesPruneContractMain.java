@@ -20,6 +20,7 @@ package org.apache.maven.plugins.projectdb;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -39,10 +40,15 @@ public final class ModulesPruneContractMain {
         Path root = Files.createTempDirectory("m3-projectdb-prune-");
         try {
             fixture(root);
+            boolean linked = linkedRegularDescriptor(root);
             List<Path> actual = Modules.discover(root);
             check(actual.equals(legacyOracle(root)), "exact legacy observable result: " + actual);
-            check(actual.equals(List.of(root, root.resolve("a"), root.resolve("a/b"),
-                    root.resolve("a/b/c/d/e"))), "deterministic project and module identity");
+            List<Path> expected = new ArrayList<>(List.of(root, root.resolve("a"), root.resolve("a/b"),
+                    root.resolve("a/b/c/d/e")));
+            if (linked) expected.add(root.resolve("linked"));
+            expected.sort(Comparator.naturalOrder());
+            check(actual.equals(expected), "deterministic project and module identity");
+            if (linked) check(actual.contains(root.resolve("linked")), "symlinked descriptor compatibility");
             check(actual.equals(Modules.discover(root)), "repeat discovery does not change order");
             System.out.println("PASS: " + checks + " bounded Gradle/Maven module-pruning oracle cases");
         } finally {
@@ -65,6 +71,20 @@ public final class ModulesPruneContractMain {
             write(root.resolve(ignored + "/build.gradle"));
             write(root.resolve("a/" + ignored + "/pom.xml"));
             write(root.resolve("a/b/" + ignored + "/x/settings.gradle.kts"));
+        }
+    }
+
+    /** The legacy filter follows a link only when checking a candidate descriptor file. */
+    private static boolean linkedRegularDescriptor(Path root) throws IOException {
+        Path target = root.resolve("descriptor.txt");
+        write(target);
+        Path link = root.resolve("linked/build.gradle");
+        Files.createDirectories(link.getParent());
+        try {
+            Files.createSymbolicLink(link, target);
+            return true;
+        } catch (UnsupportedOperationException | IOException | SecurityException unavailable) {
+            return false;
         }
     }
 

@@ -41,11 +41,28 @@ jobs:
         run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
       - name: Run project-DB ingestion, retrieval, provenance and RAT contracts
         run: mvn -B -ntp -f tools/project-db/pom.xml verify
+      - name: Seal source-built Maven JARs for matching Gradle TestKit job
+        run: |
+          set -eu
+          mkdir -p qualified-maven-jars
+          install -m 0644 tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/polyglot.jar
+          install -m 0644 tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/project-db.jar
+          printf 'M3-PROJECTDB-JARS-V1\t%s\t%s\n' "$GITHUB_SHA" '${{ matrix.java }}' > qualified-maven-jars/SOURCE_RECEIPT.tsv
+          (cd qualified-maven-jars && sha256sum polyglot.jar project-db.jar SOURCE_RECEIPT.tsv > SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Publish qualified Maven JAR bytes and SHA-256 receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-maven-jars-jdk-${{ matrix.java }}
+          path: qualified-maven-jars/
+          if-no-files-found: error
+          retention-days: 7
 
 
-  # The Gradle fork's Actions have no recent runs; verify the actual consumer
-  # on Maven's active runners without copying or replacing Gradle build logic.
+  # The Gradle fork's Actions have no recent runs. Consume only JAR bytes
+  # produced by the passing same-JDK Maven owner job; do not rebuild Maven
+  # twice, copy Maven source into Gradle, or bypass storage qualification.
   gradle-consumer-real-testkit:
+    needs: project-db-native-gradle
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     strategy:
@@ -53,20 +70,23 @@ jobs:
       matrix:
         java: ['17', '21']
     steps:
-      - name: Check out current Maven source and its M3IndexDB owner
-        uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
-          cache: maven
-          cache-dependency-path: |
-            tools/m3-polyglot-maven-plugin/pom.xml
-            tools/project-db/pom.xml
-      - name: Qualify and install current Maven polyglot M3IndexDB engine
-        run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
-      - name: Qualify and package original Maven project database
-        run: mvn -B -ntp -f tools/project-db/pom.xml verify
+      - name: Download the original JDK-specific Maven JARs from the passing owner job
+        uses: actions/download-artifact@v4
+        with:
+          name: qualified-maven-jars-jdk-${{ matrix.java }}
+          path: qualified-maven-jars
+      - name: Verify original Maven JAR SHA-256 receipt before Gradle consumption
+        run: |
+          (cd qualified-maven-jars && sha256sum -c SHA256SUMS)
+          expected_receipt=$(printf 'M3-PROJECTDB-JARS-V1\t%s\t%s' "$GITHUB_SHA" '${{ matrix.java }}')
+          actual_receipt=$(cat qualified-maven-jars/SOURCE_RECEIPT.tsv)
+          test "$actual_receipt" = "$expected_receipt" || { echo "wrong Maven source SHA or JDK lane" >&2; exit 1; }
+          test -s qualified-maven-jars/polyglot.jar
+          test -s qualified-maven-jars/project-db.jar
       - name: Check out exact reviewed Gradle project-DB consumer source
         uses: actions/checkout@v4
         with:
@@ -80,8 +100,8 @@ jobs:
             m3/quality-bridge
       - name: Execute real Gradle TestKit with source-built Maven project DB
         env:
-          M3_POLYGLOT_JAR: ${{ github.workspace }}/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
-          M3_PROJECT_DB_JAR: ${{ github.workspace }}/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar
+          M3_POLYGLOT_JAR: ${{ github.workspace }}/qualified-maven-jars/polyglot.jar
+          M3_PROJECT_DB_JAR: ${{ github.workspace }}/qualified-maven-jars/project-db.jar
         run: |
           test -s "$M3_POLYGLOT_JAR"
           test -s "$M3_PROJECT_DB_JAR"

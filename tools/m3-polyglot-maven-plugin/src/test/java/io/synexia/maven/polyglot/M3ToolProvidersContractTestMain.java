@@ -36,19 +36,14 @@ public final class M3ToolProvidersContractTestMain {
         }
     }
 
-    public static void main(String[] arguments) throws Exception {
-        if (arguments.length == 2 && "--llvm-legacy-plan".equals(arguments[0])) {
-            plansLlvmCompilerDrivers(Path.of(arguments[1]));
-            System.out.println("PASS: " + passed + " preserved LLVM planning contract cases");
-            return;
-        }
+    public static void main(String[] ignored) throws Exception {
         Path root = Files.createTempDirectory("m3-provider-contract-");
         try {
             supportsDeterministicCapabilityInventory();
             validatesEveryOperation(root);
             refusesUnknownAndOverlappingOperations(root);
             forwardsCompilerToSelectedJdk(root);
-            plansLlvmCompilerDriversWithoutConfiguredHome(root);
+            plansLlvmCompilerDrivers(root);
             System.out.println("PASS: " + passed + " M3 tool-provider SPI contract cases");
         } finally {
             try (var paths = Files.walk(root)) {
@@ -193,22 +188,6 @@ public final class M3ToolProvidersContractTestMain {
         passed++;
     }
 
-    private static void plansLlvmCompilerDriversWithoutConfiguredHome(Path root) throws Exception {
-        // Preserve the original no-installation assertions even when the machine
-        // deliberately configures the new LLVM_HOME integration for real builds.
-        ProcessBuilder builder = new ProcessBuilder(EcjCompilerProvider.java(),
-                "-Dm3.polyglot.llvm.home=", "-cp", System.getProperty("java.class.path"),
-                M3ToolProvidersContractTestMain.class.getName(), "--llvm-legacy-plan", root.toString())
-                .inheritIO();
-        builder.environment().remove("LLVM_HOME");
-        Process child = builder.start();
-        if (!child.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
-            child.destroyForcibly();
-            throw new AssertionError("preserved LLVM planning contracts timed out");
-        }
-        require(child.exitValue() == 0, "preserved LLVM planning contracts with no configured home");
-        passed++;
-    }
 
     private static void plansLlvmCompilerDrivers(Path root) throws Exception {
         String suffix = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";

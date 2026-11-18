@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,8 @@ public final class EclipseProjectModelContractTestMain {
             invalidXmlIsNotTrusted(temp.resolve("invalid"));
             linkedMetadataIsNotFollowed(temp.resolve("linked"));
             hashesRepresentActualByteChanges(temp.resolve("hashes"));
+            crossLanguageBuildDescriptorsRemainReadOnly(temp.resolve("polyglot"));
+            refusesSymlinkedOrOversizedLanguageDocuments(temp.resolve("refusals"));
             System.out.println("PASS: " + passed + " Eclipse project model contract cases");
         } finally {
             try (Stream<Path> entries = Files.walk(temp)) {
@@ -182,6 +186,80 @@ public final class EclipseProjectModelContractTestMain {
         require(!before.equals(after), "native Rust build descriptor SHA-256 reflects change");
         require(EclipseProjectModel.inspect(root).descriptorSha256().get(".project").equals(
                 EclipseProjectModel.inspect(root).descriptorSha256().get(".project")), "identical inputs yield identical hashes");
+        passed++;
+    }
+
+    private static void crossLanguageBuildDescriptorsRemainReadOnly(Path root) throws Exception {
+        Files.createDirectories(root);
+        put(root, ".project", "<projectDescription><name>Universal</name></projectDescription>");
+        put(root, "META-INF/MANIFEST.MF", "Manifest-Version: 1.0\\nBundle-SymbolicName: universal\\n");
+        put(root, "plugin.xml", "<plugin/>");
+        put(root, "build.properties", "bin.includes = plugin.xml");
+        put(root, "universal.target", "<target name=\\\"universal\\\"/>");
+        put(root, "feature.xml", "<feature/>");
+        put(root, "CMakeLists.txt", "project(universal)");
+        put(root, "Cargo.lock", "# Cargo lock");
+        put(root, "Package.swift", "// swift-tools-version:5.9");
+        put(root, "go.mod", "module example.org/universal");
+        put(root, "pyproject.toml", "[project]\\nname = 'universal'");
+        put(root, "package.json", "{\\\"name\\\":\\\"universal\\\"}");
+        put(root, "tsconfig.json", "{}");
+        put(root, "settings.gradle.kts", "rootProject.name = \\\"universal\\\"");
+        put(root, "m3-build.tsv", "M3-POLYGLOT-TASKS-V1\\n");
+        put(root, "target/generated.txt", "must not fingerprint generated outputs");
+        var result = EclipseProjectModel.inspect(root);
+        for (String key : List.of("META-INF/MANIFEST.MF", "plugin.xml", "build.properties",
+                "universal.target", "feature.xml", "CMakeLists.txt", "Cargo.lock",
+                "Package.swift", "go.mod", "pyproject.toml", "package.json",
+                "tsconfig.json", "settings.gradle.kts", "m3-build.tsv")) {
+            require(result.descriptorSha256().containsKey(key), "missing native descriptor: " + key);
+            require(result.descriptorSha256().get(key).matches("[a-f0-9]{64}"),
+                    "descriptor hash is not canonical: " + key);
+        }
+        require(!result.descriptorSha256().containsKey("target/generated.txt"),
+                "generated files must not be mistaken for authoring metadata");
+        String reference = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
+                Files.readAllBytes(root.resolve("META-INF/MANIFEST.MF"))));
+        require(reference.equals(result.descriptorSha256().get("META-INF/MANIFEST.MF")),
+                "streamed metadata hashing must equal Java's canonical SHA-256");
+        require(result.toJson().equals(EclipseProjectModel.inspect(root).toJson()),
+                "multi-language project model must be deterministic");
+        String oldTarget = result.descriptorSha256().get("universal.target");
+        put(root, "universal.target", "<target name=\\\"new\\\"/>");
+        String newTarget = EclipseProjectModel.inspect(root).descriptorSha256().get("universal.target");
+        require(!oldTarget.equals(newTarget), "PDE target changes must have distinct digests");
+        String cmakeBefore = result.descriptorSha256().get("CMakeLists.txt");
+        put(root, "CMakeLists.txt", "project(different)");
+        String cmakeAfter = EclipseProjectModel.inspect(root).descriptorSha256().get("CMakeLists.txt");
+        require(!cmakeBefore.equals(cmakeAfter),
+                "original CDT/CMake build changes must produce different content digests");
+        require(result.descriptorSha256().get("Cargo.lock").equals(
+                EclipseProjectModel.inspect(root).descriptorSha256().get("Cargo.lock")),
+                "unmodified Rust dependency metadata retains its digest");
+        require(!Files.exists(root.resolve("m3-build-new.tsv")),
+                "inspection is read-only, not a Mavenizer rewrite");
+        passed++;
+    }
+
+    private static void refusesSymlinkedOrOversizedLanguageDocuments(Path root) throws Exception {
+        Files.createDirectories(root);
+        put(root, ".project", "<projectDescription><name>Refusals</name></projectDescription>");
+        Path document = root.resolve("linked.target");
+        Path actual = root.resolve("ordinary.txt");
+        Files.writeString(actual, "not-a-trusted-descriptor");
+        try {
+            Files.createSymbolicLink(document, actual);
+            expectIOException(() -> EclipseProjectModel.inspect(root),
+                    "linked target definition must not be followed");
+            Files.delete(document);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) {
+            // Windows hosts without symlink privileges still enforce NOFOLLOW_LINKS.
+        }
+        for (int index = 0; index <= 128; index++) {
+            put(root, "generated" + index + ".target", "<target/>");
+        }
+        expectIOException(() -> EclipseProjectModel.inspect(root),
+                "unbounded PDE target files must fail closed");
         passed++;
     }
 

@@ -19,6 +19,7 @@
 package org.apache.maven.plugins.clustering.clang;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -241,6 +242,20 @@ public final class ClangUnitTests {
         check("front end without clang takes no file", !new ClangFrontEnd(missing, o -> { }).accepts(Path.of("a.c")));
         ClangSettings off = ClangSettings.from(Map.of("clustering.clang.enabled", "false")::get, k -> null);
         check("settings: disabled", off.clang().isEmpty());
+        Path forkClang = Checks.write(dir, "fork-llvm/bin/" + (File.separatorChar == '\\' ? "clang.exe" : "clang"),
+                "fake LLVM clang");
+        ClangSettings fromFork = ClangSettings.from(Map.of("m3.llvm.home", dir.resolve("fork-llvm").toString())::get,
+                k -> null);
+        check("settings: Maven and clustering select the same LLVM fork", fromFork.clang().equals(Optional.of(forkClang)));
+        ClangSettings fromEnvironment = ClangSettings.from(k -> null,
+                k -> "M3_LLVM_HOME".equals(k) ? dir.resolve("fork-llvm").toString() : null);
+        check("settings: shared LLVM home environment", fromEnvironment.clang().equals(Optional.of(forkClang)));
+        ClangSettings invalidFork = ClangSettings.from(Map.of("m3.llvm.home", dir.resolve("absent").toString())::get,
+                k -> "PATH".equals(k) ? dir.resolve("fork-llvm/bin").toString() : null);
+        check("settings: missing selected fork does not fall back to PATH", invalidFork.clang().isEmpty());
+        ClangSettings explicit = ClangSettings.from(Map.of("m3.llvm.home", dir.resolve("absent").toString(),
+                "clustering.clang.executable", forkClang.toString())::get, k -> null);
+        check("settings: explicit clang overrides LLVM home", explicit.clang().equals(Optional.of(forkClang)));
         Path src = Checks.write(dir, "fb/a.c", "int one(int x) { return x; }\n");
         List<Atom> scanned = AtomPlanes.scan(List.of(dir.resolve("fb")), List.of(new ClangFrontEnd(missing, o -> { }),
                 new AtomFrontEnd.LexicalFrontEnd()));
