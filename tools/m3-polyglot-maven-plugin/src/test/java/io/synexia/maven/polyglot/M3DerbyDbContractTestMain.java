@@ -176,6 +176,9 @@ public final class M3DerbyDbContractTestMain {
         require("unmodified".equals(Files.readString(outside)), "symlink target was untouched");
         checkIo(() -> M3PortableDbRuntime.path(root, "../derby", true, false),
                 "portable Derby path traversal is refused");
+        Path forbidden = Files.createDirectories(root.resolve("m3;remote-url"));
+        checkIo(() -> new M3DerbyBackendProvider().verifyAvailable(forbidden),
+                "embedded JDBC URL delimiter rejected before engine load");
     }
 
     private static Driver driver() throws Exception {
