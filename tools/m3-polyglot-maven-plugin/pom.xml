@@ -121,6 +121,17 @@
             </configuration>
           </execution>
           <execution>
+            <id>packed-sha-receipt-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3PackedReceiptContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>index-store-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>

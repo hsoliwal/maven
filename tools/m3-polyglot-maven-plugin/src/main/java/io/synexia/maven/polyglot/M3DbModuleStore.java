@@ -50,6 +50,7 @@ final class M3DbModuleStore implements AutoCloseable {
     // discard a successful task merely because they exceed 256 steps.
     private static final int MAX_TASKS = 65_536;
     private static final int INITIAL_TASK_CAPACITY = 16;
+    private static final int SHA256_BYTES = 32;
     static final int MAX_PAYLOAD = 32 * 1024 * 1024;
     static final int MAX_ARCHIVE = MAX_PAYLOAD + 128 * 1024;
     static final int MAX_REF = 4096;
@@ -75,15 +76,15 @@ final class M3DbModuleStore implements AutoCloseable {
     private final ModuleStateBackend storage;
     // Sparse logical slots over compact parallel arrays; grow only with the module.
     private String[] names = new String[INITIAL_TASK_CAPACITY];
-    private String[] inputs = new String[INITIAL_TASK_CAPACITY];
-    private String[] outputs = new String[INITIAL_TASK_CAPACITY];
+    private byte[] inputs = new byte[INITIAL_TASK_CAPACITY * SHA256_BYTES];
+    private byte[] outputs = new byte[INITIAL_TASK_CAPACITY * SHA256_BYTES];
 
     // WriteBatch-style task receipts: staged results never enter the on-disk image
     // until the complete selected task graph succeeds. Array-backed to retain the
     // existing M3 compact-slot invariant and avoid per-receipt object graphs.
     private String[] pendingNames = new String[INITIAL_TASK_CAPACITY];
-    private String[] pendingInputs = new String[INITIAL_TASK_CAPACITY];
-    private String[] pendingOutputs = new String[INITIAL_TASK_CAPACITY];
+    private byte[] pendingInputs = new byte[INITIAL_TASK_CAPACITY * SHA256_BYTES];
+    private byte[] pendingOutputs = new byte[INITIAL_TASK_CAPACITY * SHA256_BYTES];
     private int pendingSize;
     private String generation;
     private byte[] auxiliary = new byte[0];
@@ -210,7 +211,9 @@ final class M3DbModuleStore implements AutoCloseable {
 
     private List<Receipt> receipts() {
         List<Receipt> receipts = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) receipts.add(new Receipt(names[i], inputs[i], outputs[i]));
+        for (int i = 0; i < size; i++) {
+            receipts.add(new Receipt(names[i], hexAt(inputs, i), hexAt(outputs, i)));
+        }
         return List.copyOf(receipts);
     }
 
@@ -245,7 +248,21 @@ final class M3DbModuleStore implements AutoCloseable {
     synchronized String[] lookup(String task) {
         ensureOpen();
         int at = Arrays.binarySearch(names, 0, size, taskName(task));
-        return at < 0 ? null : new String[] {inputs[at], outputs[at]};
+        return at < 0 ? null : new String[] {hexAt(inputs, at), hexAt(outputs, at)};
+    }
+
+    /** Hot-path admission: compare 32-byte input SHA without hex String allocation. */
+    synchronized boolean matchesInput(String task, String input) {
+        ensureOpen();
+        int at = Arrays.binarySearch(names, 0, size, taskName(task));
+        return at >= 0 && matchesHex(inputs, at, input);
+    }
+
+    /** Full content-evidence check against the compact input/output SHA lanes. */
+    synchronized boolean matches(String task, String input, String output) {
+        ensureOpen();
+        int at = Arrays.binarySearch(names, 0, size, taskName(task));
+        return at >= 0 && matchesHex(inputs, at, input) && matchesHex(outputs, at, output);
     }
 
     synchronized void invalidate(String task) throws IOException {
@@ -287,40 +304,43 @@ final class M3DbModuleStore implements AutoCloseable {
         if (previous != size || needsReset) publish();
     }
 
-    /** In-place linear compaction of primitive-array logical slots. */
-    private static int retainOutside(String[] keys, String[] ins, String[] outs,
+    /**
+     * Compact sorted logical slots in-place, retaining byte-packed SHA-256
+     * columns. Only identities are Strings; no per-row digest object graph.
+     */
+    private static int retainOutside(String[] keys, byte[] ins, byte[] outs,
             int count, String[] excluded) {
         int kept = 0;
         for (int i = 0; i < count; i++) {
             if (Arrays.binarySearch(excluded, keys[i]) >= 0) continue;
             if (kept != i) {
                 keys[kept] = keys[i];
-                ins[kept] = ins[i];
-                outs[kept] = outs[i];
+                copyDigest(ins, i, ins, kept);
+                copyDigest(outs, i, outs, kept);
             }
             kept++;
         }
         Arrays.fill(keys, kept, count, null);
-        Arrays.fill(ins, kept, count, null);
-        Arrays.fill(outs, kept, count, null);
+        Arrays.fill(ins, kept * SHA256_BYTES, count * SHA256_BYTES, (byte) 0);
+        Arrays.fill(outs, kept * SHA256_BYTES, count * SHA256_BYTES, (byte) 0);
         return kept;
     }
 
-    private static int retainWithoutPrefix(String[] keys, String[] ins, String[] outs,
+    private static int retainWithoutPrefix(String[] keys, byte[] ins, byte[] outs,
             int count, String prefix) {
         int kept = 0;
         for (int i = 0; i < count; i++) {
             if (keys[i].startsWith(prefix)) continue;
             if (kept != i) {
                 keys[kept] = keys[i];
-                ins[kept] = ins[i];
-                outs[kept] = outs[i];
+                copyDigest(ins, i, ins, kept);
+                copyDigest(outs, i, outs, kept);
             }
             kept++;
         }
         Arrays.fill(keys, kept, count, null);
-        Arrays.fill(ins, kept, count, null);
-        Arrays.fill(outs, kept, count, null);
+        Arrays.fill(ins, kept * SHA256_BYTES, count * SHA256_BYTES, (byte) 0);
+        Arrays.fill(outs, kept * SHA256_BYTES, count * SHA256_BYTES, (byte) 0);
         return kept;
     }
 
@@ -354,13 +374,15 @@ final class M3DbModuleStore implements AutoCloseable {
             ensurePendingCapacity(pendingSize + 1);
             at = -at - 1;
             System.arraycopy(pendingNames, at, pendingNames, at + 1, pendingSize - at);
-            System.arraycopy(pendingInputs, at, pendingInputs, at + 1, pendingSize - at);
-            System.arraycopy(pendingOutputs, at, pendingOutputs, at + 1, pendingSize - at);
+            System.arraycopy(pendingInputs, at * SHA256_BYTES,
+                    pendingInputs, (at + 1) * SHA256_BYTES, (pendingSize - at) * SHA256_BYTES);
+            System.arraycopy(pendingOutputs, at * SHA256_BYTES,
+                    pendingOutputs, (at + 1) * SHA256_BYTES, (pendingSize - at) * SHA256_BYTES);
             pendingSize++;
         }
         pendingNames[at] = task;
-        pendingInputs[at] = input;
-        pendingOutputs[at] = output;
+        putHex(pendingInputs, at, input);
+        putHex(pendingOutputs, at, output);
     }
 
     /**
@@ -383,11 +405,12 @@ final class M3DbModuleStore implements AutoCloseable {
         clearPending();
     }
 
+    /** Linear merge of two sorted runs using 32-byte primitive digest lanes. */
     private void mergeStaged() {
         int capacity = expandedCapacity(0, size + pendingSize);
         String[] nextNames = new String[capacity];
-        String[] nextInputs = new String[capacity];
-        String[] nextOutputs = new String[capacity];
+        byte[] nextInputs = new byte[capacity * SHA256_BYTES];
+        byte[] nextOutputs = new byte[capacity * SHA256_BYTES];
         int old = 0, staged = 0, at = 0;
         while (old < size || staged < pendingSize) {
             boolean useStaged;
@@ -400,9 +423,17 @@ final class M3DbModuleStore implements AutoCloseable {
                 useStaged = comparison >= 0;
                 if (comparison == 0) old++;
             }
-            nextNames[at] = useStaged ? pendingNames[staged] : names[old];
-            nextInputs[at] = useStaged ? pendingInputs[staged] : inputs[old];
-            nextOutputs[at] = useStaged ? pendingOutputs[staged++] : outputs[old++];
+            if (useStaged) {
+                nextNames[at] = pendingNames[staged];
+                copyDigest(pendingInputs, staged, nextInputs, at);
+                copyDigest(pendingOutputs, staged, nextOutputs, at);
+                staged++;
+            } else {
+                nextNames[at] = names[old];
+                copyDigest(inputs, old, nextInputs, at);
+                copyDigest(outputs, old, nextOutputs, at);
+                old++;
+            }
             at++;
         }
         names = nextNames;
@@ -450,8 +481,8 @@ final class M3DbModuleStore implements AutoCloseable {
         }
 
         String[] nextNames = new String[expandedCapacity(0, active)];
-        String[] nextInputs = new String[nextNames.length];
-        String[] nextOutputs = new String[nextNames.length];
+        byte[] nextInputs = new byte[nextNames.length * SHA256_BYTES];
+        byte[] nextOutputs = new byte[nextNames.length * SHA256_BYTES];
         int old = oldHead, staged = 0, at = 0;
         while (old < size || staged < pendingSize) {
             while (staged < pendingSize && (action[staged] == 2
@@ -467,9 +498,18 @@ final class M3DbModuleStore implements AutoCloseable {
                 useStaged = comparison >= 0;
                 if (comparison == 0) old++;
             }
-            nextNames[at] = useStaged ? pendingNames[staged] : names[old];
-            nextInputs[at] = useStaged ? pendingInputs[staged] : inputs[old];
-            nextOutputs[at++] = useStaged ? pendingOutputs[staged++] : outputs[old++];
+            if (useStaged) {
+                nextNames[at] = pendingNames[staged];
+                copyDigest(pendingInputs, staged, nextInputs, at);
+                copyDigest(pendingOutputs, staged, nextOutputs, at);
+                staged++;
+            } else {
+                nextNames[at] = names[old];
+                copyDigest(inputs, old, nextInputs, at);
+                copyDigest(outputs, old, nextOutputs, at);
+                old++;
+            }
+            at++;
         }
         if (at != active) throw new IllegalStateException("M3DB bounded merge lost a receipt");
         names = nextNames;
@@ -489,29 +529,31 @@ final class M3DbModuleStore implements AutoCloseable {
             ensureCapacity(size + 1);
             at = -at - 1;
             System.arraycopy(names, at, names, at + 1, size - at);
-            System.arraycopy(inputs, at, inputs, at + 1, size - at);
-            System.arraycopy(outputs, at, outputs, at + 1, size - at);
+            System.arraycopy(inputs, at * SHA256_BYTES, inputs,
+                    (at + 1) * SHA256_BYTES, (size - at) * SHA256_BYTES);
+            System.arraycopy(outputs, at * SHA256_BYTES, outputs,
+                    (at + 1) * SHA256_BYTES, (size - at) * SHA256_BYTES);
             size++;
         }
         names[at] = task;
-        inputs[at] = input;
-        outputs[at] = output;
+        putHex(inputs, at, input);
+        putHex(outputs, at, output);
     }
 
     private void ensureCapacity(int wanted) {
         if (wanted <= names.length) return;
         int cap = expandedCapacity(names.length, wanted);
         names = Arrays.copyOf(names, cap);
-        inputs = Arrays.copyOf(inputs, cap);
-        outputs = Arrays.copyOf(outputs, cap);
+        inputs = Arrays.copyOf(inputs, cap * SHA256_BYTES);
+        outputs = Arrays.copyOf(outputs, cap * SHA256_BYTES);
     }
 
     private void ensurePendingCapacity(int wanted) {
         if (wanted <= pendingNames.length) return;
         int cap = expandedCapacity(pendingNames.length, wanted);
         pendingNames = Arrays.copyOf(pendingNames, cap);
-        pendingInputs = Arrays.copyOf(pendingInputs, cap);
-        pendingOutputs = Arrays.copyOf(pendingOutputs, cap);
+        pendingInputs = Arrays.copyOf(pendingInputs, cap * SHA256_BYTES);
+        pendingOutputs = Arrays.copyOf(pendingOutputs, cap * SHA256_BYTES);
     }
 
     private static int expandedCapacity(int current, int wanted) {
@@ -524,18 +566,20 @@ final class M3DbModuleStore implements AutoCloseable {
     private void removePending(int at) {
         int remaining = pendingSize - at - 1;
         System.arraycopy(pendingNames, at + 1, pendingNames, at, remaining);
-        System.arraycopy(pendingInputs, at + 1, pendingInputs, at, remaining);
-        System.arraycopy(pendingOutputs, at + 1, pendingOutputs, at, remaining);
+        System.arraycopy(pendingInputs, (at + 1) * SHA256_BYTES,
+                pendingInputs, at * SHA256_BYTES, remaining * SHA256_BYTES);
+        System.arraycopy(pendingOutputs, (at + 1) * SHA256_BYTES,
+                pendingOutputs, at * SHA256_BYTES, remaining * SHA256_BYTES);
         pendingSize--;
         pendingNames[pendingSize] = null;
-        pendingInputs[pendingSize] = null;
-        pendingOutputs[pendingSize] = null;
+        clearDigest(pendingInputs, pendingSize);
+        clearDigest(pendingOutputs, pendingSize);
     }
 
     private void clearPending() {
         Arrays.fill(pendingNames, 0, pendingSize, null);
-        Arrays.fill(pendingInputs, 0, pendingSize, null);
-        Arrays.fill(pendingOutputs, 0, pendingSize, null);
+        Arrays.fill(pendingInputs, 0, pendingSize * SHA256_BYTES, (byte) 0);
+        Arrays.fill(pendingOutputs, 0, pendingSize * SHA256_BYTES, (byte) 0);
         pendingSize = 0;
     }
 
@@ -606,8 +650,8 @@ final class M3DbModuleStore implements AutoCloseable {
             out.writeInt(size);
             for (int i = 0; i < size; i++) {
                 out.writeUTF(names[i]);
-                out.write(HexFormat.of().parseHex(inputs[i]));
-                out.write(HexFormat.of().parseHex(outputs[i]));
+                out.write(inputs, i * SHA256_BYTES, SHA256_BYTES);
+                out.write(outputs, i * SHA256_BYTES, SHA256_BYTES);
             }
             out.writeInt(auxiliary.length);
             out.write(auxiliary);
@@ -635,18 +679,17 @@ final class M3DbModuleStore implements AutoCloseable {
             }
             int count = in.readInt();
             if (count < 0 || count > MAX_TASKS) throw new IOException("M3DB task count exceeds limit");
-            String[] nextNames = new String[count], nextInputs = new String[count], nextOutputs = new String[count];
-            byte[] lane = new byte[32];
+            String[] nextNames = new String[count];
+            byte[] nextInputs = new byte[count * SHA256_BYTES];
+            byte[] nextOutputs = new byte[count * SHA256_BYTES];
             for (int i = 0; i < count; i++) {
                 String name = taskName(in.readUTF());
                 if (i > 0 && nextNames[i - 1].compareTo(name) >= 0) {
                     throw new IOException("module task identities are not canonical");
                 }
                 nextNames[i] = name;
-                in.readFully(lane);
-                nextInputs[i] = HexFormat.of().formatHex(lane);
-                in.readFully(lane);
-                nextOutputs[i] = HexFormat.of().formatHex(lane);
+                in.readFully(nextInputs, i * SHA256_BYTES, SHA256_BYTES);
+                in.readFully(nextOutputs, i * SHA256_BYTES, SHA256_BYTES);
             }
             int length = in.readInt();
             if (length < 0 || length > MAX_PAYLOAD - 128 * 1024 || length > in.available()) {
@@ -659,8 +702,8 @@ final class M3DbModuleStore implements AutoCloseable {
             // Decode of legacy v2 images retains the identical binary schema.
             int capacity = expandedCapacity(0, count);
             names = Arrays.copyOf(nextNames, capacity);
-            inputs = Arrays.copyOf(nextInputs, capacity);
-            outputs = Arrays.copyOf(nextOutputs, capacity);
+            inputs = Arrays.copyOf(nextInputs, capacity * SHA256_BYTES);
+            outputs = Arrays.copyOf(nextOutputs, capacity * SHA256_BYTES);
             auxiliary = nextAuxiliary;
             size = count;
         }
@@ -700,20 +743,68 @@ final class M3DbModuleStore implements AutoCloseable {
     private void remove(int at) {
         int remaining = size - at - 1;
         System.arraycopy(names, at + 1, names, at, remaining);
-        System.arraycopy(inputs, at + 1, inputs, at, remaining);
-        System.arraycopy(outputs, at + 1, outputs, at, remaining);
+        System.arraycopy(inputs, (at + 1) * SHA256_BYTES, inputs,
+                at * SHA256_BYTES, remaining * SHA256_BYTES);
+        System.arraycopy(outputs, (at + 1) * SHA256_BYTES, outputs,
+                at * SHA256_BYTES, remaining * SHA256_BYTES);
         size--;
         names[size] = null;
-        inputs[size] = null;
-        outputs[size] = null;
+        clearDigest(inputs, size);
+        clearDigest(outputs, size);
     }
 
     private void clear() {
         Arrays.fill(names, 0, size, null);
-        Arrays.fill(inputs, 0, size, null);
-        Arrays.fill(outputs, 0, size, null);
+        Arrays.fill(inputs, 0, size * SHA256_BYTES, (byte) 0);
+        Arrays.fill(outputs, 0, size * SHA256_BYTES, (byte) 0);
         size = 0;
         auxiliary = new byte[0];
+    }
+
+    /** The only dynamic hex projections are at the external lookup/snapshot API. */
+    private static String hexAt(byte[] column, int slot) {
+        int start = slot * SHA256_BYTES;
+        return HexFormat.of().formatHex(column, start, start + SHA256_BYTES);
+    }
+
+    private static boolean matchesHex(byte[] column, int slot, String hex) {
+        if (hex == null || hex.length() != SHA256_BYTES * 2) return false;
+        int offset = slot * SHA256_BYTES;
+        for (int i = 0; i < SHA256_BYTES; i++) {
+            int pair = i << 1;
+            int hi = nibble(hex.charAt(pair));
+            int lo = nibble(hex.charAt(pair + 1));
+            if (hi < 0 || lo < 0 || column[offset + i] != (byte) (hi << 4 | lo)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** ASCII-only lowercase SHA-256 hex, matching the previous String.equals contract. */
+    private static int nibble(char value) {
+        if (value >= '0' && value <= '9') return value - '0';
+        if (value >= 'a' && value <= 'f') return 10 + value - 'a';
+        return -1;
+    }
+
+    private static void putHex(byte[] column, int slot, String hex) {
+        int offset = slot * SHA256_BYTES;
+        for (int i = 0; i < SHA256_BYTES; i++) {
+            int pair = i << 1;
+            int high = nibble(hex.charAt(pair));
+            int low = nibble(hex.charAt(pair + 1));
+            if (high < 0 || low < 0) throw new IllegalArgumentException("invalid SHA-256");
+            column[offset + i] = (byte) (high << 4 | low);
+        }
+    }
+
+    private static void copyDigest(byte[] from, int source, byte[] into, int target) {
+        System.arraycopy(from, source * SHA256_BYTES, into, target * SHA256_BYTES, SHA256_BYTES);
+    }
+
+    private static void clearDigest(byte[] column, int slot) {
+        Arrays.fill(column, slot * SHA256_BYTES, (slot + 1) * SHA256_BYTES, (byte) 0);
     }
 
     private void ensureOpen() {
