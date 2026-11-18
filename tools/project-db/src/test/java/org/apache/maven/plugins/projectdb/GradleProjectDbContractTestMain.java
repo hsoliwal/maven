@@ -48,10 +48,11 @@ public final class GradleProjectDbContractTestMain {
         write(root.resolve("app/build.gradle"), "plugins { id 'java' }\n");
         write(root.resolve("build/generated/build.gradle"), "ignored = true\n");
         write(root.resolve("src/test/java/org/example/FooTest.java"),
-                "package org.example;\nclass FooTest {\n    void reportsFailure() {}\n}\n");
+                "package org.example;\n" + "\n".repeat(9)
+                        + "class FooTest { void reportsFailure() {} }\n");
         write(root.resolve("build/test-results/test/TEST-org.example.FooTest.xml"), failure());
         write(root.resolve("app/build/test-results/integrationTest/TEST-org.example.BarTest.xml"),
-                "<testsuite><testcase classname=\"org.example.BarTest\" name=\"passes\"/></testsuite>\n");
+                "<testsuite>\n  <testcase classname=\"org.example.BarTest\" name=\"passes\"/>\n</testsuite>\n");
     }
 
     private static String failure() {
@@ -89,7 +90,7 @@ public final class GradleProjectDbContractTestMain {
         check(second.build().parsed() == 0 && second.build().reused() == 2,
                 "unchanged Gradle JUnit reports are not reparsed");
         write(root.resolve("app/build/test-results/integrationTest/TEST-org.example.BarTest.xml"),
-                "<testsuite><testcase classname=\"org.example.BarTest\" name=\"alsoPasses\"/></testsuite>\n");
+                "<testsuite>\n  <testcase classname=\"org.example.BarTest\" name=\"alsoPasses\"/>\n</testsuite>\n");
         ProjectDb.Ingest modified = db.ingest(root, modules, null);
         check(modified.build().parsed() == 1 && modified.build().reused() == 1,
                 "only changed native Gradle report is reparsed");
