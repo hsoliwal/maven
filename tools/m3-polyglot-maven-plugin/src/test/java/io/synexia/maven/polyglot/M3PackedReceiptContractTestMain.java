@@ -100,10 +100,26 @@ public final class M3PackedReceiptContractTestMain {
                     "sealed v2 receipt decodes without digest allocation errors");
             check(Arrays.equals(reopened.lookup("resources"), new String[] {third, fourth}),
                     "second sealed v2 receipt retains order and exact bits");
+            check(reopened.matchesInput("compile", first)
+                            && reopened.matches("compile", first, second),
+                    "native packed hit works without hex projections");
+            check(!reopened.matches("compile", first, fourth)
+                            && !reopened.matchesInput("compile", first.toUpperCase(java.util.Locale.ROOT))
+                            && !reopened.matches("compile", first, null)
+                            && !reopened.matches("missing", first, second),
+                    "packed comparison preserves exact lower-case/absence semantics");
             String[] detached = reopened.lookup("compile");
             detached[0] = "0".repeat(64);
             check(Arrays.equals(reopened.lookup("compile"), new String[] {first, second}),
                     "lookup projects fresh boundary Strings without exposing internal slots");
+        }
+        try (ModuleStateDb facade = ModuleStateDb.open(module, "embedded")) {
+            check(facade.matchesInput("compile", first)
+                            && facade.hit("compile", first, second),
+                    "public facade uses the compact SHA matcher");
+            check(!facade.hit("compile", first, fourth)
+                            && !facade.hit("compile", first, second.toUpperCase(java.util.Locale.ROOT)),
+                    "public hit remains exact, not case-folded");
         }
     }
 
