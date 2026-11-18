@@ -31,10 +31,17 @@ public final class M3EclipseBuilderRegistry {
 
     public record Binding(int position, String builderId, String triggers, String providerId) { }
 
-    public record Report(String project, List<Binding> builders, List<String> unboundNatures,
+    /** A nature can be recognized by multiple language/editor adapters. */
+    public record NatureBinding(int position, String natureId, List<String> providerIds) {
+        public NatureBinding { providerIds = List.copyOf(providerIds); }
+    }
+
+    public record Report(String project, List<Binding> builders, List<NatureBinding> natures,
+            List<String> unboundNatures,
             List<String> providers, Map<String, String> descriptorSha256) {
         public Report {
             builders = List.copyOf(builders);
+            natures = List.copyOf(natures);
             unboundNatures = List.copyOf(unboundNatures);
             providers = List.copyOf(providers);
             descriptorSha256 = Collections.unmodifiableMap(new TreeMap<>(descriptorSha256));
@@ -55,6 +62,19 @@ public final class M3EclipseBuilderRegistry {
                 out.append(",\"providerId\":");
                 if (binding.providerId() == null) out.append("null");
                 else quote(out, binding.providerId());
+                out.append('}');
+            }
+            out.append(']');
+            out.append(",\"natures\":[");
+            for (int i = 0; i < natures.size(); i++) {
+                if (i != 0) out.append(',');
+                NatureBinding binding = natures.get(i);
+                out.append("{\"position\":").append(binding.position()).append(",\"natureId\":");
+                quote(out, binding.natureId());
+                out.append('}');
+                // Insert the normalized provider list before the closing object delimiter.
+                out.setLength(out.length() - 1);
+                strings(out, "providerIds", binding.providerIds());
                 out.append('}');
             }
             out.append(']');
@@ -119,7 +139,7 @@ public final class M3EclipseBuilderRegistry {
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(installed, "installed");
         Map<String, String> owners = new TreeMap<>();
-        Set<String> claimedNatures = new TreeSet<>();
+        Map<String, Set<String>> natureProviders = new TreeMap<>();
         Set<String> providerIds = new TreeSet<>();
         try {
             for (M3EclipseBuilderProvider provider : installed) {
@@ -146,7 +166,7 @@ public final class M3EclipseBuilderRegistry {
                 }
                 for (String nature : natures) {
                     checkExtensionId(nature);
-                    claimedNatures.add(nature);
+                    natureProviders.computeIfAbsent(nature, ignored -> new TreeSet<>()).add(id);
                 }
             }
         } catch (ServiceConfigurationError | RuntimeException failure) {
@@ -157,9 +177,15 @@ public final class M3EclipseBuilderRegistry {
             var command = snapshot.buildCommands().get(i);
             bound.add(new Binding(i, command.name(), command.triggers(), owners.get(command.name())));
         }
-        List<String> unbound = snapshot.natureIds().stream()
-                .filter(nature -> !claimedNatures.contains(nature)).toList();
-        return new Report(snapshot.name(), bound, unbound,
+        List<NatureBinding> natureBindings = new ArrayList<>();
+        for (int i = 0; i < snapshot.natureIds().size(); i++) {
+            String nature = snapshot.natureIds().get(i);
+            natureBindings.add(new NatureBinding(i, nature,
+                    List.copyOf(natureProviders.getOrDefault(nature, Set.of()))));
+        }
+        List<String> unbound = natureBindings.stream()
+                .filter(nature -> nature.providerIds().isEmpty()).map(NatureBinding::natureId).toList();
+        return new Report(snapshot.name(), bound, natureBindings, unbound,
                 List.copyOf(providerIds), snapshot.descriptorSha256());
     }
 
