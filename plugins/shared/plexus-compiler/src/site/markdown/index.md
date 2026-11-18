@@ -1,0 +1,42 @@
+---
+title: Plexus Compiler
+author:
+  - Hervé Boutemy
+date: 2012-05-08
+---
+
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Plexus Compiler
+
+Plexus Compiler is a Plexus component to use different compilers through a uniform API.
+
+It is composed by:
+
+- [`plexus-compiler-api`](./plexus-compiler-api/): the API to use compilers,
+- [`plexus-compiler-manager`](./plexus-compiler-manager/): a manager to choose a compiler,
+- [`plexus-compilers`](./plexus-compilers/): different compilers
+  - [`plexus-compiler-aspectj`](./plexus-compilers/plexus-compiler-aspectj/): AspectJ compiler, **requires** `JDK 17+` and `Maven 3.9.6+`
+  - [`plexus-compiler-csharp`](./plexus-compilers/plexus-compiler-csharp/): C#/Mono compiler, **requires** `JDK 8+`
+  - [`plexus-compiler-eclipse`](./plexus-compilers/plexus-compiler-eclipse/): Eclipse compiler, **requires** `JDK 17+` and `Maven 3.9.6+`
+  - [`plexus-compiler-javac`](./plexus-compilers/plexus-compiler-javac/): javac compiler, **requires** `JDK 8+`
+  - [`plexus-compiler-javac-errorprone`](./plexus-compilers/plexus-compiler-javac-errorprone/): javac compiler with [error-prone](https://errorprone.info) static analysis checks enabled, **requires** `JDK 11+`
+- [`plexus-compiler-test`](./plexus-compiler-test/): a test harness.
+

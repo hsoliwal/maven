@@ -1,0 +1,359 @@
+package org.codehaus.plexus.compiler.javac;
+
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.codehaus.plexus.compiler.CompilerConfiguration;
+import org.codehaus.plexus.compiler.CompilerMessage;
+import org.codehaus.plexus.compiler.CompilerResult;
+import org.codehaus.plexus.compiler.javac.JavacCompiler.JavaVersion;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import static org.codehaus.plexus.compiler.javac.JavacCompiler.Messages.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * @author Olivier Lamy
+ * @author Alexander Kriegisch
+ */
+public class JavacCompilerTest extends AbstractJavacCompilerTest {
+    private static final String EOL = System.getProperty("line.separator");
+    private static final String UNIDENTIFIABLE_LOG_LINES =
+            "These log lines should be cut off\n" + "when preceding known error message headers\n";
+
+    @BeforeEach
+    public void setUp() {
+        super.setUp();
+        setForceJavacCompilerUse(true);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testParseModernStream_withAnnotationProcessingErrors_args")
+    void testParseModernStream_withAnnotationProcessingErrors(String jdkAndLocale, String stackTraceHeader)
+            throws IOException {
+        String stackTraceWithHeader = UNIDENTIFIABLE_LOG_LINES + stackTraceHeader + stackTraceAnnotationProcessingError;
+        List<CompilerMessage> compilerMessages =
+                JavacCompiler.parseModernStream(1, new BufferedReader(new StringReader(stackTraceWithHeader)));
+
+        assertNotNull(compilerMessages);
+        assertEquals(1, compilerMessages.size());
+
+        String message = compilerMessages.get(0).getMessage().replaceAll(EOL, "\n");
+        // Parser retains stack trace header
+        assertTrue(message.startsWith(stackTraceHeader));
+        assertTrue(message.endsWith(stackTraceAnnotationProcessingError));
+    }
+
+    private static final String stackTraceAnnotationProcessingError =
+            "java.lang.IllegalAccessError: class lombok.javac.apt.LombokProcessor (in unnamed module @0x1da51a35) cannot access class com.sun.tools.javac.processing.JavacProcessingEnvironment (in module jdk.compiler) because module jdk.compiler does not export com.sun.tools.javac.processing to unnamed module @0x1da51a35\n"
+                    + "\tat lombok.javac.apt.LombokProcessor.getJavacProcessingEnvironment(LombokProcessor.java:433)\n"
+                    + "\tat lombok.javac.apt.LombokProcessor.init(LombokProcessor.java:92)\n"
+                    + "\tat lombok.core.AnnotationProcessor$JavacDescriptor.want(AnnotationProcessor.java:160)\n"
+                    + "\tat lombok.core.AnnotationProcessor.init(AnnotationProcessor.java:213)\n"
+                    + "\tat lombok.launch.AnnotationProcessorHider$AnnotationProcessor.init(AnnotationProcessor.java:64)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.processing.JavacProcessingEnvironment$ProcessorState.<init>(JavacProcessingEnvironment.java:702)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.processing.JavacProcessingEnvironment$DiscoveredProcessors$ProcessorStateIterator.next(JavacProcessingEnvironment.java:829)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.processing.JavacProcessingEnvironment.discoverAndRunProcs(JavacProcessingEnvironment.java:925)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.processing.JavacProcessingEnvironment$Round.run(JavacProcessingEnvironment.java:1269)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.processing.JavacProcessingEnvironment.doProcessing(JavacProcessingEnvironment.java:1384)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.main.JavaCompiler.processAnnotations(JavaCompiler.java:1261)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.main.JavaCompiler.compile(JavaCompiler.java:935)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.main.Main.compile(Main.java:317)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.main.Main.compile(Main.java:176)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.Main.compile(Main.java:64)\n"
+                    + "\tat jdk.compiler/com.sun.tools.javac.Main.main(Main.java:50)\n";
+
+    private static Stream<Arguments> testParseModernStream_withAnnotationProcessingErrors_args() {
+        return Stream.of(
+                Arguments.of("JDK 8 English", ANNOTATION_PROCESSING_ERROR_HEADERS[0]),
+                Arguments.of("JDK 8 Japanese", ANNOTATION_PROCESSING_ERROR_HEADERS[1]),
+                Arguments.of("JDK 8 Chinese", ANNOTATION_PROCESSING_ERROR_HEADERS[2]),
+                Arguments.of("JDK 21 English", ANNOTATION_PROCESSING_ERROR_HEADERS[3]),
+                Arguments.of("JDK 21 Japanese", ANNOTATION_PROCESSING_ERROR_HEADERS[4]),
+                Arguments.of("JDK 21 Chinese", ANNOTATION_PROCESSING_ERROR_HEADERS[5]),
+                Arguments.of("JDK 21 German", ANNOTATION_PROCESSING_ERROR_HEADERS[6]));
+    }
+
+    @Test
+    void testJavaVersionPrefixes() {
+        assertFalse(JavaVersion.JAVA_1_4.isOlderOrEqualTo("1.3"));
+        assertTrue(JavaVersion.JAVA_1_4.isOlderOrEqualTo("1.4"));
+        assertTrue(JavaVersion.JAVA_1_4.isOlderOrEqualTo("1.4.0_something"));
+        assertFalse(JavaVersion.JAVA_1_5.isOlderOrEqualTo("1.4"));
+        assertTrue(JavaVersion.JAVA_1_8.isOlderOrEqualTo("1.8"));
+        assertTrue(JavaVersion.JAVA_1_8.isOlderOrEqualTo("22.0.2-something"));
+        assertTrue(JavaVersion.JAVA_1_8.isOlderOrEqualTo("unknown"));
+    }
+
+    @Test
+    void testExtractMajorAndMinorVersion() {
+        assertEquals("11.0", JavacCompiler.extractMajorAndMinorVersion("javac 11.0.22"));
+        assertEquals("11.0", JavacCompiler.extractMajorAndMinorVersion("11.0.22"));
+        assertEquals("21", JavacCompiler.extractMajorAndMinorVersion("javac 21"));
+        assertEquals("1.8", JavacCompiler.extractMajorAndMinorVersion("javac 1.8.0_432"));
+    }
+
+    @Test
+    void testForkedAndInProcessDiagnosticsAreEqual(@TempDir Path tempDirectory) throws Exception {
+        Path sourceDirectory = tempDirectory.resolve("src");
+        Files.createDirectories(sourceDirectory);
+        Files.write(
+                sourceDirectory.resolve("Test.java"),
+                Arrays.asList("class Test {", "Object foo() {", " null;", "}", "}"),
+                StandardCharsets.UTF_8);
+
+        CompilerResult inProcess = compile(tempDirectory, sourceDirectory, false);
+        CompilerResult forked = compile(tempDirectory, sourceDirectory, true);
+
+        assertFalse(inProcess.isSuccess());
+        assertFalse(forked.isSuccess());
+        assertEquals(1, inProcess.getCompilerMessages().size());
+        assertEquals(1, forked.getCompilerMessages().size());
+
+        CompilerMessage inProcessMessage = inProcess.getCompilerMessages().get(0);
+        CompilerMessage forkedMessage = forked.getCompilerMessages().get(0);
+        assertEquals(getFileName(inProcessMessage.getFile()), getFileName(forkedMessage.getFile()));
+        assertEquals(inProcessMessage.getStartLine(), forkedMessage.getStartLine());
+        assertEquals(inProcessMessage.getStartColumn(), forkedMessage.getStartColumn());
+        assertEquals(inProcessMessage.getMessage(), forkedMessage.getMessage());
+    }
+
+    private static String getFileName(String path) {
+        int separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return path.substring(separator + 1);
+    }
+
+    private CompilerResult compile(Path tempDirectory, Path sourceDirectory, boolean fork) throws Exception {
+        return compile(tempDirectory, sourceDirectory, fork, "-Xlint:-options");
+    }
+
+    private CompilerResult compile(Path tempDirectory, Path sourceDirectory, boolean fork, String lintArgument)
+            throws Exception {
+        File buildDirectory =
+                tempDirectory.resolve(fork ? "forked" : "in-process").toFile();
+        Files.createDirectories(buildDirectory.toPath());
+
+        CompilerConfiguration configuration = new CompilerConfiguration();
+        configuration.setFork(fork);
+        configuration.setWorkingDirectory(tempDirectory.toFile());
+        configuration.setBuildDirectory(buildDirectory);
+        configuration.setOutputLocation(new File(buildDirectory, "classes").getAbsolutePath());
+        configuration.addSourceLocation(sourceDirectory.toString());
+        configuration.setSourceVersion("8");
+        configuration.setTargetVersion("8");
+        configuration.addCompilerCustomArgument(lintArgument, null);
+
+        return getCompiler().performCompile(configuration);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("quoteArgumentArguments")
+    void quoteArgument(String description, String argument, String expected) {
+        assertEquals(expected, JavacCompiler.quoteArgument(argument));
+    }
+
+    private static Stream<Arguments> quoteArgumentArguments() {
+        return Stream.of(
+                Arguments.of("empty", "", "\"\""),
+                Arguments.of("plain", "-Xlint", "\"-Xlint\""),
+                Arguments.of("spaces", "two words", "\"two words\""),
+                Arguments.of("double quote", "say \"hello\"", "\"say \\\"hello\\\"\""),
+                Arguments.of(
+                        "Windows path",
+                        "C:\\Program Files\\Java\\bin\\javac.exe",
+                        "\"C:\\\\Program Files\\\\Java\\\\bin\\\\javac.exe\""),
+                Arguments.of("trailing backslash", "C:\\temp\\", "\"C:\\\\temp\\\\\""),
+                Arguments.of("literal backslash-n", "-Dvalue=\\n", "\"-Dvalue=\\\\n\""),
+                Arguments.of(
+                        "control whitespace",
+                        "line1\nline2\rline3\tline4\fline5",
+                        "\"line1\\nline2\\rline3\\tline4\\fline5\""),
+                Arguments.of("backslash and newline", "line1\\\nline2", "\"line1" + "\\\\" + "\\n" + "line2\""));
+    }
+
+    @Test
+    void testForkedAndInProcessLintCategoriesAreEqual(@TempDir Path tempDirectory) throws Exception {
+        Path sourceDirectory = tempDirectory.resolve("src");
+        Files.createDirectories(sourceDirectory);
+        Files.write(
+                sourceDirectory.resolve("Raw.java"),
+                Arrays.asList("class Raw {", " java.util.List raw() {", "  return null;", " }", "}"),
+                StandardCharsets.UTF_8);
+
+        CompilerResult inProcess = compile(tempDirectory, sourceDirectory, false, "-Xlint:-options,rawtypes");
+        CompilerResult forked = compile(tempDirectory, sourceDirectory, true, "-Xlint:-options,rawtypes");
+
+        assertTrue(inProcess.isSuccess());
+        assertTrue(forked.isSuccess());
+
+        CompilerMessage inProcessMessage = onlyWarning(inProcess);
+        CompilerMessage forkedMessage = onlyWarning(forked);
+        assertTrue(
+                forkedMessage.getMessage().startsWith("[rawtypes]"),
+                "forked message lost its lint category: " + forkedMessage.getMessage());
+        assertTrue(
+                inProcessMessage.getMessage().startsWith("[rawtypes]"),
+                "in-process message lost its lint category: " + inProcessMessage.getMessage());
+        assertEquals(inProcessMessage.getStartLine(), forkedMessage.getStartLine());
+        // the bodies still differ - javac's own output abbreviates the type to List where the API spells out
+        // java.util.List - which is a separate parity gap, so only the category is compared here
+    }
+
+    private static CompilerMessage onlyWarning(CompilerResult result) {
+        List<CompilerMessage> warnings = result.getCompilerMessages().stream()
+                .filter(message -> message.getKind() == CompilerMessage.Kind.WARNING)
+                .collect(Collectors.toList());
+        assertEquals(1, warnings.size(), "expected exactly one warning, got " + result.getCompilerMessages());
+        return warnings.get(0);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("lintCategoryArguments")
+    void lintCategoryOf(String description, String rendered, String message, String expected) {
+        assertEquals(expected, JavaxToolsCompiler.lintCategoryOf(new StubDiagnostic(rendered), message));
+    }
+
+    private static Stream<Arguments> lintCategoryArguments() {
+        return Stream.of(
+                Arguments.of(
+                        "English warning",
+                        "/src/Raw.java:2: warning: [rawtypes] found raw type: java.util.List",
+                        "found raw type: java.util.List",
+                        "[rawtypes]"),
+                Arguments.of(
+                        "localised marker",
+                        "./src/Main.java:9: \u8b66\u544a:[deprecation] java.io.File \u306e toURL()",
+                        "java.io.File \u306e toURL()",
+                        "[deprecation]"),
+                Arguments.of(
+                        "wrapped message",
+                        "/src/Raw.java:2: warning: [rawtypes] found raw type: java.util.List\n"
+                                + " java.util.List raw() {\n"
+                                + " ^\n"
+                                + "  missing type arguments for generic class java.util.List<E>",
+                        "found raw type: java.util.List\n  missing type arguments for generic class java.util.List<E>",
+                        "[rawtypes]"),
+                Arguments.of("no category", "/src/Test.java:3: error: not a statement", "not a statement", null),
+                Arguments.of(
+                        "brackets in path",
+                        "/src/build[1]/Test.java:3: error: not a statement",
+                        "not a statement",
+                        null),
+                Arguments.of("message absent from rendering", "something else entirely", "not a statement", null),
+                Arguments.of("no message", "/src/Test.java:3: warning: [module] gone", "", null));
+    }
+
+    @Test
+    void lintCategoryOfUnrenderableDiagnostic() {
+        assertNull(JavaxToolsCompiler.lintCategoryOf(
+                new StubDiagnostic(null) {
+                    @Override
+                    public String toString() {
+                        throw new IllegalStateException("JDK-8210649");
+                    }
+                },
+                "found raw type: java.util.List"));
+    }
+
+    /**
+     * A diagnostic whose only meaningful part is its rendering, which is all {@code lintCategoryOf} reads.
+     */
+    private static class StubDiagnostic implements Diagnostic<JavaFileObject> {
+        private final String rendered;
+
+        StubDiagnostic(String rendered) {
+            this.rendered = rendered;
+        }
+
+        @Override
+        public String toString() {
+            return rendered;
+        }
+
+        @Override
+        public Kind getKind() {
+            return Kind.WARNING;
+        }
+
+        @Override
+        public JavaFileObject getSource() {
+            return null;
+        }
+
+        @Override
+        public long getPosition() {
+            return NOPOS;
+        }
+
+        @Override
+        public long getStartPosition() {
+            return NOPOS;
+        }
+
+        @Override
+        public long getEndPosition() {
+            return NOPOS;
+        }
+
+        @Override
+        public long getLineNumber() {
+            return NOPOS;
+        }
+
+        @Override
+        public long getColumnNumber() {
+            return NOPOS;
+        }
+
+        @Override
+        public String getCode() {
+            return null;
+        }
+
+        @Override
+        public String getMessage(Locale locale) {
+            return null;
+        }
+    }
+}
