@@ -51,6 +51,11 @@ public final class M3DirectoryVacuumTest {
             require(!M3DirectoryVacuum.compact(dir).recognized()
                     && Files.exists(blobs.resolve(orphan + ".blob")), "foreign blob files prevent reclaim");
             Files.delete(unexpected);
+            Files.writeString(blobs.resolve(b + ".blob"), "NEwer", StandardCharsets.UTF_8);
+            refuse(() -> M3DirectoryVacuum.compact(dir));
+            require(Files.exists(blobs.resolve(orphan + ".blob")),
+                    "damaged live blob prevents orphan deletion");
+            Files.writeString(blobs.resolve(b + ".blob"), "newer", StandardCharsets.UTF_8);
             require(M3DirectoryVacuum.compact(dir).removedBlobs() == 1, "cleanup resumes after layout restored");
             originalBackendRetainsOnlyLiveContent(temp.resolve("backend"));
             System.out.println("PASS: M3IndexDB vacuum live refs, orphan reclamation, idempotence, corrupt/future safety");
