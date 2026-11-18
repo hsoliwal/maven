@@ -504,6 +504,35 @@ must remain in Eclipse and its installed native bridge. A future qualified
 m2e/PDE/CDT/Corrosion integration can exchange owner-produced facts through
 the existing M3 IDE-delta API; the report by itself is not a build receipt.
 
+### Eclipse build-configuration owner packets
+
+Eclipse build configurations are **not** ordinary Maven profiles or CDT
+configuration labels. The actual Eclipse \`IBuildConfiguration\` selected by
+a builder may differ from the active one. The m2e source-owner companion
+\`hsoliwal/m2e-core\` exports an explicit, versioned
+\`M3-ECLIPSE-BUILD-CONTEXT-V1\` packet after a successful, opt-in original
+m2e build. It preserves exact configuration, builder and project nature IDs
+in Eclipse's order; default configuration names are empty strings.
+
+The Java 17 \`M3EclipseBuildContextWire\` decoder in this plugin validates
+the **original** Eclipse bytes without depending on OSGi, Maven or Gradle.
+It rejects unknown versions, oversized packets, malformed UTF-8, noncanonical
+Base64URL, absent selected/active configuration, duplicate configurations,
+reordered record families, and symlinked packet files. The CLI exposes it:
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli context \
+  /project/root/target/ide/build-context.ide
+\`\`\`
+
+The output schema is \`m3-eclipse-build-context-v1\` JSON, distinct from
+\`m3-eclipse-project-v1\` and \`m3-eclipse-builder-owners-v1\`. This report
+is advisory source-owner metadata, not a cache key, a successful compiler
+receipt, or a goal-skip instruction. Maven and Gradle must bind independently
+verified toolchain, dependency, generation, source-root, output and ABI facts
+before trusting any incremental optimization.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
