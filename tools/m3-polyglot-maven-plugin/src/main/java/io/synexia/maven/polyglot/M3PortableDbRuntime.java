@@ -29,7 +29,7 @@ final class M3PortableDbRuntime {
     static Path path(Path moduleRoot, String suffix, boolean directory, boolean create) throws IOException {
         Objects.requireNonNull(moduleRoot, "moduleRoot");
         if (!suffix.matches("module-state-ext-[a-z0-9-]{1,48}(?:[.]db)?")) {
-            throw new IllegalArgumentException("invalid local portable DB filename");
+            throw new IOException("invalid local portable DB filename");
         }
         if (Files.isSymbolicLink(moduleRoot)) throw new IOException("symlinked module root");
         Path root = moduleRoot.toRealPath();
