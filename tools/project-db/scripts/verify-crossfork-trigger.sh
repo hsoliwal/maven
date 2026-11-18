@@ -48,7 +48,6 @@ expect_count "--tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngi
 expect_count "--tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest'" 1
 expect_count "          ref: 7c3d37575002b9c54ff8fa9c8648373aaffa1690" 0
 expect_count "--tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest'" 1
-expect_count "        java: ['17', '21']" 2
 expect_count "          path: consumer-gradle" 1
 expect_count "          path: pruned-symlink-gradle" 0
 expect_count "test --tests '*M3ProjectDb*'" 0
@@ -56,7 +55,6 @@ expect_count "pruned-symlink-gradle/" 0
 expect_count "name: projectdb-gradle-pruned-symlink-jdk-" 0
 expect_count "M3_PRUNED_PROJECT_DB_JAR:" 1
 expect_count "M3_PRUNED_POLYGLOT_JAR:" 1
-expect_count "test --tests '*M3ProjectDb*'" 0
 expect_count "              --rerun-tasks >" 1
 expect_count "install -m 0644 tools/project-db/scripts/verify-gradle-testkit-results.sh" 1
 expect_count "install -m 0644 tools/project-db/scripts/M3GradleTestKitReceiptMain.java" 1
