@@ -93,11 +93,15 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | RocksDB JNI (optional) | `ext-rocksdb-v1` | `.m3/module-state-ext-rocksdb-v1/` with native RocksDB LSM/WAL; explicitly install `org.rocksdb:rocksdbjni`; sync-WAL put |
 | MapDB (optional) | `ext-mapdb-v1` | `.m3/module-state-ext-mapdb-v1.db` with transactional MapDB file store; explicitly install `org.mapdb:mapdb`; `DB.commit()` |
 | LMDB (optional) | `ext-lmdb-v1` | `.m3/module-state-ext-lmdb-v1/` with LmdbJava native mapped environment; explicitly install `org.lmdbjava:lmdbjava`; read/write transactions |
+| LevelDB (pure Java, optional) | `ext-leveldb-v1` | `.m3/module-state-ext-leveldb-v1/` with Iq80 LevelDB's Java LSM/WAL engine; explicitly install `org.iq80.leveldb:leveldb:0.12`; synchronous writes |
 
 The optional donor engines are *real driver adapters*, not only conceptual
-donors. They use the original `M3ModuleDbBackendProvider` with a `ServiceLoader`
-registration, and keep the M3 receipt image format, hashes, module generation
-and exclusive Maven module lease unchanged. RocksDB writes the entire sealed
+donors. The four choices cover a native LSM implementation (RocksDB), a
+transactional Java mapped-file store (MapDB), native memory-mapped MVCC
+(LMDB), and a pure-Java LevelDB LSM store. They use the original
+`M3ModuleDbBackendProvider` with a `ServiceLoader` registration, and keep
+the M3 receipt image format, hashes, module generation and exclusive Maven
+module lease unchanged. RocksDB writes the entire sealed
 snapshot with synchronous WAL durability; MapDB explicitly enables WAL and
 commits its stored `byte[]` value; LMDB copies read buffers before releasing a
 read-only transaction and commits a native write transaction. Neither source
@@ -133,9 +137,17 @@ without changing the plugin's production dependency graph, run:
 mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-portable-engines verify
 ```
 
-That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0 and LmdbJava
-0.9.3, and executes a **require-all** persistence/restart/revocation/backend
-switch suite. Without the profile, the default JDK-only contract checks
+That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0, LmdbJava
+0.9.3, and Iq80 LevelDB 0.12, and executes a **require-all**
+persistence/restart/revocation/backend switch suite. The LMDB adapter targets the actual **LmdbJava 0.9.3** API:
+`Env.Builder.open(File, EnvFlags...)`, `Env.openDbi(String, DbiFlags...)`,
+and `Dbi.put(Txn, key, value, PutFlags...)`. These methods differ from the
+unreleased LmdbJava 1.0 builder API, so a different runtime fails compatibility
+preflight instead of silently opening an unexpected layout. MapDB and LMDB
+also **open existing collections without create flags on reads**; only an
+explicit write may create the store. All four donor adapters preflight their
+required public method signatures before the M3 module-state generation is
+opened, so incompatible runtime JARs are refused rather than admitted. Without the profile, the default JDK-only contract checks
 registration and path safety, then reports `NOT_RUN` for unavailable native
 runtimes. A module must never silently substitute another backend. Driver
 compatibility and native crash-recovery qualification are separate from

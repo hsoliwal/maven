@@ -4,6 +4,7 @@
  */
 package io.synexia.maven.polyglot;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
@@ -13,7 +14,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
 /**
- * Real opt-in LmdbJava-backed module image, with explicit ACID transactions.
+ * Real opt-in LmdbJava 0.9.3-backed module image, with explicit ACID transactions.
  *
  * <p>All LMDB off-heap/native resources are scoped to this operation; a
  * returned read buffer is copied before releasing its read transaction.
@@ -34,8 +35,24 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public void verifyAvailable(Path root) throws IOException {
         M3PortableDbRuntime.path(root, DIRECTORY, true, false);
         Class<?> env = M3PortableDbRuntime.type("org.lmdbjava.Env");
-        M3PortableDbRuntime.peer(env, "org.lmdbjava.Txn");
-        M3PortableDbRuntime.peer(env, "org.lmdbjava.DbiFlags");
+        Class<?> flags = M3PortableDbRuntime.peer(env, "org.lmdbjava.DbiFlags");
+        Class<?> envFlags = M3PortableDbRuntime.peer(env, "org.lmdbjava.EnvFlags");
+        Class<?> putFlags = M3PortableDbRuntime.peer(env, "org.lmdbjava.PutFlags");
+        Class<?> db = M3PortableDbRuntime.peer(env, "org.lmdbjava.Dbi");
+        Class<?> tx = M3PortableDbRuntime.peer(env, "org.lmdbjava.Txn");
+        Class<?> builder = M3PortableDbRuntime.peer(env, "org.lmdbjava.Env$Builder");
+        try {
+            // Pinned 0.9.3 exposes Env.Builder.open(File, EnvFlags...) and
+            // Env.openDbi(String, DbiFlags...), not the 1.0-era Path and
+            // createDbi/Stage3 builder API.
+            builder.getMethod("open", File.class, Array.newInstance(envFlags, 0).getClass());
+            env.getMethod("openDbi", String.class, Array.newInstance(flags, 0).getClass());
+            db.getMethod("get", tx, Object.class);
+            db.getMethod("put", tx, Object.class, Object.class,
+                    Array.newInstance(putFlags, 0).getClass());
+        } catch (NoSuchMethodException incompatible) {
+            throw new IOException("LmdbJava 0.9.3 API incompatible with M3 portable provider", incompatible);
+        }
         M3PortableDbRuntime.callStatic(env, "create", NONE);
     }
 
@@ -48,7 +65,7 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
             }
             throw new IOException("LMDB module directory lacks its native data file");
         }
-        return withDatabase(dir, (environment, database, transactionType) -> {
+        return withDatabase(dir, false, (environment, database, transactionType) -> {
             Object tx = M3PortableDbRuntime.call(environment, "txnRead", NONE);
             try {
                 Object value = M3PortableDbRuntime.call(database, "get",
@@ -74,12 +91,16 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public void write(Path root, byte[] image) throws IOException {
         M3PortableDbRuntime.bounded(image);
         Path dir = M3PortableDbRuntime.path(root, DIRECTORY, true, true);
-        withDatabase(dir, (environment, database, transactionType) -> {
+        withDatabase(dir, true, (environment, database, transactionType) -> {
             Object tx = M3PortableDbRuntime.call(environment, "txnWrite", NONE);
             try {
+                Class<?> putFlagType = M3PortableDbRuntime.peer(database.getClass(),
+                        "org.lmdbjava.PutFlags");
+                Object emptyFlags = Array.newInstance(putFlagType, 0);
                 Object saved = M3PortableDbRuntime.call(database, "put",
-                        new Class<?>[] {transactionType, Object.class, Object.class},
-                        tx, direct(KEY), direct(image));
+                        new Class<?>[] {transactionType, Object.class, Object.class,
+                                emptyFlags.getClass()},
+                        tx, direct(KEY), direct(image), emptyFlags);
                 if (!Boolean.TRUE.equals(saved)) throw new IOException("LMDB module image was not stored");
                 // The default LMDB flags preserve its synchronous two-page
                 // ACID commit; no MDB_NOSYNC/MDB_NOMETASYNC/WRITEMAP flags.
@@ -103,27 +124,30 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
         T run(Object environment, Object database, Class<?> transactionType) throws IOException;
     }
 
-    private static <T> T withDatabase(Path dir, Action<T> action) throws IOException {
+    private static <T> T withDatabase(Path dir, boolean createDbi, Action<T> action) throws IOException {
         Class<?> envType = M3PortableDbRuntime.type("org.lmdbjava.Env");
         Class<?> flagsType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.DbiFlags");
+        Class<?> envFlagsType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.EnvFlags");
         Class<?> txnType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.Txn");
         Object builder = M3PortableDbRuntime.callStatic(envType, "create", NONE);
         Object sized = M3PortableDbRuntime.call(builder, "setMapSize",
                 new Class<?>[] {long.class}, MAP_BYTES);
         Object namedDatabases = M3PortableDbRuntime.call(sized, "setMaxDbs",
                 new Class<?>[] {int.class}, 1);
+        // LmdbJava 0.9.3 deliberately takes File + EnvFlags[].
+        Object noEnvironmentFlags = Array.newInstance(envFlagsType, 0);
         Object env = M3PortableDbRuntime.call(namedDatabases, "open",
-                new Class<?>[] {Path.class}, dir);
+                new Class<?>[] {File.class, noEnvironmentFlags.getClass()},
+                dir.toFile(), noEnvironmentFlags);
         try {
-            Object dbiBuilder = M3PortableDbRuntime.call(env, "createDbi", NONE);
-            Object named = M3PortableDbRuntime.call(dbiBuilder, "setDbName",
-                    new Class<?>[] {String.class}, DATABASE);
-            Object compared = M3PortableDbRuntime.call(named, "withDefaultComparator", NONE);
-            Object flagArray = Array.newInstance(flagsType, 1);
-            Array.set(flagArray, 0, M3PortableDbRuntime.constant(flagsType, "MDB_CREATE"));
-            Object flagged = M3PortableDbRuntime.call(compared, "setDbiFlags",
-                    new Class<?>[] {flagArray.getClass()}, flagArray);
-            Object db = M3PortableDbRuntime.call(flagged, "open", NONE);
+            // LmdbJava 0.9.3 uses Env.openDbi. The createDbi() fluent API was
+            // introduced after the pinned release and cannot be used here.
+            Object dbFlags = Array.newInstance(flagsType, createDbi ? 1 : 0);
+            if (createDbi) {
+                Array.set(dbFlags, 0, M3PortableDbRuntime.constant(flagsType, "MDB_CREATE"));
+            }
+            Object db = M3PortableDbRuntime.call(env, "openDbi",
+                    new Class<?>[] {String.class, dbFlags.getClass()}, DATABASE, dbFlags);
             try {
                 return action.run(env, db, txnType);
             } finally {
@@ -134,4 +158,5 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
             M3PortableDbRuntime.close(env);
         }
     }
+
 }

@@ -24,6 +24,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3RocksDbBackendProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3MapDbBackendProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3LmdbBackendProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3LevelDbBackendProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleDbRunLock.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ModuleJdbcStorage.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DbModuleStore.java \

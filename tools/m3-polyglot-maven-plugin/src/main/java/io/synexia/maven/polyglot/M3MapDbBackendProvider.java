@@ -30,15 +30,28 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
         M3PortableDbRuntime.path(root, FILE, false, false);
         Class<?> maker = M3PortableDbRuntime.type("org.mapdb.DBMaker");
         Class<?> serializer = M3PortableDbRuntime.peer(maker, "org.mapdb.Serializer");
-        M3PortableDbRuntime.peer(maker, "org.mapdb.DB");
+        Class<?> database = M3PortableDbRuntime.peer(maker, "org.mapdb.DB");
         M3PortableDbRuntime.constant(serializer, "STRING");
         M3PortableDbRuntime.constant(serializer, "BYTE_ARRAY");
+        try {
+            Class<?> configured = maker.getMethod("fileDB", File.class).getReturnType();
+            configured.getMethod("transactionEnable");
+            configured.getMethod("make");
+            database.getMethod("commit");
+            database.getMethod("rollback");
+            Class<?> collection = database.getMethod("hashMap",
+                    String.class, serializer, serializer).getReturnType();
+            collection.getMethod("createOrOpen");
+            collection.getMethod("open");
+        } catch (NoSuchMethodException incompatible) {
+            throw new IOException("MapDB 3.1.0 API is incompatible with M3 state", incompatible);
+        }
     }
 
     @Override public byte[] read(Path root) throws IOException {
         Path file = M3PortableDbRuntime.path(root, FILE, false, false);
         if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return null;
-        return withMap(file, (db, values) -> {
+        return withMap(file, false, (db, values) -> {
             Object value = values.get(KEY);
             if (value == null) return null;
             if (!(value instanceof byte[] image)) {
@@ -52,7 +65,7 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public void write(Path root, byte[] image) throws IOException {
         M3PortableDbRuntime.bounded(image);
         Path file = M3PortableDbRuntime.path(root, FILE, false, true);
-        withMap(file, (db, values) -> {
+        withMap(file, true, (db, values) -> {
             try {
                 values.put(KEY, image.clone());
                 M3PortableDbRuntime.call(db, "commit", NONE);
@@ -70,7 +83,7 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
         T run(Object database, Map<String, Object> values) throws IOException;
     }
 
-    private static <T> T withMap(Path file, Action<T> action) throws IOException {
+    private static <T> T withMap(Path file, boolean createMap, Action<T> action) throws IOException {
         Class<?> makerType = M3PortableDbRuntime.type("org.mapdb.DBMaker");
         Class<?> serializerType = M3PortableDbRuntime.peer(makerType, "org.mapdb.Serializer");
         Object maker = M3PortableDbRuntime.callStatic(makerType, "fileDB",
@@ -84,7 +97,8 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
             Object bytes = M3PortableDbRuntime.constant(serializerType, "BYTE_ARRAY");
             Object collectionMaker = M3PortableDbRuntime.call(database, "hashMap",
                     new Class<?>[] {String.class, serializerType, serializerType}, MAP, string, bytes);
-            Object opened = M3PortableDbRuntime.call(collectionMaker, "createOrOpen", NONE);
+            Object opened = M3PortableDbRuntime.call(collectionMaker,
+                    createMap ? "createOrOpen" : "open", NONE);
             if (!(opened instanceof Map<?, ?> map)) {
                 throw new IOException("MapDB did not return a standard Java map");
             }

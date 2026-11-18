@@ -26,7 +26,7 @@ public final class M3PortableEngineConformanceTestMain {
     private static final String B = "b".repeat(64);
     private static final String C = "c".repeat(64);
     private static final List<String> ENGINES =
-            List.of("ext-rocksdb-v1", "ext-mapdb-v1", "ext-lmdb-v1");
+            List.of("ext-rocksdb-v1", "ext-mapdb-v1", "ext-lmdb-v1", "ext-leveldb-v1");
     private static int checks;
 
     private M3PortableEngineConformanceTestMain() {}
@@ -44,7 +44,7 @@ public final class M3PortableEngineConformanceTestMain {
             if (ENGINES.contains(provider.id())) available.add(provider.id());
         }
         check(available.size() == ENGINES.size() && Set.copyOf(available).size() == ENGINES.size(),
-                "all three real database provider identifiers are registered exactly once");
+                "all four real database provider identifiers are registered exactly once");
         Path root = Files.createTempDirectory("m3-real-optional-db-");
         try {
             pathPolicy(root.resolve("paths"));
@@ -82,6 +82,7 @@ public final class M3PortableEngineConformanceTestMain {
             case "ext-rocksdb-v1" -> "module-state-ext-rocksdb-v1";
             case "ext-mapdb-v1" -> "module-state-ext-mapdb-v1.db";
             case "ext-lmdb-v1" -> "module-state-ext-lmdb-v1";
+            case "ext-leveldb-v1" -> "module-state-ext-leveldb-v1";
             default -> throw new IllegalArgumentException(backend);
         });
         check(Files.exists(enginePath, LinkOption.NOFOLLOW_LINKS),
@@ -149,7 +150,8 @@ public final class M3PortableEngineConformanceTestMain {
         var providers = List.of(
                 new M3RocksDbBackendProvider(),
                 new M3MapDbBackendProvider(),
-                new M3LmdbBackendProvider());
+                new M3LmdbBackendProvider(),
+                new M3LevelDbBackendProvider());
         for (M3ModuleDbBackendProvider provider : providers) {
             check(provider.id().matches("ext-[a-z0-9-]{1,48}"), "provider ID local and bounded");
             // Size and envelope admission must fail before touching a selected
@@ -176,6 +178,13 @@ public final class M3PortableEngineConformanceTestMain {
             expectIo(() -> new M3RocksDbBackendProvider().verifyAvailable(root),
                     "RocksDB rejects a linked database directory");
             Files.delete(directory);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) { }
+        Path leveldb = state.resolve("module-state-ext-leveldb-v1");
+        try {
+            Files.createSymbolicLink(leveldb, outside);
+            expectIo(() -> new M3LevelDbBackendProvider().verifyAvailable(root),
+                    "pure-Java LevelDB rejects linked database directories");
+            Files.delete(leveldb);
         } catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) { }
         check(Files.isRegularFile(outside, LinkOption.NOFOLLOW_LINKS), "out-of-module data remains intact");
         expectIo(() -> M3PortableDbRuntime.path(root, "../escape", false, true),

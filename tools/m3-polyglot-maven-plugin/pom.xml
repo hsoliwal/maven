@@ -419,6 +419,10 @@
           <groupId>org.lmdbjava</groupId><artifactId>lmdbjava</artifactId>
           <version>0.9.3</version><scope>test</scope>
         </dependency>
+        <dependency>
+          <groupId>org.iq80.leveldb</groupId><artifactId>leveldb</artifactId>
+          <version>0.12</version><scope>test</scope>
+        </dependency>
       </dependencies>
       <build>
         <plugins>
