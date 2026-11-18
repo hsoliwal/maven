@@ -17,9 +17,10 @@ done
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly MAVEN_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 readonly SOURCE="$(realpath -- "$1")"
-mkdir -p -- "$2" "$3"
-readonly BUILD="$(realpath -- "$2")"
-readonly EVIDENCE="$(realpath -- "$3")"
+# Reject source/output overlap *before* mkdir, so an invalid caller never
+# creates an untracked build directory inside its original LLVM checkout.
+readonly BUILD="$(realpath -m -- "$2")"
+readonly EVIDENCE="$(realpath -m -- "$3")"
 if [[ "$BUILD" == "$SOURCE" || "$BUILD" == "$SOURCE/"* ||
       "$EVIDENCE" == "$SOURCE" || "$EVIDENCE" == "$SOURCE/"* ]]; then
   echo 'Build and evidence outputs must remain outside original LLVM source' >&2
@@ -30,6 +31,7 @@ if [[ "$BUILD" == "$EVIDENCE" || "$BUILD" == "$EVIDENCE/"* ||
   echo 'Build and evidence outputs must have disjoint ownership' >&2
   exit 65
 fi
+mkdir -p -- "$BUILD" "$EVIDENCE"
 readonly ACTUAL="$(git -C "$SOURCE" rev-parse --verify HEAD)"
 if [[ "$ACTUAL" != "$PIN" ]]; then
   printf 'LLVM fork source mismatch: expected %s, observed %s\n' "$PIN" "$ACTUAL" >&2
