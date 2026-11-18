@@ -79,16 +79,20 @@
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-build-api</artifactId>
-      <version>1.2.0</version>
+      <!-- in-tree: plugins/shared/plexus-build-api -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
+      <!-- in-tree: plugins/shared/plexus-utils -->
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-interpolation</artifactId>
-      <version>1.29</version>
+      <!-- in-tree: plugins/shared/plexus-interpolation -->
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>
