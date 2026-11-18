@@ -3,6 +3,8 @@
 # One JDK 17/21 Maven owner job builds/verifies artifacts; matching Gradle
 # TestKit jobs depend on its success and consume SHA-256-verified JAR bytes.
 # Fail on lost source pins, test lanes or artifact receipt handoff.
+# The workflow supersedes obsolete runs of the same PR; master and manual
+# dispatch runs are unique and cannot cancel one another.
 # A project DB source owner also changes whenever the shared M3IndexDB
 # engine, TaskRunner or polyglot source contract changes.
 set -eu
@@ -23,6 +25,8 @@ expect_count "      - 'tools/m3-polyglot-maven-plugin/**'" 2
 expect_count "      - '.github/workflows/m3-projectdb-gradle-evidence.yml'" 2
 expect_count "    branches: [master]" 1
 expect_count "  workflow_dispatch:" 1
+expect_count "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}" 1
+expect_count "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}" 1
 expect_count "        java: ['17', '21']" 2
 expect_count "run: sh tools/project-db/scripts/verify-gradle-sources.sh" 1
 expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install" 1
