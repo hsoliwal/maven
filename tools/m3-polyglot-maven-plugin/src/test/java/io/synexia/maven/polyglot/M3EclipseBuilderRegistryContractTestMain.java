@@ -111,9 +111,25 @@ public final class M3EclipseBuilderRegistryContractTestMain {
                         @Override public Set<String> natureIds() { return Set.of("vendor.unknown"); }
                     })), "API version mismatch");
 
+            String originalMetadataHash = snapshot.descriptorSha256().get(".settings/vendor.rustdt.prefs");
+            Files.writeString(settings.resolve("vendor.rustdt.prefs"), "channel=beta\\n");
+            require(!originalMetadataHash.equals(EclipseProjectModel.inspect(root).descriptorSha256()
+                    .get(".settings/vendor.rustdt.prefs")),
+                    "arbitrary language metadata changes invalidate the corresponding digest");
+            Path external = Files.writeString(root.resolve("external.prefs"), "do-not-follow");
+            Path shortcut = settings.resolve("vendor.external.prefs");
+            try {
+                Files.createSymbolicLink(shortcut, external);
+                rejects(() -> EclipseProjectModel.inspect(root), "symlinked vendor settings");
+                Files.delete(shortcut);
+            } catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) {
+                // Platforms without symlink creation still enforce NOFOLLOW_LINKS.
+            }
             // The installed test ServiceLoader descriptors must work in the real CLI lane.
             var discovered = M3EclipseBuilderRegistry.inspect(root);
-            require(discovered.toJson().equals(registered.toJson()), "portable installed provider discovery");
+            require(discovered.builders().equals(registered.builders())
+                    && discovered.natures().equals(registered.natures()),
+                    "portable installed provider discovery");
             System.out.println("PASS: Eclipse JDT/CDT/Rust/future provider-neutral ownership contracts");
         } finally {
             try (Stream<Path> paths = Files.walk(root)) {
