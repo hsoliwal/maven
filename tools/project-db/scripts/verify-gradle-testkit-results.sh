@@ -3,7 +3,7 @@
 # TestKit reports are an acceptance receipt: success with silently skipped
 # real-engine cases must never qualify the Maven-to-Gradle bridge.
 set -eu
-ROOT=\${1:?usage: verify-gradle-testkit-results.sh TEST_RESULT_DIRECTORY}
+ROOT=${1:?usage: verify-gradle-testkit-results.sh TEST_RESULT_DIRECTORY}
 
 fail() { printf 'M3 Gradle TestKit receipt refused: %s\n' "$1" >&2; exit 1; }
 
