@@ -50,7 +50,8 @@ final class Modules {
     private static boolean descriptor(Path path) {
         if (path.getFileName() == null || !Files.isRegularFile(path)) return false;
         return switch (path.getFileName().toString()) {
-            case "pom.xml", "build.gradle", "build.gradle.kts" -> true;
+            case "pom.xml", "build.gradle", "build.gradle.kts",
+                    "settings.gradle", "settings.gradle.kts" -> true;
             default -> false;
         };
     }
