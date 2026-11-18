@@ -121,7 +121,18 @@ backends start cold under the root-bound schema-2 receipt protocol; the first su
 build records fresh evidence in the selected backend. No old success is translated into a new one.
 
 Before launching a task, the runner durably revokes its earlier success and its transitive
-dependents. Failed, interrupted, timed-out and explicit nonincremental executions cannot leave
+dependents. The reverse dependency graph is prepared **once** in M3 compact
+compressed-sparse-row (CSR) arrays, rather than rediscovering every edge before
+each tool invocation. A successful task stages its verified input/output receipt
+in compact parallel arrays. The module publishes **one sealed database image
+after the complete selected DAG succeeds**, instead of rewriting it once per
+task. A later task failure discards uncommitted staged successes; affected old
+receipts were already durably revoked before execution. The separate public
+`ModuleStateDb.record` method keeps its immediate-commit behavior for ordinary
+Maven lifecycle and project database clients. This borrows RocksDB-style batched
+writes while retaining the original M3DB authority, no extra backend or format.
+
+Failed, interrupted, timed-out and explicit nonincremental executions cannot leave
 an earlier success reusable. Inputs and context are checked again after successful execution.
 If they changed while the tool ran, the command is reported `UNCACHED` and later runs execute
 it again. Independent unchanged tasks retain their records.
