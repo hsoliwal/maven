@@ -26,9 +26,10 @@ import java.util.regex.Pattern;
 
 /**
  * The short text an agent reads first, on standard output and in {@code summary.txt}: one header line with the
- * outcome and counts, per failure its errors, failed tests and reproduce command, skipped projects, the warnings of a
- * green build, and where the files are. Every line starts with {@value #PREFIX} so it can be found in any output;
- * the whole stays within {@code maven.agent.summaryBytes}.
+ * outcome and counts, per failure its errors, failed tests and reproduce command (with the count of the user
+ * properties it leaves out), the launcher per shell when the shells spell it differently, skipped projects, the
+ * warnings of a green build, and where the files are. Every line starts with {@value #PREFIX} so it can be found
+ * in any output; the whole stays within {@code maven.agent.summaryBytes}.
  */
 final class SummaryPrinter {
     static final String PREFIX = "[agent] ";
@@ -49,9 +50,12 @@ final class SummaryPrinter {
 
     /** The summary lines, unbounded. */
     static List<String> lines(Header header, List<FailureDigest.Failure> failures, List<String> skipped,
-            List<Diagnostic> warnings, List<String> files, int printLimit) {
+            List<Diagnostic> warnings, List<String> files, int printLimit, MavenCommands.Launchers launchers) {
         List<String> lines = new ArrayList<>(List.of(header.text()));
         failures.forEach(failure -> failure(lines, failure));
+        if (!failures.isEmpty() && launchers.differ()) {
+            lines.add("launcher: " + launchers.perShell());
+        }
         skipped.forEach(id -> lines.add("SKIPPED " + id));
         if (failures.isEmpty()) {
             warnings.stream().limit(printLimit).forEach(d -> lines.add(diagnostic(d)));
@@ -71,6 +75,9 @@ final class SummaryPrinter {
                 + test.test().exception() + (test.message().isEmpty() ? "" : ": " + test.message())
                 + (test.file().isEmpty() ? "" : " at " + test.file() + ":" + test.line())));
         lines.add("  reproduce: " + f.reproduce());
+        if (!f.omittedNote().isEmpty()) {
+            lines.add("  " + f.omittedNote());
+        }
     }
 
     /**

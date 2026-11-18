@@ -50,9 +50,24 @@ public final class DiagnosticLinesTestMain {
         notDiagnostics();
         separators();
         interleaved();
+        werror();
         SHAPES.forEach((name, unit) -> ENDS.forEach(end -> bounded(name, unit, end)));
+        bounded("werror", "a.java: warnings found and -Werror specified ", " x");
         manyLines();
         Check.done("DiagnosticLinesTestMain");
+    }
+
+    /** javac's {@code <file>: warnings found and -Werror specified} names a file and no line: a file-only diagnostic. */
+    private static void werror() {
+        List<DiagnosticLines.Raw> found = DiagnosticLines.parse("Compilation failure\n/C:/r/prof/src/main/java/fx/Uses"
+                + ".java: warnings found and -Werror specified\nC:\\r\\b\\B.java: warnings found and -Werror specified",
+                DiagnosticLines.ERROR, "compiler:compile", "prof");
+        Check.equal(List.of(new DiagnosticLines.Raw("ERROR", "C:/r/prof/src/main/java/fx/Uses.java", 0, 0, "",
+                "warnings found and -Werror specified", "compiler:compile", "prof"), new DiagnosticLines.Raw("ERROR",
+                "C:/r/b/B.java", 0, 0, "", "warnings found and -Werror specified", "compiler:compile", "prof")), found,
+                "file-only -Werror diagnostics, line and column unknown");
+        Check.equal(List.of(), DiagnosticLines.parse("Uses.java: something else", DiagnosticLines.ERROR, "", ""),
+                "no other file-only line is a diagnostic");
     }
 
     /** U+2028, U+2029 and U+0085 end a line, so two diagnostics joined by one are two diagnostics. */

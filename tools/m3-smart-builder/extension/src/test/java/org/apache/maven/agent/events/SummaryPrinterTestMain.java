@@ -32,8 +32,10 @@ public final class SummaryPrinterTestMain {
     private SummaryPrinterTestMain() {}
 
     public static void main(String[] args) {
-        String text = SummaryPrinter.bounded(SummaryPrinter.lines(header(), List.of(failure()), List.of("g:skip"),
-                List.of(), List.of("target/agent/failure.md"), 20), 4000, "target/agent/failure.md");
+        wrapper();
+        String text = SummaryPrinter.bounded(SummaryPrinter.lines(header(), List.of(failure(0)), List.of("g:skip"),
+                List.of(), List.of("target/agent/failure.md"), 20, MavenCommands.Launchers.of("mvn")), 4000,
+                "target/agent/failure.md");
         List<String> lines = Arrays.asList(text.split("\n", -1)).subList(0, text.split("\n", -1).length - 1);
         Check.that(text.endsWith("\n") && lines.size() == 7, "seven lines:\n" + text);
         lines.forEach(line -> Check.that(line.startsWith(SummaryPrinter.PREFIX), "prefixed: " + line));
@@ -45,16 +47,28 @@ public final class SummaryPrinterTestMain {
         Check.done("SummaryPrinterTestMain");
     }
 
+    /** With the Maven Wrapper the summary spells the launcher per shell; left-out properties are counted. */
+    private static void wrapper() {
+        List<String> lines = SummaryPrinter.lines(header(), List.of(failure(2)), List.of(), List.of(), List.of("f"), 20,
+                MavenCommands.Launchers.of("./mvnw"));
+        Check.that(lines.contains("launcher: ./mvnw in bash; .\\mvnw.cmd in PowerShell and cmd.exe"), "launcher: " + lines);
+        int reproduce = lines.indexOf("  reproduce: mvn -pl a -am test");
+        Check.equal("  (2 user properties omitted)", lines.get(reproduce + 1), "the count after the command");
+        Check.that(SummaryPrinter.lines(header(), List.of(), List.of(), List.of(), List.of("f"), 20,
+                MavenCommands.Launchers.of("./mvnw")).stream().noneMatch(line -> line.startsWith("launcher")),
+                "a green build has no command to start");
+    }
+
     private static SummaryPrinter.Header header() {
         return new SummaryPrinter.Header("failure", 1500, 2, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0);
     }
 
-    private static FailureDigest.Failure failure() {
+    private static FailureDigest.Failure failure(int omitted) {
         Diagnostic error = new Diagnostic("g:a", "compiler", "ERROR", "a/src/A.java", 3, 5, "", FORGED, "compiler:compile");
         SurefireReports.TestCase test = new SurefireReports.TestCase("fix.ATest", "adds", "failed", 100,
                 "java.lang.AssertionError", FORGED, "");
         TestResult result = new TestResult("g:a", test, FORGED, List.of(), "a/src/test/ATest.java", 12);
         return new FailureDigest.Failure(1, "g:a", "a", "test", "surefire:test", FORGED, "",
-                List.of(new FailureDigest.Item(error, Optional.empty())), List.of(result), "mvn -pl a -am test");
+                List.of(new FailureDigest.Item(error, Optional.empty())), List.of(result), "mvn -pl a -am test", omitted);
     }
 }

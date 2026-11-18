@@ -30,15 +30,20 @@ import java.util.stream.Collectors;
  * reproduce commands, by the project description and {@code llms.txt} of maven-agent-plugin, and by the MCP server's
  * test tool ({@link #testArgs}, {@link #integrationTestArgs}). Every {@code -D} and {@code -P} argument is written in
  * double quotes, which bash, cmd.exe and PowerShell all accept (Windows PowerShell 5.1 splits an unquoted
- * {@code -Dkey.with.dots=value} at the first dot and an unquoted {@code -Pa,b} at the comma); other arguments are
- * quoted when they hold white space or a shell character. Callers pass only {@link #quotable} arguments, which every
- * shell keeps unchanged inside double quotes. Only the launcher differs per shell ({@link Launchers}).
+ * {@code -Dkey.with.dots=value} at the first dot and an unquoted {@code -Pa,b} at the comma); any other argument is
+ * written bare only when it holds nothing but {@code A-Z a-z 0-9 _ . / : + = -}, plus {@code @} and {@code #} after its
+ * first character, and is quoted otherwise (white space, redirections, globs, braces, a leading {@code ~}, {@code #} or
+ * {@code @}, commas). Callers pass only {@link #quotable} arguments, which every shell keeps unchanged inside double
+ * quotes. Only the launcher differs per shell ({@link Launchers}).
  */
 public final class MavenCommands {
-    /** Characters that make an argument need quotes (declared first: {@link #AGENT_OPTIONS} uses it). */
-    private static final Pattern NEEDS_QUOTES = Pattern.compile("[\\s\"'`$&|;(),^%!]");
-    /** Characters some shell changes inside double quotes: quote, backtick, $, %, !, backslash, control. */
-    private static final Pattern UNQUOTABLE = Pattern.compile("[\"`$%!\\\\\\p{Cntrl}]");
+    /** An argument every shell takes unquoted (declared first: {@link #AGENT_OPTIONS} uses it). */
+    private static final Pattern BARE = Pattern.compile("[A-Za-z0-9_./:+=-][A-Za-z0-9_./:+=@#-]*+");
+    /**
+     * Characters some shell changes inside double quotes: quote, backtick, $, %, !, backslash, control, and the
+     * typographic dashes and quotes U+2013 to U+201E, which PowerShell reads as '-' and as quotes.
+     */
+    private static final Pattern UNQUOTABLE = Pattern.compile("[\"`$%!\\\\\\p{Cntrl}\u2013-\u201E]");
     /** The Maven Wrapper as bash (and PowerShell) runs it from the root. */
     public static final String WRAPPER = "./mvnw";
     /** The Maven Wrapper as PowerShell and cmd.exe run it from the root. */
@@ -72,6 +77,17 @@ public final class MavenCommands {
         public String otherShells() {
             return powershell.equals(cmd) ? "PowerShell and cmd.exe start it as `" + cmd + "`"
                     : "PowerShell starts it as `" + powershell + "`, cmd.exe as `" + cmd + "`";
+        }
+
+        /** Each shell's spelling in plain text: {@code ./mvnw in bash; .\mvnw.cmd in PowerShell and cmd.exe}. */
+        public String perShell() {
+            return sh + " in bash; " + (powershell.equals(cmd) ? powershell + " in PowerShell and cmd.exe"
+                    : powershell + " in PowerShell; " + cmd + " in cmd.exe");
+        }
+
+        /** {@code {"sh":..., "powershell":..., "cmd":...}} as failure.json and project.json carry it. */
+        public JsonText.Obj json() {
+            return new JsonText.Obj().put("sh", sh).put("powershell", powershell).put("cmd", cmd);
         }
     }
 
@@ -140,8 +156,7 @@ public final class MavenCommands {
     }
 
     private static String quote(String arg) {
-        boolean quote = arg.startsWith("-D") || arg.startsWith("-P") || arg.isEmpty()
-                || NEEDS_QUOTES.matcher(arg).find();
+        boolean quote = arg.startsWith("-D") || arg.startsWith("-P") || !BARE.matcher(arg).matches();
         return quote ? '"' + arg.replace("\"", "\\\"") + '"' : arg;
     }
 }

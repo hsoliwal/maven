@@ -22,18 +22,28 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Properties;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 
 /**
- * Each build stages its event stream in a new private directory (owner-only on POSIX), so no shared or pre-created
- * path can stop or forge another user's events: the old fixed path taken by a file changes nothing, two builds get
- * two directories, publishing or discarding removes the build's directory, and a sweep removes only this user's
+ * Each build stages its event stream in a new private directory (owner-only on POSIX, an owner-only ACL on Windows,
+ * whatever the base directory grants), so no shared or pre-created path can stop or forge another user's events: the
+ * old fixed path taken by a file changes nothing, two builds get two directories, publishing or discarding removes the
+ * build's directory, the published file takes the access of its own directory, and a sweep removes only this user's
  * directories of killed builds older than a day, never a file or a directory it did not make.
  */
 public final class StagingTestMain {
@@ -42,8 +52,52 @@ public final class StagingTestMain {
     public static void main(String[] args) throws IOException {
         squatted();
         privateDirectory();
+        windowsAcl();
         stale();
         Check.done("StagingTestMain");
+    }
+
+    /**
+     * Under a base where Everyone may write (as {@code C:\tmp} lets Authenticated Users), the staging directory and its
+     * stream still allow only their owner; the published file inherits the access of the directory it lands in.
+     */
+    private static void windowsAcl() throws IOException {
+        Path base = Files.createTempDirectory("staging-acl");
+        AclFileAttributeView view = Files.getFileAttributeView(base, AclFileAttributeView.class);
+        if (view == null || FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            System.out.println("StagingTestMain: owner-only ACL NOT RUN (no ACL file system here)");
+            return;
+        }
+        UserPrincipal everyone = grantEveryone(base, view);
+        EventWriter writer = EventWriter.open(base, line -> {});
+        writer.emit("probe", new JsonText.Obj());
+        UserPrincipal owner = Files.getOwner(writer.stagedFile().getParent());
+        Check.that(ownerOnly(writer.stagedFile().getParent(), owner) && ownerOnly(writer.stagedFile(), owner),
+                "owner-only ACL on the staging directory and its stream: " + acl(writer.stagedFile().getParent()));
+        writer.publish(base.resolve("events.jsonl"));
+        Check.that(acl(base.resolve("events.jsonl")).stream().anyMatch(e -> e.principal().equals(everyone)),
+                "the published file inherits its directory's access: " + acl(base.resolve("events.jsonl")));
+    }
+
+    /** Adds an inherited Everyone entry with write access to {@code base}'s ACL. */
+    private static UserPrincipal grantEveryone(Path base, AclFileAttributeView view) throws IOException {
+        UserPrincipal everyone = base.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByGroupName("Everyone");
+        List<AclEntry> acl = new ArrayList<>(view.getAcl());
+        acl.add(0, AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(everyone).setPermissions(EnumSet.of(
+                AclEntryPermission.READ_DATA, AclEntryPermission.WRITE_DATA, AclEntryPermission.APPEND_DATA,
+                AclEntryPermission.READ_ATTRIBUTES, AclEntryPermission.DELETE, AclEntryPermission.SYNCHRONIZE))
+                .setFlags(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT).build());
+        view.setAcl(acl);
+        return everyone;
+    }
+
+    private static boolean ownerOnly(Path path, UserPrincipal owner) throws IOException {
+        List<AclEntry> acl = acl(path);
+        return !acl.isEmpty() && acl.stream().allMatch(entry -> entry.principal().equals(owner));
+    }
+
+    private static List<AclEntry> acl(Path path) throws IOException {
+        return Files.getFileAttributeView(path, AclFileAttributeView.class).getAcl();
     }
 
     /** {@code maven-build-events} in the temporary directory is a file (a squatter, another user): events still come. */

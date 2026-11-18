@@ -210,10 +210,13 @@ from a project's `.mvn/extensions.xml`. `maven-agent-plugin` (`tools/maven-agent
 Tests: `mvn verify` runs the offline unit tests (`*TestMain`: JSON escaping, truncation and field order, event
 order under parallel writers, the event cap, diagnostics in compiler, Checkstyle, javac and gcc output and in `-T`
 logs, adversarial 1 MB lines within a time bound, Surefire reports, stack trimming, the digest byte for byte, linear
-redaction of credentials, the root, the home directory and the local repository, whole failure messages, reproduce
-commands with profiles, user properties (never secrets), `-f`, goals and shell-safe selectors, the launcher per
-shell, the `-l` log charset, removal of the previous build's files, private per-build staging, the located problems
-of a POM failure with session-start first, and the build hook's report read without recursion).
+redaction of URL userinfo after any prefix, credential pairs and headers, the root, the home directory and the
+local repository, redaction before clipping, whole failure messages fenced in failure.md, reproduce commands with
+profiles (optional ids on Maven 4), only the user properties the build reads (never secrets, the rest counted), `-f`,
+goals, quoting and shell-safe selectors, the launcher per shell in the digest and the summary, the `-l` log charset,
+the file-only `-Werror` diagnostic, removal of the previous build's files, private per-build staging with an
+owner-only ACL on Windows, the located problems of a POM failure with session-start first, and the build hook's report
+read without recursion).
 
 `src/it/test_events.sh <extension.jar> <java-home>...` runs real offline builds of a three-module reactor (a compile
 error, a failing test, a warning) under a root whose name holds a space and a non-ASCII letter, and of a second one
@@ -223,5 +226,8 @@ digest identical on a rerun, the warning from the `-l` log (read in Maven's char
 fail-fast build, the reproduce command run as is in Windows PowerShell, a killed build leaving none of the previous
 build's files, a command-line goal, a POM error, the wrapper's reproduce command rerun in bash, cmd.exe and
 PowerShell, a build started elsewhere with `-f`, a mistyped phase, a squatted staging path, whole dependency and rule
-messages, profile and property reproduce commands that fail again, a password that reaches no agent file, the long
-line in bounded time, and a green `clean verify` over the agent files.
+messages, profile, property and profile-activation reproduce commands that fail again (the last also in cmd.exe and
+PowerShell), secrets under unknown names and in token or webhook values that reach no output and are counted, a
+password that reaches no agent file, with `M4=<Maven 4 bin>` Maven 4 reproduce commands with optional profiles that
+rerun their own failure in bash, cmd.exe and PowerShell, the long line in bounded time, and a green `clean verify`
+over the agent files.

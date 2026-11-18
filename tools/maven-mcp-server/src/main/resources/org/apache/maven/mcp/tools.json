@@ -9,7 +9,7 @@
         "goals": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20, "description": "Lifecycle phases or plugin goals, in order."},
         "projects": {"type": "array", "items": {"type": "string"}, "maxItems": 50, "description": "Modules to build (-pl): a relative path or [groupId]:artifactId."},
         "alsoMake": {"type": "boolean", "description": "Also build the modules the selected ones depend on (-am). Default true."},
-        "properties": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}, "description": "User properties, passed as -Dkey=value. Properties that redirect which configuration Maven reads or where it connects (maven.repo.*, maven.settings*, maven.user.*, maven.installation.*, settings.*, user.*, java.*, javax.*, http(s).*, the server's own maven.agent*/maven.events.*, and others listed in the README) are refused."},
+        "properties": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}, "description": "User properties, passed as -Dkey=value. Properties that redirect which configuration Maven reads, where it writes its log or where it connects (maven.repo.*, maven.settings*, maven.user.*, maven.installation.*, settings.*, maven.logFile, maven.logger.*, org.slf4j.*, user.*, java.*, javax.*, http(s).*, proxy*, the server's own maven.agent*/maven.events.*, and others listed in the README) are refused."},
         "offline": {"type": "boolean", "description": "Work offline (-o)."},
         "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 86400, "description": "Stop Maven after this many seconds. Default 900."}
       },

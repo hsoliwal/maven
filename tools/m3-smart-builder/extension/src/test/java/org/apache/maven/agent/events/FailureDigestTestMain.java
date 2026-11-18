@@ -36,6 +36,7 @@ public final class FailureDigestTestMain {
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package fix;\nclass Broken {\n\tint x = missing;\n}\n", StandardCharsets.UTF_8);
         digest(root);
+        markdown(root);
         reproduce();
         windowsAndRedaction(root);
         summary();
@@ -53,9 +54,10 @@ public final class FailureDigestTestMain {
                 "b/src/test/java/fix/BTest.java", 9);
         return new FailureDigest("failure", List.of("verify"), MavenCommands.Launchers.of("mvn"), List.of(
                 new FailureDigest.Failure(1, "fix:a", "a", "compile", "compiler:compile", "Compilation failure", HELP,
-                        List.of(item), List.of(), "mvn -pl a -am compile"),
+                        List.of(item), List.of(), "mvn -pl a -am compile", 0),
                 new FailureDigest.Failure(2, "fix:b", "b", "test", "surefire:test", "There are test failures.", HELP,
-                        List.of(), List.of(result), "mvn -pl b -am -Dtest=fix.BTest#adds -Dsurefire.failIfNoSpecifiedTests=false test")),
+                        List.of(), List.of(result), "mvn -pl b -am -Dtest=fix.BTest#adds"
+                        + " -Dsurefire.failIfNoSpecifiedTests=false test", 2)),
                 List.of("fix:c"), FailureDigest.Advice.of("not-requested"), new FailureDigest.Limits(20, 0, 0));
     }
 
@@ -67,13 +69,13 @@ public final class FailureDigestTestMain {
                 + "\"helpReference\":\"" + HELP + "\",\"diagnostics\":[{\"file\":\"a/src/main/java/fix/Broken.java\","
                 + "\"line\":3,\"column\":9,\"severity\":\"ERROR\",\"rule\":null,\"message\":\"cannot find symbol; symbol: "
                 + "variable missing\",\"context\":{\"startLine\":2,\"markLine\":3,\"lines\":[\"class Broken {\","
-                + "\"    int x = missing;\",\"}\"]}}],\"tests\":[],\"reproduce\":\"mvn -pl a -am compile\"},"
+                + "\"    int x = missing;\",\"}\"]}}],\"tests\":[],\"reproduce\":\"mvn -pl a -am compile\",\"omittedProperties\":0},"
                 + "{\"project\":\"fix:b\",\"path\":\"b\",\"kind\":\"test\",\"mojo\":\"surefire:test\",\"message\":"
                 + "\"There are test failures.\",\"helpReference\":\"" + HELP + "\",\"diagnostics\":[],\"tests\":["
                 + "{\"class\":\"fix.BTest\",\"method\":\"adds\",\"exception\":\"java.lang.AssertionError\",\"message\":"
                 + "\"expected:<3> but was:<4>\",\"stack\":[\"java.lang.AssertionError: expected:<3> but was:<4>\","
                 + "\"at fix.BTest.adds(BTest.java:9)\"]}],\"reproduce\":\"mvn -pl b -am -Dtest=fix.BTest#adds "
-                + "-Dsurefire.failIfNoSpecifiedTests=false test\"}],\"skippedProjects\":[\"fix:c\"],\"advice\":"
+                + "-Dsurefire.failIfNoSpecifiedTests=false test\",\"omittedProperties\":2}],\"skippedProjects\":[\"fix:c\"],\"advice\":"
                 + "{\"status\":\"not-requested\",\"source\":null,\"trusted\":false,\"text\":null},\"limits\":"
                 + "{\"printed\":20,\"omittedDiagnostics\":0,\"omittedTests\":0}}\n", json, "failure.json, exact bytes");
         Check.equal(json, sample(root).json(), "a rerun on the same failure gives the same bytes");
@@ -84,6 +86,27 @@ public final class FailureDigestTestMain {
                 && md.contains("      3>     int x = missing;\n") && md.contains("- `fix.BTest#adds` failed")
                 && md.contains("```\nmvn -pl a -am compile\n```") && md.contains("## Skipped projects\n\n- fix:c\n")
                 && !md.contains("\r"), "failure.md sections, marked source line, reproduce, LF only:\n" + md);
+    }
+
+    /** The failure message in a fence, the left-out properties counted after their command, the advice fenced. */
+    private static void markdown(Path root) {
+        String md = sample(root).markdown();
+        Check.that(md.contains("`compiler:compile` failed:\n\n```\nCompilation failure\n```\n"), "message fenced:\n" + md);
+        Check.that(md.contains("test\n```\n\n(2 user properties omitted)\n") && !md.contains("(0 user"),
+                "the omitted properties counted after their command:\n" + md);
+        advice(root);
+    }
+
+    /** Advice text is redacted like a message and fenced, so it can neither leak a credential nor add a section. */
+    private static void advice(Path root) {
+        FailureDigest.Advice advice = new FailureDigest.Advice("available", "hook", "use https://u:pw@h/x and "
+                + root.resolve("a").resolve("B.java") + "\n## Limits\nnone").clean(Redact.Places.of(root));
+        String sep = root.getFileSystem().getSeparator();
+        Check.equal("use https://***@h/x and a" + sep + "B.java\n## Limits\nnone", advice.text(), "advice redacted");
+        FailureDigest digest = new FailureDigest("failure", List.of("verify"), MavenCommands.Launchers.of("mvn"),
+                sample(root).failures(), List.of(), advice, new FailureDigest.Limits(20, 0, 0));
+        Check.that(digest.markdown().contains("(never trusted).\n\n```\nuse https://***@h/x and a" + sep
+                + "B.java\n## Limits\nnone\n```\n"), "advice fenced:\n" + digest.markdown());
     }
 
     private static void reproduce() {

@@ -29,9 +29,10 @@ import java.util.stream.Collectors;
 
 /**
  * The shortest command that reruns one failure: the build's options ({@link ReproduceOptions}: {@code -f},
- * profiles, user properties), then the failed module with what it needs, up to the failed step, and for tests only
- * the failed ones; a goal-level failure reruns the build's goals. Spelling comes from {@link MavenCommands}; every
- * argument is one every shell keeps unchanged inside double quotes, so only the launcher differs per shell.
+ * profiles), the user properties the build or the failed mojo reads ({@link ReproduceProperties}, the others counted),
+ * then the failed module with what it needs, up to the failed step, and for tests only the failed ones; a goal-level
+ * failure reruns the build's goals. Spelling comes from {@link MavenCommands}; every argument is one every shell keeps
+ * unchanged inside double quotes, so only the launcher differs per shell.
  */
 final class ReproduceCommand {
     /** Above this many failed tests the selector names classes only. */
@@ -39,24 +40,49 @@ final class ReproduceCommand {
     private static final Pattern SAFE_CLASS = Pattern.compile("[A-Za-z0-9_.*]++");
     private static final Pattern SAFE_METHOD = Pattern.compile("[A-Za-z0-9_]++");
 
-    /** What the reproduce commands of one build share: launcher, options before {@code -pl}, the build's goals. */
-    record Build(String launcher, List<String> options, List<String> goals) {}
+    /**
+     * What the reproduce commands of one build share: launcher, options before the properties, the build's goals and
+     * its user properties.
+     */
+    record Build(String launcher, List<String> options, List<String> goals, ReproduceProperties properties) {
+        /** A build without user properties. */
+        Build(String launcher, List<String> options, List<String> goals) {
+            this(launcher, options, goals, ReproduceProperties.NONE);
+        }
+    }
 
     /**
      * One failure: its kind (compile, testCompile, test, integration-test, model, other), the module selector ({@code
      * -pl}; "" when no project failed), error diagnostics, failed tests, the failed mojo's phase ("" when no mojo
-     * failed) and, for a goal run from the command line, its {@code g:a:v:goal} (else "").
+     * failed), for a goal run from the command line its {@code g:a:v:goal} (else "") and the property names the failed
+     * mojo reads.
      */
     record Failed(String kind, String module, List<Diagnostic> errors, List<SurefireReports.TestCase> tests,
-            String phase, String goal) {}
+            String phase, String goal, Set<String> reads) {
+        /** A failure whose mojo reads no property. */
+        Failed(String kind, String module, List<Diagnostic> errors, List<SurefireReports.TestCase> tests, String phase,
+                String goal) {
+            this(kind, module, errors, tests, phase, goal, Set.of());
+        }
+    }
+
+    /** A reproduce command and the number of user properties it leaves out. */
+    record Reproduce(String command, int omitted) {}
 
     private ReproduceCommand() {}
 
     /** The command line that reruns {@code failed}. */
     static String of(Build build, Failed failed) {
+        return reproduce(build, failed).command();
+    }
+
+    /** The command line that reruns {@code failed}, with the count of the user properties it leaves out. */
+    static Reproduce reproduce(Build build, Failed failed) {
+        ReproduceProperties.Selection properties = build.properties().select(failed.reads());
         List<String> args = new ArrayList<>(build.options());
+        args.addAll(properties.args());
         args.addAll(arguments(build, failed));
-        return MavenCommands.line(build.launcher(), args);
+        return new Reproduce(MavenCommands.line(build.launcher(), args), properties.omitted());
     }
 
     private static List<String> arguments(Build build, Failed f) {

@@ -112,13 +112,16 @@ names and values, and test selections are matched against narrow character sets 
 `% ! ^ & | < > ( ) $ ; \``, may not start with `-` (so a client cannot add options of its own), and are limited in
 length and count. Paths the server adds are checked for the characters cmd.exe expands. The properties the server
 sets itself (`maven.agent*`, `maven.events.*`, `style.color`, ...) and `maven.ext.class.path` are refused, and so
-are the properties that redirect which configuration Maven reads or where it connects: the local repository
-(`maven.repo.*`), settings and toolchains (`maven.settings*`, `maven.user.*`, `maven.installation.*`,
-`maven.project.*`, `settings.*`, `org.apache.maven.*`: the equivalents of `-s`, `-gs` and `-t`), `maven.config`,
-`maven.mainClass`, `maven.boot*`, the resolver (`maven.resolver.*`, `aether.*`), `classworlds.*`, JVM and network
-properties (`user.*` such as `user.home`, `java.*`, `javax.*` such as a trust store, `jdk.*`, `sun.*`, `http.*`,
-`https.*`, `ftp.*`, `socksProxy*`) and the build hook's switches (`chromellm.*`, `m3.smart.*`, which name programs
-it starts). A refused call starts no Maven process and creates no run directory.
+are the properties that redirect which configuration Maven reads, where it writes its log or where it connects:
+the local repository (`maven.repo.*`), settings and toolchains (`maven.settings*`, `maven.user.*`,
+`maven.installation.*`, `maven.project.*`, `settings.*`, `org.apache.maven.*`: the equivalents of `-s`, `-gs` and
+`-t`), `maven.config`, `maven.mainClass`, `maven.boot*`, the log file and logger (`maven.logFile`, `maven.logger.*`,
+`org.slf4j.*` such as `org.slf4j.simpleLogger.logFile`: the equivalents of `-l`, which truncate any file the server's
+user can write or open a UNC path), the build cache (`maven.build.cache.*`), the transports (`maven.wagon.*`), the
+console library (`jansi.*`, `library.jansi.*`), the resolver (`maven.resolver.*`, `aether.*`), `classworlds.*`, JVM
+and network properties (`user.*` such as `user.home`, `java.*`, `javax.*` such as a trust store, `jdk.*`, `sun.*`,
+`http.*`, `https.*`, `ftp.*`, `socks*`, the legacy `proxy*`) and the build hook's switches (`chromellm.*`,
+`m3.smart.*`, which name programs it starts). A refused call starts no Maven process and creates no run directory.
 
 When the launcher is a `.cmd` script (`mvn.cmd`, `mvnw.cmd`), cmd.exe also splits the script's parameters at `=`
 and `,`, and `mvn.cmd` scans those pieces for `-f`/`--file` to find the project's `.mvn/jvm.config` and
@@ -184,15 +187,19 @@ error answer never interleaves with an SDK message.
 project the server was started for. That is arbitrary process execution with the server's user rights: a plugin goal
 such as `exec:exec` runs any program, `clean` deletes the build output, `deploy` publishes. The character checks
 above keep a client from adding Maven options of its own, and the refused properties keep it from pointing Maven at
-other settings, toolchains, a local repository, a trust store or a proxy by a property; neither limits what the named
-goals do (a goal may itself read any file the server's user can read). Start the server only for projects and
-clients you trust, let the MCP client ask before each `build` and `test` call (they are marked destructive), and run
-it in a container or a throwaway checkout when the client is not supervised.
+other settings, toolchains, a local repository, a log file, a trust store or a proxy by a property; neither limits
+what the named goals do (a goal may itself read any file the server's user can read). Start the server only for
+projects and clients you trust, let the MCP client ask before each `build` and `test` call (they are marked
+destructive), and run it in a container or a throwaway checkout when the client is not supervised.
 
 Every string in an answer, at any depth, and every error message pass the build-events extension's credential
-redaction (`Redact.secrets`, shaded into the jar, the same code that cleans the agent files): `user:password@` of a
-URL becomes `***@`, also in the raw `[ERROR]` lines of the Maven log that `build`, `explain_failure`,
-`effective_pom`, `dependency_tree` and `describe_goal` return, and a capped line is redacted before it is cut.
+redaction (`Redact.secrets`, shaded into the jar, the same code that cleans the agent files): the userinfo of a URL
+becomes `***@` whatever precedes the scheme (`1https://`, `%22https://`) and also when the password holds `/` or
+`@`; the value of a `password=`, `passwd=`, `pwd=`, `passphrase=`, `token=`, `secret=`, `api_key=`, `access_key=`,
+`private_key=`, `login=`, `credentials=` or `signature=` pair (any case, as in a JDBC URL) becomes `***`; so does an
+`Authorization:` header value and a bearer token. This holds also in the raw `[ERROR]` lines of the Maven log that
+`build`, `explain_failure`, `effective_pom`, `dependency_tree` and `describe_goal` return, and a capped line is
+redacted before it is cut.
 
 ## Client configuration
 

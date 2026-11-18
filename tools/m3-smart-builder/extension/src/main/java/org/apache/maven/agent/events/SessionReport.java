@@ -30,8 +30,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.maven.exception.DefaultExceptionHandler;
+import org.apache.maven.execution.MavenExecutionRequest;
 
 /**
  * The end of a recorded build: warnings from the {@code -l} log, repeat counts, the {@code session-end} event, the
@@ -61,7 +63,7 @@ final class SessionReport {
         recorder.writer().emitFinal("session-end", sessionEnd(recorder, outcome, notes, digest.isPresent()));
         recorder.writer().publish(settings.eventsFile());
         agentFiles(settings, digest);
-        summary(recorder, outcome, failures, digest.isPresent());
+        summary(recorder, outcome, failures, digest.isPresent(), MavenCommands.Launchers.of(build.launcher()));
     }
 
     /** The diagnostics known only at the end: the log's, a POM failure's model problems, then the repeat counts. */
@@ -107,7 +109,7 @@ final class SessionReport {
                 .map(ReactorIndex.Module::index).orElse(Integer.MAX_VALUE)));
         if (notes.isEmpty()) {
             exceptions.stream().limit(3).forEach(e -> notes.add(new BuildRecorder.FailureNote("",
-                    modelProblems(e).isEmpty() ? "other" : "model", "", "", "", e)));
+                    modelProblems(e).isEmpty() ? "other" : "model", "", "", "", e, Set.of())));
         }
         return notes;
     }
@@ -121,12 +123,15 @@ final class SessionReport {
         }
     }
 
-    /** What every reproduce command of this build shares: the launcher where it ran, its options and goals. */
+    /** What every reproduce command of this build shares: the launcher where it ran, options, goals, properties. */
     private static ReproduceCommand.Build build(BuildRecorder recorder) {
         Path root = recorder.settings().root();
-        Path workingDirectory = ReproduceOptions.workingDirectory(recorder.request()).orElse(root);
-        return new ReproduceCommand.Build(MavenCommands.launcher(workingDirectory),
-                ReproduceOptions.of(recorder.request(), root), recorder.request().getGoals());
+        MavenExecutionRequest request = recorder.request();
+        Path workingDirectory = ReproduceOptions.workingDirectory(request).orElse(root);
+        ReproduceProperties properties = ReproduceProperties.of(request.getUserProperties(),
+                ReproduceOptions.configured(request, root), PropertyReads.build(request, recorder.session()));
+        return new ReproduceCommand.Build(MavenCommands.launcher(workingDirectory), ReproduceOptions.of(request, root),
+                request.getGoals(), properties);
     }
 
     private static FailureDigest.Failure failure(BuildRecorder recorder, ReproduceCommand.Build build,
@@ -138,12 +143,14 @@ final class SessionReport {
         List<TestResult> tests = recorder.tests().failed(note.project());
         List<FailureDigest.Item> items = errors.stream().limit(settings.printLimit()).map(d -> new FailureDigest.Item(d,
                 SourceWindow.read(settings.root(), d.file(), d.line(), settings.context()))).collect(Collectors.toList());
-        String reproduce = ReproduceCommand.of(build, new ReproduceCommand.Failed(note.kind(), note.project().isEmpty()
-                ? "" : ReproduceCommand.projectArg(path, note.project()), errors, tests.stream().map(TestResult::test)
-                .collect(Collectors.toList()), note.phase(), note.goal()));
+        ReproduceCommand.Reproduce reproduce = ReproduceCommand.reproduce(build, new ReproduceCommand.Failed(
+                note.kind(), note.project().isEmpty() ? "" : ReproduceCommand.projectArg(path, note.project()), errors,
+                tests.stream().map(TestResult::test).collect(Collectors.toList()), note.phase(), note.goal(),
+                note.reads()));
         return new FailureDigest.Failure(module.map(ReactorIndex.Module::index).orElse(0), note.project(), path,
                 note.kind(), note.mojo(), message(note.cause(), settings), helpReference(note.cause()), items,
-                tests.stream().limit(settings.printLimit()).collect(Collectors.toList()), reproduce);
+                tests.stream().limit(settings.printLimit()).collect(Collectors.toList()), reproduce.command(),
+                reproduce.omitted());
     }
 
     /** The whole failure message, bounded: every line of a dependency, plugin or rule failure keeps its reason. */
@@ -179,7 +186,8 @@ final class SessionReport {
         Path projectDir = recorder.index().byId(notes.get(0).project()).map(ReactorIndex.Module::basedir)
                 .orElse(settings.root());
         FailureDigest.Advice advice = AdviceBridge.advise(recorder.request().getUserProperties(),
-                recorder.request().getSystemProperties(), localRepository(recorder), projectDir, settings.eventsLog());
+                recorder.request().getSystemProperties(), localRepository(recorder), projectDir, settings.eventsLog())
+                .clean(settings.places());
         return new FailureDigest("failure", recorder.request().getGoals(), launchers, failures, skipped(recorder), advice,
                 new FailureDigest.Limits(limit, omittedDiagnostics, omittedTests));
     }
@@ -248,14 +256,14 @@ final class SessionReport {
     }
 
     private static void summary(BuildRecorder recorder, String outcome, List<FailureDigest.Failure> failures,
-            boolean digest) throws IOException {
+            boolean digest, MavenCommands.Launchers launchers) throws IOException {
         AgentSettings settings = recorder.settings();
         if (!settings.agent() && settings.stdout() != AgentSettings.Stdout.SUMMARY) {
             return;
         }
         List<String> files = files(settings, digest);
         List<String> lines = SummaryPrinter.lines(header(recorder, outcome), failures, skipped(recorder),
-                recorder.diagnostics().of(DiagnosticLines.WARNING, ""), files, settings.printLimit());
+                recorder.diagnostics().of(DiagnosticLines.WARNING, ""), files, settings.printLimit(), launchers);
         String text = SummaryPrinter.bounded(lines, settings.summaryBytes(), files.get(0));
         if (settings.agent()) {
             Files.writeString(settings.agentDir().resolve("summary.txt"), text, StandardCharsets.UTF_8);

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -45,9 +46,11 @@ import org.apache.maven.project.MavenProject;
 final class BuildRecorder {
     /**
      * The first failure of a project: kind, mojo and phase of the failed step (empty when no mojo failed), the
-     * {@code g:a:v:goal} of a failed goal run from the command line (else empty) and the cause.
+     * {@code g:a:v:goal} of a failed goal run from the command line (else empty), the cause and the property names the
+     * failed mojo reads (none when no mojo failed).
      */
-    record FailureNote(String project, String kind, String mojo, String phase, String goal, Throwable cause) {}
+    record FailureNote(String project, String kind, String mojo, String phase, String goal, Throwable cause,
+            Set<String> reads) {}
 
     /** Characters of a mojo failure message that are searched for diagnostics. */
     static final int MAX_PARSED_CHARS = 64 * 1024;
@@ -131,7 +134,7 @@ final class BuildRecorder {
         long millis = timeline.end(MojoTimeline.key(project)).map(MojoTimeline.Start::elapsedMillis).orElse(0L);
         outcomes.put(id, outcome);
         if ("failure".equals(outcome)) {
-            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", "", cause));
+            failures.putIfAbsent(id, new FailureNote(id, "other", "", "", "", cause, Set.of()));
         }
         writer.emit("project-end", projectFields(project).put("outcome", outcome).put("durationMs", millis));
     }
@@ -179,7 +182,8 @@ final class BuildRecorder {
     private void mojoFailed(MavenProject project, MojoExecution mojo, Throwable cause) {
         String id = ReactorIndex.id(project);
         failures.putIfAbsent(id, new FailureNote(id, MojoNames.kind(mojo), MojoNames.name(mojo),
-                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""), MojoNames.cliGoal(mojo), cause));
+                Optional.ofNullable(mojo.getLifecyclePhase()).orElse(""), MojoNames.cliGoal(mojo), cause,
+                PropertyReads.mojo(mojo)));
         diagnostics.accept(DiagnosticLines.parse(JsonText.clip(message(cause), MAX_PARSED_CHARS), DiagnosticLines.ERROR,
                 MojoNames.name(mojo), project.getArtifactId()), index, index.find(project), MojoNames.source(mojo));
     }

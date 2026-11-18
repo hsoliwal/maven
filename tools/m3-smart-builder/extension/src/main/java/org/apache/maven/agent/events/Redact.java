@@ -19,6 +19,7 @@
 package org.apache.maven.agent.events;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -27,16 +28,33 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Message text fit for an agent file: no credentials of {@code scheme://user:password@host} URLs, no terminal
- * colours, the build root's absolute path written relative, the local repository as {@code <local-repo>} and the home
- * directory as {@code ~}, so files are portable, stable across checkouts and free of user names. Every pattern runs
- * in linear time: a scheme starts only where no scheme character precedes it and is at most 64 characters long, and
- * the possessive quantifiers never backtrack. Messages are clipped before they are redacted. {@link #secrets} is the
- * one credential redaction of the build events extension and of the MCP server, which shades this class.
+ * Message text fit for an agent file: no credentials (the userinfo of {@code scheme://user:password@host} URLs,
+ * {@code password=}-like pairs, {@code Authorization} headers and bearer tokens), no terminal colours, the build
+ * root's absolute path written relative, the local repository as {@code <local-repo>} and the home directory as
+ * {@code ~}, so files are portable, stable across checkouts and free of user names. A URL's userinfo is found from the
+ * literal {@code ://}, whatever precedes it: each run of characters after it up to white space, a quote or an angle
+ * bracket is split at every further {@code ://}, and in each part everything before its last {@code @} is userinfo
+ * when it holds no '/' or a ':' before its first '/' (a password may hold '/' and '@'; a path such as
+ * {@code host/@scope} is no userinfo). Every pattern runs in linear time: each run is matched once, possessively. A
+ * message is redacted within a bounded window first, a credential cut at the window's end is masked, and only then
+ * is the text shrunk and clipped. {@link #secrets} is the one credential redaction of the build events extension and
+ * of the MCP server, which shades this class.
  */
 public final class Redact {
-    private static final Pattern CREDENTIALS =
-            Pattern.compile("(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]{0,63}+://)[^/\\s@]{1,8192}+@");
+    /** A run after {@code ://}: what may hold a URL's userinfo, host and path. */
+    private static final Pattern URL_RUN = Pattern.compile("://[^\\s\"'<>]*+");
+    /** A {@code name=value} pair whose value is a credential; the value ends at a separator, quote or white space. */
+    private static final Pattern PAIR = Pattern.compile("(?i)((?:passw(?:or)?d|passphrase|pwd|token|secret|api[_-]?key"
+            + "|access[_-]?key|private[_-]?key|login|credentials?|signature)=)[^\\s&;,\"'<>]++");
+    /** An {@code Authorization} header (or {@code authorization=}) and its value, with or without a scheme word. */
+    private static final Pattern AUTHORIZATION = Pattern.compile("(?i)(authorization\\s*+[:=]\\s*+"
+            + "(?:(?:basic|bearer|token|digest|negotiate|ntlm)\\s++)?)[^\\s,;\"'<>]++");
+    /** A bearer token outside a header: the word bearer and at least eight token characters. */
+    private static final Pattern BEARER = Pattern.compile("(?i)(\\bbearer\\s++)[A-Za-z0-9._~+/=-]{8,}+");
+    /** What may follow a cut {@code ://} at the end of a window: a userinfo whose '@' was cut away. */
+    private static final Pattern OPEN_USERINFO = Pattern.compile("[^\\s\"'<>@]*+");
+    private static final String SCHEME_END = "://";
+    private static final Pattern SCHEME_SPLIT = Pattern.compile(SCHEME_END, Pattern.LITERAL);
     private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;]*+[A-Za-z]");
     /** A place's name is replaced where it ends: before a separator, a character no file name holds, or the end. */
     private static final String PLACE_END = "(?=[/\\\\)\"'\\s,;:]|$)";
@@ -61,7 +79,25 @@ public final class Redact {
     /** {@code text} with credentials and colours removed. */
     public static String secrets(String text) {
         String plain = ANSI.matcher(text).replaceAll("");
-        return CREDENTIALS.matcher(plain).replaceAll("$1***@");
+        String urls = URL_RUN.matcher(plain).replaceAll(run -> Matcher.quoteReplacement(userinfo(run.group())));
+        String pairs = PAIR.matcher(urls).replaceAll("$1***");
+        return BEARER.matcher(AUTHORIZATION.matcher(pairs).replaceAll("$1***")).replaceAll("$1***");
+    }
+
+    /** A run starting with {@code ://}, each of its {@code ://} parts without userinfo. */
+    private static String userinfo(String run) {
+        return Arrays.stream(SCHEME_SPLIT.split(run.substring(SCHEME_END.length()), -1)).map(Redact::withoutUserinfo)
+                .collect(Collectors.joining(SCHEME_END, SCHEME_END, ""));
+    }
+
+    /** One part after {@code ://}: what precedes its last '@' becomes {@code ***} when it is a userinfo. */
+    private static String withoutUserinfo(String part) {
+        int at = part.lastIndexOf('@');
+        String userinfo = at > 0 ? part.substring(0, at) : "";
+        int slash = userinfo.indexOf('/');
+        int colon = userinfo.indexOf(':');
+        boolean credential = !userinfo.isEmpty() && (slash < 0 || colon >= 0 && colon < slash);
+        return credential ? "***" + part.substring(at) : part;
     }
 
     /** {@code text} with every spelling of {@code root} followed by a separator removed ({@code /C:/r/a} gives a). */
@@ -91,24 +127,33 @@ public final class Redact {
     }
 
     /**
-     * A whole message for the digest and {@code mojo-end}: its non-blank lines (trailing white space removed) joined
-     * by LF, clipped, cleaned, with its places named, bounded to {@code max} characters.
+     * A whole message for the digest and {@code mojo-end}: redacted within its window, then its non-blank lines
+     * (trailing white space removed) joined by LF, with its places named, bounded to {@code max} characters.
      */
     static String message(String message, Places places, int max) {
-        String text = message == null ? "" : clipFirst(message, max);
-        String lines = text.lines().map(String::stripTrailing).filter(line -> !line.isBlank())
+        String lines = window(message, max).lines().map(String::stripTrailing).filter(line -> !line.isBlank())
                 .collect(Collectors.joining("\n"));
-        return JsonText.clip(places(secrets(lines), places).strip(), max);
+        return JsonText.clip(places(lines, places).strip(), max);
     }
 
-    /** A whole message, clipped, cleaned, with its places named and bounded. */
+    /** A whole message, redacted within its window, with its places named and bounded. */
     static String clean(String message, Places places, int max) {
-        String text = message == null ? "" : clipFirst(message, max);
-        return JsonText.clip(places(secrets(text), places).strip(), max);
+        return JsonText.clip(places(window(message, max), places).strip(), max);
     }
 
-    private static String clipFirst(String text, int max) {
+    /**
+     * The first {@code PRE_CLIP_FACTOR * max + PRE_CLIP_SLACK} characters of {@code text}, redacted; when the text was
+     * longer, a URL run at the cut that has not reached its '@' yet is masked after its {@code ://}.
+     */
+    private static String window(String text, int max) {
         int head = (int) Math.min(Integer.MAX_VALUE, (long) max * PRE_CLIP_FACTOR + PRE_CLIP_SLACK);
-        return text.length() > head ? JsonText.clip(text, head) : text;
+        if (text == null || text.length() <= head) {
+            return text == null ? "" : secrets(text);
+        }
+        String redacted = secrets(text.substring(0, head));
+        int scheme = redacted.lastIndexOf(SCHEME_END);
+        boolean open = scheme >= 0 && OPEN_USERINFO.matcher(redacted).region(scheme + SCHEME_END.length(),
+                redacted.length()).matches();
+        return open ? redacted.substring(0, scheme) + SCHEME_END + "***" : redacted;
     }
 }

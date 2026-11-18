@@ -18,15 +18,20 @@
  */
 package org.apache.maven.agent.events;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * What failed and how to rerun it, as {@code failure.json} and {@code failure.md} rendered from the same data:
  * failures in reactor order with their error diagnostics (each with its source lines), failed tests and a reproduce
- * command, and the launcher as each shell spells it; skipped projects; advice, never trusted. No durations,
- * timestamps or absolute paths, so a rerun of the same failure writes the same bytes.
+ * command with the count of the user properties it leaves out, and the launcher as each shell spells it; skipped
+ * projects; advice, never trusted. In failure.md every text that may span lines (the failure message, a multi-line
+ * test message, stack lines, the advice) sits in a fenced block longer than any backtick run it holds, so no message
+ * line can start a section or close a fence. No durations, timestamps or absolute paths, so a rerun of the same
+ * failure writes the same bytes.
  */
 final class FailureDigest {
     /** A diagnostic with the source lines around it. */
@@ -42,14 +47,21 @@ final class FailureDigest {
 
     /** One failed project. */
     record Failure(int index, String project, String path, String kind, String mojo, String message,
-            String helpReference, List<Item> diagnostics, List<TestResult> tests, String reproduce) {
+            String helpReference, List<Item> diagnostics, List<TestResult> tests, String reproduce,
+            int omittedProperties) {
         JsonText.Obj json() {
             return new JsonText.Obj().put("project", JsonText.orNull(project)).put("path", path).put("kind", kind)
                     .put("mojo", JsonText.orNull(mojo)).put("message", message)
                     .put("helpReference", JsonText.orNull(helpReference))
                     .put("diagnostics", diagnostics.stream().map(Item::json).collect(Collectors.toList()))
                     .put("tests", tests.stream().map(TestResult::digest).collect(Collectors.toList()))
-                    .put("reproduce", reproduce);
+                    .put("reproduce", reproduce).put("omittedProperties", omittedProperties);
+        }
+
+        /** {@code (2 user properties omitted)}; "" when the reproduce command leaves none out. */
+        String omittedNote() {
+            return omittedProperties == 0 ? "" : "(" + omittedProperties + " user propert"
+                    + (omittedProperties == 1 ? "y" : "ies") + " omitted)";
         }
     }
 
@@ -63,6 +75,11 @@ final class FailureDigest {
             return new JsonText.Obj().put("status", status).put("source", JsonText.orNull(source))
                     .put("trusted", false).put("text", JsonText.orNull(text));
         }
+
+        /** The advice with its text redacted like a message (credentials, places) and bounded. */
+        Advice clean(Redact.Places places) {
+            return new Advice(status, source, Redact.clean(text, places, AdviceBridge.MAX_TEXT_CHARS));
+        }
     }
 
     /** Diagnostics and tests per failure ({@code printed}) and what was left out. */
@@ -72,6 +89,8 @@ final class FailureDigest {
                     .put("omittedTests", omittedTests);
         }
     }
+
+    private static final Pattern BACKTICKS = Pattern.compile("`++");
 
     private final String outcome;
     private final List<String> goals;
@@ -99,8 +118,7 @@ final class FailureDigest {
     /** {@code failure.json}. */
     String json() {
         return new JsonText.Obj().put("v", 1).put("outcome", outcome).put("goals", goals)
-                .put("launcher", new JsonText.Obj().put("sh", launchers.sh()).put("powershell", launchers.powershell())
-                        .put("cmd", launchers.cmd()))
+                .put("launcher", launchers.json())
                 .put("failures", failures.stream().map(Failure::json).collect(Collectors.toList()))
                 .put("skippedProjects", skipped).put("advice", advice.json()).put("limits", limits.json()).text()
                 + "\n";
@@ -116,8 +134,8 @@ final class FailureDigest {
         md.append(skipped.isEmpty() ? "" : skipped.stream().map(id -> "- " + id + "\n")
                 .collect(Collectors.joining("", "\n## Skipped projects\n\n", "")));
         md.append("\n## Advice\n\nStatus: ").append(advice.status()).append(" (never trusted).\n");
-        if (!advice.text().isEmpty()) {
-            md.append("\n").append(advice.text().strip()).append('\n');
+        if (!advice.text().isBlank()) {
+            fenced(md.append('\n'), "", advice.text().strip().lines().collect(Collectors.toList()));
         }
         md.append("\n## Limits\n\nUp to ").append(limits.printed()).append(" diagnostics and tests per failure; ")
                 .append(limits.omittedDiagnostics()).append(" diagnostics and ").append(limits.omittedTests())
@@ -127,11 +145,16 @@ final class FailureDigest {
 
     private static void failure(StringBuilder md, Failure f) {
         md.append("\n## ").append(f.path()).append(" (").append(f.project()).append("): ").append(f.kind()).append("\n\n");
-        md.append(f.mojo().isEmpty() ? "The project" : "`" + f.mojo() + "`").append(" failed: ").append(f.message())
-                .append('\n');
-        if (!f.helpReference().isEmpty()) {
-            md.append("\nHelp: ").append(f.helpReference()).append('\n');
-        }
+        md.append(f.mojo().isEmpty() ? "The project" : "`" + f.mojo() + "`").append(" failed:\n\n");
+        fenced(md, "", f.message().lines().collect(Collectors.toList()));
+        md.append(f.helpReference().isEmpty() ? "" : "\nHelp: " + f.helpReference() + "\n");
+        details(md, f);
+        fenced(md.append("\n### Reproduce\n\n"), "", List.of(f.reproduce()));
+        md.append(f.omittedNote().isEmpty() ? "" : "\n" + f.omittedNote() + "\n");
+    }
+
+    /** The diagnostics and failed tests of a failure, each under its heading when there are any. */
+    private static void details(StringBuilder md, Failure f) {
         if (!f.diagnostics().isEmpty()) {
             md.append("\n### Diagnostics\n");
             f.diagnostics().forEach(item -> item(md, item));
@@ -140,13 +163,22 @@ final class FailureDigest {
             md.append("\n### Failed tests\n");
             f.tests().forEach(test -> test(md, test));
         }
-        md.append("\n### Reproduce\n\n```\n").append(f.reproduce()).append("\n```\n");
+    }
+
+    /** {@code lines}, each after {@code indent}, in a fence of more backticks than any run in them (at least 3). */
+    static void fenced(StringBuilder md, String indent, List<String> lines) {
+        int longest = lines.stream().flatMap(line -> BACKTICKS.matcher(line).results())
+                .mapToInt(run -> run.group().length()).max().orElse(0);
+        String fence = indent + "`".repeat(Math.max(3, longest + 1));
+        md.append(fence).append('\n');
+        lines.forEach(line -> md.append(indent).append(line).append('\n'));
+        md.append(fence).append('\n');
     }
 
     private static void item(StringBuilder md, Item item) {
         Diagnostic d = item.diagnostic();
-        md.append("\n- `").append(d.location()).append("` ").append(d.severity())
-                .append(d.rule().isEmpty() ? "" : " [" + d.rule() + "]").append(": ").append(d.message()).append('\n');
+        md.append("\n- `").append(d.location()).append("` ").append(d.severity()).append(d.rule().isEmpty() ? ""
+                : " [" + d.rule() + "]").append(": ").append(SummaryPrinter.oneLine(d.message())).append('\n');
         item.window().ifPresent(window -> {
             md.append("\n  ```\n");
             int[] number = {window.startLine()};
@@ -156,11 +188,15 @@ final class FailureDigest {
         });
     }
 
+    /** A test: a one-line message after its exception, a longer one in the fenced block before the stack. */
     private static void test(StringBuilder md, TestResult test) {
+        List<String> message = test.message().lines().collect(Collectors.toList());
+        boolean inline = message.size() <= 1;
         md.append("\n- `").append(test.name()).append("` ").append(test.test().outcome()).append(": ")
-                .append(test.test().exception()).append(test.message().isEmpty() ? "" : ": " + test.message())
-                .append("\n\n  ```\n");
-        test.stack().forEach(line -> md.append("  ").append(line).append('\n'));
-        md.append("  ```\n");
+                .append(test.test().exception()).append(inline && !message.isEmpty() ? ": " + message.get(0) : "")
+                .append("\n\n");
+        List<String> lines = new ArrayList<>(inline ? List.of() : message);
+        lines.addAll(test.stack());
+        fenced(md, "  ", lines);
     }
 }

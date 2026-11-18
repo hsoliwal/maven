@@ -35,6 +35,7 @@ public final class ArgumentGuardTest {
         Checks checks = new Checks("ArgumentGuard");
         accepted(checks);
         refused(checks);
+        logAndProxy(checks);
         shellCharacters(checks);
         windowsLauncher(checks);
         cmdBackstop(checks);
@@ -85,6 +86,16 @@ public final class ArgumentGuardTest {
                 "x"), false))));
         checks.that("ordinary properties still pass", ArgumentGuard.properties(Map.of("skipTests", "true",
                 "maven.compiler.release", "17", "repositoryLayout", "x"), false).size() == 3);
+    }
+
+    /** The equivalents of -l (log files, logger), the build cache, transports, jansi and legacy proxies are refused. */
+    private static void logAndProxy(Checks checks) {
+        List.of("org.slf4j.simpleLogger.logFile", "maven.logFile", "maven.logger.logFile", "maven.build.cache.location",
+                "maven.wagon.http.ssl.insecure", "jansi.tmpdir", "library.jansi.name", "proxyHost", "proxySet",
+                "socksNonProxyHosts", "socksProxyHost", "ftp.proxyHost", "maven.conf", "com.sun.net.ssl.checkRevocation")
+                .forEach(key -> checks.that("log, cache,"
+                + " transport or proxy property " + key, refusedArgument(() -> ArgumentGuard.properties(Map.of(key,
+                "//203.0.113.7/share/x"), false))));
     }
 
     /** Every character a shell treats specially is refused in each kind of value. */

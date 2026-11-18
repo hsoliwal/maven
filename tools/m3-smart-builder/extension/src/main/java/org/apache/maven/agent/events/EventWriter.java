@@ -20,6 +20,7 @@ package org.apache.maven.agent.events;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -28,22 +29,34 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.StreamSupport;
 
 /**
  * The JSON Lines event stream: one object per line, each starting with {@code v}, {@code seq}, {@code tMs}
  * (milliseconds since the stream opened) and {@code type}. Lines are staged outside the build tree, so {@code clean}
- * never meets an open file, and moved to their place by {@link #publish(Path)}. Each build stages in a new private
- * directory ({@value #STAGING_PREFIX}..., owner-only on POSIX) under {@link #stagingBase()}: no existing path is
- * written to, so no other user can stop or forge the stream. Thread-safe.
+ * never meets an open file, and copied to their place by {@link #publish(Path)}. Each build stages in a new private
+ * directory ({@value #STAGING_PREFIX}...) under {@link #stagingBase()}: {@code rwx------} on POSIX, and on Windows an
+ * ACL that allows only the directory's owner, set right after it is made (it then no longer inherits what the base
+ * grants, such as {@code Authenticated Users} under {@code C:\tmp}), and checked; the stream inside inherits it. No
+ * existing path is written to, so no other user can stop or forge the stream. The published file is written new in
+ * its own directory and renamed into place, so it takes that directory's access, not the staging directory's.
+ * Thread-safe.
  */
 final class EventWriter implements AutoCloseable {
     /** Schema version of every line. */
@@ -98,12 +111,33 @@ final class EventWriter implements AutoCloseable {
      * this user and older than {@link #STALE_STAGED}, are removed first; nothing else under {@code base} is touched.
      */
     static EventWriter open(Path base, Consumer<String> echo) throws IOException {
-        Path dir = base.getFileSystem().supportedFileAttributeViews().contains("posix")
-                ? Files.createTempDirectory(base, STAGING_PREFIX,
-                        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
-                : Files.createTempDirectory(base, STAGING_PREFIX);
+        boolean posix = base.getFileSystem().supportedFileAttributeViews().contains("posix");
+        Path dir = posix ? Files.createTempDirectory(base, STAGING_PREFIX,
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+                : ownerOnly(Files.createTempDirectory(base, STAGING_PREFIX));
         removeStale(base, Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS));
         return new EventWriter(dir.resolve(STAGED_NAME), echo);
+    }
+
+    /**
+     * {@code dir} with an ACL that allows only its owner (full access, inherited by what is made inside), when its file
+     * system has ACLs; the ACL is read back, and a directory that still allows anyone else is removed and refused.
+     */
+    static Path ownerOnly(Path dir) throws IOException {
+        AclFileAttributeView view = Files.getFileAttributeView(dir, AclFileAttributeView.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (view == null) {
+            return dir;
+        }
+        UserPrincipal owner = view.getOwner();
+        view.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(owner)
+                .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+                .setFlags(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT).build()));
+        if (view.getAcl().stream().allMatch(entry -> entry.principal().equals(owner))) {
+            return dir;
+        }
+        deleteQuietly(dir);
+        throw new IOException("the staging directory " + dir + " cannot be made private to its owner");
     }
 
     private static void removeStale(Path base, UserPrincipal owner) throws IOException {
@@ -186,15 +220,24 @@ final class EventWriter implements AutoCloseable {
         return dropped;
     }
 
-    /** Closes the stream, moves it to {@code target} (replacing an older file) and removes its directory. */
+    /**
+     * Closes the stream, copies it to a new file beside {@code target}, renames that over {@code target} (replacing an
+     * older file) and removes the staging directory.
+     */
     synchronized void publish(Path target) throws IOException {
         close();
-        Path parent = target.toAbsolutePath().getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
+        Path absolute = target.toAbsolutePath();
+        Files.createDirectories(absolute.getParent());
+        Path incoming = absolute.resolveSibling("." + absolute.getFileName() + "." + UUID.randomUUID() + ".part");
+        try {
+            try (OutputStream out = Files.newOutputStream(incoming, StandardOpenOption.CREATE_NEW)) {
+                Files.copy(staged, out);
+            }
+            Files.move(incoming, absolute, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(incoming);
         }
-        Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING);
-        deleteQuietly(staged.getParent());
+        removeDirectory(staged.getParent());
     }
 
     /** Closes the staged file without publishing it; a published or closed stream ignores further events. */

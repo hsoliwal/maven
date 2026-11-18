@@ -30,9 +30,10 @@ import java.util.stream.Collectors;
  * set and must not start with "-", so a client can never add an option of its own. The sets leave out every
  * character that cmd.exe, a POSIX shell or PowerShell treats specially (white space, quotes, {@code % ! ^ & | < >
  * ( ) $ ; `}), which keeps the arguments inert even though Windows runs {@code mvn.cmd} through cmd.exe. Properties
- * the server sets itself, and properties that redirect which configuration Maven reads or where it connects
- * ({@link #REDIRECTING}: local repository, settings, toolchains, extensions, JVM and network properties, the build
- * hook's switches), are refused.
+ * the server sets itself, and properties that redirect which configuration Maven reads, where it writes its log or
+ * where it connects ({@link #REDIRECTING}: local repository, settings, toolchains, extensions, log files and logger
+ * configuration, the build cache, transports, JVM and network properties, proxies, the build hook's switches), are
+ * refused.
  *
  * <p>When the launcher is a {@code .cmd} script ({@code mvn.cmd}, {@code mvnw.cmd}), cmd.exe also splits the script's
  * parameters at {@code =} and {@code ,}, and {@code mvn.cmd} scans those pieces for {@code -f}/{@code --file} to find
@@ -62,13 +63,18 @@ final class ArgumentGuard {
 
     /**
      * Prefixes of properties that redirect Maven: the equivalents of {@code -s}, {@code -gs}, {@code -t},
-     * {@code -Dmaven.repo.local}, the resolver, the JVM ({@code user.home} moves {@code ~/.m2}), TLS and proxies, and
-     * the build hook ({@code chromellm.}, {@code m3.smart.}: programs it starts).
+     * {@code -Dmaven.repo.local}, {@code maven.conf} (the installation's configuration directory) and {@code -l} ({@code maven.logFile}, Maven 4's {@code maven.logger.*}, Maven 3's
+     * {@code org.slf4j.simpleLogger.logFile}: they truncate any file the user can write, or open a UNC path), the
+     * resolver, the build cache and the Wagon transports, the console library ({@code jansi.}, {@code library.jansi.}:
+     * where it unpacks and loads native code), the JVM ({@code user.home} moves {@code ~/.m2}), TLS and proxies
+     * ({@code http.}, {@code https.}, {@code ftp.}, {@code socks*}, the legacy {@code proxy*}), and the build hook
+     * ({@code chromellm.}, {@code m3.smart.}: programs it starts).
      */
     static final List<String> REDIRECTING = List.of("maven.repo.", "maven.settings", "maven.user.",
-            "maven.installation.", "maven.project.", "maven.resolver.", "maven.config", "maven.mainClass", "maven.boot",
-            "settings.", "org.apache.maven.", "classworlds.", "aether.", "user.", "java.", "javax.", "jdk.", "sun.",
-            "http.", "https.", "ftp.", "socksProxy", "chromellm.", "m3.smart.");
+            "maven.installation.", "maven.project.", "maven.resolver.", "maven.config", "maven.conf", "maven.mainClass",
+            "maven.boot", "maven.logFile", "maven.logger.", "maven.build.cache.", "maven.wagon.", "org.slf4j.", "jansi.",
+            "library.jansi.", "settings.", "org.apache.maven.", "classworlds.", "aether.", "user.", "java.", "javax.",
+            "jdk.", "sun.", "com.sun.", "http.", "https.", "ftp.", "socks", "proxy", "chromellm.", "m3.smart.");
 
     private static final Pattern GOAL = Pattern.compile("[A-Za-z0-9][A-Za-z0-9:._@-]*");
     private static final Pattern PROJECT = Pattern.compile("[A-Za-z0-9:.][A-Za-z0-9:._/-]*");
@@ -156,8 +162,8 @@ final class ArgumentGuard {
             throw new IllegalArgumentException("property " + checked + " is set by the server and cannot be passed");
         }
         if (REDIRECTING.stream().anyMatch(checked::startsWith)) {
-            throw new IllegalArgumentException("property " + checked + " redirects which configuration Maven reads or"
-                    + " where it connects, and cannot be passed");
+            throw new IllegalArgumentException("property " + checked + " redirects which configuration Maven reads,"
+                    + " where it writes its log or where it connects, and cannot be passed");
         }
         return checked;
     }

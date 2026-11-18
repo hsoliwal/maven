@@ -169,6 +169,12 @@ public final class ResultReadersTest {
                 errors);
         String failure = RunResults.failure(dir).toString();
         checks.that("explain_failure: no password", !failure.contains("S3cretPw"), failure);
+        resultCredentials(checks);
+        otherCredentials(checks);
+    }
+
+    /** Every string of a tool result, an error result and a capped string are redacted. */
+    private static void resultCredentials(Checks checks) {
         ObjectNode body = CompactJson.object().put("text", "clone https://u:S3cretPw@h/x");
         body.putArray("list").add("jdbc:mysql://u:S3cretPw@db").addObject().put("deep", "git+ssh://g:S3cretPw@h");
         String result = text(CompactJson.result(body));
@@ -177,6 +183,18 @@ public final class ResultReadersTest {
         checks.that("an error result redacted", !error.contains("S3cretPw"), error);
         checks.that("a capped string redacted before the cut", !CompactJson.cap("https://alice:S3cretPw@h/x", 20)
                 .contains("S3cret"), CompactJson.cap("https://alice:S3cretPw@h/x", 20));
+    }
+
+    /** Whatever precedes a URL's scheme, and credentials outside URLs (pairs, headers), never reach a client. */
+    private static void otherCredentials(Checks checks) {
+        List.of("[ERROR] from/to private (1https://alice:S3cretPw@127.0.0.1:9/repo)", "... %22https://alice:S3cretPw@h/r",
+                "x".repeat(70) + "https://alice:S3cretPw@h", "https://alice:pa/S3cretPw@h", "[ERROR] jdbc:h2:tcp://db/x;"
+                + "USER=sa;PASSWORD=S3cretPw", "jdbc:postgresql://db/x?user=sa&password=S3cretPw",
+                "Authorization: Bearer S3cretPwS3cretPw", "-Dsonar.login=S3cretPw").forEach(line -> checks.that(
+                "capped without the password: " + line, !CompactJson.cap(line, 300).contains("S3cretPw"),
+                CompactJson.cap(line, 300)));
+        String result = text(CompactJson.result(CompactJson.object().put("log", "token=S3cretPw and 1https://u:S3cretPw@h")));
+        checks.that("a result without pairs or prefixed URLs", !result.contains("S3cretPw"), result);
     }
 
     private static String text(io.modelcontextprotocol.spec.McpSchema.CallToolResult result) {

@@ -42,9 +42,9 @@ public final class LlmsTxtRendererTestMain {
             + " and PowerShell (Windows PowerShell 5.1 splits an unquoted `-Dkey.with.dots=value`), or put the options in"
             + " the `MAVEN_ARGS` environment variable; keep `-B -ntp \"-Dstyle.color=never\"`, since `-Dmaven.agent=true`"
             + " alone does not turn off colours or transfer progress\n"
-            + "- One module and the modules it needs: `mvn -pl <path> -am verify`\n\n"
+            + "- One module and the modules it needs: `mvn -pl \"<path>\" -am verify`\n\n"
             + "## Test\n\n"
-            + "- One test: `mvn -pl <path> -am \"-Dtest=<Class>#<method>\" \"-Dsurefire.failIfNoSpecifiedTests=false\""
+            + "- One test: `mvn -pl \"<path>\" -am \"-Dtest=<Class>#<method>\" \"-Dsurefire.failIfNoSpecifiedTests=false\""
             + " test`\n"
             + "- Tests of fix:b: b/src/test/java\n\n"
             + "## Results\n\n"
@@ -89,19 +89,19 @@ public final class LlmsTxtRendererTestMain {
         equal(true, json.contains("\"goals\":[{\"phase\":\"process-resources\",\"plugin\":\"org.apache.maven.plugins:"
                 + "maven-resources-plugin:3.3.1\",\"goal\":\"resources\",\"execution\":\"default-resources\"}"), "goal fields");
         equal(true, json.endsWith("\"commands\":{\"build\":\"mvn verify\",\"agent\":\"mvn -B -ntp -q"
-                + " \\\"-Dstyle.color=never\\\" \\\"-Dmaven.agent=true\\\" verify\",\"module\":\"mvn -pl <path> -am verify\","
-                + "\"test\":\"mvn -pl <path> -am \\\"-Dtest=<Class>#<method>\\\" \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\""
-                + " test\",\"integrationTest\":\"mvn -pl <path> -am \\\"-Dit.test=<Class>#<method>\\\""
+                + " \\\"-Dstyle.color=never\\\" \\\"-Dmaven.agent=true\\\" verify\",\"module\":"
+                + "\"mvn -pl \\\"<path>\\\" -am verify\",\"test\":\"mvn -pl \\\"<path>\\\" -am"
+                + " \\\"-Dtest=<Class>#<method>\\\" \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\""
+                + " test\",\"integrationTest\":\"mvn -pl \\\"<path>\\\" -am \\\"-Dit.test=<Class>#<method>\\\""
                 + " \\\"-Dfailsafe.failIfNoSpecifiedTests=false\\\" \\\"-Dtest=NoUnitTestSelected\\\""
                 + " \\\"-Dsurefire.failIfNoSpecifiedTests=false\\\" verify\"}}\n"), "commands: " + json);
         equal(true, LlmsTxtMojo.same(GOLDEN.replace("\n", "\r\n"), GOLDEN), "a CRLF checkout of the same file is current");
         equal(false, LlmsTxtMojo.same(GOLDEN.replace("fix:c", "fix:d"), GOLDEN), "a changed file is stale");
         equal(false, json.contains("Three modules."), "the POM description is not part of project.json");
-        equal("exec:java", new ProjectDescription.Goal("x", "org.codehaus.mojo:exec-maven-plugin:3.5.0", "java", "e")
-                .shortName(), "prefix of a *-maven-plugin");
-        equal("odd:go", new ProjectDescription.Goal("x", "g:odd:1", "go", "e").shortName(), "an unconventional name");
+        shortNames();
         equal(false, text.contains("One integration test") || text.contains("mvnw.cmd"), "no Failsafe, no wrapper");
         failsafeAndWrapper();
+        launchers();
         System.out.println("LlmsTxtRendererTestMain PASS");
     }
 
@@ -116,14 +116,32 @@ public final class LlmsTxtRendererTestMain {
                 c.dependsOn(), c.sourceRoots(), c.testRoots(), it));
         String text = LlmsTxtRenderer.render(new ProjectDescription(base.name(), base.description(), modules,
                 ProjectDescriber.commands("./mvnw", "verify")));
-        equal(true, text.contains("- One integration test (Failsafe, no unit tests): `./mvnw -pl <path> -am"
+        equal(true, text.contains("- One integration test (Failsafe, no unit tests): `./mvnw -pl \"<path>\" -am"
                 + " \"-Dit.test=<Class>#<method>\" \"-Dfailsafe.failIfNoSpecifiedTests=false\" \"-Dtest=NoUnitTestSelected\""
                 + " \"-Dsurefire.failIfNoSpecifiedTests=false\" verify`\n"), "integration-test command:\n" + text);
         equal(true, text.contains("- Launcher: `./mvnw` as bash runs it; PowerShell and cmd.exe start it as"
                 + " `.\\mvnw.cmd`\n"), "wrapper per shell:\n" + text);
         equal(true, new ProjectDescription(base.name(), base.description(), modules, ProjectDescriber.commands("mvn",
-                "verify")).json().contains("\"integrationTest\":\"mvn -pl <path> -am \\\"-Dit.test=<Class>#<method>"),
+                "verify")).json().contains("\"integrationTest\":\"mvn -pl \\\"<path>\\\" -am \\\"-Dit.test=<Class>#<method>"),
                 "project.json integrationTest command");
+    }
+
+    private static void shortNames() {
+        equal("exec:java", new ProjectDescription.Goal("x", "org.codehaus.mojo:exec-maven-plugin:3.5.0", "java", "e")
+                .shortName(), "prefix of a *-maven-plugin");
+        equal("odd:go", new ProjectDescription.Goal("x", "g:odd:1", "go", "e").shortName(), "an unconventional name");
+    }
+
+    /** project.json gives the launcher as each shell spells it, before the commands. */
+    private static void launchers() {
+        String json = fixture().json();
+        equal(true, json.contains("\"launcher\":{\"sh\":\"mvn\",\"powershell\":\"mvn\",\"cmd\":\"mvn\"},"
+                + "\"commands\":"), "project.json launcher: " + json);
+        ProjectDescription base = fixture();
+        String wrapped = new ProjectDescription(base.name(), base.description(), base.modules(),
+                ProjectDescriber.commands("./mvnw", "verify")).json();
+        equal(true, wrapped.contains("\"launcher\":{\"sh\":\"./mvnw\",\"powershell\":\".\\\\mvnw.cmd\","
+                + "\"cmd\":\".\\\\mvnw.cmd\"}"), "project.json launcher per shell: " + wrapped);
     }
 
     private static void equal(Object expected, Object actual, String what) {

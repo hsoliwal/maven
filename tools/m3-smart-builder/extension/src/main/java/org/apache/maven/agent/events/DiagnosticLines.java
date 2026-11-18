@@ -31,8 +31,9 @@ import java.util.regex.Pattern;
 /**
  * Located diagnostics in build output: Maven compiler ({@code [ERROR] /p/File.java:[12,5] msg}, also without the
  * level as in a mojo failure message), Checkstyle console ({@code [WARN] File.java:3:1: msg [Rule]}), javac
- * ({@code File.java:12: error: msg}) and gcc/clang-style ({@code file:12:5: warning: msg}). A javac
- * {@code symbol:} or {@code location:} line continues the diagnostic above it. Mojo headers
+ * ({@code File.java:12: error: msg}), gcc/clang-style ({@code file:12:5: warning: msg}) and javac's file-only
+ * {@code File.java: warnings found and -Werror specified} (line and column unknown). A javac {@code symbol:} or
+ * {@code location:} line continues the diagnostic above it. Mojo headers
  * ({@code --- compiler:3.13.0:compile (default-compile) @ a ---}) set the mojo and project of what follows; under
  * {@code -T} a diagnostic whose file belongs to a module takes that module's last header instead. Javac warnings get
  * their {@code -Xlint} key as rule. Line formats ported from a build-log recipe (Apache-2.0).
@@ -68,6 +69,9 @@ final class DiagnosticLines {
             Pattern.compile("^([^\\[\\s].*\\.java):(\\d{1,9}+): (error|warning): (.++)$");
     private static final Pattern GCC =
             Pattern.compile("^([^\\[\\s].*\\.\\w++):(\\d{1,9}+):(\\d{1,9}+): (error|warning|note): (.++)$");
+    /** javac under {@code -Werror}: the file whose warnings failed the build, without a line. */
+    private static final Pattern WERROR =
+            Pattern.compile("^([^\\[\\s].*\\.java): ((?:error: )?warnings found and -Werror specified)$");
     private static final Pattern CHECKSTYLE =
             Pattern.compile("^([^\\[\\s].*\\.\\w++):(\\d{1,9}+):(?:(\\d{1,9}+):)? (.++)$");
     /** A Checkstyle message's trailing {@code [RuleName]}. */
@@ -98,7 +102,7 @@ final class DiagnosticLines {
     private final List<Raw> found = new ArrayList<>();
     private final Map<String, String> mojoByArtifact = new HashMap<>();
     private final List<Function<Line, Optional<Raw>>> formats =
-            List.of(this::maven, this::javac, this::gcc, this::checkstyle);
+            List.of(this::maven, this::javac, this::gcc, this::checkstyle, this::werror);
     private String mojo;
     private String artifactId;
     private boolean open;
@@ -206,6 +210,13 @@ final class DiagnosticLines {
         return m.matches()
                 ? Optional.of(raw(severity(m.group(4)), m.group(1), number(m.group(2)), number(m.group(3)), "",
                         m.group(5)))
+                : Optional.empty();
+    }
+
+    /** {@code File.java: warnings found and -Werror specified}: a file-only diagnostic, line and column 0. */
+    private Optional<Raw> werror(Line line) {
+        Matcher m = WERROR.matcher(line.body());
+        return m.matches() ? Optional.of(raw(severity(line, fallbackSeverity), m.group(1), 0, 0, "", m.group(2)))
                 : Optional.empty();
     }
 

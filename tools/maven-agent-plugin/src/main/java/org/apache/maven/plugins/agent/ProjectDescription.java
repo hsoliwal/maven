@@ -21,11 +21,12 @@ package org.apache.maven.plugins.agent;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.maven.agent.events.JsonText;
+import org.apache.maven.agent.events.MavenCommands;
 
 /**
  * A build as an agent needs it, the content of {@code project.json}: modules in reactor order with their module
- * dependencies, root-relative source and test roots and bound goals, and the commands to build and test. No
- * timestamps or absolute paths, so the same build gives the same bytes.
+ * dependencies, root-relative source and test roots and bound goals, the launcher as each shell spells it, and the
+ * commands to build and test. No timestamps or absolute paths, so the same build gives the same bytes.
  *
  * @param name the top-level project's name
  * @param description the top-level project's description, "" when it has none (not written to project.json)
@@ -64,7 +65,7 @@ record ProjectDescription(String name, String description, List<Module> modules,
 
     /**
      * Command lines with {@code <path>} and {@code <Class>#<method>} placeholders, started by {@code launcher}
-     * ({@code mvn} or {@code ./mvnw}, not written to project.json: llms.txt gives its spelling per shell).
+     * ({@code mvn} or {@code ./mvnw}; project.json's {@code launcher} and llms.txt give its spelling per shell).
      */
     record Commands(String launcher, String build, String agent, String module, String test, String integrationTest) {
         JsonText.Obj json() {
@@ -77,6 +78,7 @@ record ProjectDescription(String name, String description, List<Module> modules,
     String json() {
         return new JsonText.Obj().put("v", 1).put("name", name)
                 .put("modules", modules.stream().map(Module::json).collect(Collectors.toList()))
+                .put("launcher", MavenCommands.Launchers.of(commands.launcher()).json())
                 .put("commands", commands.json()).text() + "\n";
     }
 }

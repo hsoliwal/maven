@@ -27,8 +27,8 @@
 #   killed     a build killed while a test runs leaves none of the previous build's agent files behind
 #   cli        a goal run from the command line (default-cli) is reproduced by that goal and its properties
 #   pom        a dependency without a version: kind model, the POM problem with file, line and column, session-start
-#   wrapper    with mvnw/mvnw.cmd stubs: failure.json spells the launcher per shell, and the reproduce command reruns
-#              the failed test in cmd.exe and Windows PowerShell (.\mvnw.cmd) and bash (./mvnw)
+#   wrapper    with mvnw/mvnw.cmd stubs: failure.json and the summary spell the launcher per shell, and the reproduce
+#              command reruns the failed test in cmd.exe and Windows PowerShell (.\mvnw.cmd) and bash (./mvnw)
 #   elsewhere  a build started from the parent directory with -f: the reproduce command carries -f and reruns there
 #   typo       a mistyped phase is reproduced by the build's goals
 #   squat      java.io.tmpdir/maven-build-events taken by a file: the events are still published
@@ -36,8 +36,15 @@
 #   dep        a missing dependency: the digest keeps the whole message, with the reason (offline, not downloaded)
 #   enforcer   a failed rule: the digest and mojo-end keep the rule's message line
 #   profile    -Pstrict (failOnWarning) and -Dmaven.compiler.failOnWarning=true: the reproduce command carries the
-#              profile or the property and, run as is, fails again
+#              profile or the property and, run as is, fails again; the -Werror file is a diagnostic without a line
+#   activation -Dstrict.flag=on activates a profile of prof: the reproduce command carries it (and leaves out a
+#              secret, counted) and fails again in bash, cmd.exe and Windows PowerShell
+#   allowlist  a mistyped phase with secrets under names and values no filter knows (nexus.pw, a Slack webhook, a
+#              GitHub token): none on stdout or in an agent file, "(4 user properties omitted)" instead
 #   secret     dependency:get with a password in remoteRepositories: the password reaches no agent file and no output
+#   maven4     (with M4=<Maven 4 bin directory>) -Pstrict -fae over dep and prof on Maven 4: the reproduce commands
+#              carry the optional "-P?strict", and dep's, whose selection does not define strict, fails again with
+#              its own error (not a missing profile) in bash, cmd.exe and Windows PowerShell; so does prof's
 #   longline   a test prints a 100 KB line with U+2028 into the -l log: the build ends in bounded time
 #   green      fixed sources, clean verify: BUILD SUCCESS summary, failure files removed, no locked file on clean
 # The root directory's name holds a space and a non-ASCII letter, so the -l log of Maven on Java 17 (platform
@@ -45,7 +52,8 @@
 # Usage: test_events.sh <extension.jar> <java-home>... (each JDK runs every case). Needs mvn and, in the local
 # repository, compiler 3.13.0, surefire 3.2.5 with JUnit 4.13.2, resources 3.3.1, jar 3.4.1, clean 3.2.0,
 # enforcer 3.4.1 and dependency 3.6.1.
-# WORK=<dir> keeps the fixture and the outputs there.
+# WORK=<dir> keeps the fixture and the outputs there. MAVEN_ARGS (for example a private -Dmaven.repo.local) reaches every
+# Maven run, the reruns included.
 set -uo pipefail
 EXT=${1:?extension jar}; shift
 [ $# -gt 0 ] || { echo "usage: test_events.sh <extension.jar> <java-home>..."; exit 2; }
@@ -77,7 +85,27 @@ mvnx() { # mvnx <java home> <dir> <out> <args...>; exit status kept in $STATUS; 
     STATUS=$?
 }
 reproduce_of() { # reproduce_of <failure.json> <path>: the reproduce command of the failure at <path>, unescaped
-    sed 's/.*"path":"'"$2"'","kind"//' "$1" | sed 's/"reproduce":"/\n/' | sed -n 2p | sed 's/"}.*//; s/\\"/"/g'
+    sed 's/.*"path":"'"$2"'","kind"//' "$1" | sed 's/"reproduce":"/\n/' | sed -n 2p \
+        | sed 's/","omittedProperties".*//; s/\\"/"/g'
+}
+mvn4x() { # mvn4x <java home> <dir> <out> <args...>: Maven 4 ($M4/mvn) with the extension on its command line
+    local jh=$1 dir=$2 out=$3; shift 3
+    (cd "$dir" && JAVA_HOME="$jh" MAVEN_OPTS="" "$M4/mvn" "-Dmaven.ext.class.path=$EXT" -o -B -ntp -s "$T/settings.xml" "$@") > "$out" 2>&1
+    STATUS=$?
+}
+rerun4() { # rerun4 <java home> <dir> <command> <out> <tag>: the command on Maven 4 in bash, cmd.exe and PowerShell
+    local m4w
+    (cd "$2" && export JAVA_HOME="$1" MAVEN_OPTS="" PATH="$M4:$PATH" && eval "$3 -o -B -ntp -s '$T/settings.xml'") > "$4-bash.txt" 2>&1
+    STATUS=$?; [ "$STATUS" = 1 ] || fail "$5: bash exit $STATUS: $(tail -5 "$4-bash.txt")"
+    if command -v cmd.exe > /dev/null && command -v powershell.exe > /dev/null; then
+        m4w=$(cygpath -w "$M4/mvn.cmd")
+        EXT_OPTS=" " cmd_reproduce "$1" "$2" "\"$m4w\"${3#mvn}" "$4-cmd.txt"
+        [ "$STATUS" = 1 ] || fail "$5: cmd.exe exit $STATUS: $(tail -5 "$4-cmd.txt")"
+        EXT_OPTS=" " pwsh_reproduce "$1" "$2" "& '$m4w'${3#mvn}" "$4-pwsh.txt"
+        [ "$STATUS" = 1 ] || fail "$5: PowerShell exit $STATUS: $(tail -5 "$4-pwsh.txt")"
+    else
+        echo "AGENT_EVENTS_TEST $5 cmd.exe/PowerShell NOT RUN: no cmd.exe or powershell.exe"
+    fi
 }
 bash_reproduce() { # bash_reproduce <java home> <dir> <command> <out>: runs the command as given, in bash, in <dir>
     (cd "$2" && export JAVA_HOME="$1" MAVEN_OPTS="-Dmaven.ext.class.path=$EXT" && eval "$3 -o -B -ntp -s '$T/settings.xml'") > "$4" 2>&1
@@ -85,8 +113,9 @@ bash_reproduce() { # bash_reproduce <java home> <dir> <command> <out>: runs the 
 }
 cmd_reproduce() { # cmd_reproduce <java home> <root> <command> <out>: runs the command in cmd.exe
     local bat="$T/reproduce.cmd"
-    printf '@echo off\r\nchcp 65001 > nul\r\ncd /d "%s"\r\nset "JAVA_HOME=%s"\r\nset "MAVEN_OPTS=-Dmaven.ext.class.path=%s"\r\n%s -o -B -ntp -s "%s"\r\nexit /b %%ERRORLEVEL%%\r\n' \
-        "$(cygpath -w "$2")" "$(cygpath -w "$1")" "$(cygpath -w "$EXT")" "$3" "$(cygpath -w "$T/settings.xml")" > "$bat"
+    printf '@echo off\r\nchcp 65001 > nul\r\ncd /d "%s"\r\nset "JAVA_HOME=%s"\r\nset "MAVEN_OPTS=%s"\r\n%s -o -B -ntp -s "%s"\r\nexit /b %%ERRORLEVEL%%\r\n' \
+        "$(cygpath -w "$2")" "$(cygpath -w "$1")" "${EXT_OPTS:--Dmaven.ext.class.path=$(cygpath -w "$EXT")}" "$3" \
+        "$(cygpath -w "$T/settings.xml")" > "$bat"
     cmd.exe //d //c "$(cygpath -w "$bat")" > "$4" 2>&1
     STATUS=$?
 }
@@ -96,7 +125,7 @@ fixture2() { # fixture2 <dir>: dep (missing dependency), plug (enforcer rule), p
     for m in dep plug prof long; do mkdir -p "$R/$m/src/main/java/fix"; printf 'package fix;\n\npublic class M%s {\n}\n' "$m" > "$R/$m/src/main/java/fix/M$m.java"; done
     pom "$R/dep" dep '<dependencies><dependency><groupId>fix</groupId><artifactId>missing-lib</artifactId><version>9.9</version></dependency></dependencies>'
     pom "$R/plug" plug '<build><plugins><plugin><artifactId>maven-enforcer-plugin</artifactId><executions><execution><id>need-prop</id><goals><goal>enforce</goal></goals><configuration><rules><requireProperty><property>must.be.set</property><message>must.be.set is required</message></requireProperty></rules></configuration></execution></executions></plugin></plugins></build>'
-    pom "$R/prof" prof '<profiles><profile><id>strict</id><properties><maven.compiler.failOnWarning>true</maven.compiler.failOnWarning></properties></profile></profiles>'
+    pom "$R/prof" prof '<profiles><profile><id>strict</id><properties><maven.compiler.failOnWarning>true</maven.compiler.failOnWarning></properties></profile><profile><id>byflag</id><activation><property><name>strict.flag</name></property></activation><properties><maven.compiler.failOnWarning>true</maven.compiler.failOnWarning></properties></profile></profiles>'
     printf 'package fix;\n\npublic class Old {\n    public Integer boxed() {\n        return new Integer(5);\n    }\n}\n' > "$R/prof/src/main/java/fix/Old.java"
     pom "$R/long" long '<dependencies><dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope></dependency></dependencies>'
     mkdir -p "$R/long/src/test/java/fix"
@@ -118,8 +147,9 @@ killed() { # killed <java home> <root> <out>: starts a build, kills Maven's JVM 
 }
 pwsh_reproduce() { # pwsh_reproduce <java home> <root> <command> <out>: runs the command in Windows PowerShell
     local ps1="$T/reproduce.ps1"
-    printf '\xef\xbb\xbfSet-Location -LiteralPath '"'"'%s'"'"'\r\n$env:JAVA_HOME = '"'"'%s'"'"'\r\n$env:MAVEN_OPTS = '"'"'-Dmaven.ext.class.path=%s'"'"'\r\n%s -o -B -ntp -s '"'"'%s'"'"'\r\nexit $LASTEXITCODE\r\n' \
-        "$(cygpath -w "$2")" "$(cygpath -w "$1")" "$(cygpath -w "$EXT")" "$3" "$(cygpath -w "$T/settings.xml")" > "$ps1"
+    printf '\xef\xbb\xbfSet-Location -LiteralPath '"'"'%s'"'"'\r\n$env:JAVA_HOME = '"'"'%s'"'"'\r\n$env:MAVEN_OPTS = '"'"'%s'"'"'\r\n%s -o -B -ntp -s '"'"'%s'"'"'\r\nexit $LASTEXITCODE\r\n' \
+        "$(cygpath -w "$2")" "$(cygpath -w "$1")" "${EXT_OPTS:--Dmaven.ext.class.path=$(cygpath -w "$EXT")}" "$3" \
+        "$(cygpath -w "$T/settings.xml")" > "$ps1"
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ps1")" > "$4" 2>&1
     STATUS=$?
 }
@@ -175,7 +205,7 @@ for JH in "$@"; do
 
     if command -v powershell.exe > /dev/null; then
         mvnx "$JH" "$R" "$O/quiet3.txt" -q -Dmaven.agent=true -fae verify
-        RB=$(sed -n 's/.*"path":"b","kind":"test".*"reproduce":"\(mvn -pl b [^}]*\)"}.*/\1/p' "$A/failure.json" | sed 's/\\"/"/g')
+        RB=$(reproduce_of "$A/failure.json" b)
         [ -n "$RB" ] || fail "pwsh: no reproduce command for b in failure.json"
         pwsh_reproduce "$JH" "$R" "$RB" "$O/pwsh.txt"
         [ "$STATUS" = 1 ] || fail "pwsh: exit $STATUS: $(tail -5 "$O/pwsh.txt")"
@@ -214,6 +244,7 @@ for JH in "$@"; do
     mvnx "$JH" "$R" "$O/wrapper.txt" -q -Dmaven.agent=true -fae verify
     [ "$STATUS" = 1 ] || fail "wrapper: exit $STATUS"
     has "$A/failure.json" '"launcher":{"sh":"./mvnw","powershell":".\\\\mvnw.cmd","cmd":".\\\\mvnw.cmd"}' wrapper
+    has "$O/wrapper.txt" '^\[agent\] launcher: ./mvnw in bash; .\\mvnw.cmd in PowerShell and cmd.exe$' wrapper
     RW=$(reproduce_of "$A/failure.json" b)
     [ "$RW" = './mvnw -pl b -am "-Dtest=fix.BTest#adds" "-Dsurefire.failIfNoSpecifiedTests=false" test' ] || fail "wrapper: reproduce $RW"
     bash_reproduce "$JH" "$R" "$RW" "$O/wrapper-bash.txt"
@@ -266,12 +297,43 @@ for JH in "$@"; do
     bash_reproduce "$JH" "$M" "$RP" "$O/profile-run.txt"
     [ "$STATUS" = 1 ] || fail "profile: the reproduce command passed: $(tail -5 "$O/profile-run.txt")"
     has "$O/profile-run.txt" 'warnings found and -Werror specified' profile
+    has "$MA/failure.json" '"diagnostics":\[{"file":"prof/src/main/java/fix/Old.java","line":null,"column":null,"severity":"ERROR","rule":null,"message":"warnings found and -Werror specified"' profile
     mvnx "$JH" "$M" "$O/property.txt" -q -Dmaven.agent=true -Dmaven.compiler.failOnWarning=true -pl prof -am compile
     [ "$STATUS" = 1 ] || fail "property: exit $STATUS"
     RP=$(reproduce_of "$MA/failure.json" prof)
     [ "$RP" = 'mvn "-Dmaven.compiler.failOnWarning=true" -pl prof -am compile' ] || fail "property: reproduce $RP"
     bash_reproduce "$JH" "$M" "$RP" "$O/property-run.txt"
     [ "$STATUS" = 1 ] || fail "property: the reproduce command passed: $(tail -5 "$O/property-run.txt")"
+
+    mvnx "$JH" "$M" "$O/activation.txt" -q -Dmaven.agent=true -Dstrict.flag=on -Dnexus.pw=hunter2 -pl prof -am compile
+    [ "$STATUS" = 1 ] || fail "activation: exit $STATUS"
+    RA=$(reproduce_of "$MA/failure.json" prof)
+    [ "$RA" = 'mvn "-Dstrict.flag=on" -pl prof -am compile' ] || fail "activation: reproduce $RA"
+    has "$O/activation.txt" '^\[agent\]   (1 user property omitted)$' activation
+    grep -rq 'hunter2' "$MA" "$O/activation.txt" && fail "activation: the secret reached an agent file or the output"
+    bash_reproduce "$JH" "$M" "$RA" "$O/activation-run.txt"
+    [ "$STATUS" = 1 ] || fail "activation: the reproduce command passed: $(tail -5 "$O/activation-run.txt")"
+    has "$O/activation-run.txt" 'warnings found and -Werror specified' activation
+    if command -v cmd.exe > /dev/null && command -v powershell.exe > /dev/null; then
+        cmd_reproduce "$JH" "$M" "$RA" "$O/activation-cmd.txt"
+        [ "$STATUS" = 1 ] || fail "activation: cmd.exe exit $STATUS: $(tail -5 "$O/activation-cmd.txt")"
+        has "$O/activation-cmd.txt" 'warnings found and -Werror specified' activation-cmd
+        pwsh_reproduce "$JH" "$M" "$RA" "$O/activation-pwsh.txt"
+        [ "$STATUS" = 1 ] || fail "activation: PowerShell exit $STATUS: $(tail -5 "$O/activation-pwsh.txt")"
+        has "$O/activation-pwsh.txt" 'warnings found and -Werror specified' activation-pwsh
+    else
+        echo "AGENT_EVENTS_TEST activation cmd.exe/PowerShell NOT RUN: no cmd.exe or powershell.exe"
+    fi
+
+    mvnx "$JH" "$M" "$O/allowlist.txt" -q -Dmaven.agent=true -Dnexus.pw=hunter2 \
+        "-Dslack.webhook=https://hooks.slack.com/services/T0/B0/SECRETX" -Dgh=ghp_0123456789abcdefABCDEF0123456789abcd \
+        -Dsonar.token=squ_shouldbehidden verfy
+    [ "$STATUS" = 1 ] || fail "allowlist: exit $STATUS"
+    LEAK=$(grep -rlE 'hunter2|SECRETX|ghp_0123|squ_should' "$MA" "$O/allowlist.txt")
+    [ -z "$LEAK" ] || fail "allowlist: a secret is in $LEAK"
+    has "$O/allowlist.txt" '^\[agent\]   reproduce: mvn verfy$' allowlist
+    has "$O/allowlist.txt" '^\[agent\]   (4 user properties omitted)$' allowlist
+    has "$MA/failure.json" '"omittedProperties":4' allowlist
 
     mvnx "$JH" "$M" "$O/secret.txt" -q -Dmaven.agent=true -N org.apache.maven.plugins:maven-dependency-plugin:3.6.1:get \
         "-DremoteRepositories=central::default::https://alice:S3cretPw@repo.example.com/maven2" -Dartifact=no.such:artifact:1.0
@@ -280,6 +342,22 @@ for JH in "$@"; do
     [ -z "$LEAK" ] || fail "secret: the password is in $LEAK"
     RS=$(reproduce_of "$MA/failure.json" .)
     [ "$RS" = 'mvn "-Dartifact=no.such:artifact:1.0" -pl . -am org.apache.maven.plugins:maven-dependency-plugin:3.6.1:get' ] || fail "secret: reproduce $RS"
+
+    if [ -n "${M4:-}" ]; then
+        mvn4x "$JH" "$M" "$O/maven4.txt" -q -Dmaven.agent=true -Pstrict -fae -pl dep,prof -am compile
+        [ "$STATUS" = 1 ] || fail "maven4: exit $STATUS: $(tail -5 "$O/maven4.txt")"
+        R4=$(reproduce_of "$MA/failure.json" dep)
+        [ "$R4" = 'mvn "-P?strict" -pl dep -am compile' ] || fail "maven4: dep reproduce $R4"
+        rerun4 "$JH" "$M" "$R4" "$O/maven4-dep" maven4-dep
+        grep -l 'could not be activated' "$O"/maven4-dep-*.txt && fail "maven4: a rerun stopped at the missing profile"
+        for f in "$O"/maven4-dep-*.txt; do has "$f" 'missing-lib' maven4-dep; done
+        R4=$(reproduce_of "$MA/failure.json" prof)
+        [ "$R4" = 'mvn "-P?strict" -pl prof -am compile' ] || fail "maven4: prof reproduce $R4"
+        rerun4 "$JH" "$M" "$R4" "$O/maven4-prof" maven4-prof
+        for f in "$O"/maven4-prof-*.txt; do has "$f" 'warnings found and -Werror specified' maven4-prof; done
+    else
+        echo "AGENT_EVENTS_TEST maven4 NOT RUN: M4 (the bin directory of a Maven 4 installation) is not set"
+    fi
 
     SECONDS=0
     mvnx "$JH" "$M" "$O/longline.txt" -l "$O/longline.log" -Dmaven.agent=true "-Dmaven.events.log=$O/longline.log" -pl long test
