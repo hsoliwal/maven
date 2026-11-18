@@ -62,6 +62,7 @@ public final class M3DbModuleStoreContractTestMain {
             refusesSignedInvalidSchemas(temporary.resolve("schema"));
             boundsCompressedAndExpandedInputs(temporary.resolve("limits"));
             boundsReceiptResidency(temporary.resolve("capacity"));
+            refusesUnboundedReceiptGrowth(temporary.resolve("bounded-growth"));
             refusesSymlinkPaths(temporary.resolve("links"));
             closesAndRejectsInvalidRecords(temporary.resolve("closed"));
             recoversInterruptedSessions(temporary.resolve("interrupted"));
@@ -351,6 +352,36 @@ public final class M3DbModuleStoreContractTestMain {
                     "unaffected and newly merged success receipts are durably restored");
             check(store.lookup("task-03500") == null && store.lookup("task-01024") == null,
                     "revocation wins over earlier staged updates after reopen");
+        }
+    }
+
+    /** The expanded array budget is finite and retains the old last-write eviction policy. */
+    private static void refusesUnboundedReceiptGrowth(Path root) throws Exception {
+        Files.createDirectories(root);
+        try (M3DbModuleStore store = M3DbModuleStore.open(root, true, ignored -> {})) {
+            for (int i = 0; i < 65_536; i++) {
+                store.stage(String.format(java.util.Locale.ROOT, "slot-%05d", i), INPUT, OUTPUT);
+            }
+            expectIo(() -> store.stage("slot-overflow", INPUT, OUTPUT));
+            check(store.lookup("slot-00000") == null, "large staging buffer does not leak uncommitted state");
+            store.commitStaged();
+            check(store.lookup("slot-00000") != null && store.lookup("slot-65535") != null,
+                    "entire bounded maximum fits one sealed v2 module image");
+            // At capacity, the original immediate upsert removes the lexicographically
+            // first stored record before inserting the newly successful task.
+            store.stage("slot-99998", OUTPUT, INPUT);
+            store.stage("slot-99999", OUTPUT, INPUT);
+            store.commitStaged();
+            check(store.lookup("slot-00000") == null && store.lookup("slot-00001") == null,
+                    "capacity fallback preserves the original deterministic eviction behavior");
+            check(Arrays.equals(store.lookup("slot-99999"), new String[] {OUTPUT, INPUT})
+                            && store.lookup("slot-65535") != null,
+                    "new successful receipts remain usable at capacity");
+        }
+        try (M3DbModuleStore store = M3DbModuleStore.open(root, true, ignored -> {})) {
+            check(store.lookup("slot-00000") == null && store.lookup("slot-65535") != null
+                    && Arrays.equals(store.lookup("slot-99999"), new String[] {OUTPUT, INPUT}),
+                    "large-capacity image and eviction policy survive process restart");
         }
     }
 
