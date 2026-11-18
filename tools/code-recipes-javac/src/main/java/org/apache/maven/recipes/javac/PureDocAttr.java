@@ -75,15 +75,21 @@ final class PureDocAttr extends Attr {
 
     private Optional<Type> type(JCTree tree, TypeSymbol site) {
         if (tree instanceof JCPrimitiveTypeTree primitive) {
-            return Optional.of(symtab.typeOfTag[primitive.typetag.ordinal()]);
+            return Optional.of(typed(tree, symtab.typeOfTag[primitive.typetag.ordinal()]));
         }
         if (tree instanceof JCArrayTypeTree array) {
-            return type(array.elemtype, site).map(element -> new ArrayType(element, symtab.arrayClass));
+            return type(array.elemtype, site).map(element -> typed(tree, new ArrayType(element, symtab.arrayClass)));
         }
         Optional<Symbol> symbol = tree instanceof JCIdent id
                 ? simple(id.name, site)
                 : tree instanceof JCFieldAccess select ? qualified(select, site) : Optional.empty();
         return symbol.map(found -> attributed(tree, found));
+    }
+
+    /** Writes the type into a doc reference tree, as javac's Attr types every node it attributes. */
+    private static Type typed(JCTree tree, Type type) {
+        tree.type = type;
+        return type;
     }
 
     /** Writes the symbol and its raw type into the doc reference tree (a tree only the conversion holds). */

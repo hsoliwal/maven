@@ -92,28 +92,21 @@ class CompilePolicyTest {
     }
 
     @Test
-    void forFailingCompilesThePolicyOptionChangesDiagnosticsAndClassFilesSoThePluginSetsNone() throws IOException {
+    void forFailingCompilesThePolicyOptionChangesDiagnosticsSoThePluginSetsNone() throws IOException {
         Fixture flowAttr = IsolationFixtures.policy().get(0);
+        assertEquals(2, compile(flowAttr).diagnostics().size());
+        assertEquals(1, compile(flowAttr, SIMPLE).diagnostics().size());
+    }
+
+    @Test
+    void forFailingCompilesThePolicyOptionChangesClassFilesSoThePluginSetsNone() throws IOException {
         Fixture classfile = IsolationFixtures.policy().get(1);
-        assertEquals(
-                2,
-                Javac.compile("policy-failing", flowAttr, Javac.Mode.NONE)
-                        .diagnostics()
-                        .size());
-        assertEquals(
-                1,
-                Javac.compile("policy-failing", flowAttr, Javac.Mode.NONE, SIMPLE)
-                        .diagnostics()
-                        .size());
-        assertEquals(
-                java.util.Set.of("p/A.class"),
-                Javac.compile("policy-failing", classfile, Javac.Mode.NONE)
-                        .classes()
-                        .keySet());
-        assertEquals(
-                Map.of(),
-                Javac.compile("policy-failing", classfile, Javac.Mode.NONE, SIMPLE)
-                        .classes());
+        assertEquals(java.util.Set.of("p/A.class"), compile(classfile).classes().keySet());
+        assertEquals(Map.of(), compile(classfile, SIMPLE).classes());
+    }
+
+    private static Javac.Compilation compile(Fixture fixture, String... options) throws IOException {
+        return Javac.compile("policy-failing", fixture, Javac.Mode.NONE, options);
     }
 
     private static Fixture named(String name) {
