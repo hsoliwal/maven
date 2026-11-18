@@ -110,7 +110,11 @@ jobs:
           chmod +x consumer-gradle/gradlew
           cd consumer-gradle
           ./gradlew --no-daemon --stacktrace --console=plain \
-            -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+            -p m3/quality-bridge test \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+            --rerun-tasks
       - name: Enforce six real Gradle project-DB cases and zero skipped tests
         run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test
       - name: Retain Gradle TestKit reports for accepted or failed runs
