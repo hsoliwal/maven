@@ -493,6 +493,19 @@ jobs:
           assert not (root / "build/cmake/compile_commands.json").exists()
           print("PASS: original Clang argv exported for clangd/CDT without overwriting CMake")
           PY
+      - name: Qualify real clangd consumption of Maven-owned compile_commands.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clangd-18
+          cd tools/m3-polyglot-maven-plugin/examples/llvm
+          clangd-18 --check=native/hello.c \
+            --compile-commands-dir=target/m3-llvm --log=verbose 2>&1 \
+            | tee target/m3-llvm/clangd-check.log
+          grep -F 'Loaded compilation database from' target/m3-llvm/clangd-check.log
+          grep -F '/target/m3-llvm/compile_commands.json' target/m3-llvm/clangd-check.log
+          grep -F 'All checks completed, 0 errors' target/m3-llvm/clangd-check.log
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes
