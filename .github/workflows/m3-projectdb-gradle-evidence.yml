@@ -42,6 +42,8 @@ jobs:
             tools/project-db/pom.xml
       - name: Guard both project DB and M3IndexDB source-owner CI triggers
         run: sh tools/project-db/scripts/verify-crossfork-trigger.sh
+      - name: Verify historical and current-nine Gradle JUnit receipt modes
+        run: sh tools/project-db/scripts/verify-gradle-junit-modes.sh
       - name: Standalone Java 17 native Gradle JUnit parser admission
         run: sh tools/project-db/scripts/verify-gradle-sources.sh
       - name: Install original M3IndexDB-backed polyglot storage owner
@@ -96,11 +98,14 @@ jobs:
           test "$actual_receipt" = "$expected_receipt" || { echo "wrong Maven source SHA or JDK lane" >&2; exit 1; }
           test -s qualified-maven-jars/polyglot.jar
           test -s qualified-maven-jars/project-db.jar
-      - name: Check out exact reviewed Gradle project-DB consumer source
+      # Consolidate the newer Gradle project's original six cases,
+      # two config-cache ABI/replay cases and Maven #208 symlink case.
+      # One immutable checkout and one JDK-specific Gradle TestKit run.
+      - name: Check out exact reviewed current Gradle project-DB consumer source
         uses: actions/checkout@v4
         with:
           repository: hsoliwal/gradle
-          ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6
+          ref: c918c9b9dfc3b087987165c43b77dff63cc86fb1
           path: consumer-gradle
           persist-credentials: false
           sparse-checkout: |
@@ -111,6 +116,8 @@ jobs:
         env:
           M3_POLYGLOT_JAR: ${{ github.workspace }}/qualified-maven-jars/polyglot.jar
           M3_PROJECT_DB_JAR: ${{ github.workspace }}/qualified-maven-jars/project-db.jar
+          M3_PRUNED_POLYGLOT_JAR: ${{ github.workspace }}/qualified-maven-jars/polyglot.jar
+          M3_PRUNED_PROJECT_DB_JAR: ${{ github.workspace }}/qualified-maven-jars/project-db.jar
         run: |
           test -s "$M3_POLYGLOT_JAR"
           test -s "$M3_PROJECT_DB_JAR"
@@ -128,6 +135,7 @@ jobs:
               --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
               --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
               --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+              --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
               --rerun-tasks > "$log_file" 2>&1; then
               cat "$log_file"
               break
@@ -143,58 +151,15 @@ jobs:
               attempt=$((attempt + 1))
             fi
           done
-      - name: Enforce six real Gradle project-DB cases and zero skipped tests
-        run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test
+      - name: Enforce nine current Gradle project-DB cases and zero skipped tests
+        run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test current-nine
       - name: Retain Gradle TestKit reports for accepted or failed runs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: projectdb-gradle-testkit-jdk-${{ matrix.java }}
+          name: projectdb-gradle-testkit-current-nine-jdk-${{ matrix.java }}
           path: |
             consumer-gradle/m3/quality-bridge/build/test-results/test/**
             consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
           if-no-files-found: ignore
           retention-days: 14
-
-      # A fourth Gradle project-DB case was added after the original reviewed
-      # six-case source pin. Qualify Maven #208 symlink/pruning separately,
-      # without changing the original six-case JUnit acceptance scope.
-      - name: Check out exact reviewed Gradle #52 symlink regression source
-        uses: actions/checkout@v4
-        with:
-          repository: hsoliwal/gradle
-          ref: 7c3d37575002b9c54ff8fa9c8648373aaffa1690
-          path: pruned-symlink-gradle
-          persist-credentials: false
-          sparse-checkout: |
-            gradlew
-            gradle/wrapper
-            m3/quality-bridge
-      - name: Execute original Maven #208 Gradle symlink and pruning parity
-        env:
-          M3_PRUNED_PROJECT_DB_JAR: ${{ github.workspace }}/qualified-maven-jars/project-db.jar
-          M3_PRUNED_POLYGLOT_JAR: ${{ github.workspace }}/qualified-maven-jars/polyglot.jar
-        run: |
-          test -s "$M3_PRUNED_POLYGLOT_JAR"
-          test -s "$M3_PRUNED_PROJECT_DB_JAR"
-          chmod +x pruned-symlink-gradle/gradlew
-          cd pruned-symlink-gradle
-          ./gradlew --no-daemon --stacktrace --console=plain \
-            -p m3/quality-bridge test \
-            --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
-            --rerun-tasks
-      - name: Require one executed unsuppressed Gradle symlink and pruning testcase
-        run: |
-          sh qualified-maven-jars/verify-gradle-testkit-results.sh \
-            pruned-symlink-gradle/m3/quality-bridge/build/test-results/test pruned-symlink
-      - name: Retain source-pinned Gradle symlink acceptance reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: projectdb-gradle-pruned-symlink-jdk-${{ matrix.java }}
-          path: |
-            pruned-symlink-gradle/m3/quality-bridge/build/test-results/test/**
-            pruned-symlink-gradle/m3/quality-bridge/build/reports/tests/test/**
-          if-no-files-found: ignore
-          retention-days: 14
-

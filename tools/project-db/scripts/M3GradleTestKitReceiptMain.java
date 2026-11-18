@@ -35,14 +35,29 @@ public final class M3GradleTestKitReceiptMain {
             "M3ProjectDbPrunedSymlinkRealEngineTest",
             List.of("sourcePinnedMavenRecognizesLinkedGradleModuleAndIgnoresVendorOutputs()"));
 
+    /** Latest reviewed Gradle bridge: the six historical cases plus two config-cache
+     *  ABI/replay cases and one independently source-owned symlink/pruning case. */
+    private static final Map<String, List<String>> CURRENT_NINE = Map.of(
+            "M3ProjectDbRealEngineTest", REQUIRED.get("M3ProjectDbRealEngineTest"),
+            "M3ProjectDbGradleNativeRealEngineTest", REQUIRED.get("M3ProjectDbGradleNativeRealEngineTest"),
+            "M3ProjectDbTaskTest", List.of("refusesTamperedJarBeforeStartingExternalEngine()",
+                    "ingestsAndQueriesOnlyWhenExplicitlyExecuted()",
+                    "queryRequiresPriorIngestWithoutCreatingAnEmptyDatabase()",
+                    "refusesOutOfProjectStoreAndEmptyQuery()",
+                    "retainsOriginalBinaryTaskSurfaceWithOnlyConcreteLayoutInjection()",
+                    "directTaskRetainsCustomBuildDirectoryAndRechecksStorageEngineAfterReplay()"),
+            "M3ProjectDbPrunedSymlinkRealEngineTest",
+                    PRUNED_SYMLINK.get("M3ProjectDbPrunedSymlinkRealEngineTest"));
+
     private M3GradleTestKitReceiptMain() {}
 
     public static void main(String[] arguments) throws Exception {
         boolean symlink = arguments.length == 2 && "pruned-symlink".equals(arguments[1]);
-        if (arguments.length != 1 && !symlink) {
-            throw new IllegalArgumentException("JUnit directory and optional pruned-symlink mode required");
+        boolean current = arguments.length == 2 && "current-nine".equals(arguments[1]);
+        if (arguments.length != 1 && !symlink && !current) {
+            throw new IllegalArgumentException("JUnit directory and optional approved mode required");
         }
-        Map<String, List<String>> suites = symlink ? PRUNED_SYMLINK : REQUIRED;
+        Map<String, List<String>> suites = current ? CURRENT_NINE : symlink ? PRUNED_SYMLINK : REQUIRED;
         Path directory = Path.of(arguments[0]).toAbsolutePath().normalize();
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("missing original Gradle TestKit results: " + directory);
@@ -55,7 +70,8 @@ public final class M3GradleTestKitReceiptMain {
                     .filter(path -> path.getFileName().toString().endsWith(".xml")).count();
             if (count != suites.size()) throw new IOException("unexpected Gradle project-DB suite count " + count);
         }
-        System.out.println(symlink ? "PASS: source-pinned Gradle symlink/pruning TestKit case, no skips"
+        System.out.println(current ? "PASS: nine current Gradle project-DB TestKit cases, zero skips/failures/errors"
+                : symlink ? "PASS: source-pinned Gradle symlink/pruning TestKit case, no skips"
                 : "PASS: six original Gradle project-DB TestKit cases, zero skips/failures/errors");
     }
 
