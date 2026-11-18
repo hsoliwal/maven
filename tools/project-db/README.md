@@ -179,6 +179,34 @@ to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
     -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
 ~~~
 
+### Executed JUnit receipt admission
+
+The real JDK 17 and 21 Gradle consumer results from GitHub Actions run
+`44237386509` have been inspected as **actual JUnit XML**, not inferred
+from a green Gradle process status. Each JDK emitted these same three
+suites: `M3ProjectDbRealEngineTest` (1 case),
+`M3ProjectDbGradleNativeRealEngineTest` (1 case) and
+`M3ProjectDbTaskTest` (4 cases). Each reported zero failed, errored
+or skipped tests. Both Gradle jobs completed successfully; the *separate
+Maven owner jobs in that historical run failed at a stale workflow guard*.
+Those historical Gradle JUnit facts therefore do not make the whole
+run green.
+
+The source-owned `scripts/verify-gradle-testkit-results.sh` now
+enforces the **six named required testcases**, three exact suites,
+zero skips/errors/failures and no extra project-DB suites after the
+Gradle `test --tests '*M3ProjectDb*'` step. The gate itself is
+included in `qualified-maven-jars-jdk-<java>` and sealed alongside
+both original Maven JARs and `SOURCE_RECEIPT.tsv` with SHA-256.
+The consumer cannot accept a passing Gradle process exit with skipped
+real-engine tests, or a missing expected suite.
+
+This receipt gate was tested against both archived JDK XML reports
+and refused deliberately altered copies with a missing suite,
+nonzero skipped/failure count, wrong testcase name and zero test
+count. It is **not** a full Gradle distribution, native toolchain,
+M3JDK21 platform or Windows/macOS qualification.
+
 This runs Gradle's original TestKit cases for an actual source-pinned
 Maven engine, including ingestion of a **Gradle-only** JUnit failure
 without a POM, source-line/build provenance, and changed/unchanged
