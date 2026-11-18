@@ -14,7 +14,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.Objects;
@@ -84,6 +83,8 @@ public final class M3EclipseLanguageEvidenceService {
         Objects.requireNonNull(installed, "installed providers");
 
         M3EclipseLanguageEvidenceProvider chosen = null;
+        Set<String> chosenBuilders = Set.of();
+        Set<String> chosenNatures = Set.of();
         Set<String> providerIds = new HashSet<>();
         try {
             for (M3EclipseLanguageEvidenceProvider provider : installed) {
@@ -105,6 +106,8 @@ public final class M3EclipseLanguageEvidenceService {
                 for (String nature : natures) checkExtension(nature);
                 if (providerId.equals(id)) {
                     chosen = provider;
+                    chosenBuilders = Set.copyOf(builders);
+                    chosenNatures = Set.copyOf(natures);
                 }
             }
         } catch (RuntimeException | ServiceConfigurationError problem) {
@@ -114,8 +117,8 @@ public final class M3EclipseLanguageEvidenceService {
             throw new IOException("no approved original Eclipse language provider: " + providerId);
         }
 
-        boolean declaredBuilder = chosen.builderIds().stream().anyMatch(eclipse.builders()::contains);
-        boolean declaredNature = chosen.natureIds().stream().anyMatch(eclipse.natures()::contains);
+        boolean declaredBuilder = chosenBuilders.stream().anyMatch(eclipse.builders()::contains);
+        boolean declaredNature = chosenNatures.stream().anyMatch(eclipse.natures()::contains);
         if (!declaredBuilder && !declaredNature) {
             throw new IOException("language provider is not bound to the original Eclipse builders/natures");
         }
