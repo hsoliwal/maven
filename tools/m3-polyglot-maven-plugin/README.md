@@ -1129,6 +1129,14 @@ forwarding, response files, implicit depfile/output side effects
 and untracked sources fail closed. See
 [LLVM toolchain / compilation database](docs/LLVM_TOOLCHAIN.md).
 
+The existing `PolyglotCli` also accepts
+`llvm-compile-db <workspace> <manifest.tsv> <target>` and returns
+`M3-LLVM-COMPILE-DB-V1` plus a single `file<TAB><absolute path>`
+record. This enables a Gradle task or Eclipse CDT consumer to request
+**the same Maven-owned database** without forking a formatter, native
+compilation engine or M3DB state. It never invokes Clang and never
+binds itself to a default lifecycle phase.
+
 ### LLVM fork compiler toolchain
 
 The built-in `llvm` provider delegates to installed LLVM executables; it does **not** copy LLVM sources into Maven,

@@ -214,6 +214,35 @@ or that any native output is cacheable. Complete header, negative
 include, generated input, library/pass-plugin/sysroot, ABI and
 source-provenance evidence remain independent native build gates.
 
+### Portable CLI for Gradle and Eclipse
+
+The same Maven-owned exporter is also exposed through the original
+`PolyglotCli` bridge, **without launching a Maven goal**:
+
+```sh
+M3_LLVM_HOME=/path/to/llvm-install java \
+  -cp /path/to/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  llvm-compile-db /work/module /work/module/m3-build.tsv all
+```
+
+The command returns the two-row, tab-delimited protocol:
+
+```text
+M3-LLVM-COMPILE-DB-V1
+file<TAB>/work/module/target/m3-llvm/compile_commands.json
+```
+
+Gradle and Eclipse invoke **this original Maven implementation**, not
+a copied JSON formatter or another task scheduler. Only the selected
+target closure is projected. The CLI refuses unrelated `plan`/`run`
+flags (`--incremental`, `--provider-reuse`, `--build-cache`) and
+validates workspace paths before output creation. Repeating the same
+export preserves output timestamps; the portable command performs no
+native compiler execution and does not open M3DB or alter M3DB
+receipts. The binary provider resolution and compilation database
+constraints remain exactly those of the Maven goal.
+
 ## Qualification gates
 
 The Java 17/21 offline contract suites verify ServiceLoader inventory,
