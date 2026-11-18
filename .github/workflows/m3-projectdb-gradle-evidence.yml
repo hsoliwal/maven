@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'tools/project-db/**'
+      - 'tools/m3-polyglot-maven-plugin/**'
       - '.github/workflows/m3-projectdb-gradle-evidence.yml'
   push:
     branches: [master]
     paths:
       - 'tools/project-db/**'
+      - 'tools/m3-polyglot-maven-plugin/**'
       - '.github/workflows/m3-projectdb-gradle-evidence.yml'
   workflow_dispatch:
 permissions:
@@ -31,6 +33,8 @@ jobs:
           cache-dependency-path: |
             tools/m3-polyglot-maven-plugin/pom.xml
             tools/project-db/pom.xml
+      - name: Guard both project DB and M3IndexDB source-owner CI triggers
+        run: sh tools/project-db/scripts/verify-crossfork-trigger.sh
       - name: Standalone Java 17 native Gradle JUnit parser admission
         run: sh tools/project-db/scripts/verify-gradle-sources.sh
       - name: Install original M3IndexDB-backed polyglot storage owner
