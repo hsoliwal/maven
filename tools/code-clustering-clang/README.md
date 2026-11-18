@@ -68,7 +68,7 @@ System properties (`-D`), or the environment variable in brackets:
 | --- | --- | --- |
 | `clustering.clang.enabled` (`CLUSTERING_CLANG_ENABLED`) | `true` | `false` turns the front end off |
 | `clustering.clang.executable` (`CLANG`) | `clang` on PATH, then the LLVM folders | the clang to run, a path or a name |
-| `m3.llvm.home` (`M3_LLVM_HOME`) | unset | when no explicit clang executable is set, use this LLVM build/install root's `bin/clang` before PATH; a missing selected toolchain does not silently fall back |
+| `m3.polyglot.llvm.home`, `m3.llvm.home` (`M3_LLVM_HOME`, `LLVM_HOME`) | unset | when no explicit clang executable is set, select this LLVM build/install root's `bin/clang` in the listed precedence order; blank values are skipped and a missing selected toolchain does not silently fall back |
 | `clustering.clang.compileCommands` | none | compile_commands.json files or folders, comma separated, asked first |
 | `clustering.clang.flags` (`CLUSTERING_CLANG_FLAGS`) | none | flags for files no database covers; without them those files go to the lexical front end |
 | `clustering.clang.stubIncludes` | off | a folder for empty stand-ins of headers clang cannot find |

@@ -38,7 +38,8 @@ import org.apache.maven.plugins.clustering.AtomFrontEnd;
  * <ul>
  *   <li>{@code clustering.clang.enabled} ({@code CLUSTERING_CLANG_ENABLED}): {@code false} turns the front end off;</li>
  *   <li>{@code clustering.clang.executable} ({@code CLANG}): the clang to run, a path or a name on PATH. Default:
- *       {@code m3.llvm.home}/bin/clang (or {@code M3_LLVM_HOME}) when configured, then {@code clang} on PATH,
+ *       the shared LLVM home selection ({@code m3.polyglot.llvm.home}, {@code m3.llvm.home},
+ *       {@code M3_LLVM_HOME}, {@code LLVM_HOME}, in that order) when configured, then {@code clang} on PATH,
  *       then the LLVM installation folders. Without clang the front end takes no file;</li>
  *   <li>{@code clustering.clang.compileCommands}: compile_commands.json files or folders that hold one, separated by
  *       commas, asked before the database found next to each file;</li>
@@ -70,7 +71,7 @@ record ClangSettings(Optional<Path> clang, List<Path> databases, List<String> fl
         boolean windows = File.separatorChar == '\\';
         boolean enabled = !"false".equalsIgnoreCase(look.get("clustering.clang.enabled", "CLUSTERING_CLANG_ENABLED"));
         Optional<Path> clang = enabled ? clang(look.get("clustering.clang.executable", "CLANG"),
-                look.get("m3.llvm.home", "M3_LLVM_HOME"), environment, windows)
+                llvmHome(properties, environment), environment, windows)
                 : Optional.empty();
         return new ClangSettings(clang, paths(look.get("clustering.clang.compileCommands", "")),
                 CommandWords.split(look.get("clustering.clang.flags", "CLUSTERING_CLANG_FLAGS"), windows),
@@ -115,6 +116,15 @@ record ClangSettings(Optional<Path> clang, List<Path> databases, List<String> fl
         }
         return executable("clang", environment, windows)
                 .or(() -> INSTALLED.stream().map(Path::of).filter(Files::isRegularFile).findFirst());
+    }
+
+    /** Match the native LLVM tools' global fallback order; never ignore a selected but missing fork. */
+    private static String llvmHome(UnaryOperator<String> properties, UnaryOperator<String> environment) {
+        String home = properties.apply("m3.polyglot.llvm.home");
+        if (home == null || home.isBlank()) home = properties.apply("m3.llvm.home");
+        if (home == null || home.isBlank()) home = environment.apply("M3_LLVM_HOME");
+        if (home == null || home.isBlank()) home = environment.apply("LLVM_HOME");
+        return home == null ? "" : home;
     }
 
     /** A path to a file, or a name found on PATH (with {@code .exe} on Windows). */

@@ -250,12 +250,34 @@ public final class ClangUnitTests {
         ClangSettings fromEnvironment = ClangSettings.from(k -> null,
                 k -> "M3_LLVM_HOME".equals(k) ? dir.resolve("fork-llvm").toString() : null);
         check("settings: shared LLVM home environment", fromEnvironment.clang().equals(Optional.of(forkClang)));
+        ClangSettings fromPolyglot = ClangSettings.from(Map.of(
+                "m3.polyglot.llvm.home", dir.resolve("fork-llvm").toString(),
+                "m3.llvm.home", dir.resolve("absent").toString())::get, k -> null);
+        check("settings: native-tools property takes precedence for AST", fromPolyglot.clang().equals(Optional.of(forkClang)));
+        ClangSettings fromLegacyEnvironment = ClangSettings.from(k -> null,
+                k -> "LLVM_HOME".equals(k) ? dir.resolve("fork-llvm").toString() : null);
+        check("settings: LLVM_HOME fallback finds fork clang", fromLegacyEnvironment.clang().equals(Optional.of(forkClang)));
+        ClangSettings blankProperty = ClangSettings.from(Map.of(
+                "m3.polyglot.llvm.home", "", "m3.llvm.home", dir.resolve("fork-llvm").toString())::get, k -> null);
+        check("settings: blank alias yields to M3 property", blankProperty.clang().equals(Optional.of(forkClang)));
+        ClangSettings conflictingEnvironment = ClangSettings.from(k -> null,
+                Map.of("M3_LLVM_HOME", dir.resolve("absent").toString(),
+                        "LLVM_HOME", dir.resolve("fork-llvm").toString())::get);
+        check("settings: absent selected M3 home refuses LLVM_HOME fallback", conflictingEnvironment.clang().isEmpty());
+        ClangSettings conflictingProperties = ClangSettings.from(Map.of(
+                "m3.polyglot.llvm.home", dir.resolve("absent").toString(),
+                "m3.llvm.home", dir.resolve("fork-llvm").toString())::get, k -> null);
+        check("settings: absent selected polyglot home refuses M3 property fallback", conflictingProperties.clang().isEmpty());
         ClangSettings invalidFork = ClangSettings.from(Map.of("m3.llvm.home", dir.resolve("absent").toString())::get,
                 k -> "PATH".equals(k) ? dir.resolve("fork-llvm/bin").toString() : null);
         check("settings: missing selected fork does not fall back to PATH", invalidFork.clang().isEmpty());
         ClangSettings explicit = ClangSettings.from(Map.of("m3.llvm.home", dir.resolve("absent").toString(),
                 "clustering.clang.executable", forkClang.toString())::get, k -> null);
         check("settings: explicit clang overrides LLVM home", explicit.clang().equals(Optional.of(forkClang)));
+        ClangSettings explicitOverAlias = ClangSettings.from(Map.of(
+                "m3.polyglot.llvm.home", dir.resolve("absent").toString(),
+                "clustering.clang.executable", forkClang.toString())::get, k -> null);
+        check("settings: explicit clang overrides polyglot LLVM home", explicitOverAlias.clang().equals(Optional.of(forkClang)));
         Path src = Checks.write(dir, "fb/a.c", "int one(int x) { return x; }\n");
         List<Atom> scanned = AtomPlanes.scan(List.of(dir.resolve("fb")), List.of(new ClangFrontEnd(missing, o -> { }),
                 new AtomFrontEnd.LexicalFrontEnd()));

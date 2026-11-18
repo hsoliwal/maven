@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /** Dependency-free contract tests: only fake local driver files are needed, never LLVM downloads. */
 public final class LlvmCompilerSelectionContractTestMain {
@@ -28,6 +29,7 @@ public final class LlvmCompilerSelectionContractTestMain {
             }
             correctDriverAndArgumentBoundary(root);
             configuredHomeAndFlangFallback(root);
+            globalHomeAliasPrecedence(root);
             preservesLegacyBinSelection(root);
             preservesDriverSymlinkName(root);
             pinsSelectedExecutable(root);
@@ -143,6 +145,62 @@ public final class LlvmCompilerSelectionContractTestMain {
             passed++;
         } finally {
             Files.move(flangNew, flang);
+        }
+    }
+
+    private static void globalHomeAliasPrecedence(Path root) throws Exception {
+        String fork = root.resolve("toolchain").toString();
+        String absent = root.resolve("absent").toString();
+        check(fork.equals(LlvmCompilerProvider.configuredHome(
+                Map.of(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, fork,
+                        LlvmCompilerProvider.HOME_PROPERTY, absent)::get,
+                Map.of(LlvmCompilerProvider.HOME_ENVIRONMENT, absent,
+                        LlvmCompilerProvider.FALLBACK_HOME_ENVIRONMENT, absent)::get)),
+                "polyglot property has the same highest precedence as the LLVM tools");
+        passed++;
+        check(fork.equals(LlvmCompilerProvider.configuredHome(
+                Map.of(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, "",
+                        LlvmCompilerProvider.HOME_PROPERTY, fork)::get,
+                Map.of(LlvmCompilerProvider.HOME_ENVIRONMENT, absent)::get)),
+                "blank polyglot property yields to the Maven LLVM property");
+        passed++;
+        check(fork.equals(LlvmCompilerProvider.configuredHome(k -> null,
+                Map.of(LlvmCompilerProvider.HOME_ENVIRONMENT, fork,
+                        LlvmCompilerProvider.FALLBACK_HOME_ENVIRONMENT, absent)::get)),
+                "M3_LLVM_HOME takes precedence over LLVM_HOME");
+        passed++;
+        check(fork.equals(LlvmCompilerProvider.configuredHome(k -> null,
+                Map.of(LlvmCompilerProvider.HOME_ENVIRONMENT, "",
+                        LlvmCompilerProvider.FALLBACK_HOME_ENVIRONMENT, fork)::get)),
+                "LLVM_HOME is the final configured home fallback");
+        passed++;
+        check(LlvmCompilerProvider.configuredHome(k -> null, k -> null) == null,
+                "no global selector preserves legacy PATH selection");
+        passed++;
+
+        String priorPolyglot = System.getProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
+        String priorM3 = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+        try {
+            Path taskDriver = Files.writeString(Files.createDirectories(root.resolve("task-toolchain/bin"))
+                    .resolve(name("clang")), "task-specific clang", StandardCharsets.UTF_8);
+            System.setProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, fork);
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, absent);
+            var selected = command(root, "c", List.of("-c", "src/file"));
+            check(selected.get(0).equals(root.resolve("toolchain/bin/" + name("clang")).toString()),
+                    "compiler task selects actual polyglot property over conflicting M3 property");
+            passed++;
+            var taskHome = command(root, "c", List.of("--m3-llvm-home=task-toolchain", "-c", "src/file"));
+            check(taskHome.get(0).equals(taskDriver.toString()), "explicit task home overrides global selection");
+            passed++;
+            System.setProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, absent);
+            refuses(() -> command(root, "c", List.of("-c", "src/file")),
+                    "selected but unavailable global LLVM home must not fall back to PATH or M3 home");
+            passed++;
+        } finally {
+            if (priorPolyglot == null) System.clearProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, priorPolyglot);
+            if (priorM3 == null) System.clearProperty(LlvmCompilerProvider.HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, priorM3);
         }
     }
 
