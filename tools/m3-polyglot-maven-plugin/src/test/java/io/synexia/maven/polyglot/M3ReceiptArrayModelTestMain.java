@@ -30,10 +30,20 @@ public final class M3ReceiptArrayModelTestMain {
     public static void main(String[] ignored) throws Exception {
         Path parent = Files.createTempDirectory("m3-array-lanes-model-");
         try {
-            Path module = Files.createDirectories(parent.resolve("module"));
+            verifyBackend(Files.createDirectories(parent.resolve("embedded")), "embedded");
+            verifyBackend(Files.createDirectories(parent.resolve("file")), "file");
+            System.out.println("PASS: " + assertions + " portable growing-array receipt oracle assertions");
+        } finally {
+            try (var walk = Files.walk(parent)) {
+                for (Path file : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+            }
+        }
+    }
+
+    private static void verifyBackend(Path module, String backend) throws Exception {
             TreeMap<String, String[]> expected = new TreeMap<>();
             Random random = new Random(SEED);
-            try (M3DbModuleStore db = M3DbModuleStore.open(module, true, ignoredLine -> {})) {
+            try (M3DbModuleStore db = M3DbModuleStore.open(module, backend, true, ignoredLine -> {})) {
                 for (int round = 0; round < 9; round++) {
                     TreeMap<String, String[]> pending = new TreeMap<>();
                     for (int n = 0; n < 400; n++) {
@@ -74,20 +84,15 @@ public final class M3ReceiptArrayModelTestMain {
                 expected.put("n99999", new String[] {B, A});
                 compare(db, expected);
             }
-            try (M3DbModuleStore db = M3DbModuleStore.open(module, true, ignoredLine -> {})) {
+            try (M3DbModuleStore db = M3DbModuleStore.open(module, backend, true, ignoredLine -> {})) {
                 compare(db, expected);
                 db.invalidateAll();
                 require(db.lookup("n99999") == null, "invalidateAll clears the packed index");
             }
-            try (M3DbModuleStore db = M3DbModuleStore.open(module, true, ignoredLine -> {})) {
+            try (M3DbModuleStore db = M3DbModuleStore.open(module, backend, true, ignoredLine -> {})) {
                 require(db.lookup("n99999") == null, "global invalidation survives reopen");
             }
-            System.out.println("PASS: " + assertions + " deterministic growing-array receipt oracle assertions");
-        } finally {
-            try (var walk = Files.walk(parent)) {
-                for (Path file : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
-            }
-        }
+            // Both embedded and file backends accept the same receipt state machine.
     }
 
     private static String key(int value) {
