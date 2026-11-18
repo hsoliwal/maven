@@ -480,6 +480,14 @@ java -cp /approved/m3-polyglot-maven-plugin.jar \
   io.synexia.maven.polyglot.EclipseModelCli owners /project/root
 ```
 
+The same inventory is available from the normal Maven plugin without installing
+Eclipse or wiring a lifecycle execution:
+
+```sh
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:eclipse-builders \
+  -Dm3.polyglot.eclipse.dir=/project/root
+```
+
 Both reports retain original builder order, natures and descriptor SHA-256
 identities. The model scanner now also hashes immediate regular files under
 `.settings/`, including arbitrary language-specific preferences, with bounded
