@@ -12,6 +12,10 @@ javac --release 17 -encoding UTF-8 -Xlint:all -Werror -d "$DEST" \
   "$MAVEN"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
   "$MAVEN"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/llvm/LlvmNativeToolsProvider.java \
-  "$ROOT"/src/test/java/io/synexia/maven/llvm/LlvmNativeToolsContractTestMain.java
+  "$ROOT"/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java \
+  "$ROOT"/src/test/java/io/synexia/maven/llvm/LlvmNativeToolsContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/llvm/LlvmToolchainEvidenceContractTestMain.java
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.llvm.LlvmNativeToolsContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.llvm.LlvmToolchainEvidenceContractTestMain
