@@ -75,13 +75,45 @@
   <properties>
     <javaVersion>8</javaVersion>
     <mavenVersion>3.9.16</mavenVersion>
-    <mavenArchiverVersion>3.6.6</mavenArchiverVersion>
+    <!-- in-tree: plugins/shared/maven-archiver -->
+    <mavenArchiverVersion>${project.version}</mavenArchiverVersion>
 
     <project.build.outputTimestamp>2026-07-19T13:58:27Z</project.build.outputTimestamp>
 
     <!-- For ITs -->
     <version.maven-toolchains-plugin>3.1.0</version.maven-toolchains-plugin>
   </properties>
+
+  <!-- Libraries this plugin reaches only transitively, pinned to the in-tree copies under
+       plugins/shared/ so the plugin's whole run-time closure is built here. -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-io -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-io</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-interpolation -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-interpolation</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-utils -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-utils</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-xml -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-xml</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <!-- Maven Core -->
@@ -116,7 +148,8 @@
     <dependency>
       <groupId>org.apache.maven.shared</groupId>
       <artifactId>file-management</artifactId>
-      <version>3.2.0</version>
+      <!-- in-tree: plugins/shared/maven-file-management -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -128,7 +161,8 @@
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-archiver</artifactId>
-      <version>4.12.0</version>
+      <!-- in-tree: plugins/shared/plexus-archiver -->
+      <version>${project.version}</version>
     </dependency>
 
     <!-- Other used dependencies -->
