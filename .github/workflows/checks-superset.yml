@@ -493,6 +493,26 @@ jobs:
           assert not (root / "build/cmake/compile_commands.json").exists()
           print("PASS: original Clang argv exported for clangd/CDT without overwriting CMake")
           PY
+      - name: Qualify original Maven PolyglotCli compilation database export for Gradle/CDT
+        shell: bash
+        run: |
+          set -euo pipefail
+          module=tools/m3-polyglot-maven-plugin/examples/llvm
+          plugin=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s "$plugin"
+          test -s "$module/target/m3-llvm/compile_commands.json"
+          LLVM_ROOT="$(dirname "$(dirname "$(command -v clang)")")"
+          db="$(realpath "$module/target/m3-llvm/compile_commands.json")"
+          before="$(sha256sum "$db" | awk '{print $1}')"
+          result="$(M3_LLVM_HOME="$LLVM_ROOT" java -cp "$plugin" \
+            io.synexia.maven.polyglot.PolyglotCli llvm-compile-db \
+            "$module" "$module/m3-build.tsv" all)"
+          test "$(printf '%s\n' "$result" | sed -n '1p')" = 'M3-LLVM-COMPILE-DB-V1'
+          test "$(printf '%s\n' "$result" | sed -n '2p')" = "$(printf 'file\t%s' "$db")"
+          after="$(sha256sum "$db" | awk '{print $1}')"
+          test "$before" = "$after"
+          test ! -e "$module/target/hello.o" || test -s "$module/target/hello.o"
+          echo 'PASS: packaged Maven PolyglotCli retained identical Clang compilation database'
       - name: Qualify real clangd consumption of Maven-owned compile_commands.json
         shell: bash
         run: |
