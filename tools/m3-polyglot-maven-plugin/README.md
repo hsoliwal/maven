@@ -473,11 +473,11 @@ no Eclipse runtime, CDT native compiler or RustDT implementation.
 ```sh
 # Standard model output remains m3-eclipse-project-v1:
 java -cp /approved/m3-polyglot-maven-plugin.jar \
-  io.synexia.maven.polyglot.EclipseModelCli /project/with/.project
+  io.synexia.maven.polyglot.EclipseModelCli /project/root
 
 # New, read-only builder-owner report (m3-eclipse-builder-owners-v1):
 java -cp /approved/m3-polyglot-maven-plugin.jar \
-  io.synexia.maven.polyglot.EclipseModelCli owners /project/with/.project
+  io.synexia.maven.polyglot.EclipseModelCli owners /project/root
 ```
 
 Both reports retain original builder order, natures and descriptor SHA-256
