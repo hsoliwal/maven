@@ -54,7 +54,10 @@ public final class LlvmCompilationDatabase {
         for (TaskManifest.Task task : manifest.order(target)) {
             if (!task.tool().startsWith("@m3:llvm:compiler:")) continue;
             String language = task.tool().substring("@m3:llvm:compiler:".length());
-            if (!CLANG_LANGUAGES.contains(language)) continue;
+            // Link-only Clang tasks are legitimate M3 nodes, not compdb rows.
+            // The source parser independently validates that -c is not merely
+            // the operand of another compiler flag.
+            if (!CLANG_LANGUAGES.contains(language) || !task.arguments().contains("-c")) continue;
             Path cwd = InputStamps.checked(root, task.workingDir());
             if (!Files.isDirectory(cwd, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("LLVM task working directory is not materialized: " + task.name());
