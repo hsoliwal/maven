@@ -175,7 +175,7 @@ public final class TaskRunner {
         // fingerprint byte transcript instead of rereading the plugin/JDK DB JAR
         // before and after every task; declared inputs/outputs are still rehashed.
         InputStamps.EngineTranscript engine = !dryRun && (incremental || cache != null)
-                ? InputStamps.captureEngineTranscript() : null;
+                ? InputStamps.captureStableEngineTranscript() : null;
         boolean cleared = false;
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
