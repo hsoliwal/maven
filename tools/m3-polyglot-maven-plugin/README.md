@@ -154,6 +154,16 @@ state, time/randomness or non-file effects. In-place input/output tasks, overlap
 owners and unknown provider dependencies remain uncached. Inputs must remain stable while
 the original tool runs.
 
+A packaged Maven plugin/JDK M3 engine has one stable class realm per module run.
+For packaged JAR-backed engines, the scanner now captures the **exact digest
+update transcript** of the loaded engine once and replays that byte sequence
+for every task fingerprint. It does not replace the engine source hash with a
+different digest, so **existing local and relocatable cache keys stay bit-for-bit
+identical**. Engine implementations loaded from mutable class directories
+(typical of IDE/source builds) retain the original full rehash on each pass.
+Task inputs and outputs are still fully rehashed independently; no filesystem
+timestamp is allowed to authorize a runner cache hit.
+
 The verified task runner still reads declared file contents; saved work is the tool's
 compilation or generation. The existing file/native compatibility API retains its guarded
 POSIX metadata digest reuse, while that metadata alone cannot authorize a runner cache hit.
