@@ -48,6 +48,21 @@ An empty or duplicate selector fails planning. On Windows the selected
 compiler name ends in `.exe`. No path guessing or fallback to another
 installation happens when an explicit toolchain is selected.
 
+For a shared fork installation, `-Dm3.llvm.home=<root>` or `M3_LLVM_HOME=<root>`
+selects the installation root (containing `bin/`) for compiler tasks and the
+existing Clang AST front end; individual tasks may override with
+`--m3-llvm-home=<root>`. An explicit `--m3-llvm-bin` selector wins over that
+global setting, but an explicit task home and bin cannot be used together.
+`--m3-llvm-sha256=<64 hexadecimal digits>` verifies the selected executable's
+real bytes before invocation, including when `clang++` is a symlink. This pin
+requires a selected home or bin; the original PATH behavior remains unchanged
+when neither is set. The provider never injects extra language flags.
+
+With a global LLVM home, `mavenize` also selects its `clang` and `clang++` in
+new CMake configuration tasks (`CMAKE_C_COMPILER`/`CMAKE_CXX_COMPILER`), so
+subsequent `compile_commands.json` evidence comes from the same toolchain.
+Already existing native descriptors and build owners are left untouched.
+
 The existing M3 provider policy refuses undeclared inputs/outputs and
 overlapping source/output paths, validates argv, and does not classify
 provider-owned compiler work as incremental or output-cache reusable.
@@ -113,45 +128,57 @@ argument, not a global Maven installation setting.
 - `docs/M3-EXTERNAL-BUILD-BRIDGE.md` retains the original external
   build-owner delta/reconciliation contract. IDE input is advisory, not
   authorization to skip the native compiler.
+- `tools/m3-llvm-tools-provider` is the separately installed SPI JAR for
+  `opt`, `mlir-opt`, `mlir-translate`, `llvm-as`, `llvm-link`, LLD and LLVM
+  test runners. It reuses this same Maven DAG and does not turn compiler
+  tasks into an implicit pipeline.
 
-The next stages should add explicit, separately tested tooling for Clang
-diagnostics, LLD linking, `opt` pass pipelines, MLIR transforms, LLVM
-`lit`/FileCheck evidence, target triples/sysroots, depfile import,
-module dependency graphs, and reproducible native artifact/toolchain receipts.
-They are **not implemented by this provider**. OpenRewrite remains the
+The next stages should qualify Clang diagnostics, linker target ABIs,
+MLIR dialects/passes, LLVM `lit`/FileCheck evidence, target triples/sysroots,
+depfile import, module dependency graphs, and reproducible native artifact/toolchain
+receipts. Those are **not implemented by this compiler provider**. OpenRewrite remains the
 recipe mutation authority, and M3 AST atomization/patternization is a
 separate contract-preserving pass.
 
 ## Qualification gates
 
-The Java 17 contract suite verifies ServiceLoader inventory, command
-selection, selector isolation, invalid/duplicate inputs, and side-effect-free
-dry-run planning **without assuming LLVM is installed**. The additive
-`LlvmCompilerProviderContractTestMain` also checks literal argv preservation
-and that incremental dry-run planning creates no output or state.
+The Java 17/21 offline contract suites verify ServiceLoader inventory,
+compiler selection, both bin/home selectors, SHA pinning, invalid/duplicate
+inputs, literal argv preservation, and side-effect-free incremental dry-run
+planning **without assuming LLVM is installed**. The
+`LlvmCompilerSelectionContractTestMain` covers fork-home, symlink, SHA and
+CMake configuration contracts. The separately merged
+`LlvmCompilerProviderContractTestMain` covers raw original flags, dry-run
+purity and optional real native/cache-invalidating compilation.
 
-To execute its native cases, select an installed toolchain explicitly:
+To execute both native qualification gates, select an installed toolchain explicitly:
 
 ```sh
 mvn -f tools/m3-polyglot-maven-plugin/pom.xml \
   -Dm3.polyglot.llvm.test.home=/opt/llvm verify
-M3_POLYGLOT_LLVM_TEST_HOME=/opt/llvm \
+M3_POLYGLOT_LLVM_TEST_HOME=/opt/llvm M3_LLVM_REAL_TEST_HOME=/opt/llvm \
   sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
 ```
 
-This **test-only** setting points to an installation root containing `bin`.
-The test passes the existing `--m3-llvm-bin` task selector; it does not add
-a production home property or change the provider's PATH default.
+The test-only `m3.polyglot.llvm.test.home` property (or
+`M3_POLYGLOT_LLVM_TEST_HOME` for the standalone verifier) points to the
+installation root containing `bin` and exercises the existing
+`--m3-llvm-bin` selector. The separate `M3_LLVM_REAL_TEST_HOME` environment
+selects the six-language, executable-digest-pinned Maven `TaskRunner` gate;
+it also runs through Maven `verify` when configured. Neither test variable
+changes the production provider's home/bin/PATH selection rules.
 
-The native cases compile C, C++, Objective-C and Objective-C++ to object
+The legacy-bin native cases compile C, C++, Objective-C and Objective-C++ to object
 files through `TaskRunner`, verify repeated execution even with incremental
 state and artifact caching enabled, observe an included header changing
 object bytes, and require a real invalid-C failure to reach the caller.
 Optional LLVM IR and Fortran cases use the actual `llc` and `flang` drivers.
 Missing optional tools are reported as `NOT_RUN`; a present but unusable
 configured tool fails. If no test installation is selected, all native
-cases report `NOT_RUN`. Expected invalid-source compiler diagnostics are
-part of the passing failure-propagation case.
+cases report `NOT_RUN`. The separate strict six-language gate compiles C,
+C++, Objective-C, Objective-C++, Fortran and LLVM IR to nonempty object files
+with SHA-256 pins, and reports `NOT RUN` if not configured. Expected invalid-C
+diagnostics are part of the passing failure-propagation case.
 
 Passing these tests qualifies only the selected installed compiler and
 host. It does not prove that the executable was built from the pinned

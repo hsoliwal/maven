@@ -27,6 +27,7 @@ public final class MavenizerContractTestMain {
         Path temp = Files.createTempDirectory("mavenizer-test-");
         try {
             detectsEachToolFamily(temp.resolve("detect"));
+            selectsForkLLVMForCMake(temp.resolve("llvm-cmake"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
             mavenizesAGradleMultiProjectBuildAsOneProject(temp.resolve("gradle-multi"));
             pointsClangdAtTheCMakeCompileDatabase(temp.resolve("clangd"));
@@ -84,6 +85,39 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "cmake-notest", "CMakeLists.txt", "project(x)\n"),
                 "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
+    }
+
+    private static void selectsForkLLVMForCMake(Path root) throws Exception {
+        Path project = dir(root, "source", "CMakeLists.txt", "project(x LANGUAGES C CXX)\n");
+        Path toolchain = Files.createDirectories(root.resolve("fork llvm/bin"));
+        String extension = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+        Path c = Files.writeString(toolchain.resolve("clang" + extension), "fixture clang");
+        Path cpp = Files.writeString(toolchain.resolve("clang++" + extension), "fixture clang++");
+        String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+        try {
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("fork llvm").toString());
+            expect(project, "validate cmake-validate cmake [-S, ., -B, build/cmake, "
+                    + "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, -DCMAKE_C_COMPILER=" + c.toRealPath()
+                    + ", -DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "]",
+                    "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
+            Path output = project.resolve("m3-build.tsv");
+            Mavenizer.mavenize(project, "org.example", "1", true);
+            String emitted = Files.readString(output);
+            require(emitted.contains("arg\tcmake-validate\t-DCMAKE_C_COMPILER=" + c.toRealPath() + "\n")
+                    && emitted.contains("arg\tcmake-validate\t-DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "\n"),
+                    "real generated task manifest retains each LLVM executable path as one argument");
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("absent").toString());
+            try {
+                Mavenizer.steps(project);
+                throw new AssertionError("missing LLVM home must fail closed");
+            } catch (IOException expected) {
+                require(expected.getMessage().contains("LLVM driver not found"), "specific missing LLVM refusal");
+            }
+        } finally {
+            if (previous == null) System.clearProperty(LlvmCompilerProvider.HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, previous);
+        }
+        passed++;
     }
 
     private static void detectsPython(Path root) throws Exception {
