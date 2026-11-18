@@ -80,6 +80,65 @@ public final class PolyglotCliContractTestMain {
                     "second DB-backed run must reuse verified state");
             passed++;
 
+            // Reuse the original Maven compilation-database owner from a
+            // non-Maven host, without running a compiler or opening M3DB.
+            Path nativeRoot = Files.createDirectories(root.resolve("Clang workspace with spaces"));
+            Files.createDirectories(nativeRoot.resolve("native"));
+            Files.writeString(nativeRoot.resolve("native/hello.c"),
+                    "int exported(void) { return 42; }\n", StandardCharsets.UTF_8);
+            Path nativeManifest = nativeRoot.resolve("m3-build.tsv");
+            Files.writeString(nativeManifest, TaskManifest.MAGIC + "\n"
+                    + "task\tall\t-\t.\n"
+                    + "dep\tall\tcompile\n"
+                    + "task\tcompile\t@m3:llvm:compiler:c\t.\n"
+                    + "arg\tcompile\t--m3-llvm-bin=not-installed LLVM/bin\n"
+                    + "arg\tcompile\t-std=c17\n"
+                    + "arg\tcompile\t-c\n"
+                    + "arg\tcompile\tnative/hello.c\n"
+                    + "arg\tcompile\t-o\n"
+                    + "arg\tcompile\ttarget/hello.o\n"
+                    + "input\tcompile\tnative/hello.c\n"
+                    + "output\tcompile\ttarget/hello.o\n", StandardCharsets.UTF_8);
+            Path db = nativeRoot.resolve("target/m3-llvm/compile_commands.json");
+            List<String> compileDbLog = new ArrayList<>();
+            var artifacts = PolyglotCli.execute(new String[] {
+                    "llvm-compile-db", nativeRoot.toString(), nativeManifest.toString(), "all"
+            }, compileDbLog::add);
+            check(artifacts.equals(List.of(db.toString())),
+                    "portable compiler database command returns only its declared output");
+            check(compileDbLog.equals(List.of("M3-LLVM-COMPILE-DB-V1", "file\t" + db)),
+                    "versioned two-row portable output protocol");
+            check(Files.isRegularFile(db) && Files.readString(db).contains("\"arguments\":[")
+                            && Files.readString(db).contains("native/hello.c"),
+                    "original Clang argv projected into the same Maven-owned format");
+            check(!Files.exists(nativeRoot.resolve("target/hello.o"))
+                            && !Files.exists(nativeRoot.resolve(".m3")),
+                    "portable LLVM database export never executes native compiler or writes M3DB");
+            var previousTime = Files.getLastModifiedTime(db);
+            PolyglotCli.execute(new String[] {
+                    "llvm-compile-db", nativeRoot.toString(), nativeManifest.toString(), "all"
+            }, ignoredLine -> {});
+            check(previousTime.equals(Files.getLastModifiedTime(db)),
+                    "byte-identical portable invocation is a filesystem fixed point");
+            for (String[] invalidDb : List.of(
+                    new String[] {"llvm-compile-db"},
+                    new String[] {"llvm-compile-db", nativeRoot.toString(), nativeManifest.toString()},
+                    new String[] {"llvm-compile-db", nativeRoot.toString(), nativeManifest.toString(),
+                            "all", "--incremental"},
+                    new String[] {"llvm-compile-db", nativeRoot.toString(), nativeManifest.toString(),
+                            "all", "--provider-reuse"})) {
+                boolean rejected = false;
+                try {
+                    PolyglotCli.execute(invalidDb, line -> {});
+                } catch (IllegalArgumentException expected) {
+                    rejected = true;
+                }
+                check(rejected, "LLVM compile-db export rejects unknown flags and wrong arity");
+            }
+            check(previousTime.equals(Files.getLastModifiedTime(db)),
+                    "invalid portable requests leave accepted database unchanged");
+            passed++;
+
             for (String[] rejected : List.of(
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--incremental"},
                     new String[] {"plan", root.toString(), manifest.toString(), "all", "--approve-rewrite-apply"},
