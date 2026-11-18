@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   contract-and-plugin:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -33,3 +33,40 @@ jobs:
           command -v clang++
           java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes \
             io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required
+      - name: Install LLVM 18 and Flang 18 for mandatory six-language compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends llvm-18 clang-18 flang-18
+          bin=/usr/lib/llvm-18/bin
+          for tool in clang clang++ llc; do test -x "$bin/$tool"; done
+          flang="$bin/flang"
+          if [ ! -x "$flang" ]; then flang="$bin/flang-new"; fi
+          test -x "$flang"
+          {
+            dpkg-query -W -f='${Package}\t${Version}\n' llvm-18 clang-18 flang-18
+            for tool in clang clang++ llc; do sha256sum "$bin/$tool"; done
+            sha256sum "$flang"
+          } | tee "$RUNNER_TEMP/m3-llvm-18-toolchain.txt"
+      - name: Require real C C++ Objective-C Objective-C++ Fortran and IR object outputs
+        shell: bash
+        env:
+          M3_LLVM_REAL_TEST_HOME: /usr/lib/llvm-18
+        run: |
+          set -euo pipefail
+          java -cp "tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes" \
+            io.synexia.maven.polyglot.LlvmRealTestsMain \
+            | tee "$RUNNER_TEMP/m3-llvm-sixlang-result.txt"
+          grep -Fqx 'PASS: six real LLVM compiler/IR object outputs through Maven TaskRunner' \
+            "$RUNNER_TEMP/m3-llvm-sixlang-result.txt"
+      - name: Retain real six-language toolchain and object-build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-llvm-sixlang-jdk-${{ matrix.java }}
+          path: |
+            ${{ runner.temp }}/m3-llvm-18-toolchain.txt
+            ${{ runner.temp }}/m3-llvm-sixlang-result.txt
+          if-no-files-found: warn
+          retention-days: 14
