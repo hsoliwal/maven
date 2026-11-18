@@ -53,12 +53,21 @@ grep -Eq 'set\(LLVM_VERSION_MAJOR 24\)' "$SOURCE/cmake/Modules/LLVMVersion.cmake
 # This runs only after the exact clean pinned source has passed validation and
 # before touching either output. Pre-created empty output directories are valid.
 for owned in "$BUILD" "$EVIDENCE"; do
-  if [[ -e "$owned" ]] && {
-       [[ ! -d "$owned" ]] ||
-       [[ -n "$(find "$owned" -mindepth 1 -maxdepth 1 -print -quit)" ]];
-     }; then
-    printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
-    exit 65
+  # A directory listing failure is not an empty directory. Keep the find exit
+  # status instead of discarding it inside a [[ -n $(...) ]] expression.
+  if [[ -e "$owned" || -L "$owned" ]]; then
+    if [[ ! -d "$owned" || -L "$owned" ]]; then
+      printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
+      exit 65
+    fi
+    if ! entries="$(find "$owned" -mindepth 1 -maxdepth 1 -print -quit 2>&1)"; then
+      printf 'LLVM proof cannot inspect output directory: %s\n' "$owned" >&2
+      exit 65
+    fi
+    if [[ -n "$entries" ]]; then
+      printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
+      exit 65
+    fi
   fi
 done
 # Publish no build/evidence directories until the source revision, clean state,
