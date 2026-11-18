@@ -85,7 +85,7 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | --- | --- | --- |
 | Embedded original M3IndexDB | `embedded` (default) | One `.m3/module.m3db` archive; implementation is included |
 | Sealed file | `file` | Preserves `.m3/module-state-v1.bin` and atomic SHA-256-sealed publication; the file holds the same IndexStore image as `embedded`, so an image written before that change starts cold once |
-| Runtime M3IndexDB | `m3db` or `native` | Preserves `.m3/maven-build-db/`, an IndexStore directory written by the runtime's own engine: the running JDK's `jdk.m3.indexdb` (M3jdk21, module or exported `java.base` package) first, else the reflective `MIndexDB.open`, `findArtifact` and `putArtifact` runtime on the plugin classpath; never the library copy carried by the plugin |
+| Runtime M3DB | `m3db` or `native` | Preserves `.m3/maven-build-db/`, an IndexStore directory written by the runtime's own engine: current M3JDK `jdk.m3.db.M3DB` first, legacy `jdk.m3.indexdb.M3IndexDB` next (named module or exported `java.base` package), else reflective `MIndexDB.open`, `findArtifact` and `putArtifact` on the plugin classpath; never the library fallback |
 | Legacy configuration alias | `legacy` | Uses embedded M3IndexDB; old per-task stamps never authorize a skip and the first upgraded build establishes new evidence |
 | SQLite JDBC | `sqlite` | Preserves `.m3/module-state.sqlite` and local transaction sidecars; requires an explicit `org.sqlite.JDBC` runtime dependency |
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |

@@ -30,7 +30,7 @@ import java.util.TreeMap;
 import io.synexia.maven.polyglot.IndexStore;
 
 /**
- * The per-project build database. Its only storage is {@link IndexStore} (M3IndexDB: the {@code jdk.m3.indexdb}
+ * The per-project build database. Its only storage is {@link IndexStore} (M3DB: the {@code jdk.m3.db}
  * module on M3jdk21, the library form on a stock JDK). Artifacts: {@code builds} (the build list), one
  * {@code catalog/<build>} per build (source, content hash, first build), {@code chunks/v1/<sha>} per distinct source
  * content (parsed once), and {@code derived/<build>} (changes since the last green build, flaky tests).
@@ -55,7 +55,7 @@ public final class ProjectDb implements AutoCloseable {
         return new ProjectDb(IndexStore.open(directory.resolve("db")));
     }
 
-    /** "platform" on M3jdk21 ({@code jdk.m3.indexdb}), "library" on a stock JDK. */
+    /** "platform" on M3JDK ({@code jdk.m3.db} or legacy owner), "library" on a stock JDK. */
     public String binding() {
         return store.binding();
     }

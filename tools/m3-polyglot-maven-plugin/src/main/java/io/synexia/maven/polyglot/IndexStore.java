@@ -23,9 +23,10 @@ import java.nio.file.Path;
 
 /**
  * The one storage layer of the module state and of the project database: named, content-addressed, versioned
- * artifacts. The storage logic has one owner, M3IndexDB ({@code jdk.m3.indexdb}): the JDK's own form when Maven
- * runs on M3jdk21, otherwise the library form of the same source carried by this plugin (see
- * {@code META-INF/M3INDEXDB-PROVENANCE.tsv}). Callers see which form is bound only through {@link #binding()}.
+ * artifacts. The native owner is {@code jdk.m3.db.M3DB} in current M3JDK, or
+ * {@code jdk.m3.indexdb.M3IndexDB} in older images. Stock JDKs use the library form of
+ * the legacy source (see {@code META-INF/M3INDEXDB-PROVENANCE.tsv}). No duplicate runtime
+ * owner is opened. Callers see which form is bound only through {@link #binding()}.
  */
 public interface IndexStore extends AutoCloseable {
     /** One stored artifact; {@code sha256} is the lowercase digest of {@code payload}. */
@@ -36,7 +37,7 @@ public interface IndexStore extends AutoCloseable {
         return IndexStores.engine(ModuleLayer.boot()).open(root);
     }
 
-    /** "platform" (the running JDK's {@code jdk.m3.indexdb}), "library" or "donor" (an installed runtime). */
+    /** "platform" (the running M3JDK owner), "library" or "donor" (an installed runtime). */
     String binding();
 
     boolean contains(String name) throws IOException;

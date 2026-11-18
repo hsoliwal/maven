@@ -49,6 +49,9 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDbSemanticIndex.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDbSemanticKind.java \
   "$ROOT"/src/main/java/jdk/m3/indexdb/M3IndexDbSemanticNode.java \
+  "$ROOT"/src/test/java/jdk/m3/db/M3DB.java \
+  "$ROOT"/src/test/java/jdk/m3/db/Artifact.java \
+  "$ROOT"/src/test/java/jdk/m3/db/SemanticIndex.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/Mavenizer.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \

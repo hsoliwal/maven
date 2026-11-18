@@ -23,8 +23,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 
 /**
- * {@link IndexStore} over the running JDK's {@code jdk.m3.indexdb} (M3jdk21). The plugin is compiled for stock
- * JDK 17, so the exported public API is bound reflectively; its method set is the library form's, the same source.
+ * {@link IndexStore} over M3JDK's current {@code jdk.m3.db.M3DB} or legacy
+ * {@code jdk.m3.indexdb.M3IndexDB}. The plugin targets stock JDK 17 and binds the shared artifact
+ * API reflectively; it never copies the owner into a second runtime store.
  */
 final class PlatformIndexStore implements IndexStore {
     private static final Class<?>[] NONE = {};
@@ -96,9 +97,9 @@ final class PlatformIndexStore implements IndexStore {
             Throwable cause = thrown.getCause();
             if (cause instanceof IOException io) throw io;
             if (cause instanceof RuntimeException runtime) throw runtime;
-            throw new IOException("jdk.m3.indexdb failure in " + name, cause);
+            throw new IOException(owner.getName() + " failure in " + name, cause);
         } catch (ReflectiveOperationException unavailable) {
-            throw new IOException("jdk.m3.indexdb binding lacks " + name, unavailable);
+            throw new IOException(owner.getName() + " binding lacks " + name, unavailable);
         }
     }
 }
