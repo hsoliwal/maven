@@ -114,6 +114,16 @@ jobs:
         shell: bash
         run: ./mvnw package -Pplugins -DskipTests -e -B -V
 
+      # Every jar of repository/ either declares Apache-2.0 in its POM chain or has a LICENSE entry and a
+      # repository/<artifactId>.license; every LICENSE entry names a jar of repository/.
+      - name: Check the boot repository licences
+        shell: bash
+        run: |
+          dist="$RUNNER_TEMP/boot-licences"
+          mkdir -p "$dist"
+          tar -xzf apache-maven/target/apache-maven-*-bin.tar.gz -C "$dist"
+          bash apache-maven/src/test/scripts/check-boot-repository-licences.sh "$dist"/apache-maven-*
+
       - name: Test the inline plugins
         shell: bash
         run: ./mvnw -f plugins/pom.xml verify -e -B -V

@@ -154,6 +154,23 @@ Boot repository licences:
   stays because, without it, the offline build fails resolving the maven-resources-plugin closure
   (measured);
 - the JUnit BOM POMs (EPL-2.0) are kept as metadata for imported BOMs; JUnit jars are excluded.
+- LICENSE and license texts: profile `plugins` passes `bootRepository=true` to `process-resource-bundles`, so
+  `LICENSE.vm` adds a `repository/` section for the six jars whose terms are other than, or besides,
+  Apache-2.0 (asm 9.10.1 BSD-3-Clause, zstd-jni 1.5.7-9 BSD-2-Clause, xz 1.12 0BSD, slf4j-api 1.7.36 MIT,
+  javaparser-core 3.28.2 LGPL-3.0 or Apache-2.0, org.eclipse.sisu.plexus 0.9.0.M4 EPL-2.0). Each entry gives
+  path, coordinates, project, license and license URL from the POM, and the template copies the license text
+  to `target/licenses/repository/<artifactId>.license`, which `boot-repository.xml` ships as
+  `repository/<artifactId>.license`. Without `-Pplugins` the section renders nothing.
+- The list is static. `apache-maven/src/test/scripts/check-boot-repository-licences.sh <unpacked distribution>`
+  fails when a jar in `repository/` is not listed and its POM chain does not declare Apache-2.0, or when a
+  listed jar or its license file is missing. CI runs it on the tar.gz after the `-Pplugins` package step.
+  A version bump in a plugin closure therefore fails CI until the entry is updated.
+- Measured (Windows 11, JDK 21, Maven 4.0.0-rc-7): the `-Pplugins` distribution has 375 files in
+  `repository/` (369 plus the 6 license files, 30,635 bytes); the check script on its tar.gz reports 55 jars,
+  6 listed, 49 Apache-2.0, 0 unlisted, 6 entries OK. On the #174 distribution it reports 5 unlisted jars
+  (javaparser-core passes there as Apache-2.0, one of its two licenses). Without `-Pplugins`, the module's
+  LICENSE, NOTICE, `target/licenses` and the 206 bin zip entries (name, CRC-32, size) equal master's.
+  Offline acceptance A1 to A3 gives the same results as for batch 1.
 
 ### Known issues and NOT RUN
 

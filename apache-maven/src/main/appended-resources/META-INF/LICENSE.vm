@@ -298,3 +298,52 @@ subject to the terms and conditions of the following licenses:
 #*  *##end ##
 #**##end ##
 #end ##
+##
+## Boot repository (profile 'plugins' sets bootRepository): repository/ ships the inline plugins with their runtime
+## closures. Its third-party jars with license terms other than (or besides) the Apache License, Version 2.0 are
+## listed here from their POMs; each license text is copied to target/licenses/repository/<artifactId>.license,
+## which src/assembly/boot-repository.xml ships as repository/<artifactId>.license. The list is static:
+## src/test/scripts/check-boot-repository-licences.sh fails a distribution whose repository/ holds an unlisted jar
+## that does not declare Apache-2.0, or lacks a listed jar or its license file.
+#if ( $bootRepository == "true" )##
+
+The boot repository (repository/) includes the following third-party artifacts with separate license terms; every
+other jar in repository/ is licensed under the Apache License, Version 2.0:
+#set ( $bootArtifacts = [
+  { "path": "org/ow2/asm/asm/9.10.1/asm-9.10.1.jar", "id": "org.ow2.asm:asm:jar:9.10.1",
+    "artifactId": "asm", "name": "asm", "url": "http://asm.ow2.io/",
+    "license": "BSD-3-Clause", "spdx": "BSD-3-Clause", "licenseUrl": "https://asm.ow2.io/license.html" },
+  { "path": "com/github/luben/zstd-jni/1.5.7-9/zstd-jni-1.5.7-9.jar", "id": "com.github.luben:zstd-jni:jar:1.5.7-9",
+    "artifactId": "zstd-jni", "name": "zstd-jni", "url": "https://github.com/luben/zstd-jni",
+    "license": "BSD 2-Clause License", "spdx": "BSD-2-Clause", "licenseUrl": "https://opensource.org/licenses/BSD-2-Clause" },
+  { "path": "org/tukaani/xz/1.12/xz-1.12.jar", "id": "org.tukaani:xz:jar:1.12",
+    "artifactId": "xz", "name": "XZ for Java", "url": "https://tukaani.org/xz/java.html",
+    "license": "0BSD", "spdx": "0BSD" },
+  { "path": "org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar", "id": "org.slf4j:slf4j-api:jar:1.7.36",
+    "artifactId": "slf4j-api", "name": "SLF4J API Module", "url": "http://www.slf4j.org",
+    "license": "MIT License", "spdx": "MIT", "licenseUrl": "http://www.opensource.org/licenses/mit-license.php" },
+  { "path": "com/github/javaparser/javaparser-core/3.28.2/javaparser-core-3.28.2.jar",
+    "id": "com.github.javaparser:javaparser-core:jar:3.28.2",
+    "artifactId": "javaparser-core", "name": "com.github.javaparser:javaparser-core", "url": "https://github.com/javaparser",
+    "license": "GNU Lesser General Public License (LGPL-3.0) or Apache License, Version 2.0; distributed under the latter",
+    "spdx": "Apache-2.0", "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt" },
+  { "path": "org/eclipse/sisu/org.eclipse.sisu.plexus/0.9.0.M4/org.eclipse.sisu.plexus-0.9.0.M4.jar",
+    "id": "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:0.9.0.M4",
+    "artifactId": "org.eclipse.sisu.plexus", "name": "org.eclipse.sisu:org.eclipse.sisu.plexus",
+    "url": "https://eclipse.dev/sisu/org.eclipse.sisu.plexus/",
+    "license": "Eclipse Public License, Version 2.0", "spdx": "EPL-2.0",
+    "licenseUrl": "https://www.eclipse.org/legal/epl-v20.html" }
+] )##
+#foreach ( $bootArtifact in $bootArtifacts )##
+#set ( $licFile = 'repository/' + $bootArtifact.artifactId + '.license' )##
+#set ( $downloaded = $locator.getResourceAsFile( "licenses/${bootArtifact.spdx}.txt", "licenses/${licFile}" ) )##
+
+- repository/${bootArtifact.path}: ${bootArtifact.id}
+    Project:     ${bootArtifact.name}
+    Project URL: ${bootArtifact.url}
+    License:     ${bootArtifact.license} (${bootArtifact.spdx}) (${licFile})
+#if ( $bootArtifact.licenseUrl )##
+    License URL: ${bootArtifact.licenseUrl}
+#{end}##
+#{end}##
+#{end}##

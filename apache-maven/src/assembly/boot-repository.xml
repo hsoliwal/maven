@@ -45,6 +45,15 @@ under the License.
         <exclude>org/junit/**/*.jar</exclude>
       </excludes>
     </fileSet>
+    <!-- repository/<artifactId>.license: the license texts of the jars listed in the LICENSE repository/ section,
+         written by LICENSE.vm (process-resource-bundles with bootRepository=true) -->
+    <fileSet>
+      <directory>target/licenses/repository</directory>
+      <outputDirectory>repository</outputDirectory>
+      <includes>
+        <include>*.license</include>
+      </includes>
+    </fileSet>
     <fileSet>
       <directory>src/assembly/boot-repository</directory>
       <outputDirectory>conf</outputDirectory>
