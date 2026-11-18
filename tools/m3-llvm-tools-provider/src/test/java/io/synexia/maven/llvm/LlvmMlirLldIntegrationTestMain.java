@@ -57,7 +57,7 @@ public final class LlvmMlirLldIntegrationTestMain {
             TaskManifest offline = TaskManifest.load(write(root, "offline.tsv", manifest(null)));
             List<String> planned = TaskRunner.run(offline, root, "all", true, TIMEOUT, line -> { });
             require(planned.size() == 6
-                    && Set.copyOf(planned.stream().map(String::valueOf).toList()).equals(
+                    && Set.copyOf(planned).equals(
                             Set.of("mlir-opt", "mlir-translate", "llvm-as",
                                     "clang-c", "lld-elf", "all")),
                     "six dependency-ordered M3 native DAG tasks");
