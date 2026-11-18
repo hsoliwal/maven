@@ -76,8 +76,9 @@ jobs:
               cat "$log"
               # Never retry a failed test or compilation. Maven Central HTTP
               # 429 is the sole transport exception, with two bounded retries.
-              if [ "$attempt" -ge 3 ] || ! grep -Eq \
-                   'Received status code 429|HTTP 429|Too Many Requests' "$log"; then
+              if [ "$attempt" -ge 3 ] \
+                  || ! grep -Fq 'Received status code 429 from server: Too Many Requests' "$log" \
+                  || ! grep -Fq 'https://repo.maven.apache.org/maven2/' "$log"; then
                 exit "$status"
               fi
               echo "Rate-limited original dependency download; retry $attempt of 2" >&2
