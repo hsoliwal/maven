@@ -1,0 +1,312 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.shared.utils.cli;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+
+import org.apache.maven.shared.utils.Os;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+@SuppressWarnings("deprecation")
+public class CommandLineUtilsTest {
+
+    /**
+     * Tests that case-insensitive environment variables are normalized to upper case.
+     */
+    @Test
+    public void testGetSystemEnvVarsCaseInsensitive() {
+        Properties vars = CommandLineUtils.getSystemEnvVars(false);
+        for (Object o : vars.keySet()) {
+            String variable = (String) o;
+            assertEquals(variable.toUpperCase(Locale.ENGLISH), variable);
+        }
+    }
+
+    @Test
+    public void testEnsureCaseSensitivity() {
+        Map<String, String> data = new HashMap<>();
+        data.put("abz", "cool");
+        assertTrue(CommandLineUtils.ensureCaseSensitivity(data, false).containsKey("ABZ"));
+        assertTrue(CommandLineUtils.ensureCaseSensitivity(data, true).containsKey("abz"));
+    }
+
+    /**
+     * Tests that environment variables on Windows are normalized to upper case. Does nothing on Unix platforms.
+     */
+    @Test
+    public void testGetSystemEnvVarsWindows() {
+        if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
+            return;
+        }
+        Properties vars = CommandLineUtils.getSystemEnvVars();
+        for (Object o : vars.keySet()) {
+            String variable = (String) o;
+            assertEquals(variable.toUpperCase(Locale.ENGLISH), variable);
+        }
+    }
+
+    /**
+     * Tests the splitting of a command line into distinct arguments.
+     */
+    @Test
+    public void testTranslateCommandline() throws Exception {
+        assertCmdLineArgs(new String[] {}, null);
+        assertCmdLineArgs(new String[] {}, "");
+
+        assertCmdLineArgs(new String[] {"foo", "bar"}, "foo bar");
+        assertCmdLineArgs(new String[] {"foo", "bar"}, "   foo   bar   ");
+
+        assertCmdLineArgs(new String[] {"foo", " double quotes ", "bar"}, "foo \" double quotes \" bar");
+        assertCmdLineArgs(new String[] {"foo", " single quotes ", "bar"}, "foo ' single quotes ' bar");
+
+        assertCmdLineArgs(new String[] {"foo", " \" ", "bar"}, "foo ' \" ' bar");
+        assertCmdLineArgs(new String[] {"foo", " ' ", "bar"}, "foo \" ' \" bar");
+    }
+
+    @Test
+    public void givenADoubleQuoteMarkInArgumentWhenExecutingCodeThenCommandLineExceptionIsThrown() {
+        try {
+            new Commandline("echo \"let\"s go\"").execute();
+        } catch (CommandLineException e) {
+            assertTrue(true);
+            return;
+        }
+        fail("Exception was not thrown when given invalid (3 unescaped double quote) input");
+    }
+
+    @Test
+    public void givenASingleQuoteMarkInArgumentWhenExecutingCodeThenExitCode0Returned() throws Exception {
+        final Process p = new Commandline("echo \"let's go\"").execute();
+        p.waitFor();
+        assertEquals(0, p.exitValue());
+    }
+
+    /**
+     * A process that writes more output than fits in the OS pipe buffer is still being drained by the stream pumpers
+     * when {@code waitFor()} returns. Closing the process streams unconditionally at that point (as was attempted to
+     * work around <a href="https://bugs.java.com/bugdatabase/view_bug.do?bug_id=4311711">JDK-4311711</a>) makes an
+     * in-flight {@code readLine()} throw and surfaces as a spurious {@link CommandLineException} on a process that
+     * exited successfully with complete output. The close must therefore only be forced as a fallback after the pumpers
+     * had a grace period to reach EOF on their own. Repeats because the race is timing dependent. Unix-only because it
+     * relies on {@code seq}.
+     */
+    @Test
+    public void executeCommandLineWithLargeStdoutCompletesWithoutFailure() throws Exception {
+        if (!Os.isFamily(Os.FAMILY_UNIX)) {
+            return;
+        }
+
+        int lines = 50000;
+
+        StringBuilder expected = new StringBuilder();
+        for (int i = 1; i <= lines; i++) {
+            expected.append(i).append(System.lineSeparator());
+        }
+
+        for (int i = 0; i < 10; i++) {
+            Commandline cl = new Commandline("seq 1 " + lines);
+
+            CommandLineUtils.StringStreamConsumer stdout = new CommandLineUtils.StringStreamConsumer();
+            CommandLineUtils.StringStreamConsumer stderr = new CommandLineUtils.StringStreamConsumer();
+
+            int exitCode = CommandLineUtils.executeCommandLine(cl, stdout, stderr);
+
+            assertEquals(0, exitCode, "unexpected exit code in iteration " + i);
+            assertEquals(expected.toString(), stdout.getOutput(), "stdout must be complete in iteration " + i);
+            assertEquals("", stderr.getOutput(), "stderr must be empty in iteration " + i);
+        }
+    }
+
+    @TempDir
+    File tempDir;
+
+    @Test
+    public void executeCommandLineOnWindowsPassesCmdSpecialCharactersThrough() throws Exception {
+        if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
+            return;
+        }
+
+        // MSHARED-765: unquoted, cmd.exe runs "echo a" and then tries to run "b"
+        Commandline cl = new Commandline();
+        cl.setExecutable("echo");
+        cl.createArg().setValue("a&b");
+
+        CommandLineUtils.StringStreamConsumer stdout = new CommandLineUtils.StringStreamConsumer();
+        CommandLineUtils.StringStreamConsumer stderr = new CommandLineUtils.StringStreamConsumer();
+        int exitCode = CommandLineUtils.executeCommandLine(cl, stdout, stderr);
+
+        assertEquals(0, exitCode, stderr.getOutput());
+        assertEquals("\"a&b\"" + System.lineSeparator(), stdout.getOutput());
+    }
+
+    @Test
+    public void executeCommandLineOnWindowsRunsExecutableFromPathWithParentheses() throws Exception {
+        if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
+            return;
+        }
+
+        // MSHARED-832: C:\work\lol(1)\maven\bin\mvn.cmd
+        File dir = new File(tempDir, "lol(1)");
+        assertTrue(dir.mkdirs());
+        File script = new File(dir, "x.cmd");
+        Files.write(script.toPath(), "@echo ok".getBytes(StandardCharsets.US_ASCII));
+
+        Commandline cl = new Commandline();
+        cl.setExecutable(script.getAbsolutePath());
+
+        CommandLineUtils.StringStreamConsumer stdout = new CommandLineUtils.StringStreamConsumer();
+        CommandLineUtils.StringStreamConsumer stderr = new CommandLineUtils.StringStreamConsumer();
+        int exitCode = CommandLineUtils.executeCommandLine(cl, stdout, stderr);
+
+        assertEquals(0, exitCode, stderr.getOutput());
+        assertEquals("ok" + System.lineSeparator(), stdout.getOutput());
+    }
+
+    @Test
+    public void executeCommandLineDecodesOutputWithTheGivenCharset() throws Exception {
+        if (!Os.isFamily(Os.FAMILY_UNIX)) {
+            return;
+        }
+
+        // the shell emits the UTF-8 bytes of "caf\u00e9" regardless of the JVM default charset
+        String printfUtf8Cafe = "printf 'caf\\303\\251'";
+
+        CommandLineUtils.StringStreamConsumer utf8 = new CommandLineUtils.StringStreamConsumer();
+        CommandLineUtils.executeCommandLine(
+                new Commandline(printfUtf8Cafe),
+                null,
+                utf8,
+                new CommandLineUtils.StringStreamConsumer(),
+                0,
+                null,
+                StandardCharsets.UTF_8);
+        assertEquals("caf\u00e9" + System.lineSeparator(), utf8.getOutput());
+
+        CommandLineUtils.StringStreamConsumer latin1 = new CommandLineUtils.StringStreamConsumer();
+        CommandLineUtils.executeCommandLine(
+                new Commandline(printfUtf8Cafe),
+                null,
+                latin1,
+                new CommandLineUtils.StringStreamConsumer(),
+                0,
+                null,
+                StandardCharsets.ISO_8859_1);
+        assertEquals("caf\u00c3\u00a9" + System.lineSeparator(), latin1.getOutput());
+    }
+
+    @Test
+    public void givenASingleQuoteMarkInArgumentWhenTranslatingToCmdLineArgsThenTheQuotationMarkIsNotEscaped()
+            throws Exception {
+        final String command = "echo \"let's go\"";
+        final String[] expected = new String[] {"echo", "let's go"};
+        assertCmdLineArgs(expected, command);
+    }
+
+    @Test
+    public void givenAnEscapedDoubleQuoteMarkInArgumentWhenTranslatingToCmdLineArgsThenTheQuotationMarkRemainsEscaped()
+            throws Exception {
+        final String command = "echo \"let\\\"s go\"";
+        final String[] expected = new String[] {"echo", "let\\\"s go"};
+        assertCmdLineArgs(expected, command);
+    }
+
+    @Test
+    public void givenAnEscapedSingleQuoteMarkInArgumentWhenTranslatingToCmdLineArgsThenTheQuotationMarkRemainsEscaped()
+            throws Exception {
+        final String command = "echo \"let\\'s go\"";
+        final String[] expected = new String[] {"echo", "let\\'s go"};
+        assertCmdLineArgs(expected, command);
+    }
+
+    @Test
+    public void givenAnEscapedDoubleQuoteMarkInArgumentWhenTranslatingToCmdLineArgsThenNoExceptionIsThrown()
+            throws Exception {
+        Process p = new Commandline("echo \"let\\\"s go\"").execute();
+        p.waitFor();
+        assertEquals(0, p.exitValue());
+    }
+
+    private void assertCmdLineArgs(final String[] expected, final String cmdLine) throws Exception {
+        String[] actual = CommandLineUtils.translateCommandline(cmdLine);
+        assertNotNull(actual);
+        assertEquals(expected.length, actual.length);
+        assertEquals(Arrays.asList(expected), Arrays.asList(actual));
+    }
+
+    @Test
+    public void environmentVariableWithNullShouldNotBeSet() {
+
+        Commandline commandline = new Commandline();
+        commandline.addEnvironment("TEST_NULL_ENV", null);
+
+        String[] environmentVariables = commandline.getEnvironmentVariables();
+
+        assertNotNull(environmentVariables);
+        assertFalse(Arrays.asList(environmentVariables).contains("TEST_NULL_ENV=null"));
+    }
+
+    @Test
+    public void environmentVariableFromSystemIsCopiedByDefault() {
+
+        Commandline commandline = new Commandline();
+
+        String[] environmentVariables = commandline.getEnvironmentVariables();
+
+        assertNotNull(environmentVariables);
+        assertTrue(Arrays.asList(environmentVariables).contains("TEST_SHARED_ENV=TestValue"));
+    }
+
+    @Test
+    public void environmentVariableFromSystemIsNotCopiedIfInheritedIsFalse() {
+
+        Commandline commandline = new Commandline();
+        commandline.setShellEnvironmentInherited(false);
+
+        String[] environmentVariables = commandline.getEnvironmentVariables();
+
+        assertNotNull(environmentVariables);
+        assertEquals(0, environmentVariables.length);
+    }
+
+    @Test
+    public void environmentVariableFromSystemIsRemoved() {
+
+        Commandline commandline = new Commandline();
+        commandline.addEnvironment("TEST_SHARED_ENV", null);
+
+        String[] environmentVariables = commandline.getEnvironmentVariables();
+
+        assertNotNull(environmentVariables);
+        assertFalse(Arrays.asList(environmentVariables).contains("TEST_SHARED_ENV=TestValue"));
+    }
+}

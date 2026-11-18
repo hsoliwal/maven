@@ -1,0 +1,515 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.shared.utils.cli;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.StringTokenizer;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.maven.shared.utils.Os;
+import org.apache.maven.shared.utils.StringUtils;
+
+/**
+ * @author <a href="mailto:trygvis@inamo.no">Trygve Laugst&oslash;l </a>
+ */
+public abstract class CommandLineUtils {
+
+    /**
+     * Grace period in milliseconds to wait for the stream pumpers to drain the remaining process output and reach EOF
+     * on their own after the process has exited, before forcing EOF by closing the process streams. See
+     * <a href="https://bugs.java.com/bugdatabase/view_bug.do?bug_id=4311711">JDK-4311711</a>.
+     */
+    private static final long STREAM_EOF_GRACE_PERIOD_MS = 5000;
+
+    /**
+     * A {@code StreamConsumer} providing consumed lines as a {@code String}.
+     *
+     * @see #getOutput()
+     */
+    public static class StringStreamConsumer implements StreamConsumer {
+
+        private final StringBuilder string = new StringBuilder();
+
+        private static final String LS = System.getProperty("line.separator", "\n");
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void consumeLine(String line) {
+            string.append(line).append(LS);
+        }
+
+        /**
+         * @return the output
+         */
+        public String getOutput() {
+            return string.toString();
+        }
+    }
+
+    /**
+     * @param cl the command line {@link Commandline}
+     * @param systemOut {@link StreamConsumer}
+     * @param systemErr {@link StreamConsumer}
+     * @return code
+     * @throws CommandLineException in case of a problem
+     */
+    public static int executeCommandLine(Commandline cl, StreamConsumer systemOut, StreamConsumer systemErr)
+            throws CommandLineException {
+        return executeCommandLine(cl, null, systemOut, systemErr, 0);
+    }
+
+    /**
+     * @param cl the command line {@link Commandline}
+     * @param systemOut {@link StreamConsumer}
+     * @param systemErr {@link StreamConsumer}
+     * @param timeoutInSeconds the timeout
+     * @return code
+     * @throws CommandLineException in case of a problem
+     */
+    public static int executeCommandLine(
+            Commandline cl, StreamConsumer systemOut, StreamConsumer systemErr, int timeoutInSeconds)
+            throws CommandLineException {
+        return executeCommandLine(cl, null, systemOut, systemErr, timeoutInSeconds);
+    }
+
+    /**
+     * @param cl the command line {@link Commandline}
+     * @param systemIn {@link StreamConsumer}
+     * @param systemOut {@link StreamConsumer}
+     * @param systemErr {@link StreamConsumer}
+     * @return code
+     * @throws CommandLineException in case of a problem
+     */
+    public static int executeCommandLine(
+            Commandline cl, InputStream systemIn, StreamConsumer systemOut, StreamConsumer systemErr)
+            throws CommandLineException {
+        return executeCommandLine(cl, systemIn, systemOut, systemErr, 0);
+    }
+
+    /**
+     * @param cl               the command line to execute
+     * @param systemIn         the input to read from, must be thread safe
+     * @param systemOut        a consumer that receives output, must be thread safe
+     * @param systemErr        a consumer that receives system error stream output, must be thread safe
+     * @param timeoutInSeconds positive integer to specify timeout, zero and negative integers for no timeout
+     * @return a return value, see {@link Process#exitValue()}
+     * @throws CommandLineException or CommandLineTimeOutException if time out occurs
+     */
+    public static int executeCommandLine(
+            Commandline cl,
+            InputStream systemIn,
+            StreamConsumer systemOut,
+            StreamConsumer systemErr,
+            int timeoutInSeconds)
+            throws CommandLineException {
+        return executeCommandLine(cl, systemIn, systemOut, systemErr, timeoutInSeconds, null);
+    }
+
+    /**
+     * @param cl               the command line to execute
+     * @param systemIn         the input to read from, must be thread safe
+     * @param systemOut        a consumer that receives output, must be thread safe
+     * @param systemErr        a consumer that receives system error stream output, must be thread safe
+     * @param timeoutInSeconds positive integer to specify timeout, zero and negative integers for no timeout
+     * @param runAfterProcessTermination optional callback to run after the process terminated or the the timeout was
+     *  exceeded, but before waiting on the stream feeder and pumpers to finish
+     * @return a return value, see {@link Process#exitValue()}
+     * @throws CommandLineException or CommandLineTimeOutException if time out occurs
+     */
+    public static int executeCommandLine(
+            Commandline cl,
+            InputStream systemIn,
+            StreamConsumer systemOut,
+            StreamConsumer systemErr,
+            int timeoutInSeconds,
+            Runnable runAfterProcessTermination)
+            throws CommandLineException {
+        return executeCommandLine(
+                cl, systemIn, systemOut, systemErr, timeoutInSeconds, runAfterProcessTermination, null);
+    }
+
+    /**
+     * @param cl               the command line to execute
+     * @param systemIn         the input to read from, must be thread safe
+     * @param systemOut        a consumer that receives output, must be thread safe
+     * @param systemErr        a consumer that receives system error stream output, must be thread safe
+     * @param timeoutInSeconds positive integer to specify timeout, zero and negative integers for no timeout
+     * @param runAfterProcessTermination optional callback to run after the process terminated or the the timeout was
+     *  exceeded, but before waiting on the stream feeder and pumpers to finish
+     * @param streamCharset    charset to use for reading streams
+     * @return a return value, see {@link Process#exitValue()}
+     * @throws CommandLineException or CommandLineTimeOutException if time out occurs
+     */
+    public static int executeCommandLine(
+            Commandline cl,
+            InputStream systemIn,
+            StreamConsumer systemOut,
+            StreamConsumer systemErr,
+            int timeoutInSeconds,
+            Runnable runAfterProcessTermination,
+            final Charset streamCharset)
+            throws CommandLineException {
+        final CommandLineCallable future = executeCommandLineAsCallable(
+                cl, systemIn, systemOut, systemErr, timeoutInSeconds, runAfterProcessTermination, streamCharset);
+        return future.call();
+    }
+
+    /**
+     * Immediately forks a process, returns a callable that will block until process is complete.
+     *
+     * @param cl               the command line to execute
+     * @param systemIn         the input to read from, must be thread safe
+     * @param systemOut        a consumer that receives output, must be thread safe
+     * @param systemErr        a consumer that receives system error stream output, must be thread safe
+     * @param timeoutInSeconds positive integer to specify timeout, zero and negative integers for no timeout
+     * @param runAfterProcessTermination optional callback to run after the process terminated or the the timeout was
+     * @return a CommandLineCallable that provides the process return value, see {@link Process#exitValue()}. "call"
+     *         must be called on this to be sure the forked process has terminated, no guarantees is made about
+     *         any internal state before after the completion of the call statements
+     * @throws CommandLineException or CommandLineTimeOutException if time out occurs
+     */
+    public static CommandLineCallable executeCommandLineAsCallable(
+            final Commandline cl,
+            final InputStream systemIn,
+            final StreamConsumer systemOut,
+            final StreamConsumer systemErr,
+            final int timeoutInSeconds,
+            final Runnable runAfterProcessTermination)
+            throws CommandLineException {
+        return executeCommandLineAsCallable(
+                cl, systemIn, systemOut, systemErr, timeoutInSeconds, runAfterProcessTermination, null);
+    }
+
+    /**
+     * Immediately forks a process, returns a callable that will block until process is complete.
+     *
+     * @param cl               the command line to execute
+     * @param systemIn         the input to read from, must be thread safe
+     * @param systemOut        a consumer that receives output, must be thread safe
+     * @param systemErr        a consumer that receives system error stream output, must be thread safe
+     * @param timeoutInSeconds positive integer to specify timeout, zero and negative integers for no timeout
+     * @param runAfterProcessTermination optional callback to run after the process terminated or the the timeout was
+     * @param streamCharset    charset to use for reading streams
+     * @return a CommandLineCallable that provides the process return value, see {@link Process#exitValue()}. "call"
+     *         must be called on this to be sure the forked process has terminated, no guarantees is made about
+     *         any internal state before after the completion of the call statements
+     * @throws CommandLineException or CommandLineTimeOutException if time out occurs
+     */
+    public static CommandLineCallable executeCommandLineAsCallable(
+            final Commandline cl,
+            final InputStream systemIn,
+            final StreamConsumer systemOut,
+            final StreamConsumer systemErr,
+            final int timeoutInSeconds,
+            final Runnable runAfterProcessTermination,
+            final Charset streamCharset)
+            throws CommandLineException {
+        //noinspection ConstantConditions
+        if (cl == null) {
+            throw new IllegalArgumentException("cl cannot be null.");
+        }
+
+        final Process p = cl.execute();
+
+        final Thread processHook = new Thread() {
+
+            {
+                this.setName("CommandLineUtils process shutdown hook");
+                this.setContextClassLoader(null);
+            }
+
+            @Override
+            public void run() {
+                p.destroy();
+            }
+        };
+
+        ShutdownHookUtils.addShutDownHook(processHook);
+
+        return new CommandLineCallable() {
+
+            @Override
+            public Integer call() throws CommandLineException {
+                StreamPollFeeder inputFeeder = null;
+                StreamPumper outputPumper = null;
+                StreamPumper errorPumper = null;
+                try {
+                    if (systemIn != null) {
+                        inputFeeder = new StreamPollFeeder(systemIn, p.getOutputStream());
+                        inputFeeder.setName("StreamPollFeeder-systemIn");
+                        inputFeeder.start();
+                    }
+
+                    outputPumper = new StreamPumper(p.getInputStream(), systemOut, streamCharset);
+                    outputPumper.setName("StreamPumper-systemOut");
+                    outputPumper.start();
+
+                    errorPumper = new StreamPumper(p.getErrorStream(), systemErr, streamCharset);
+                    errorPumper.setName("StreamPumper-systemErr");
+                    errorPumper.start();
+
+                    if (timeoutInSeconds > 0 && !p.waitFor(timeoutInSeconds, TimeUnit.SECONDS)) {
+                        throw new CommandLineTimeOutException(
+                                String.format("Process timed out after %d seconds.", timeoutInSeconds));
+                    }
+
+                    int returnValue = p.waitFor();
+
+                    // After the process has terminated its output streams may, on some
+                    // JVMs, fail to deliver EOF (JDK-4311711), leaving the pumpers
+                    // blocked in readLine() forever. Normally the pumpers drain the
+                    // remaining buffered output and reach EOF on their own, so first
+                    // wait for them with a grace period; only if they are still stuck
+                    // force EOF by closing the streams. The pumpers are disabled first
+                    // so the IOException caused by our close is treated as EOF instead
+                    // of being reported as a stream failure.
+                    try {
+                        if (inputFeeder != null) {
+                            inputFeeder.waitUntilDone();
+                        }
+
+                        if (!outputPumper.waitUntilDone(STREAM_EOF_GRACE_PERIOD_MS)
+                                || !errorPumper.waitUntilDone(STREAM_EOF_GRACE_PERIOD_MS)) {
+                            outputPumper.disable();
+                            errorPumper.disable();
+
+                            closeProcessStreams(p);
+
+                            outputPumper.waitUntilDone();
+                            errorPumper.waitUntilDone();
+                        }
+                    } finally {
+                        try {
+                            outputPumper.waitUntilDone();
+                        } finally {
+                            errorPumper.waitUntilDone();
+                        }
+                    }
+
+                    if (inputFeeder != null && inputFeeder.getException() != null) {
+                        throw new CommandLineException("Failure processing stdin.", inputFeeder.getException());
+                    }
+
+                    if (outputPumper.getException() != null) {
+                        throw new CommandLineException("Failure processing stdout.", outputPumper.getException());
+                    }
+
+                    if (errorPumper.getException() != null) {
+                        throw new CommandLineException("Failure processing stderr.", errorPumper.getException());
+                    }
+
+                    return returnValue;
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new CommandLineTimeOutException(
+                            "Error while executing external command, process killed.", ex);
+                } finally {
+                    if (outputPumper != null) {
+                        outputPumper.disable();
+                    }
+                    if (errorPumper != null) {
+                        errorPumper.disable();
+                    }
+
+                    try {
+                        if (runAfterProcessTermination != null) {
+                            runAfterProcessTermination.run();
+                        }
+                    } finally {
+                        ShutdownHookUtils.removeShutdownHook(processHook);
+                        processHook.run();
+                    }
+                }
+            }
+        };
+    }
+
+    private static void closeProcessStreams(Process p) {
+        try {
+            p.getOutputStream().close();
+        } catch (IOException e) {
+            // ignore
+        }
+        try {
+            p.getInputStream().close();
+        } catch (IOException e) {
+            // ignore
+        }
+        try {
+            p.getErrorStream().close();
+        } catch (IOException e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Gets the shell environment variables for this process. Note that the returned mapping from variable names to
+     * values will always be case-sensitive regardless of the platform, i.e. <code>getSystemEnvVars().get("path")</code>
+     * and <code>getSystemEnvVars().get("PATH")</code> will in general return different values. However, on platforms
+     * with case-insensitive environment variables like Windows, all variable names will be normalized to upper case.
+     *
+     * @return the shell environment variables, can be empty but never <code>null</code>
+     * @deprecated use System#getenv()
+     */
+    @Deprecated
+    public static Properties getSystemEnvVars() {
+        return getSystemEnvVars(!Os.isFamily(Os.FAMILY_WINDOWS));
+    }
+
+    /**
+     * Return the shell environment variables. If <code>caseSensitive == true</code>, then envar
+     * keys will all be upper-case.
+     *
+     * @param caseSensitive whether environment variable keys should be treated case-sensitively
+     * @return properties object of (possibly modified) envar keys mapped to their values
+     * @deprecated use System#getenv()
+     */
+    @Deprecated
+    public static Properties getSystemEnvVars(boolean caseSensitive) {
+        Map<String, String> envs = System.getenv();
+        return ensureCaseSensitivity(envs, caseSensitive);
+    }
+
+    /**
+     * @param toProcess the command line to translate
+     * @return the array of translated parts
+     * @throws CommandLineException in case of unbalanced quotes
+     */
+    public static String[] translateCommandline(String toProcess) throws CommandLineException {
+        if ((toProcess == null) || (toProcess.length() == 0)) {
+            return new String[0];
+        }
+
+        // parse with a simple finite state machine
+
+        final int normal = 0;
+        final int inQuote = 1;
+        final int inDoubleQuote = 2;
+        boolean inEscape = false;
+        int state = normal;
+        final StringTokenizer tok = new StringTokenizer(toProcess, "\"' \\", true);
+        List<String> tokens = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+
+        while (tok.hasMoreTokens()) {
+            String nextTok = tok.nextToken();
+            switch (state) {
+                case inQuote:
+                    if ("'".equals(nextTok)) {
+                        if (inEscape) {
+                            current.append(nextTok);
+                            inEscape = false;
+                        } else {
+                            state = normal;
+                        }
+                    } else {
+                        current.append(nextTok);
+                        inEscape = "\\".equals(nextTok);
+                    }
+                    break;
+                case inDoubleQuote:
+                    if ("\"".equals(nextTok)) {
+                        if (inEscape) {
+                            current.append(nextTok);
+                            inEscape = false;
+                        } else {
+                            state = normal;
+                        }
+                    } else {
+                        current.append(nextTok);
+                        inEscape = "\\".equals(nextTok);
+                    }
+                    break;
+                default:
+                    if ("'".equals(nextTok)) {
+                        if (inEscape) {
+                            inEscape = false;
+                            current.append(nextTok);
+                        } else {
+                            state = inQuote;
+                        }
+                    } else if ("\"".equals(nextTok)) {
+                        if (inEscape) {
+                            inEscape = false;
+                            current.append(nextTok);
+                        } else {
+                            state = inDoubleQuote;
+                        }
+                    } else if (" ".equals(nextTok)) {
+                        if (current.length() != 0) {
+                            tokens.add(current.toString());
+                            current.setLength(0);
+                        }
+                    } else {
+                        current.append(nextTok);
+                        inEscape = "\\".equals(nextTok);
+                    }
+                    break;
+            }
+        }
+
+        if (current.length() != 0) {
+            tokens.add(current.toString());
+        }
+
+        if ((state == inQuote) || (state == inDoubleQuote)) {
+            throw new CommandLineException("unbalanced quotes in " + toProcess);
+        }
+
+        return tokens.toArray(new String[tokens.size()]);
+    }
+
+    /**
+     * @param line the lines
+     * @return the concatenated lines, quoted and escaped, separated by spaces
+     */
+    public static String toString(String... line) {
+        // empty path return empty string
+        if ((line == null) || (line.length == 0)) {
+            return "";
+        }
+
+        final StringBuilder result = new StringBuilder();
+        for (int i = 0; i < line.length; i++) {
+            if (i > 0) {
+                result.append(' ');
+            }
+            result.append(StringUtils.quoteAndEscape(line[i], '\"'));
+        }
+        return result.toString();
+    }
+
+    static Properties ensureCaseSensitivity(Map<String, String> envs, boolean preserveKeyCase) {
+        Properties envVars = new Properties();
+        for (Map.Entry<String, String> entry : envs.entrySet()) {
+            envVars.put(
+                    !preserveKeyCase ? entry.getKey().toUpperCase(Locale.ENGLISH) : entry.getKey(), entry.getValue());
+        }
+        return envVars;
+    }
+}

@@ -1,0 +1,122 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.shared.utils.cli.shell;
+
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Implementation to call the CMD Shell present on Windows.
+ *
+ * @author <a href="mailto:carlos@apache.org">Carlos Sanchez</a>
+ */
+public class CmdShell extends Shell {
+    /**
+     * Characters that make {@code cmd.exe} interpret an unquoted item: whitespace and, per {@code cmd.exe /?},
+     * {@code &<>()@^|}.
+     */
+    private static final char[] CMD_SPECIAL_CHARS = {' ', '\t', '&', '<', '>', '(', ')', '@', '^', '|'};
+
+    /**
+     * Create an instance of CmdShell.
+     */
+    public CmdShell() {
+        setShellCommand("cmd.exe");
+        setShellArgs(new String[] {"/X", "/C"});
+    }
+
+    /**
+     * <p>
+     * Specific implementation that quotes all the command line.
+     * </p>
+     * <p>
+     * Workaround for http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6468220
+     * </p>
+     * <p>
+     * From cmd.exe /? output:
+     * </p>
+     * <pre>
+     *      If /C or /K is specified, then the remainder of the command line after
+     *      the switch is processed as a command line, where the following logic is
+     *      used to process quote (&quot;) characters:
+     *
+     *      1.  If all of the following conditions are met, then quote characters
+     *      on the command line are preserved:
+     *
+     *      - no /S switch
+     *      - exactly two quote characters
+     *      - no special characters between the two quote characters,
+     *      where special is one of: &amp;&lt;&gt;()@&circ;|
+     *      - there are one or more whitespace characters between the
+     *      the two quote characters
+     *      - the string between the two quote characters is the name
+     *      of an executable file.
+     *
+     *      2.  Otherwise, old behavior is to see if the first character is
+     *      a quote character and if so, strip the leading character and
+     *      remove the last quote character on the command line, preserving
+     *      any text after the last quote character.
+     * </pre>
+     * <p>
+     * Always quoting the entire command line, regardless of these conditions
+     * appears to make Windows processes invoke successfully.
+     * </p>
+     *
+     * @param executable the executable
+     * @param arguments the arguments for the executable
+     * @return the resulting command line
+     */
+    /**
+     * Quotes an item that contains a character {@code cmd.exe} would otherwise interpret: whitespace and the
+     * special characters listed above, or every item when {@link #isUnconditionalQuoting()} is set. An item that
+     * is already surrounded by double quotes is left as it is.
+     *
+     * @param inputString the executable or argument
+     * @param isExecutable unused, the executable and the arguments are quoted the same way
+     * @return the item, surrounded by double quotes when {@code cmd.exe} needs them
+     */
+    @Override
+    protected String quoteOneItem(String inputString, boolean isExecutable) {
+        if (inputString == null || inputString.isEmpty()) {
+            return inputString;
+        }
+        if (inputString.length() > 1 && inputString.startsWith("\"") && inputString.endsWith("\"")) {
+            return inputString;
+        }
+        if (isUnconditionalQuoting()) {
+            return "\"" + inputString + "\"";
+        }
+        for (char c : CMD_SPECIAL_CHARS) {
+            if (inputString.indexOf(c) >= 0) {
+                return "\"" + inputString + "\"";
+            }
+        }
+        return inputString;
+    }
+
+    @Override
+    public List<String> getCommandLine(String executable, String... arguments) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('"');
+        sb.append(super.getCommandLine(executable, arguments).get(0));
+        sb.append('"');
+
+        return Arrays.asList(sb.toString());
+    }
+}

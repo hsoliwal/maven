@@ -1,0 +1,256 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.maven.shared.utils.cli.shell;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Class that abstracts the Shell functionality,
+ * with subclasses for shells that behave particularly, like
+ *
+ * <ul>
+ * <li><code>command.com</code></li>
+ * <li><code>cmd.exe</code></li>
+ * </ul>
+ *
+ * @author <a href="mailto:carlos@apache.org">Carlos Sanchez</a>
+ */
+public class Shell {
+    private String shellCommand;
+
+    private final List<String> shellArgs = new ArrayList<>();
+
+    private boolean quotedArgumentsEnabled = true;
+
+    private boolean unconditionalQuoting = false;
+
+    private String executable;
+
+    private String workingDir;
+
+    private final boolean singleQuotedArgumentEscaped = false;
+
+    /**
+     * Set the command to execute the shell (e.g. COMMAND.COM, /bin/bash,...).
+     *
+     * @param shellCommand the command
+     */
+    void setShellCommand(String shellCommand) {
+        this.shellCommand = shellCommand;
+    }
+
+    /**
+     * Get the command to execute the shell.
+     *
+     * @return the command
+     */
+    String getShellCommand() {
+        return shellCommand;
+    }
+
+    /**
+     * Set the shell arguments when calling a command line (not the executable arguments)
+     * (e.g. /X /C for CMD.EXE).
+     *
+     * @param shellArgs the arguments to the shell
+     */
+    void setShellArgs(String[] shellArgs) {
+        this.shellArgs.clear();
+        this.shellArgs.addAll(Arrays.asList(shellArgs));
+    }
+
+    /**
+     * Get the shell arguments.
+     *
+     * @return the arguments
+     */
+    String[] getShellArgs() {
+        if (shellArgs.isEmpty()) {
+            return null;
+        } else {
+            return shellArgs.toArray(new String[0]);
+        }
+    }
+
+    protected String quoteOneItem(String inputString, boolean isExecutable) {
+        return inputString;
+    }
+
+    /**
+     * Get the command line for the provided executable and arguments in this shell.
+     *
+     * @param executableParameter executable that the shell has to call
+     * @param argumentsParameter  arguments for the executable, not the shell
+     * @return list with one String object with executable and arguments quoted as needed
+     */
+    List<String> getCommandLine(String executableParameter, String... argumentsParameter) {
+        return getRawCommandLine(executableParameter, argumentsParameter);
+    }
+
+    /**
+     * @param executableParameter executable
+     * @param argumentsParameter the arguments for the executable
+     * @return the list on command line
+     */
+    List<String> getRawCommandLine(String executableParameter, String... argumentsParameter) {
+        List<String> commandLine = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+
+        if (executableParameter != null) {
+            String preamble = getExecutionPreamble();
+            if (preamble != null) {
+                sb.append(preamble);
+            }
+
+            sb.append(quoteOneItem(executableParameter, true));
+        }
+        for (String argument : argumentsParameter) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+
+            if (quotedArgumentsEnabled) {
+                sb.append(quoteOneItem(argument, false));
+            } else {
+                sb.append(argument);
+            }
+        }
+
+        commandLine.add(sb.toString());
+
+        return commandLine;
+    }
+
+    String getExecutionPreamble() {
+        return null;
+    }
+
+    /**
+     * @return false in all cases
+     */
+    protected boolean isDoubleQuotedArgumentEscaped() {
+        return false;
+    }
+
+    /**
+     * @return {@link #singleQuotedArgumentEscaped}
+     */
+    protected boolean isSingleQuotedArgumentEscaped() {
+        return singleQuotedArgumentEscaped;
+    }
+
+    /**
+     * Get the full command line to execute, including shell command, shell arguments,
+     * executable and executable arguments.
+     *
+     * @param arguments arguments for the executable, not the shell
+     * @return list of String objects, whose array version is suitable to be used as argument
+     *         of Runtime.getRuntime().exec()
+     */
+    public List<String> getShellCommandLine(String... arguments) {
+
+        List<String> commandLine = new ArrayList<>();
+
+        if (getShellCommand() != null) {
+            commandLine.add(getShellCommand());
+        }
+
+        if (getShellArgs() != null) {
+            commandLine.addAll(getShellArgsList());
+        }
+
+        commandLine.addAll(getCommandLine(executable, arguments));
+
+        return commandLine;
+    }
+
+    List<String> getShellArgsList() {
+        return shellArgs;
+    }
+
+    /**
+     * @param quotedArgumentsEnabled {@link #quotedArgumentsEnabled}
+     */
+    public void setQuotedArgumentsEnabled(boolean quotedArgumentsEnabled) {
+        this.quotedArgumentsEnabled = quotedArgumentsEnabled;
+    }
+
+    /**
+     * Sets the executable to run.
+     *
+     * @param executable the executable
+     */
+    public void setExecutable(String executable) {
+        if ((executable == null) || (executable.length() == 0)) {
+            return;
+        }
+        this.executable = executable.replace('/', File.separatorChar).replace('\\', File.separatorChar);
+    }
+
+    /**
+     * @return the executable
+     */
+    public String getExecutable() {
+        return executable;
+    }
+
+    /**
+     * Sets execution directory.
+     *
+     * @param path the path which should be used as working directory
+     */
+    public void setWorkingDirectory(String path) {
+        if (path != null) {
+            this.workingDir = path;
+        }
+    }
+
+    /**
+     * Sets execution directory.
+     *
+     * @param workingDirectory the working directory
+     */
+    public void setWorkingDirectory(File workingDirectory) {
+        if (workingDirectory != null) {
+            this.workingDir = workingDirectory.getAbsolutePath();
+        }
+    }
+
+    /**
+     * @return the working directory
+     */
+    public File getWorkingDirectory() {
+        return workingDir == null ? null : new File(workingDir);
+    }
+
+    String getWorkingDirectoryAsString() {
+        return workingDir;
+    }
+
+    public boolean isUnconditionalQuoting() {
+        return unconditionalQuoting;
+    }
+
+    public void setUnconditionalQuoting(boolean unconditionalQuoting) {
+        this.unconditionalQuoting = unconditionalQuoting;
+    }
+}
