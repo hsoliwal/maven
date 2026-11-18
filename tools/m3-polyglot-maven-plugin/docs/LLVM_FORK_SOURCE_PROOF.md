@@ -23,3 +23,32 @@ bash tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh \
 ```
 
 Do not enable automatic fetching, source mutations, native toolchain substitutions, or user-controlled arguments that would silently override the source pin. Preserve upstream LLVM Apache-2.0 WITH LLVM-exception provenance and the existing Maven/Java/Synexia licensing. This is a separate real source-build PR check; it must be **executed** before claiming fork-native qualification. A GitHub job that is queued, cancelled, or skipped is not proof.
+
+## Change-sensitive source-build coverage
+
+A successful exact-fork build qualifies a **specific Maven runner and
+compiler-adapter implementation**. Changing the Java owner, the native test, or
+the Maven packaging can invalidate that result even when the LLVM source pin
+and this script are unchanged. Therefore the `master` push and pull-request
+path filters for `.github/workflows/m3-llvm-fork-source-proof.yml` must be
+**identical** and must cover the implementation and test owners used by this
+gate: `LlvmCompilerProvider`, `TaskManifest`, `TaskRunner`,
+`InputStamps`, `BuildCache`, `M3ToolProvider`,
+`M3ToolProviders`, `M3ToolReuseInputs`, the native LLVM integration
+regression, the provider service registry file and the plugin `pom.xml`,
+in addition to the source-proof script, workflow, and this guide.
+
+The offline verifier at
+`scripts/verify-llvm-fork-source-triggers.py` checks that both trigger
+lists contain the same, nonduplicated mandatory paths before the potentially
+expensive original LLVM fetch/compile. It reads only the workflow and
+repository; no native tool is invoked and no source file is modified.
+Its own path is included in the trigger contract to prevent verification
+drift. A failure blocks that CI run, not the original Maven build or normal
+IDE/Gradle consumers.
+
+This is a source-provenance *invalidation trigger*, not a native-cache
+admission rule. Both LLVM compiler providers continue to execute normally
+unless independently qualified; an executable SHA-256 alone cannot authorize
+artifact restoration. The opt-in compilation-database exporter has a separate
+CI owner because it does not participate in the exact-fork TaskRunner test.
