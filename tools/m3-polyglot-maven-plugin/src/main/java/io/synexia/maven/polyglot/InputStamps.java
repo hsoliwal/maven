@@ -56,6 +56,19 @@ final class InputStamps {
         int size() { return data.length; }
     }
 
+    /**
+     * A packaged engine JAR is fixed for the lifetime of the executing class
+     * realm. During a source checkout or IDE build, the engine can be loaded
+     * from mutable target/classes directories: retain the original per-task
+     * full content hashing in that case, including after execution.
+     */
+    static EngineTranscript captureStableEngineTranscript() throws IOException {
+        for (Path source : engineSources().values()) {
+            if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) return null;
+        }
+        return captureEngineTranscript();
+    }
+
     /** Capture engine JAR/package identity once per selected task graph. */
     static EngineTranscript captureEngineTranscript() throws IOException {
         TranscriptDigest recorder = new TranscriptDigest();
