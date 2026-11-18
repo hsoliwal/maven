@@ -32,6 +32,8 @@ public final class LlvmCompilationDatabase {
             Set.of("c", "cpp", "objc", "objcpp", "objc++");
     private static final Set<String> SOURCE_SUFFIXES =
             Set.of(".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm");
+    private static final Set<String> NON_OBJECT_FLAGS =
+            Set.of("-E", "-S", "-fsyntax-only", "-M", "-MM");
     private static final Set<String> NEXT_OPERAND = Set.of("-o", "-MF", "-MT", "-MQ",
             "-I", "-isystem", "-iquote", "-include", "-imacros", "-x", "-isysroot",
             "--sysroot", "-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker");
@@ -52,7 +54,7 @@ public final class LlvmCompilationDatabase {
         for (TaskManifest.Task task : manifest.order(target)) {
             if (!task.tool().startsWith("@m3:llvm:compiler:")) continue;
             String language = task.tool().substring("@m3:llvm:compiler:".length());
-            if (!CLANG_LANGUAGES.contains(language) || !task.arguments().contains("-c")) continue;
+            if (!CLANG_LANGUAGES.contains(language)) continue;
             Path cwd = InputStamps.checked(root, task.workingDir());
             if (!Files.isDirectory(cwd, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("LLVM task working directory is not materialized: " + task.name());
@@ -124,21 +126,40 @@ public final class LlvmCompilationDatabase {
         return output;
     }
 
-    /** An explicit source operand must be tracked by the original M3 inputs. */
+    /**
+     * Resolve a single compile-only translation unit and independently verify
+     * the original command's output ownership. No response files or untracked
+     * compiler side effects may be represented as complete IDE metadata.
+     */
     private static Path source(Path root, Path cwd, TaskManifest.Task task) throws IOException {
         var candidates = new ArrayList<Path>();
-        boolean skip = false;
+        String operandOf = null;
+        String objectName = null;
+        boolean compileOnly = false;
         for (String arg : task.arguments()) {
-            if (skip) {
-                skip = false;
+            // Check *before* consuming the operand of -Xclang/-include/-o etc.
+            // A forwarded @file could otherwise bypass the response-file gate.
+            if (arg.startsWith("@")) {
+                throw new IOException("LLVM compile response-file operands are not expanded: " + task.name());
+            }
+            if (operandOf != null) {
+                if ("-o".equals(operandOf)) {
+                    if (objectName != null) throw new IOException("duplicate LLVM -o output: " + task.name());
+                    objectName = arg;
+                }
+                operandOf = null;
                 continue;
             }
             if (NEXT_OPERAND.contains(arg)) {
-                skip = true;
+                operandOf = arg;
                 continue;
             }
-            if (arg.startsWith("@")) {
-                throw new IOException("LLVM compile response-file operands are not expanded: " + task.name());
+            if ("-c".equals(arg)) {
+                compileOnly = true;
+                continue;
+            }
+            if (NON_OBJECT_FLAGS.contains(arg) || "--".equals(arg)) {
+                throw new IOException("unsupported non-object/opaque Clang argument: " + arg);
             }
             if (arg.startsWith("-")) continue;
             String lower = arg.toLowerCase(Locale.ROOT);
@@ -161,9 +182,26 @@ public final class LlvmCompilationDatabase {
             if (!declared) throw new IOException("LLVM source is not a declared M3 input: " + checked);
             candidates.add(checked);
         }
-        if (candidates.size() != 1) {
-            throw new IOException("LLVM compile task requires exactly one explicit translation unit: "
-                    + task.name() + ", found " + candidates.size());
+        if (operandOf != null) {
+            throw new IOException("dangling Clang option " + operandOf + " in " + task.name());
+        }
+        if (!compileOnly || candidates.size() != 1 || objectName == null || objectName.isBlank()) {
+            throw new IOException("Clang export requires -c, exactly one source and an explicit -o: " + task.name());
+        }
+        Path object = cwd.resolve(objectName).normalize();
+        if (!object.startsWith(root)) {
+            throw new IOException("Clang output escapes module: " + task.name());
+        }
+        Path checkedObject = InputStamps.checked(root, root.relativize(object).toString());
+        boolean owned = false;
+        for (String output : task.outputs()) {
+            if (checkedObject.equals(InputStamps.checked(root, output))) {
+                owned = true;
+                break;
+            }
+        }
+        if (!owned) {
+            throw new IOException("Clang -o output is not a declared M3 output: " + checkedObject);
         }
         return candidates.get(0);
     }
