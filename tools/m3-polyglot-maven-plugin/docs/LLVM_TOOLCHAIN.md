@@ -157,6 +157,53 @@ full LLVM fork source/build/ABI and Windows/macOS gates remain separate.
 The additional `objc++` spelling does not replace or reinterpret
 `objcpp`; both call the original `clang++` driver.
 
+## Maven-owned compilation database for clangd, CDT and Clang AST
+
+CMake/Ninja remain the build owners for native CMake projects and produce
+their own authoritative `build/cmake/compile_commands.json`. For **native
+Clang compile tasks already declared by the M3 polyglot manifest**, the
+Maven fork also has an opt-in `llvm-compile-db` goal that projects the
+*actual existing* `M3ToolProviders.command` argv into Clang's standard
+JSON compilation database. No second compiler parser, shell string
+reconstruction, AST implementation or task scheduler is introduced.
+
+From the existing standalone LLVM example after installing the plugin:
+
+```sh
+mvn -B -ntp -f tools/m3-polyglot-maven-plugin/examples/llvm/pom.xml \
+  io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:llvm-compile-db \
+  -Dm3.llvm.home=/path/to/llvm-install
+```
+
+The sole output is the module-owned
+`target/m3-llvm/compile_commands.json`, not CMake's database. Point
+`clangd` at `--compile-commands-dir=target/m3-llvm`, or configure the
+corresponding `.clangd` `CompileFlags.CompilationDatabase` key. The
+existing `tools/code-clustering-clang` owner can use the directory with
+`clustering.clang.compileCommands` and remains responsible for Clang JSON
+AST atoms/structure hashes. The goal is **not** implicitly bound to any
+lifecycle phase and does not alter the original `.clangd` or CMake output.
+
+The exporter restricts entries to the requested target closure's original
+C, C++, Objective-C and Objective-C++ `-c` compiler tasks. For each
+record it preserves the original working directory, an explicitly declared
+and materialized source translation unit, and the provider's exact
+`arguments` array. No quoting for a shell is synthesized. It refuses
+ambiguous multi-source compiles, missing/untracked source operands,
+opaque response-file operands, source symlink escapes, or target closures
+without eligible Clang tasks. Linking, Flang and LLVM IR tasks are not
+misrepresented as Clang source compilation units.
+
+The compiler database is emitted atomically inside the isolated module
+`target/m3-llvm` folder. Existing identical bytes retain their timestamp.
+A symlinked output or path ancestry is refused; nothing is written to
+`.m3`, the output cache, `build/cmake`, or compiler source files.
+A compilation database is **IDE command metadata**, not evidence that
+Clang ran, that a toolchain binary came from the pinned LLVM Git SHA,
+or that any native build is cacheable. Actual native dependency closure,
+headers (including negative include lookups), libraries, pass plugins,
+sysroots and ABI remain with the original producers.
+
 ## Qualification gates
 
 The Java 17/21 offline contract suites verify ServiceLoader inventory,
