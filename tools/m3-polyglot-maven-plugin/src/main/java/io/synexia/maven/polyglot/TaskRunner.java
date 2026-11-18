@@ -171,6 +171,11 @@ public final class TaskRunner {
         Map<String, String> portableGenerations = new HashMap<>();
         Set<String> overlappingOutputs = overlappingOutputs(plan);
         TaskInvalidationIndex reverseGraph = new TaskInvalidationIndex(plan);
+        // One stable engine realm per Maven module run. Replay the exact existing
+        // fingerprint byte transcript instead of rereading the plugin/JDK DB JAR
+        // before and after every task; declared inputs/outputs are still rehashed.
+        InputStamps.EngineTranscript engine = !dryRun && (incremental || cache != null)
+                ? InputStamps.captureEngineTranscript() : null;
         boolean cleared = false;
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
@@ -215,10 +220,10 @@ public final class TaskRunner {
                             .noneMatch(path -> overlaps(cacheDirectory, root.resolve(path))))
                     && !overlappingOutputs.contains(task.name())
                     && task.prerequisites().stream().allMatch(generations::containsKey);
-            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations) : null;
+            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations, engine) : null;
             String cacheStamp = candidate && cache != null
                     && task.prerequisites().stream().allMatch(portableGenerations::containsKey)
-                    ? InputStamps.portableStamp(task, root, command, environment, portableGenerations) : null;
+                    ? InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine) : null;
             String[] prior = !incremental || input == null ? null : store.lookup(stateKey(task.name()));
             if (prior != null && input.equals(prior[0])) {
                 String output = existingOutputs(task, root);
@@ -253,10 +258,10 @@ public final class TaskRunner {
                 String output = null;
                 try {
                     List<String> afterCommand = ordinaryCommand(task, directory);
-                    after = InputStamps.stamp(task, root, afterCommand, environment, generations);
+                    after = InputStamps.stamp(task, root, afterCommand, environment, generations, engine);
                     if (cacheStamp != null) {
                         portableAfter = InputStamps.portableStamp(
-                                task, root, afterCommand, environment, portableGenerations);
+                                task, root, afterCommand, environment, portableGenerations, engine);
                     }
                     output = InputStamps.outputs(task, root);
                 } catch (IOException changed) {
