@@ -23,6 +23,7 @@ on:
       - 'm3/PATCH_RECIPE_BOOT.md'
       - '.github/workflows/m3-native-pr-patch-bootstrap.yml'
       - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-llvm-tools-provider/**'
       - 'tools/m3-smart-builder/extension/**'
       - '.github/workflows/m3-polyglot-verify.yml'
       - 'tools/m3-smart-builder/**'
@@ -36,6 +37,7 @@ on:
       - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
       - '.github/workflows/m3-git-fixture-cleanup.yml'
       - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-llvm-tools-provider/**'
       - 'tools/m3-smart-builder/extension/**'
       - '.github/workflows/m3-polyglot-verify.yml'
       - '.github/workflows/checks-superset.yml'
@@ -139,7 +141,7 @@ jobs:
              "git-fixture-cleanup": {"workflow": "M3 Maven Git fixture Windows cleanup proof", "file": ".github/workflows/m3-git-fixture-cleanup.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}, "push": {"branches": ["fix/m3-patch-git-fixture-windows-cleanup-20261027"], "paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}}},
              "ide-assess-goal": {"workflow": "M3 Native Maven IDE Assessment Goal", "file": ".github/workflows/m3-ide-assess-goal.yml", "triggers": {"pull_request": {"paths": ["tools/m3-ide-bridge/maven-plugin/**", ".github/workflows/m3-ide-assess-goal.yml"]}}},
              "native-pr-patch-bootstrap": {"workflow": "M3 Native GitHub Patch Bootstrap", "file": ".github/workflows/m3-native-pr-patch-bootstrap.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java", "impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java", "impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*", "m3/PATCH_RECIPE_BOOT.md", ".github/workflows/m3-native-pr-patch-bootstrap.yml"]}}},
-             "polyglot-verify": {"workflow": "M3 Polyglot Maven Plugin", "file": ".github/workflows/m3-polyglot-verify.yml", "triggers": {"pull_request": {"paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}, "push": {"branches": ["master"], "paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}}},
+             "polyglot-verify": {"workflow": "M3 Polyglot Maven Plugin", "file": ".github/workflows/m3-polyglot-verify.yml", "triggers": {"pull_request": {"paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-llvm-tools-provider/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}, "push": {"branches": ["master"], "paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-llvm-tools-provider/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}}},
              "smart-builder": {"workflow": "M3 Smart Maven Builder", "file": ".github/workflows/m3-smart-builder.yml", "triggers": {"pull_request": {"paths": ["tools/m3-smart-builder/**", ".github/workflows/m3-smart-builder.yml"]}}}
             }
         run: |
@@ -409,6 +411,21 @@ jobs:
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
       - name: Maven plugin descriptor, compile and contract verification
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: LLVM tools provider Java 17 source contracts
+        run: sh tools/m3-llvm-tools-provider/scripts/verify.sh
+      - name: LLVM tools provider Maven packaging and contracts
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-llvm-tools-provider/pom.xml verify
+      - name: Packaged LLVM tools ServiceLoader discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          main=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          provider=tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar
+          test -s "$main"
+          test -s "$provider"
+          rows="$(java -cp "$main:$provider" io.synexia.maven.polyglot.PolyglotCli providers)"
+          test "$(printf '%s\n' "$rows" | grep -Fxc 'M3-POLYGLOT-PROVIDERS-V1')" -eq 1
+          test "$(printf '%s\n' "$rows" | grep -Fc $'provider\tllvm-tools\t')" -eq 1
       - name: Required real Clang C and C++ native regression
         shell: bash
         run: |
