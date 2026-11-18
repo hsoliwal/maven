@@ -94,7 +94,7 @@ public final class M3HsqlDbContractTestMain {
             // Exercise the actual HSQLDB transaction engine independently of
             // the M3 wrapper: a DELETE rolled back before COMMIT must retain
             // the previous sealed successful-task image.
-            try (Connection conn = DriverManager.getConnection(url(module))) {
+            try (Connection conn = DriverManager.getConnection(url(module), "SA", "")) {
                 conn.setAutoCommit(false);
                 try (PreparedStatement discard = conn.prepareStatement(
                         "DELETE FROM M3_MODULE_SNAPSHOT WHERE slot=1")) {
@@ -139,7 +139,7 @@ public final class M3HsqlDbContractTestMain {
                         "pre-mutation revocation and uncommitted changes remain cold");
                 database.record("task-compile", INPUT, OUTPUT);
             }
-            try (Connection conn = DriverManager.getConnection(url(module));
+            try (Connection conn = DriverManager.getConnection(url(module), "SA", "");
                     PreparedStatement statement = conn.prepareStatement(
                             "UPDATE M3_MODULE_SNAPSHOT SET image=? WHERE slot=1")) {
                 statement.setBytes(1, new byte[] {1, 2, 3});
