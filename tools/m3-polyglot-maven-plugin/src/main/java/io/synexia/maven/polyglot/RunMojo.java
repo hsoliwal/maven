@@ -35,11 +35,15 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
+    /** Opt in to provider-proven reuse and the provider's dedicated output cleanup. */
+    @Parameter(property = "m3.polyglot.providerReuse", defaultValue = "false")
+    private boolean providerReuse;
+
     /** Embedded M3IndexDB by default; file/native, SQLite/H2, and explicit ext-* providers remain available. */
     @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "embedded")
     private String incrementalState;
 
-    /** Explicit cache directory for restoring and storing declared, relocatable task outputs. */
+    /** Explicit artifact cache; local-only provider contracts remain bound to their workspace. */
     @Parameter(property = "m3.polyglot.buildCache")
     private File buildCache;
 
@@ -56,7 +60,7 @@ public final class RunMojo extends AbstractMojo {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
                     Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
-                    buildCache == null ? null : buildCache.toPath(),
+                    buildCache == null ? null : buildCache.toPath(), providerReuse,
                     message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();

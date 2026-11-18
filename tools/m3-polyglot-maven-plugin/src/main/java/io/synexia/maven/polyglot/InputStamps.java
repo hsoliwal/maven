@@ -197,6 +197,32 @@ final class InputStamps {
         return paths(task.outputs(), root);
     }
 
+    /**
+     * Hash the provider's complete toolchain/resource closure with the existing
+     * bounded content scanner. Directory identity includes added/removed files;
+     * symlink aliases and special files decline optional reuse. No mtime grants a hit.
+     * A single transcript is shared by the local and portable keys for this task.
+     */
+    static String providerIdentity(M3ToolReuseInputs inputs, Path root) throws IOException {
+        MessageDigest digest = sha256();
+        update(digest, "m3.provider-inputs.v1");
+        update(digest, inputs.contractId());
+        update(digest, Boolean.toString(inputs.relocatable()));
+        strings(digest, "clean-outputs", inputs.cleanOutputs());
+        Budget budget = new Budget();
+        for (Path path : inputs.additionalInputs().stream().sorted(Comparator.comparing(Path::toString)).toList()) {
+            Path parent = path.getParent();
+            if (parent == null || path.getFileName() == null) {
+                throw new IOException("provider input cannot be a filesystem root");
+            }
+            checked(path.getRoot(), path.getRoot().relativize(path).toString());
+            update(digest, "provider-input");
+            update(digest, path.startsWith(root) ? "module:" + relative(root, path) : path.toString());
+            update(digest, paths(List.of(path.getFileName().toString()), parent, budget));
+        }
+        return hex(digest);
+    }
+
     /** Stable generation used by a dependent task or an aggregation target. */
     static String combine(List<String> values) {
         MessageDigest digest = sha256();
@@ -223,9 +249,12 @@ final class InputStamps {
     }
 
     private static String paths(List<String> declarations, Path root) throws IOException {
+        return paths(declarations, root, new Budget());
+    }
+
+    private static String paths(List<String> declarations, Path root, Budget budget) throws IOException {
         MessageDigest digest = sha256();
         update(digest, DOMAIN + ".paths");
-        Budget budget = new Budget();
         for (String declaration : declarations.stream().sorted().toList()) {
             update(digest, "declaration");
             update(digest, declaration);

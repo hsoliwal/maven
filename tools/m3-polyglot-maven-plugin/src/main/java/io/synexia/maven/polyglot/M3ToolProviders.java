@@ -5,11 +5,15 @@
 package io.synexia.maven.polyglot;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -31,6 +35,14 @@ public final class M3ToolProviders {
         }
     }
 
+    /** One provider instance supplies the original command and any explicitly requested reuse assertion. */
+    public record Plan(List<String> command, Optional<M3ToolReuseInputs> reuseInputs) {
+        public Plan {
+            command = List.copyOf(command);
+            Objects.requireNonNull(reuseInputs, "reuseInputs");
+        }
+    }
+
     public static List<Descriptor> available() throws IOException {
         var descriptors = new ArrayList<Descriptor>();
         for (Map.Entry<String, M3ToolProvider> entry : discover().entrySet()) {
@@ -42,6 +54,11 @@ public final class M3ToolProviders {
     }
 
     public static List<String> command(TaskManifest.Task task, Path workspace) throws IOException {
+        return plan(task, workspace, false).command();
+    }
+
+    /** Existing callers request only argv; reuse qualification is an independent explicit opt-in. */
+    public static Plan plan(TaskManifest.Task task, Path workspace, boolean includeReuse) throws IOException {
         Objects.requireNonNull(task, "task");
         Objects.requireNonNull(workspace, "workspace");
         String[] fields = task.tool().split(":", -1);
@@ -87,7 +104,70 @@ public final class M3ToolProviders {
                 throw new IOException("M3 provider returned an invalid argv element: " + id);
             }
         }
-        return List.copyOf(argv);
+        Optional<M3ToolReuseInputs> reuse = includeReuse
+                ? reuseInputs(provider, capability, language, task, workspace.toAbsolutePath().normalize())
+                : Optional.empty();
+        return new Plan(argv, reuse);
+    }
+
+    static Optional<M3ToolReuseInputs> reuseInputs(M3ToolProvider provider, M3ToolCapability capability,
+            String language, TaskManifest.Task task, Path workspace) throws IOException {
+        final Optional<M3ToolReuseInputs> requested;
+        try {
+            requested = provider.reuseInputs(capability, language, task, workspace);
+        } catch (RuntimeException invalid) {
+            throw new IOException("M3 provider reuse contract failed: " + provider.id(), invalid);
+        }
+        if (requested == null) throw new IOException("M3 provider returned a null reuse Optional");
+        if (requested.isEmpty()) return Optional.empty();
+        M3ToolReuseInputs contract = requested.get();
+        for (String clean : contract.cleanOutputs()) {
+            if (!task.outputs().contains(clean) || InputStamps.statePath(clean)) {
+                throw new IOException("M3 provider clean output is not a declared owned output: " + clean);
+            }
+            for (String input : task.inputs()) {
+                if (clean.equals(input) || clean.startsWith(input + "/") || input.startsWith(clean + "/")) {
+                    throw new IOException("M3 provider clean output overlaps an input: " + clean);
+                }
+            }
+        }
+        var inputs = new ArrayList<>(contract.additionalInputs());
+        Path implementation = implementationSource(provider);
+        if (!inputs.contains(implementation)) inputs.add(implementation);
+        for (String output : task.outputs()) {
+            TaskManifest.relativePath(output, false);
+            Path directory = workspace.resolve(output).toAbsolutePath().normalize();
+            for (Path input : inputs) {
+                if (directory.startsWith(input) || input.startsWith(directory)) {
+                    throw new IOException("M3 provider output overlaps an additional input: " + output);
+                }
+            }
+        }
+        try {
+            return Optional.of(new M3ToolReuseInputs(contract.contractId(), inputs,
+                    contract.cleanOutputs(), contract.relocatable()));
+        } catch (RuntimeException invalid) {
+            throw new IOException("invalid bound M3 provider reuse contract: " + provider.id(), invalid);
+        }
+    }
+
+    private static Path implementationSource(M3ToolProvider provider) throws IOException {
+        try {
+            var domain = provider.getClass().getProtectionDomain();
+            var source = domain == null ? null : domain.getCodeSource();
+            if (source == null || source.getLocation() == null
+                    || !"file".equals(source.getLocation().getProtocol())) {
+                throw new IOException("M3 provider reuse needs a local implementation code source");
+            }
+            Path path = Path.of(source.getLocation().toURI()).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                    && !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("M3 provider implementation code source is unavailable");
+            }
+            return path;
+        } catch (URISyntaxException | RuntimeException invalid) {
+            throw new IOException("cannot bind M3 provider implementation code source", invalid);
+        }
     }
 
     private static Map<String, M3ToolProvider> discover() throws IOException {

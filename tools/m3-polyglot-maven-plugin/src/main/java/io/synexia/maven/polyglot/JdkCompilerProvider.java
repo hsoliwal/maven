@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -45,5 +46,15 @@ public final class JdkCompilerProvider implements M3ToolProvider {
         argv.add("jdk.compiler/com.sun.tools.javac.Main");
         argv.addAll(task.arguments());
         return List.copyOf(argv);
+    }
+
+    /** Qualify only the bounded, explicitly configured javac subset documented by its owner. */
+    @Override
+    public Optional<M3ToolReuseInputs> reuseInputs(M3ToolCapability capability, String language,
+            TaskManifest.Task task, Path workspace) throws IOException {
+        if (capability != M3ToolCapability.COMPILER || !"java".equals(language)) {
+            return Optional.empty();
+        }
+        return JdkReuseInputs.inspect(task, workspace);
     }
 }

@@ -77,6 +77,24 @@
             </configuration>
           </execution>
           <execution>
+            <id>provider-reuse-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration><arguments>
+              <argument>-classpath</argument><classpath/>
+              <argument>io.synexia.maven.polyglot.M3ToolReuseInputsContractTestMain</argument>
+            </arguments></configuration>
+          </execution>
+          <execution>
+            <id>provider-reuse-execution</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration><arguments>
+              <argument>-classpath</argument><classpath/>
+              <argument>io.synexia.maven.polyglot.ProviderReuseExecutionTestMain</argument>
+            </arguments></configuration>
+          </execution>
+          <execution>
             <id>portable-optional-backend-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>

@@ -27,7 +27,10 @@ of each cacheable task. The backend choices added to this fork remain available.
 - `-Dm3.polyglot.approveRewriteApply=true` separately authorizes mutating OpenRewrite recipes.
 - `-Dm3.polyglot.incremental=true` enables verified reuse. It remains off by default.
   A task needs separate declared input and output paths and verified prerequisite generations.
-  CodeQL, OpenRewrite and pluggable M3 providers always execute, as do their unverified dependents.
+  CodeQL and OpenRewrite always execute. Pluggable M3 providers also execute unless the
+  separate provider reuse contract below is explicitly enabled and qualified.
+- `-Dm3.polyglot.providerReuse=true` additionally enables provider-proven reuse and owned-output
+  cleanup. It requires incremental execution or a build cache and remains off by default.
 - `-Dm3.polyglot.incrementalState=embedded` selects the default original M3IndexDB implementation.
   The existing `file`, `m3db`, `legacy`, `sqlite`, `h2` and `ext-*` values remain accepted
   as described below; `native` is an additional spelling for native MIndexDB.
@@ -41,8 +44,9 @@ of each cacheable task. The backend choices added to this fork remain available.
 
 The output cache preserves the fork's Gradle-inspired content-addressed storage and its
 `m3.polyglot.buildCache` / `--build-cache` options. Only fully declared ordinary-tool tasks with
-separate input/output paths and verified prerequisites qualify. CodeQL, OpenRewrite and pluggable
-M3 provider tasks, in-place tasks and unverified dependents keep executing normally.
+separate input/output paths and verified prerequisites qualify by default. Explicit provider reuse
+can additionally qualify M3 tasks under the contract below. CodeQL, OpenRewrite, in-place tasks
+and unverified dependents keep executing normally.
 
 The module database and output cache have separate identities. A module receipt is bound to the
 canonical workspace directory. An output-cache lookup uses a relocatable identity covering the
@@ -72,6 +76,64 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
     -Dm3.polyglot.incremental=true \
     -Dm3.polyglot.buildCache=/work/polyglot-build-cache
 ```
+
+### Explicit provider reuse
+
+The public `M3ToolProvider` SPI adds a default `reuseInputs(...)` method returning an empty
+`Optional`. Existing implementations and all old runner overloads keep their execution behavior.
+`M3ToolProviders.plan(task, workspace, includeReuse)` resolves one provider for its command and
+optional `M3ToolReuseInputs` assertion. Providers remain trusted build extensions: a declaration
+must include their complete input closure, including runtime dependencies and configuration.
+
+With `--provider-reuse` or `m3.polyglot.providerReuse=true`, the original runner hashes declared
+task inputs plus the provider implementation and additional files/directory trees. It binds the
+contract version, cleanup policy, arguments, environment, selected toolchain and prerequisite
+generations. Reuse requires exact input and output contents. After execution or restoration it
+resolves the provider again and verifies the command and complete proof again. A changing command,
+missing proof or changed input cannot publish a reusable generation. Timestamps never grant reuse.
+An unavailable optional input identity falls back to execution without owned-output cleanup.
+An unverifiable owned output tree is a miss; restoration or recompilation replaces it only after
+revoking the old receipt. Existing declared-path boundary refusals remain errors.
+
+The initial JDK provider qualifies a restricted invocation of the selected JDK's actual `javac`:
+
+- Explicit `-proc:none`, `-implicit:none`, `-Xprefer:source`, `-encoding UTF-8`,
+  `-classpath` and `-sourcepath`. The source preference is required because javac's default can
+  choose source or class dependencies by modification time despite identical content hashes.
+- Source files and directory-only classpath/sourcepath entries covered by declared input roots.
+- One `-d` directory exactly equal to the sole declared output, separate from all inputs.
+- Supported ordinary compiler flags only. Argument files, JAR classpaths, annotation processors,
+  compiler plugins, module compilation, wildcard paths and unknown flags remain ordinary execution.
+- The selected JDK's complete `bin`, `lib`, `conf` and `release` contents, plus provider implementation
+  bytes, must be readable without symlinks or special files. Injected JVM/compiler/loader options
+  decline qualification. Other installed layouts continue to compile normally.
+
+The first contract is **local to the exact workspace**. An unchanged build reports `UP-TO-DATE`;
+an explicit cache can restore deleted or altered outputs there and reports `FROM-CACHE`. A different
+checkout compiles again. Local-only provider generations never authorize portable cache hits in
+dependent tasks. Providers may separately assert relocatability after their own qualification.
+
+Before an eligible compiler really runs, the runner revokes previous task/dependent receipts and
+clears only the provider's declared owned output directories. This removes obsolete class files
+after source deletion or rename. A failed compile cannot revive earlier successful state. Output
+cleanup is part of this explicit opt-in; do not declare a directory containing unrelated files.
+The existing module store, graph, artifact cache and locks remain the only execution owners.
+
+See `examples/provider-reuse/m3-build.tsv` for a runnable Java manifest. After building this plugin,
+run from this module's directory with a qualified full JDK:
+
+```sh
+java -cp target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  run examples/provider-reuse examples/provider-reuse/m3-build.tsv compile \
+  --incremental --provider-reuse --build-cache /work/polyglot-build-cache
+```
+
+The example writes generated `.m3/` and `classes/` directories; exclude them from version control.
+Run it twice to observe verified reuse. Removing the example's `classes` directory exercises
+same-workspace restoration. Provider reuse is independent of CodeQL/recipe analysis and grants
+no semantic equivalence claim for arbitrary languages. LLVM, ECJ and other providers keep running
+until they supply and qualify their own complete contracts.
 
 ### Persistent module database
 
@@ -522,8 +584,9 @@ java -cp /verified/m3-polyglot-maven-plugin.jar \
 
 `--timeout-seconds` accepts 1–43200 (default 900). `--state-backend` is available only
 with `run --incremental` and accepts `embedded|legacy|file|m3db|native|sqlite|h2|ext-id`. `--incremental`,
-`--build-cache <folder>` and `--approve-rewrite-apply` require `run`; recipe mutation still requires the
-separate approval flag. Unknown, duplicate or malformed options fail before
+`--build-cache <folder>`, `--provider-reuse` and `--approve-rewrite-apply` require `run`;
+provider reuse additionally requires `--incremental` or `--build-cache`, and recipe mutation
+still requires the separate approval flag. Unknown, duplicate or malformed options fail before
 the graph executes. The external host must SHA-256-verify the selected JAR
 and retain its own task/diagnostic lifecycle. The Gradle quality-bridge fork
 can invoke this exact class without loading Maven Core or copying the task
@@ -762,9 +825,9 @@ The manifest `task` tool value is `@m3:<provider-id>:<capability>:<language>`.
 All names are lowercase, validated and unambiguous. The registry fails closed on
 unknown or duplicate IDs, unsupported capabilities/languages, incompatible SPI
 versions, malformed service descriptors and invalid argv. The `plan` command
-validates provider resolution without starting a subprocess. Provider tasks are
-**never** skipped by module database reuse: provider-owned hidden inputs, classpaths and ABI
-need their own complete execution evidence.
+validates provider resolution without starting a subprocess. Provider tasks keep executing
+by default. The separate [provider reuse opt-in](#explicit-provider-reuse) requires a complete
+provider-owned input contract; an absent contract cannot authorize module or artifact reuse.
 
 The optional [LLVM compiler adapter](docs/LLVM_TOOLCHAIN.md) selects the original
 `clang`, `clang++`, `flang` or `llc` executable from PATH, or from a task's explicit
@@ -1084,6 +1147,12 @@ or with `-source 17 -target 17` on reduced JDK images without `javac`/`ct.sym`
 suites covering the task graph, module-state facade, embedded store, persistent task reuse,
 backend selection, portable storage SPI and leases, the preserved artifact output cache and its
 module-state integration, quality providers, M3 tool SPI, Mavenizer, Eclipse model and CLI.
+Provider reuse adds immutable-contract/refusal tests and real child-JVM tests for compilation,
+same-size/same-mtime source and classpath changes, output corruption, rename cleanup, failed-compile
+revocation, local restoration, workspace isolation, timestamp-independent source preference,
+dependent generations, nested-link fallback
+and changed provider proofs. Real JDK reuse
+cases report `NOT_RUN` when the installed JDK layout or injected environment declines qualification.
 Supplying `M3_JDBC_DRIVER_CLASSPATH` additionally runs the positive
 H2 and SQLite gate described in the [portable database contract](docs/M3_PORTABLE_DATABASES.md).
 

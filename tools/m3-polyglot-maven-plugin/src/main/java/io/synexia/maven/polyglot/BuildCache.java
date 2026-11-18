@@ -189,7 +189,8 @@ final class BuildCache {
         }
     }
 
-    private static void clear(Path path) throws IOException {
+    /** Shared by restoration and explicitly qualified provider output cleanup. */
+    static void clear(Path path) throws IOException {
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
         try (Stream<Path> walk = Files.walk(path)) {
             for (Path file : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(file);
