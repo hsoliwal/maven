@@ -36,7 +36,7 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
     static final String SHA256_ARGUMENT = "--m3-llvm-sha256=";
     static final String HOME_PROPERTY = "m3.llvm.home";
     static final String HOME_ENVIRONMENT = "M3_LLVM_HOME";
-    private static final Set<String> LANGUAGES = Set.of("c", "cpp", "objc", "objcpp", "fortran", "llvm-ir");
+    private static final Set<String> LANGUAGES = Set.of("c", "cpp", "objc", "objcpp", "objc++", "fortran", "llvm-ir");
 
     @Override
     public String id() {
@@ -130,7 +130,7 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
 
     private static String driver(String language) {
         return switch (language) {
-            case "cpp", "objcpp" -> "clang++";
+            case "cpp", "objcpp", "objc++" -> "clang++";
             case "fortran" -> "flang";
             case "llvm-ir" -> "llc";
             default -> "clang";
