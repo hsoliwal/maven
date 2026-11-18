@@ -947,6 +947,45 @@ consumes this same Maven receiver through its independently pinned
 `m3EclipseCdtFacts` task. Native CDT builds, progress/cancellation,
 scanner discovery and C/C++ compile/link decisions remain with CDT.
 
+### Original Corrosion/Cargo locked-offline build facts
+
+The Corrosion Eclipse fork's original `M3CargoBuildEvidence` may
+explicitly execute its **configured** native Cargo executable with
+`metadata --format-version=1 --locked --offline`. It requires
+`Cargo.toml` and `Cargo.lock`; the original Cargo tool decides the
+dependency/package features, and the source owner hashes the actual
+metadata bytes and optional local rust-toolchain/config files.
+
+Maven's pure Java 17 `M3CargoBuildEvidenceWire` is the single strict
+decoder of `M3-CARGO-BUILD-FACTS-V1`. It binds the original project
+name, Eclipse-selected configuration, and exact build invocation UUID
+to `M3-ECLIPSE-BUILD-HANDOFF-V1`:
+
+```sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli cargo-facts \
+  /project/target/ide/cargo-build-facts.ide \
+  /project/target/ide/build-handoff.ide
+```
+
+It rejects unsupported schema, noncanonical UTF-8/Base64URL/SHA-256,
+oversized packets/metadata counts, unsafe symlinks, and foreign Eclipse
+generations. The output schema `m3-cargo-build-facts-v1` is
+**diagnostics only**, not a Cargo compiler cache key or ABI receipt.
+
+The original Corrosion and Maven golden packet fixtures are identical.
+`M3CargoBuildEvidenceWireContractTestMain` runs in both the offline
+Java 17 verification and Maven plugin `verify` lifecycle.
+The existing Mavenizer Cargo builds/tests remain with native Cargo,
+and Gradle invokes this **same** original Maven codec through
+`m3EclipseCargoFacts`; no second JSON dependency parser is introduced.
+
+The receipt does not prove `rustc` executable bytes, target triple,
+RUSTFLAGS, features used for every build profile, build.rs effects,
+native link inputs, generated artifacts, or full source completeness.
+M3DB output reuse remains prohibited without independent original
+owner evidence.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
