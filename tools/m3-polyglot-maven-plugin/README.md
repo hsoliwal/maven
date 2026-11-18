@@ -82,7 +82,11 @@ can now be stored through HSQLDB 2.7.4, selected with
 all sidecars are excluded from task-input fingerprints and symlink traversal
 is refused. `hsqldb.write_delay=false` plus `SET FILES WRITE DELAY FALSE`
 requires the transaction log to sync on each commit, and `shutdown=true`
-closes a file database after its last connection. Strict log replay refuses
+closes a file database after its last connection. Read-side connections
+add `ifexists=true` to reject a missing/corrupt catalog rather than create
+an apparently new database, while the first write may create the catalog.
+The local JDBC connection uses the documented default `SA`/empty-password
+credentials, never external or network credentials. Strict log replay refuses
 incomplete recovered statements rather than silently accepting them.
 The default plugin does not bundle this JDBC driver. To execute the real
 driver corruption, crash, reboot and rollback-independent state checks:
