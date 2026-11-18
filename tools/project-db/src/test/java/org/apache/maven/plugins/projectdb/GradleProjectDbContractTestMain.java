@@ -44,6 +44,7 @@ public final class GradleProjectDbContractTestMain {
     }
 
     private static void fixture(Path root) throws Exception {
+        write(root.resolve("settings.gradle.kts"), "rootProject.name = \"source-qualifier\"\ninclude(\"app\")\n");
         write(root.resolve("build.gradle.kts"), "plugins { java }\n");
         write(root.resolve("app/build.gradle"), "plugins { id 'java' }\n");
         write(root.resolve("build/generated/build.gradle"), "ignored = true\n");
