@@ -140,6 +140,51 @@ receipts. Those are **not implemented by this compiler provider**. OpenRewrite r
 recipe mutation authority, and M3 AST atomization/patternization is a
 separate contract-preserving pass.
 
+## Native dependency, invalidation and cache-exclusion fixtures
+
+The opt-in native host verification entrypoint is
+`io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain`. Its default
+mode reports `NOT_RUN` when Clang/Clang++ are absent; `--required` treats
+their absence as a hard failure. The Linux GitHub Actions Java 17 and 21
+jobs explicitly require installed Clang and Clang++ before running the
+native gate. A passing host integration is **not** proof that the selected
+compiler came from the pinned `hsoliwal/llvm-project` revision.
+
+The host test covers actual C17/C++20 executable outputs, header edits,
+new `__has_include` headers previously absent from positive depfiles,
+separate `-O0`/`-O2` configurations, output deletion, compiler failures
+and repair, path/working-directory handling, and repeat execution with both
+generic incremental and output-cache options enabled. It checks that
+provider-owned LLVM builds execute again instead of incorrectly producing
+`UP-TO-DATE` or `FROM-CACHE`.
+
+Optional lanes compile Objective-C, Objective-C++, LLVM IR via the **existing**
+`llc` driver, and Fortran with a separately installed Flang runtime.
+The original `objcpp` language identifier stays supported; `objc++` is
+accepted as an additional spelling for the original `clang++` driver.
+Neither spelling changes Maven's original source/output ownership.
+
+The standalone consumer in `examples/llvm` compiles `native/hello.c`,
+records its dependency file, links an executable and retains the original
+Maven POM `m3-polyglot:plan`/`m3-polyglot:run` entry points. With an
+installed LLVM toolchain containing `bin/clang`:
+
+```sh
+cd tools/m3-polyglot-maven-plugin/examples/llvm
+mkdir -p target
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:plan \
+  -Dm3.llvm.home=/path/to/llvm-install
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
+  -Dm3.llvm.home=/path/to/llvm-install
+./target/hello
+```
+
+These are execution and **cache-exclusion** tests, not native-cache
+admission. `M3-LLVM-TOOLCHAIN-V1` manifests from the optional LLVM
+pipeline provider may prove selected executable bytes, but headers,
+negative header lookup, linker scripts, libraries, pass plugins, SDKs,
+ABI and all other inputs remain independent. Provider tasks still run.
+
 ## Qualification gates
 
 The Java 17/21 offline contract suites verify ServiceLoader inventory,
