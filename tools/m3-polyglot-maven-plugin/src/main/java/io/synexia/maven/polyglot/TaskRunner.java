@@ -11,7 +11,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -171,6 +170,7 @@ public final class TaskRunner {
         Map<String, String> generations = new HashMap<>();
         Map<String, String> portableGenerations = new HashMap<>();
         Set<String> overlappingOutputs = overlappingOutputs(plan);
+        TaskInvalidationIndex reverseGraph = new TaskInvalidationIndex(plan);
         boolean cleared = false;
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
@@ -238,7 +238,7 @@ public final class TaskRunner {
                 store.invalidateAll();
                 cleared = true;
             } else {
-                invalidateDependents(plan, task.name(), store);
+                invalidateDependents(reverseGraph, task.name(), store);
             }
             boolean restored = cacheStamp != null && cache.restore(task, root, cacheStamp);
             if (!restored) execute(task, builder, timeout);
@@ -353,21 +353,10 @@ public final class TaskRunner {
         return overlapping;
     }
 
-    private static void invalidateDependents(TaskManifest plan, String task, ModuleStateDb store) throws IOException {
-        Map<String, List<String>> consumers = new HashMap<>();
-        for (TaskManifest.Task node : plan.orderAll()) {
-            for (String dependency : node.prerequisites()) {
-                consumers.computeIfAbsent(dependency, ignored -> new ArrayList<>()).add(node.name());
-            }
-        }
-        Set<String> invalid = new HashSet<>();
-        ArrayDeque<String> pending = new ArrayDeque<>();
-        pending.add(task);
-        while (!pending.isEmpty()) {
-            String name = pending.removeFirst();
-            if (invalid.add(name)) pending.addAll(consumers.getOrDefault(name, List.of()));
-        }
-        store.invalidate(invalid.stream().map(TaskRunner::stateKey).toList());
+    private static void invalidateDependents(TaskInvalidationIndex graph, String task,
+            ModuleStateDb store) throws IOException {
+        // This closure is computed from the already-built reverse CSR graph.
+        store.invalidate(graph.closure(task).stream().map(TaskRunner::stateKey).toList());
     }
 
     private static void execute(TaskManifest.Task task, ProcessBuilder builder, Duration timeout)
