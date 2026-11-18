@@ -65,7 +65,7 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
             }
             throw new IOException("LMDB module directory lacks its native data file");
         }
-        return withDatabase(dir, (environment, database, transactionType) -> {
+        return withDatabase(dir, false, (environment, database, transactionType) -> {
             Object tx = M3PortableDbRuntime.call(environment, "txnRead", NONE);
             try {
                 Object value = M3PortableDbRuntime.call(database, "get",
@@ -91,7 +91,7 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public void write(Path root, byte[] image) throws IOException {
         M3PortableDbRuntime.bounded(image);
         Path dir = M3PortableDbRuntime.path(root, DIRECTORY, true, true);
-        withDatabase(dir, (environment, database, transactionType) -> {
+        withDatabase(dir, true, (environment, database, transactionType) -> {
             Object tx = M3PortableDbRuntime.call(environment, "txnWrite", NONE);
             try {
                 Class<?> putFlagType = M3PortableDbRuntime.peer(database.getClass(),
@@ -124,7 +124,7 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
         T run(Object environment, Object database, Class<?> transactionType) throws IOException;
     }
 
-    private static <T> T withDatabase(Path dir, Action<T> action) throws IOException {
+    private static <T> T withDatabase(Path dir, boolean createDbi, Action<T> action) throws IOException {
         Class<?> envType = M3PortableDbRuntime.type("org.lmdbjava.Env");
         Class<?> flagsType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.DbiFlags");
         Class<?> envFlagsType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.EnvFlags");
@@ -142,8 +142,10 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
         try {
             // LmdbJava 0.9.3 uses Env.openDbi. The createDbi() fluent API was
             // introduced after the pinned release and cannot be used here.
-            Object dbFlags = Array.newInstance(flagsType, 1);
-            Array.set(dbFlags, 0, M3PortableDbRuntime.constant(flagsType, "MDB_CREATE"));
+            Object dbFlags = Array.newInstance(flagsType, createDbi ? 1 : 0);
+            if (createDbi) {
+                Array.set(dbFlags, 0, M3PortableDbRuntime.constant(flagsType, "MDB_CREATE"));
+            }
             Object db = M3PortableDbRuntime.call(env, "openDbi",
                     new Class<?>[] {String.class, dbFlags.getClass()}, DATABASE, dbFlags);
             try {
