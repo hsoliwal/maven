@@ -63,12 +63,14 @@
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
-      <version>3.6.2</version>
+      <!-- in-tree: plugins/shared/plexus-utils -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-io</artifactId>
-      <version>3.8.1</version>
+      <!-- in-tree: plugins/shared/plexus-io -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
