@@ -93,7 +93,7 @@ cmake -S llvm -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DLLVM_PARALLEL_LINK_JOBS=2
-cmake --build build --target clang clang++ llc flang
+cmake --build build --target clang llc flang
 ```
 
 The exact target set depends on the selected LLVM build and host. Configure
