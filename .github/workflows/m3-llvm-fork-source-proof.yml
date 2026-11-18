@@ -113,7 +113,7 @@ jobs:
           script=tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh
           test "$(id -u)" -ne 0
           temporary="$(mktemp -d)"
-          trap 'chmod 700 "$temporary/unreadable" 2>/dev/null || :; rm -rf "$temporary"' EXIT
+          trap 'chmod 700 "$temporary/unreadable" "$temporary/unreadable-parent" "$temporary/readonly" 2>/dev/null || :; rm -rf "$temporary"' EXIT
           mkdir -p "$temporary/unreadable"
           chmod 000 "$temporary/unreadable"
           assert_scan_refusal() {
@@ -130,6 +130,17 @@ jobs:
           }
           assert_scan_refusal "$temporary/unreadable" "$temporary/refused-evidence"
           chmod 700 "$temporary/unreadable"
+          # A child of an unreadable parent looks absent to [[ -e ]], but
+          # creating it may still leave another output directory behind.
+          mkdir -p "$temporary/unreadable-parent"
+          chmod 000 "$temporary/unreadable-parent"
+          assert_scan_refusal "$temporary/unreadable-parent/child" "$temporary/refused-evidence"
+          test ! -e "$temporary/refused-evidence"
+          chmod 700 "$temporary/unreadable-parent"
+          mkdir -p "$temporary/readonly"
+          chmod 500 "$temporary/readonly"
+          assert_scan_refusal "$temporary/readonly" "$temporary/refused-evidence"
+          chmod 700 "$temporary/readonly"
           mkdir -p "$temporary/bin" "$temporary/empty"
           printf '#!/usr/bin/env bash\nexit 72\n' > "$temporary/bin/find"
           chmod +x "$temporary/bin/find"
