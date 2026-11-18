@@ -129,6 +129,16 @@ under the License.
               <arguments><argument>${project.build.directory}/project-db-test</argument></arguments>
             </configuration>
           </execution>
+          <execution>
+            <id>gradle-native-evidence-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>org.apache.maven.plugins.projectdb.GradleProjectDbContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+              <arguments><argument>${project.build.directory}/gradle-project-db-test</argument></arguments>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
     </plugins>

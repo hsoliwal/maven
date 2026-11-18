@@ -52,11 +52,27 @@ final class Sources {
                 sources.add(Source.of(name, relative(root, report), "surefire", List.of(report)));
             }
         }
+        gradleTests(root, module, name, sources);
         firstExisting(root, module, name, POMS, "pom", sources);
         firstExisting(root, module, name, List.of("target/dependency-tree.txt"), "dependency-tree", sources);
         clustering(root, module, name, sources);
         events(root, module, name, sources);
         return sources;
+    }
+
+    /** Native Gradle XML test reports use the same JUnit case parser as Surefire. */
+    private static void gradleTests(Path root, Path module, String name, List<Source> sources)
+            throws IOException {
+        Path base = module.resolve("build/test-results");
+        if (!Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) return;
+        try (Stream<Path> tasks = Files.list(base)) {
+            for (Path task : tasks.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .sorted().toList()) {
+                for (Path report : list(task, "TEST-", ".xml")) {
+                    sources.add(Source.of(name, relative(root, report), "surefire", List.of(report)));
+                }
+            }
+        }
     }
 
     /** The build log given to an ingest, as a root-level source. */

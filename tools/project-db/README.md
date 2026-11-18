@@ -61,11 +61,45 @@ Every store directory gets a `.gitignore` of `*`, so it is never committed; this
 | --- | --- | --- |
 | `.m3/` polyglot task state | `m3-polyglot:run` with `incremental` (any backend), read through `ModuleStateView` from the backend of the last clean session; a module whose state a running build holds fails the ingest | one per recorded task with its input and output digests |
 | `target/surefire-reports/TEST-*.xml`, `target/failsafe-reports/TEST-*.xml` | Surefire, Failsafe | one per test case: passed, failed, error, skipped or flaky (a `flakyFailure`/`flakyError` rerun that passed); provenance is the first stack frame in the test class, else the report line |
+| `build/test-results/<testTask>/TEST-*.xml` | Native Gradle Java Test tasks | the **same original JUnit case parser** as Surefire, including test status and file/line evidence; the test-task name stays in the report path |
 | `target/effective-pom.xml`, else `target/project-db/effective-pom.xml` | `help:effective-pom`, else written by `ingest` from the module model | one per dependency and plugin block |
 | `target/dependency-tree.txt` | `dependency:tree -DoutputFile=...` | one per dependency with the path that brings it in |
 | `target/code-clustering/ATOM_HASHES.tsv`, `CLUSTERS.tsv` | `code-clustering:cluster` | one per atom (with its source line) and one per set of duplicated atoms, planes listed |
 | `target/build-events/*.jsonl`, `target/build-events*.jsonl` | a build-events writer (the smart builder's JSONL events once that lane lands) | one per event |
 | `-Dproject-db.buildLog=FILE` | the Maven console | `[ERROR]` lines (noise and rerun repeats removed) and `BUILD FAILURE`, with `file:[line,col]` when present |
+
+### Gradle-only Java projects and modules
+
+The standalone ProjectDbCli now discovers project and module directories with
+`pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, or
+`settings.gradle.kts` (without requiring a POM). It skips the build,
+target, .gradle, .m3 and VCS/output directories, de-duplicates modules with
+multiple descriptors, and reads original Gradle TEST-*.xml artifacts directly
+from each test task under build/test-results. It never starts Gradle or
+reprocesses unchanged report bytes; the original ProjectDb/IndexStore and
+SurefireParser remain the only data and parsing owners.
+
+This is **evidence reuse**, not an implicit Maven interpretation of Gradle's
+task graph, Gradle's native build cache, compile classpaths, binary ABI,
+code coverage, or successful build status. Missing reports remain missing
+evidence. Gradle reports without source stack frames keep the report
+file and line; reports with resolvable stack frames point to the original
+test source file. No Gradle API or XML parsing library is copied.
+
+Example using the standalone CLI and already-built original JARs:
+
+~~~sh
+java -cp "maven-project-db-plugin.jar:m3-polyglot-maven-plugin.jar" \
+  org.apache.maven.plugins.projectdb.ProjectDbCli ingest /path/to/gradle-project
+java -cp "maven-project-db-plugin.jar:m3-polyglot-maven-plugin.jar" \
+  org.apache.maven.plugins.projectdb.ProjectDbCli query /path/to/gradle-project \
+  "which tests failed" --json
+~~~
+
+The optional Gradle-side `m3ProjectDbIngest` / `m3ProjectDbQuery`
+entrypoints must supply a source-pinned Maven engine version that contains
+this native Gradle discovery extension. The earlier Maven #184 JAR
+supports Maven evidence but does **not** include this added report scanner.
 
 **Incremental by content hash.** A source's key is its module and path; its SHA-256 covers the parser version, kind,
 path and every file's bytes. An unchanged source is never parsed again, and the same content anywhere is parsed once

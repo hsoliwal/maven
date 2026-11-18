@@ -31,18 +31,29 @@ import java.util.stream.Stream;
  */
 final class Modules {
     private static final int DEPTH = 6;
-    private static final Set<String> SKIP = Set.of("target", ".git", ".mvn", "node_modules", "src", ".m3");
+    private static final Set<String> SKIP = Set.of("target", "build", ".gradle", ".git", ".mvn",
+            "node_modules", "src", ".m3");
 
     private Modules() {}
 
     static List<Path> discover(Path root) throws IOException {
         Path project = root.toAbsolutePath().normalize();
         try (Stream<Path> walk = Files.walk(project, DEPTH)) {
-            return walk.filter(path -> path.getFileName() != null && "pom.xml".equals(path.getFileName().toString()))
+            return walk.filter(Modules::descriptor)
                     .map(Path::getParent)
                     .filter(module -> project.relativize(module).toString().isEmpty() || included(project, module))
-                    .sorted().toList();
+                    .distinct().sorted().toList();
         }
+    }
+
+    /** Native Gradle and Maven module boundaries, without treating output folders as modules. */
+    private static boolean descriptor(Path path) {
+        if (path.getFileName() == null || !Files.isRegularFile(path)) return false;
+        return switch (path.getFileName().toString()) {
+            case "pom.xml", "build.gradle", "build.gradle.kts",
+                    "settings.gradle", "settings.gradle.kts" -> true;
+            default -> false;
+        };
     }
 
     /** True when no directory between the root and the module is a skipped folder. */

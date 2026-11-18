@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 project DB native Gradle evidence
+on:
+  pull_request:
+    paths:
+      - 'tools/project-db/**'
+      - '.github/workflows/m3-projectdb-gradle-evidence.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'tools/project-db/**'
+      - '.github/workflows/m3-projectdb-gradle-evidence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  project-db-native-gradle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: |
+            tools/m3-polyglot-maven-plugin/pom.xml
+            tools/project-db/pom.xml
+      - name: Standalone Java 17 native Gradle JUnit parser admission
+        run: sh tools/project-db/scripts/verify-gradle-sources.sh
+      - name: Install original M3IndexDB-backed polyglot storage owner
+        run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: Run project-DB ingestion, retrieval, provenance and RAT contracts
+        run: mvn -B -ntp -f tools/project-db/pom.xml verify
