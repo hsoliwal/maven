@@ -47,6 +47,9 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/MavenizerContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseProjectModel.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EclipseModelCli.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuilderProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistry.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistryContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EclipseProjectModelContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/QualityTaskCommands.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolCapability.java \
@@ -96,6 +99,8 @@ java -cp "$DEST" io.synexia.maven.polyglot.BuildCacheStateContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.QualityProviderContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.MavenizerContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.M3EclipseBuilderRegistryContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
