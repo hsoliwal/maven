@@ -38,7 +38,7 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public byte[] read(Path root) throws IOException {
         Path file = M3PortableDbRuntime.path(root, FILE, false, false);
         if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return null;
-        return withMap(file, false, (db, values) -> {
+        return withMap(file, (db, values) -> {
             Object value = values.get(KEY);
             if (value == null) return null;
             if (!(value instanceof byte[] image)) {
@@ -52,7 +52,7 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
     @Override public void write(Path root, byte[] image) throws IOException {
         M3PortableDbRuntime.bounded(image);
         Path file = M3PortableDbRuntime.path(root, FILE, false, true);
-        withMap(file, true, (db, values) -> {
+        withMap(file, (db, values) -> {
             try {
                 values.put(KEY, image.clone());
                 M3PortableDbRuntime.call(db, "commit", NONE);
@@ -70,7 +70,7 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
         T run(Object database, Map<String, Object> values) throws IOException;
     }
 
-    private static <T> T withMap(Path file, boolean create, Action<T> action) throws IOException {
+    private static <T> T withMap(Path file, Action<T> action) throws IOException {
         Class<?> makerType = M3PortableDbRuntime.type("org.mapdb.DBMaker");
         Class<?> serializerType = M3PortableDbRuntime.peer(makerType, "org.mapdb.Serializer");
         Object maker = M3PortableDbRuntime.callStatic(makerType, "fileDB",
