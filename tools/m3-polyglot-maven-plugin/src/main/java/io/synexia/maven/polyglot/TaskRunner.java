@@ -269,7 +269,8 @@ public final class TaskRunner {
                     if (!restored && cacheStamp != null) {
                         log.accept((cache.store(task, root, cacheStamp) ? "CACHED " : "NOT-CACHED ") + task.name());
                     }
-                    if (incremental) store.record(stateKey(task.name()), input, output);
+                    // Stage only; one module commit follows a successful full task graph.
+                    if (incremental) store.stage(stateKey(task.name()), input, output);
                     generations.put(task.name(), InputStamps.combine(List.of(input, output)));
                     if (cacheStamp != null) {
                         portableGenerations.put(task.name(), InputStamps.combine(List.of(cacheStamp, output)));
@@ -282,6 +283,9 @@ public final class TaskRunner {
             }
             performed.add(task.name());
         }
+        // A crash or failed later task cannot publish partially successful work.
+        // Earlier cache entries were already revoked before any output mutation.
+        if (incremental) store.commitStaged();
         return List.copyOf(performed);
     }
 
