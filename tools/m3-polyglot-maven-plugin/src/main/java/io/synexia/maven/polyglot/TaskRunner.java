@@ -125,7 +125,7 @@ public final class TaskRunner {
             Path buildCache,
             Consumer<String> log) throws IOException, InterruptedException {
         Objects.requireNonNull(stateBackend, "stateBackend");
-        if (!Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2").contains(stateBackend)
+        if (!Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2", "hsqldb").contains(stateBackend)
                 && !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
             throw new IllegalArgumentException("unknown portable module state backend");
         }
