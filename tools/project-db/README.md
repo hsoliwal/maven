@@ -158,10 +158,12 @@ matrices: the source-owned Maven engine/DB contract and the **actual
 Gradle TestKit consumer**. Each JDK Maven owner job builds and verifies
 the original Maven polyglot `IndexStore` and project database **once**.
 Only after those tests succeed does the job stage both original JARs,
-compute a `SHA256SUMS` receipt and upload them together in
-`qualified-maven-jars-jdk-<java>`. The matching Gradle job declares
-`needs: project-db-native-gradle`, downloads its own JDK's qualified
-artifacts, and runs `sha256sum -c SHA256SUMS` **before** executing the
+a `SOURCE_RECEIPT.tsv` carrying the **exact GitHub source SHA** and
+**producing JDK lane**, plus a `SHA256SUMS` receipt sealing all three
+files, and upload them together in `qualified-maven-jars-jdk-<java>`.
+The matching Gradle job declares `needs: project-db-native-gradle`,
+downloads its own JDK's qualified artifacts, runs `sha256sum -c SHA256SUMS`,
+and rejects a source SHA or JDK mismatch **before** executing the
 consumer. It no longer reruns Maven `install` and `verify` a second time.
 
 The consumer checks out **reviewed immutable Gradle revision**
