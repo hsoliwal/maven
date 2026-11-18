@@ -44,6 +44,7 @@ public final class MavenizerContractTestMain {
         detectsCargo(root);
         detectsNativeTools(root);
         detectsPython(root);
+        detectsErlangAndPhp(root);
         detectsDotnet(root);
         attachesOnlyDotnetPackages(root);
         detectsJvmBuildTools(root);
@@ -128,6 +129,39 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "pytest", "pyproject.toml", "[tool.pytest.ini_options]\n"),
                 "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
                 "test python-test python [-m, pytest]");
+    }
+
+    private static void detectsErlangAndPhp(Path root) throws Exception {
+        // Known native build descriptors only; never guess an Erlang/PHP compiler
+        // from an Eclipse nature or from a source file extension.
+        Path erlang = dir(root, "erlang", "rebar.config", "{erl_opts, [debug_info]}.\n");
+        expect(erlang, "compile rebar3-compile rebar3 [compile]");
+        Files.createDirectories(erlang.resolve("test"));
+        expect(erlang, "compile rebar3-compile rebar3 [compile]",
+                "test rebar3-test rebar3 [eunit]");
+        Path php = dir(root, "php", "composer.json", "{\"name\":\"example/app\"}");
+        expect(php, "validate composer-validate composer [validate, --no-check-publish]");
+        Files.writeString(php.resolve("phpunit.xml"), "<phpunit/>");
+        expect(php, "validate composer-validate composer [validate, --no-check-publish]",
+                "test composer-test composer [exec, phpunit]");
+        expect(dir(root, "phpunit-alone", "phpunit.xml", "<phpunit/>"));
+
+        // Mavenizing may write *only* source-owned POM and strict task manifest;
+        // external Rebar3 and Composer processes remain explicitly opt-in.
+        var planned = Mavenizer.mavenize(php, "org.example", "1.0-SNAPSHOT", false);
+        require(planned.contains("PLAN pom.xml") && planned.contains("PLAN m3-build.tsv"),
+                "PHP project Mavenizer plan is read-only");
+        require(!Files.exists(php.resolve("pom.xml")) && !Files.exists(php.resolve("vendor")),
+                "planning never invokes Composer or downloads packages");
+        Mavenizer.mavenize(php, "org.example", "1.0-SNAPSHOT", true);
+        String emitted = Files.readString(php.resolve("m3-build.tsv"));
+        require(emitted.contains("task\tcomposer-validate\tcomposer\t.\n")
+                && emitted.contains("arg\tcomposer-test\tphpunit\n"),
+                "native PHP commands preserved as strict argument-vector tasks");
+        require(Files.readString(php.resolve("pom.xml")).contains("<id>m3-polyglot</id>"),
+                "native language lifecycle activation remains an explicit Maven profile");
+        require(!Files.exists(php.resolve("vendor")),
+                "Mavenizer never runs Composer install as a side effect");
     }
 
     private static void detectsDotnet(Path root) throws Exception {

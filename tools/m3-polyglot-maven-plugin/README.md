@@ -403,7 +403,11 @@ and `package` run the native commands:
 | Gradle build or settings file | `assemble`, `test` (with `gradlew` when the wrapper is there) |
 | Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
 | `Package.swift` | `swift build`, `swift test` |
+| `rebar.config` (Erlide/Erlang) | `rebar3 compile`; `rebar3 eunit` only when a `test/` directory exists |
+| `composer.json` (Eclipse PDT/PHP) | `composer validate --no-check-publish`; `composer exec phpunit` only for a present `phpunit.xml` / `.dist` |
 | `build.xml` | `ant`, `ant test` when a `test` target exists |
+
+For Erlide and PDT, Mavenizer emits an opt-in native tool plan only. Rebar3 may fetch its declared dependencies during an explicit original Rebar3 compile; Composer validation does not install packages, and PHPUnit execution assumes existing installed dependencies. Mavenizer does not download or compile anything on detection, does not rewrite original `rebar.config`/`composer.json`, and does not infer arbitrary scripts or PHP compilation from file extensions. The existing m2e polyglot tool registry already recognizes `rebar3` and `composer` and yields to an installed Erlide/PDT language service.
 
 Test reports. CTest writes its JUnit XML itself (`--output-junit`, CMake 3.21+) to `target/ctest/ctest-junit.xml`,
 and the `ctest-test` task runs it through `@m3:surefire:interpreter:junit`, which converts the file into
@@ -881,6 +885,11 @@ and the dependency-free `scripts/verify.sh`:
 M3_LLVM_REAL_TEST_HOME=/absolute/path/to/llvm-install \
   sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
 ```
+
+The [packaged Maven consumer example](examples/llvm/README.md) uses two explicit
+tasks to compile a C17 source and link the object, including a tracked header
+and Clang depfile. It relies on the existing `plan`/`run` goals and accepts
+`m3.llvm.home`, not an implicit lifecycle binding.
 
 It runs C, C++, Objective-C, Objective-C++, Fortran and LLVM IR **through the Maven TaskRunner**, checks that dry
 runs do not create outputs, pins each compiler executable's SHA-256, and verifies actual nonempty object files.
