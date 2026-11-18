@@ -15,7 +15,9 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
@@ -33,6 +35,8 @@ import java.util.Set;
  */
 public final class M3EclipseLanguageEvidenceService {
     public static final int MAX_PACKET_BYTES = 1 * 1024 * 1024;
+    public static final int MAX_INSTALLED_PROVIDERS = 128;
+    public static final int MAX_OWNER_EXTENSION_IDS = 4096;
     private M3EclipseLanguageEvidenceService() { }
 
     public record Report(String providerId, String schema, String project,
@@ -86,8 +90,13 @@ public final class M3EclipseLanguageEvidenceService {
         Set<String> chosenBuilders = Set.of();
         Set<String> chosenNatures = Set.of();
         Set<String> providerIds = new HashSet<>();
+        Map<String, String> buildersOwnedBy = new HashMap<>();
+        int discovered = 0;
         try {
             for (M3EclipseLanguageEvidenceProvider provider : installed) {
+                if (++discovered > MAX_INSTALLED_PROVIDERS) {
+                    throw new IOException("Eclipse language evidence provider count exceeds bound");
+                }
                 if (provider == null
                         || provider.apiVersion() != M3EclipseLanguageEvidenceProvider.API_VERSION) {
                     throw new IOException("unsupported original Eclipse language evidence SPI");
@@ -99,10 +108,22 @@ public final class M3EclipseLanguageEvidenceService {
                 }
                 Set<String> builders = Objects.requireNonNull(provider.builderIds(), "builder IDs");
                 Set<String> natures = Objects.requireNonNull(provider.natureIds(), "nature IDs");
-                if (builders.isEmpty() && natures.isEmpty()) {
-                    throw new IOException("Eclipse evidence provider has no exact builder or nature ID: " + id);
+                if ((builders.isEmpty() && natures.isEmpty())
+                        || builders.size() > MAX_OWNER_EXTENSION_IDS
+                        || natures.size() > MAX_OWNER_EXTENSION_IDS) {
+                    throw new IOException("Eclipse evidence provider has invalid builder/nature bounds: " + id);
                 }
-                for (String builder : builders) checkExtension(builder);
+                for (String builder : builders) {
+                    checkExtension(builder);
+                    String previous = buildersOwnedBy.putIfAbsent(builder, id);
+                    if (previous != null) {
+                        throw new IOException("ambiguous Eclipse evidence builder owner: " + builder
+                                + " (" + previous + ", " + id + ")");
+                    }
+                }
+                // Nature-only extensions may intentionally share a nature
+                // (e.g. multiple language-server observers). Unlike builder
+                // IDs they do not claim exclusive incremental-build ownership.
                 for (String nature : natures) checkExtension(nature);
                 if (providerId.equals(id)) {
                     chosen = provider;
