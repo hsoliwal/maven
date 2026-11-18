@@ -25,8 +25,8 @@ expect_count "      - 'tools/m3-polyglot-maven-plugin/**'" 2
 expect_count "      - '.github/workflows/m3-projectdb-gradle-evidence.yml'" 2
 expect_count "    branches: [master]" 1
 expect_count "  workflow_dispatch:" 1
-expect_count "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}" 1
-expect_count "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}" 1
+expect_count "  group: \${{ github.workflow }}-\${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}" 1
+expect_count "  cancel-in-progress: \${{ github.event_name == 'pull_request' }}" 1
 expect_count "        java: ['17', '21']" 2
 expect_count "run: sh tools/project-db/scripts/verify-gradle-sources.sh" 1
 expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install" 1
