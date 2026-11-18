@@ -205,6 +205,54 @@ not imply real LLVM binaries or cross-platform execution were tested.
   the manifest records their inputs and separate outputs, and recipe-first
   OpenRewrite retains Java source mutation authority.
 
+## Real LLVM IR pipeline regression (opt-in host, required in Ubuntu CI)
+
+The separate `LlvmNativePipelineIntegrationTestMain` reuses the **installed**
+`@m3:llvm-tools` provider, `TaskManifest`, and `TaskRunner` without
+introducing another tool scheduler or parser. It first verifies that a
+five-node graph can be planned with no filesystem side effects:
+
+```text
+source.ll --opt -passes=instcombine--> source.opt.ll --llvm-as--> source.bc
+helper.ll -----------------------------------------llvm-as--> helper.bc
+source.bc + helper.bc -----------------------------llvm-link--> linked.bc
+linked.bc ----------------------------------------------opt -S--> linked.ll
+```
+
+The test then runs the native tools and verifies the resulting IR defines
+both functions, including the helper's returned value. It repeats with
+M3DB incremental and artifact-output cache options enabled and requires
+the **actual LLVM tools to execute every time**. A helper edit must appear
+in linked IR; invalid LLVM IR must fail; restoring valid IR must recover.
+It also checks every declared stage output is nonempty. These are
+native correctness and **cache-exclusion**, not cache-admission, tests.
+
+Run on a qualified host with `opt`, `llvm-as` and `llvm-link` installed:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml install
+mvn -f tools/m3-llvm-tools-provider/pom.xml verify
+
+# Required external LLVM tools, selected as one installation:
+M3_LLVM_PIPELINE_HOME=/path/to/llvm-install java \
+  -cp 'tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/classes:tools/m3-polyglot-maven-plugin/target/classes' \
+  io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
+```
+
+Without a selected/installed toolchain, the Maven `verify` suite still
+runs the read-only graph validation and clearly reports `NOT_RUN` for the
+real pipeline. An explicit but incomplete toolchain fails, including in
+optional mode. The isolated Ubuntu 24.04 CI job installs its distribution's
+LLVM 18 tools at `/usr/lib/llvm-18` and runs this class with `--required`
+on Java 17 **and** Java 21. This qualifies the distribution LLVM runtime,
+not the independently audited fork source.
+
+The run does not use native JNI bindings; executable invocations are
+individual `ProcessBuilder` argument vectors. Neither the LLVM pass
+pipeline nor the result format is reimplemented in Java. For the pinned
+`hsoliwal/llvm-project` fork, set `M3_LLVM_PIPELINE_HOME` to a separately
+built matching installation and record its binary evidence first.
+
 ## Testing and release gate
 
 `sh tools/m3-llvm-tools-provider/scripts/verify.sh` runs Java 17 source
