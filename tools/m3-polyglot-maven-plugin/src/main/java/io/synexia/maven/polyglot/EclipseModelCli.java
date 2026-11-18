@@ -11,9 +11,15 @@ public final class EclipseModelCli {
     private EclipseModelCli() { }
 
     public static void main(String[] args) throws Exception {
-        if (args == null || args.length != 1) {
-            throw new IllegalArgumentException("usage: EclipseModelCli <existing-eclipse-project-directory>");
+        if (args != null && args.length == 1) {
+            // Preserve the existing portable CLI and m3-eclipse-project-v1 schema.
+            System.out.println(EclipseProjectModel.inspect(Path.of(args[0])).toJson());
+        } else if (args != null && args.length == 2 && "owners".equals(args[0])) {
+            // Deliberately read-only: no Eclipse builder, Gradle task or Maven goal is executed.
+            System.out.println(M3EclipseBuilderRegistry.inspect(Path.of(args[1])).toJson());
+        } else {
+            throw new IllegalArgumentException(
+                    "usage: EclipseModelCli [owners] <existing-eclipse-project-directory>");
         }
-        System.out.println(EclipseProjectModel.inspect(Path.of(args[0])).toJson());
     }
 }
