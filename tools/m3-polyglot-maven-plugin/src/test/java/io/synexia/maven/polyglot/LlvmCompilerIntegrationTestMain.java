@@ -43,6 +43,7 @@ public final class LlvmCompilerIntegrationTestMain {
         try {
             plansLlcThenClangWithoutNative(root.resolve("offline IR plan"));
             refusesMalformedOptionalTool(root.resolve("broken optional tool"));
+            pinsBothObjectiveCppSpellingsToClangxx(root.resolve("distinct objective cpp drivers"));
             System.out.println("PASS: " + passed + " offline LLVM graph and optional-tool refusal assertions");
             boolean configured = selectedHome != null || nonblank(LlvmCompilerProvider.configuredHome());
             if (!configured && (!available("clang", root) || !available("clang++", root))) {
@@ -136,6 +137,35 @@ public final class LlvmCompilerIntegrationTestMain {
             check(!available("llc", root), "truly missing optional llc remains an explicit NOT_RUN");
         } finally {
             selectedHome = old;
+        }
+    }
+
+    /** An explicit home must hash the same compiler selected for both ObjC++ spellings. */
+    private static void pinsBothObjectiveCppSpellingsToClangxx(Path root) throws Exception {
+        Path bin = Files.createDirectories(root.resolve("llvm/bin"));
+        String suffix = windows() ? ".exe" : "";
+        Path clang = Files.writeString(bin.resolve("clang" + suffix),
+                "distinct clang driver\n", StandardCharsets.UTF_8);
+        Path clangxx = Files.writeString(bin.resolve("clang++" + suffix),
+                "distinct clang++ driver\n", StandardCharsets.UTF_8);
+        String originalHome = selectedHome;
+        try {
+            selectedHome = bin.getParent().toString();
+            String clangDigest = InputStamps.fileSha256(clang.toRealPath());
+            String cppDigest = InputStamps.fileSha256(clangxx.toRealPath());
+            check(!clangDigest.equals(cppDigest), "test drivers have distinct bytes");
+            String requiredPin = LlvmCompilerProvider.SHA256_ARGUMENT + cppDigest;
+            for (String language : List.of("objcpp", "objc++")) {
+                List<String> args = selected(language, List.of("-c", "source.mm"));
+                check(args.contains(requiredPin), language + " pins clang++ rather than clang");
+                TaskManifest.Task task = new TaskManifest.Task("objcxx", "@m3:llvm:compiler:" + language,
+                        ".", args, List.of(), List.of("source.mm"), List.of("object.o"));
+                List<String> command = M3ToolProviders.command(task, root);
+                check(command.get(0).equals(clangxx.toAbsolutePath().normalize().toString()),
+                        language + " resolves the same pinned clang++ driver");
+            }
+        } finally {
+            selectedHome = originalHome;
         }
     }
 
@@ -334,7 +364,7 @@ public final class LlvmCompilerIntegrationTestMain {
     private static List<String> selected(String language, List<String> flags) throws IOException {
         if (selectedHome == null) return flags;
         String driver = switch (language) {
-            case "cpp", "objcpp" -> "clang++";
+            case "cpp", "objcpp", "objc++" -> "clang++";
             case "fortran" -> "flang";
             case "llvm-ir" -> "llc";
             default -> "clang";
