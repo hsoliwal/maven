@@ -86,6 +86,7 @@ final class InlinePluginTest {
     private static void reviews(Path dir) throws Exception {
         InlineRegressionTest.run(dir.resolve("regression"));
         InlineFilingTest.run(dir.resolve("filing"));
+        InlineSafetyTest.run(dir.resolve("safety"));
     }
 
     /** JNI.tsv: binary names (nested, anonymous), erased descriptors, varargs, overloads; symbols are atom symbols. */
@@ -101,6 +102,11 @@ final class InlinePluginTest {
                 "n/Natives.java\tNatives.Inner.run(B,Inner,String[])\tn/Natives$Inner\trun\tLq/B;Ln/Natives$Inner;[Ljava/lang/String;"));
         check("JNI anonymous class", rows.contains("n/Natives.java\tNatives..run()\tn/Natives$1\trun\t"));
         check("JNI six rows", rows.size() == 7);
+        nativeSymbols(out, rows);
+    }
+
+    /** Each JNI row's path and symbol are those of an atom. */
+    private static void nativeSymbols(Path out, List<String> rows) throws IOException {
         List<String> symbols = PlaneTables.readAtoms(out.resolve("ATOM_HASHES.tsv")).stream()
                 .map(a -> a.path() + "\t" + a.symbol()).collect(Collectors.toList());
         check("JNI symbols are atom symbols", rows.subList(1, rows.size()).stream()

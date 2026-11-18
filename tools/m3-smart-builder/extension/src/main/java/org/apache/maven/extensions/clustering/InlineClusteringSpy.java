@@ -18,6 +18,7 @@
  */
 package org.apache.maven.extensions.clustering;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -55,10 +56,11 @@ import org.slf4j.LoggerFactory;
  * {@code off}, empty) turns it off. The plugin jar is {@code clustering.pluginJar}, else maven-code-clustering-plugin
  * {@code clustering.pluginVersion} (default {@value #VERSION}) in the local repository; it must register the javac
  * plugin ({@link PluginJar}). Without such a jar the build runs as usual and the spy logs why once. Options
- * {@code clustering.minTokens}, {@code clustering.radius} and {@code clustering.fileThreshold} pass through. Before an
- * execution that compiles stale sources only, the rows of deleted sources are dropped ({@code InlineClustering.prune}).
- * A JDK toolchain in the build context leaves an execution alone ({@link ToolchainManager}). Any failure is logged and
- * leaves the execution as it was: the spy never fails a build.
+ * {@code clustering.minTokens}, {@code clustering.radius} and {@code clustering.fileThreshold} pass through. Before each
+ * wired execution, the rows of deleted sources are dropped ({@code InlineClustering.prune}). A JDK toolchain in the
+ * build context leaves an execution alone ({@link ToolchainManager}). An execution left alone for any reason, the off
+ * switch included, loses its earlier inline tables ({@link StaleTables}): no tables stay that this build did not
+ * write. Any failure is logged and leaves the execution as it was: the spy never fails a build.
  */
 @Named("inline-code-clustering")
 @Singleton
@@ -95,19 +97,47 @@ public final class InlineClusteringSpy extends AbstractEventSpy {
     }
 
     private void wire(MavenSession session, MavenProject project, MojoExecution mojo) {
-        if (!on(property(session, project, "clustering.inline"))) return;
-        Optional<Path> jar = pluginJar(session, project);
-        if (jar.isEmpty()) return;
         CompilerWiring wiring = new CompilerWiring(session, project, mojo, toolchains);
-        Optional<String> blocked = wiring.blocked(coordinatesProblem(session, project));
-        if (blocked.isPresent()) {
-            LOG.info("Inline code clustering skipped for {} {}: {}", project.getArtifactId(), mojo.getExecutionId(), blocked.get());
+        Optional<Path> jar = on(property(session, project, "clustering.inline")) ? pluginJar(session, project) : Optional.empty();
+        Optional<String> blocked = jar.isEmpty() ? Optional.empty() : wiring.blocked(coordinatesProblem(session, project));
+        if (jar.isEmpty() || blocked.isPresent()) {
+            leftAlone(wiring, project, mojo, blocked);
             return;
         }
         String options = options(session, project);
         wiring.wire(jar.get(), version(session, project), options);
         once("Inline code clustering: javac plugin CodeClustering from " + jar.get() + " (-Dclustering.inline=false turns it off)");
-        wiring.pruneArguments(options).ifPresent(args -> prune(jar.get(), args, project, mojo));
+        prune(jar.get(), wiring.pruneArguments(options), project, mojo);
+    }
+
+    /**
+     * An execution left alone: off, no usable plugin jar, or {@code blocked}. Its earlier inline tables are removed
+     * ({@link StaleTables}); the skip is logged with its reason, and the removal also when it is off (only then).
+     */
+    private static void leftAlone(CompilerWiring wiring, MavenProject project, MojoExecution mojo, Optional<String> blocked) {
+        boolean removed = removeTables(wiring, project, mojo);
+        String note = removed ? " (earlier inline tables removed)" : "";
+        if (blocked.isPresent()) {
+            LOG.info("Inline code clustering skipped for {} {}: {}{}", project.getArtifactId(), mojo.getExecutionId(),
+                    blocked.get(), note);
+        } else if (removed) {
+            LOG.info("Inline code clustering off for {} {}: earlier inline tables removed", project.getArtifactId(),
+                    mojo.getExecutionId());
+        }
+    }
+
+    /**
+     * {@link StaleTables#remove} for the execution, unless its own arguments add the plugin (they write the tables); a
+     * failure is logged and leaves the build as it is.
+     */
+    private static boolean removeTables(CompilerWiring wiring, MavenProject project, MojoExecution mojo) {
+        try {
+            return !wiring.configured() && StaleTables.remove(wiring.out(), !wiring.full());
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("Inline code clustering: earlier inline tables of {} {} not removed: {}", project.getArtifactId(),
+                    mojo.getExecutionId(), e.toString());
+            return false;
+        }
     }
 
     /** Whether {@code clustering.inline} keeps it on: absent, or {@link #ON}; false, 0, no, off, empty and others: off. */
@@ -120,9 +150,9 @@ public final class InlineClusteringSpy extends AbstractEventSpy {
     }
 
     /**
-     * Drops the rows of deleted sources before an execution that compiles stale sources only (javac may not run at
-     * all): {@code InlineClustering.prune} from a class loader of the plugin jar, closed after the call. A failure is
-     * logged and leaves the wiring in place.
+     * Drops the rows of deleted sources before a wired execution (javac may not run at all):
+     * {@code InlineClustering.prune} from a class loader of the plugin jar, closed after the call. A failure is logged
+     * and leaves the wiring in place.
      */
     private static void prune(Path jar, String[] args, MavenProject project, MojoExecution mojo) {
         try (URLClassLoader loader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, ClassLoader.getSystemClassLoader())) {

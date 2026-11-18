@@ -25,12 +25,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Writes and reads the atom table, and groups duplicates. {@code ATOM_HASHES.tsv}: one row per atom.
@@ -45,6 +48,9 @@ public final class PlaneTables {
     private static final char TAB = '\t';
     /** Columns of a table written before the line columns were added. */
     private static final int OLD_COLUMNS = 8;
+    private static final List<String> PLANES = List.of("EXACT", "LOGIC", "STRUCTURE", "SIMHASH");
+    /** SimHash bands: four of 16 bits each. */
+    private static final int BANDS = 4;
 
     private PlaneTables() { }
 
@@ -75,28 +81,38 @@ public final class PlaneTables {
         return atoms;
     }
 
-    /** Writes CLUSTERS.tsv and PLANE_SUMMARY.tsv; returns the summary line. */
+    /**
+     * Writes CLUSTERS.tsv and PLANE_SUMMARY.tsv; returns the summary line. One plane at a time, its rows streamed to
+     * the file, so only one plane's groups are held (the javac plugin writes at the end of the build's compilation).
+     */
     public static String writeClusters(Path dir, List<Atom> atoms, int floor, int radius) throws IOException {
         List<Atom> sized = atoms.stream().filter(a -> a.tokens() >= floor).collect(Collectors.toList());
-        Map<String, List<List<Atom>>> planes = new LinkedHashMap<>();
-        planes.put("EXACT", groups(sized, Atom::exact));
-        planes.put("LOGIC", groups(sized, Atom::logic));
-        planes.put("STRUCTURE", groups(sized, Atom::structure));
-        planes.put("SIMHASH", near(sized, radius));
-        StringBuilder clusters = new StringBuilder("plane\tcluster\tkind\tmembers\ttokens\tatoms\n");
         StringBuilder summary = new StringBuilder("plane\tclusters\tclustered_atoms\n");
         StringBuilder line = new StringBuilder("atoms " + atoms.size() + " (" + sized.size() + " with " + floor + "+ tokens)");
-        planes.forEach((plane, found) -> {
-            int id = 0;
-            for (List<Atom> group : found) clusters.append(row(plane, ++id, group));
-            int members = found.stream().mapToInt(List::size).sum();
-            summary.append(plane).append(TAB).append(found.size()).append(TAB).append(members).append('\n');
-            line.append(" | ").append(plane).append(' ').append(found.size()).append('/').append(members);
-        });
         Files.createDirectories(dir);
-        Files.writeString(dir.resolve("CLUSTERS.tsv"), clusters, StandardCharsets.UTF_8);
+        try (BufferedWriter out = Files.newBufferedWriter(dir.resolve("CLUSTERS.tsv"), StandardCharsets.UTF_8)) {
+            out.write("plane\tcluster\tkind\tmembers\ttokens\tatoms\n");
+            for (String plane : PLANES) tally(plane, writePlane(out, plane, clusters(plane, sized, radius)), summary, line);
+        }
         Files.writeString(dir.resolve("PLANE_SUMMARY.tsv"), summary, StandardCharsets.UTF_8);
         return line.toString();
+    }
+
+    private static List<List<Atom>> clusters(String plane, List<Atom> sized, int radius) {
+        if (plane.equals("SIMHASH")) return near(sized, radius);
+        return groups(sized, plane.equals("EXACT") ? Atom::exact : plane.equals("LOGIC") ? Atom::logic : Atom::structure);
+    }
+
+    /** Writes one plane's rows; returns its cluster and member counts. */
+    private static int[] writePlane(BufferedWriter out, String plane, List<List<Atom>> found) throws IOException {
+        int id = 0;
+        for (List<Atom> group : found) out.write(row(plane, ++id, group));
+        return new int[] {found.size(), found.stream().mapToInt(List::size).sum()};
+    }
+
+    private static void tally(String plane, int[] counts, StringBuilder summary, StringBuilder line) {
+        summary.append(plane).append(TAB).append(counts[0]).append(TAB).append(counts[1]).append('\n');
+        line.append(" | ").append(plane).append(' ').append(counts[0]).append('/').append(counts[1]);
     }
 
     private static String row(String plane, int id, List<Atom> group) {
@@ -105,30 +121,88 @@ public final class PlaneTables {
                 + members + '\n';
     }
 
+    /**
+     * Atoms of the same kind and key, groups of two or more, in the order of the strings {@code kind:key} (atoms of a
+     * group in their list order), compared without building those strings.
+     */
     private static List<List<Atom>> groups(List<Atom> atoms, Function<Atom, String> key) {
-        Map<String, List<Atom>> byKey = new TreeMap<>();
-        for (Atom a : atoms) byKey.computeIfAbsent(a.kind() + ":" + key.apply(a), k -> new ArrayList<>()).add(a);
-        return byKey.values().stream().filter(g -> g.size() > 1).collect(Collectors.toList());
+        Comparator<Atom> order = Comparator.comparing(a -> Joined.of(a.kind(), ':', key.apply(a)), CharSequence::compare);
+        List<Atom> sorted = new ArrayList<>(atoms);
+        sorted.sort(order);
+        List<List<Atom>> found = new ArrayList<>();
+        int start = 0;
+        for (int i = 1; i <= sorted.size(); i++) {
+            if (i < sorted.size() && order.compare(sorted.get(start), sorted.get(i)) == 0) continue;
+            if (i - start > 1) found.add(new ArrayList<>(sorted.subList(start, i)));
+            start = i;
+        }
+        return found;
     }
 
-    /** SimHash groups: four 16-bit bands propose candidates; a member stays within the radius of the group's first. */
+    /**
+     * SimHash groups: four 16-bit bands propose candidates (buckets of {@code kind + band + 4 hex digits}, in the order
+     * of those strings, compared without building them); a member stays within the radius of the group's first.
+     */
     private static List<List<Atom>> near(List<Atom> atoms, int radius) {
-        Map<String, List<Atom>> bands = new TreeMap<>();
-        for (Atom a : atoms) {
-            for (int band = 0; band < 4; band++)
-                bands.computeIfAbsent(a.kind() + band + a.simhash().substring(band * 4, band * 4 + 4), k -> new ArrayList<>()).add(a);
-        }
+        Comparator<Integer> key = Comparator.comparing(e -> band(atoms, e), CharSequence::compare);
+        Integer[] entries = IntStream.range(0, atoms.size() * BANDS).boxed().toArray(Integer[]::new);
+        Arrays.sort(entries, key.thenComparing(Comparator.naturalOrder()));
         Map<Atom, List<Atom>> grouped = new LinkedHashMap<>();
-        Map<Atom, Atom> leader = new LinkedHashMap<>();
-        for (List<Atom> bucket : bands.values()) {
-            for (Atom a : bucket) {
-                Atom first = leader.computeIfAbsent(bucket.get(0), k -> k);
-                if (a != first && !leader.containsKey(a) && PlaneHash.hamming(first.simhash(), a.simhash()) <= radius) {
-                    leader.put(a, first);
-                    grouped.computeIfAbsent(first, k -> new ArrayList<>(List.of(k))).add(a);
-                }
-            }
+        Map<Atom, Atom> leader = new HashMap<>();
+        int start = 0;
+        for (int i = 1; i <= entries.length; i++) {
+            if (i < entries.length && key.compare(entries[start], entries[i]) == 0) continue;
+            bucket(atoms, Arrays.asList(entries).subList(start, i), radius, leader, grouped);
+            start = i;
         }
         return new ArrayList<>(grouped.values());
+    }
+
+    /** The bucket key of an entry ({@code atom index * BANDS + band}): kind, band digit, the band's 4 hex digits. */
+    private static Joined band(List<Atom> atoms, int entry) {
+        Atom a = atoms.get(entry / BANDS);
+        int band = entry % BANDS;
+        return new Joined(a.kind(), (char) ('0' + band), a.simhash(), band * 4, 4);
+    }
+
+    /** One bucket: each atom not yet grouped joins the group of the bucket's first when within the radius. */
+    private static void bucket(List<Atom> atoms, List<Integer> entries, int radius, Map<Atom, Atom> leader,
+            Map<Atom, List<Atom>> grouped) {
+        Atom first = leader.computeIfAbsent(atoms.get(entries.get(0) / BANDS), k -> k);
+        for (Integer entry : entries) {
+            Atom a = atoms.get(entry / BANDS);
+            if (a != first && !leader.containsKey(a) && PlaneHash.hamming(first.simhash(), a.simhash()) <= radius) {
+                leader.put(a, first);
+                grouped.computeIfAbsent(first, k -> new ArrayList<>(List.of(k))).add(a);
+            }
+        }
+    }
+
+    /** {@code head + separator + text.substring(from, from + length)} as a char sequence, without copying. */
+    private record Joined(String head, char separator, String text, int from, int length) implements CharSequence {
+        static Joined of(String head, char separator, String text) {
+            return new Joined(head, separator, text, 0, text.length());
+        }
+
+        @Override
+        public int length() {
+            return head.length() + 1 + length;
+        }
+
+        @Override
+        public char charAt(int i) {
+            if (i < head.length()) return head.charAt(i);
+            return i == head.length() ? separator : text.charAt(from + i - head.length() - 1);
+        }
+
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return toString().subSequence(start, end);
+        }
+
+        @Override
+        public String toString() {
+            return head + separator + text.substring(from, from + length);
+        }
     }
 }

@@ -110,8 +110,9 @@ public final class AtomPlanes {
      * Whether the directory or one above it, below the root, is skipped (decided once per directory): a name of
      * {@link #ALWAYS_SKIPPED} anywhere; a name of {@link #PROJECT_OUTPUT} only beside a build descriptor
      * ({@link #DESCRIPTORS}: {@code target} next to {@code pom.xml}) or, for a virtual environment, holding
-     * {@code pyvenv.cfg}. A package directory of such a name inside a source root ({@code src/main/java/p/build}) is not
-     * skipped, so the scan holds what javac compiles.
+     * {@code pyvenv.cfg}, and then only when it holds no {@code .java} file itself. A package directory of such a name
+     * inside a source root ({@code src/main/java/p/build}, also beside a {@code Makefile}) is not skipped, so the scan
+     * holds what javac compiles.
      */
     private static boolean skipped(Path root, Path dir, Map<Path, Boolean> known) {
         if (dir == null || dir.equals(root) || !dir.startsWith(root)) return false;
@@ -125,8 +126,18 @@ public final class AtomPlanes {
     }
 
     private static boolean projectOutput(Path dir) {
-        return Files.isRegularFile(dir.resolve("pyvenv.cfg"))
+        boolean output = Files.isRegularFile(dir.resolve("pyvenv.cfg"))
                 || DESCRIPTORS.stream().anyMatch(d -> Files.exists(dir.resolveSibling(d)));
+        return output && !javaPackage(dir);
+    }
+
+    /** Whether the directory holds a {@code .java} file itself: a package directory javac compiles, whatever its name. */
+    private static boolean javaPackage(Path dir) {
+        try (Stream<Path> listed = Files.list(dir)) {
+            return listed.anyMatch(p -> p.getFileName().toString().endsWith(".java") && Files.isRegularFile(p));
+        } catch (IOException | java.io.UncheckedIOException e) {
+            return false;
+        }
     }
 
     private static final java.util.Set<String> ALWAYS_SKIPPED = java.util.Set.of(".git", "__pycache__", ".venv",
@@ -143,16 +154,20 @@ public final class AtomPlanes {
         if (compiler == null) throw new IOException("planes need a JDK (no system Java compiler)");
         DiagnosticCollector<JavaFileObject> ignored = new DiagnosticCollector<>();
         try (StandardJavaFileManager fm = compiler.getStandardFileManager(ignored, null, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) compiler.getTask(null, fm, ignored, List.of("-proc:none"), null,
-                    fm.getJavaFileObjectsFromPaths(files));
-            SourcePositions positions = Trees.instance(task).getSourcePositions();
-            List<Atom> atoms = new ArrayList<>();
-            for (CompilationUnitTree unit : task.parse()) {
-                String path = root.relativize(Path.of(unit.getSourceFile().toUri())).toString().replace('\\', '/');
-                new Collector(unit, positions, path, atoms).scan(unit, null);
-            }
-            return atoms;
+            return parsed(root, (JavacTask) compiler.getTask(null, fm, ignored, List.of("-proc:none"), null,
+                    fm.getJavaFileObjectsFromPaths(files)));
         }
+    }
+
+    /** The atoms of every unit the task parses, filed relative to the root. */
+    private static List<Atom> parsed(Path root, JavacTask task) throws IOException {
+        SourcePositions positions = Trees.instance(task).getSourcePositions();
+        List<Atom> atoms = new ArrayList<>();
+        for (CompilationUnitTree unit : task.parse()) {
+            String path = root.relativize(Path.of(unit.getSourceFile().toUri())).toString().replace('\\', '/');
+            new Collector(unit, positions, path, atoms).scan(unit, null);
+        }
+        return atoms;
     }
 
     /**

@@ -157,6 +157,11 @@ final class InlineRegressionTest {
         check("collisions: no roots compile green", compile(sources(src), dir.resolve("c2"), "out=" + bare));
         check("collisions: both files kept apart", symbols(bare).containsAll(List.of("UtilA", "UtilB"))
                 && lines(bare.resolve("ATOM_SOURCES.tsv")).size() == 3);
+        across(dir, src);
+    }
+
+    /** The two colliding files compiled one after the other into one output: both kept. */
+    private static void across(Path dir, Path src) throws IOException {
         Path across = dir.resolve("across");
         compile(List.of(src.resolve("a/Util.java")), dir.resolve("c3"), "out=" + across);
         compile(List.of(src.resolve("b/Util.java")), dir.resolve("c3"), "out=" + across);
@@ -190,32 +195,28 @@ final class InlineRegressionTest {
         check("generated: main tables identical to the scan", sameAsScan(dir, src, out, "main-cli"));
         check("generated: own tables identical to the scan", Files.isDirectory(out.resolve("generated"))
                 && sameAsScan(dir, gen, out.resolve("generated"), "gen-cli"));
+        withoutGenerated(dir, src, out, args);
+    }
+
+    /** A full compilation without generated sources removes their tables. */
+    private static void withoutGenerated(Path dir, Path src, Path out, String args) throws IOException {
         compile(List.of(src.resolve("p/A.java")), dir.resolve("c"), args);
         check("generated: full compile without them removes their tables",
                 !Files.exists(out.resolve("generated/ATOM_HASHES.tsv")));
     }
 
-    /** Failures, including errors such as a stack overflow, are logged; other virtual machine errors propagate. */
+    /**
+     * Failures, including a stack overflow and running out of heap, are logged; a missing class and running out of
+     * heap turn the plugin off; other virtual machine errors propagate.
+     */
     private static void guarded() {
-        check("guard: StackOverflowError logged", InlineClustering.guarded("test", () -> {
-            throw new StackOverflowError("deep");
-        }));
-        check("guard: AssertionError logged", InlineClustering.guarded("test", () -> {
-            throw new AssertionError("walker");
-        }));
-        check("guard: OutOfMemoryError propagates", propagates(() -> {
-            throw new OutOfMemoryError("heap");
-        }));
-        check("guard: success", !InlineClustering.guarded("test", () -> { }));
-    }
-
-    private static boolean propagates(InlineClustering.Step step) {
-        try {
-            InlineClustering.guarded("test", step);
-            return false;
-        } catch (OutOfMemoryError expected) {
-            return true;
-        }
+        check("guard: StackOverflowError logged", !InlineClustering.fatal(new StackOverflowError("deep")));
+        check("guard: AssertionError logged", !InlineClustering.fatal(new AssertionError("walker")));
+        check("guard: OutOfMemoryError logged, plugin off", !InlineClustering.fatal(new OutOfMemoryError("heap"))
+                && InlineClustering.disabling(new OutOfMemoryError("heap")));
+        check("guard: NoClassDefFoundError plugin off", InlineClustering.disabling(new NoClassDefFoundError("X")));
+        check("guard: AssertionError keeps the plugin on", !InlineClustering.disabling(new AssertionError("walker")));
+        check("guard: InternalError propagates", InlineClustering.fatal(new InternalError("vm")));
     }
 
     private static List<String> paths(Path out) throws IOException {

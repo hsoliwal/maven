@@ -227,17 +227,35 @@ The plugin gets the execution's source roots (`roots`) and generated sources dir
 file URIs, which hold no white space (javac splits the plugin argument at white space). It gets `full=true` unless
 `useIncrementalCompilation` is `false`: maven-compiler-plugin then compiles all sources or none, so the tables are
 replaced and a file no longer compiled (a new `<excludes>`) drops out. With `useIncrementalCompilation=false` it
-compiles stale sources only, and the plugin merges. After a source is deleted such an execution may find nothing
-stale and not run javac, so before it starts the spy calls the plugin's `InlineClustering.prune` (from a class
-loader of the plugin jar, closed afterwards), which drops the rows of sources that no longer exist. A source newly
-excluded in this mode keeps its rows until a full compilation.
+compiles stale sources only, and the plugin merges. Before every execution it wires, the spy calls the plugin's
+`InlineClustering.prune` (from a class loader of the plugin jar, closed afterwards), which drops the rows of sources
+that no longer exist: after a source is deleted, a merging execution may find nothing stale, and one that compiles
+all sources or none runs no javac when every source of its roots is gone. Prune writes only when a recorded source
+is gone. A source newly excluded in the merging mode keeps its rows until a full compilation.
+
+When the spy leaves an execution alone, for any reason below, the off switch and a missing plugin jar included, it
+removes that execution's earlier inline tables (`StaleTables`): every file directly in its table directory and in its
+`generated` directory, and directories an interrupted write left (`.tables-*`); the `test` and `execution-*`
+directories of other executions stay. Otherwise the tables of an earlier build would stay as if this one had
+written them, and a later wired build that finds the classes up to date (`Nothing to compile`) would not replace
+them. Absent tables are honest; stale ones are not. The INFO line of the skip says `(earlier inline tables
+removed)`; when the switch is off, a line is logged only if tables were removed. A merging execution
+(`useIncrementalCompilation=false`) would merge its next compilation into no base, so its directory is marked
+`INCOMPLETE.txt`; the plugin keeps the marker through merges and removes it when a full compilation replaces the
+set (`mvn clean` removes the directory). An execution whose own arguments add `-Xplugin:CodeClustering` keeps its
+tables: that configuration writes them.
 
 It leaves an execution alone, logged at INFO with the reason, when the plugin cannot join it safely:
 
 - another `compilerId`;
-- maven-compiler-plugin other than 3.1 or a newer 3.x. Version 4.x resolves its class path through the Maven 4 API,
-  which `MavenProject.getCompileClasspathElements()` does not see at that point (class-path processors such as Lombok
-  would be lost), and compiles single sources in its incremental modes; it is not wired until a 4.x wiring exists;
+- a maven-compiler-plugin whose mojo is written against the Maven 4 plugin API (the 4.x line, such as
+  4.0.0-beta-5), or one without the `compilerArgs` parameter (before 3.1). Both are told by the mojo's descriptor,
+  not by the version: on Maven 4 `MojoDescriptor.getRole()` is `org.apache.maven.api.plugin.Mojo` for a Maven 4 API
+  mojo. So any Maven 3 API build is wired whatever its version, such as the fork's own `4.2.0-SNAPSHOT`, which is the
+  3.16.0 code and which the fork's `-Pplugins` distribution binds by default. The Maven 4 API line resolves its class
+  path through the Maven 4 API, which `MavenProject.getCompileClasspathElements()` does not see at that point
+  (class-path processors such as Lombok would be lost), and compiles single sources in its incremental modes; it is
+  not wired until a wiring through that API exists;
 - `fork` or `executable` (a forked javac), or a JDK toolchain (a toolchain javac): `jdkToolchain`, or a toolchain
   that any plugin stored in the build context (`ToolchainManager.getToolchainFromBuildContext`, which covers
   maven-toolchains-plugin and other selectors). Maven 4's toolchain manager looks the project up in the mojo
@@ -260,9 +278,14 @@ It leaves an execution alone, logged at INFO with the reason, when the plugin ca
 
 Without a usable plugin jar, the build runs as usual and the spy logs why, once. Any failure in the spy is logged and
 leaves the execution as it was (only virtual machine errors other than `StackOverflowError` propagate). The javac
-plugin itself never fails a compilation. Tables are written when javac
-runs; a module that maven-compiler-plugin finds up to date keeps the tables it has. Direct goal calls such as
+plugin itself never fails a compilation: it holds its atoms softly between javac events, so the collector drops them
+before javac would run out of heap, and the plugin then writes no tables. Tables are written when javac runs; a
+module that maven-compiler-plugin finds up to date keeps the tables it has. Direct goal calls such as
 `mvn compiler:compile` (`default-cli`) start through the same event and are wired too; that path is not tested.
+
+In the fork's distribution the extension is in `lib/ext`, so clustering is on by default for every build it runs,
+once `maven-code-clustering-plugin` is in the local repository (the boot repository does not ship it). A project that
+pins no compiler gets the distribution's `maven-compiler-plugin:4.2.0-SNAPSHOT`, which is wired (see above).
 
 ## Test
 

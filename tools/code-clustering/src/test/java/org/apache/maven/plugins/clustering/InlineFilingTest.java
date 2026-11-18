@@ -116,17 +116,22 @@ final class InlineFilingTest {
                 && paths(out).size() == OUTPUT_NAMES.size());
     }
 
-    /** A project's own output and dependency directories are still skipped by the scan. */
+    /**
+     * A project's own output and dependency directories are still skipped by the scan; a directory of such a name that
+     * holds a {@code .java} file itself is a package javac compiles, kept beside a build descriptor too ({@code out}
+     * next to a {@code Makefile}, a {@code venv} package holding {@code pyvenv.cfg}).
+     */
     private static void projectOutputSkipped(Path dir) throws IOException {
-        List.of("pom.xml", "web/package.json", "tools/env/venv/pyvenv.cfg", "lib/build.gradle").forEach(f -> write(dir.resolve(f), "\n"));
-        List.of("target/gen/G.java", "web/node_modules/m/index.js", "tools/env/venv/lib/v.py", "lib/build/B.java",
-                ".git/H.java", "src/main/java/p/build/Kept.java", "web/app.js", "lib/src/out/Kept.java")
-                .forEach(f -> write(dir.resolve(f), "class K {\n" + SUM + "}\n"));
+        List.of("pom.xml", "web/package.json", "tools/env/venv/pyvenv.cfg", "lib/build.gradle", "lib/src/p/Makefile",
+                "pk/venv/pyvenv.cfg").forEach(f -> write(dir.resolve(f), "\n"));
+        List.of("target/gen/G.java", "web/node_modules/m/index.js", "tools/env/venv/lib/v.py", "lib/build/gen/B.java",
+                ".git/H.java", "src/main/java/p/build/Kept.java", "web/app.js", "lib/src/out/Kept.java",
+                "lib/src/p/out/O.java", "pk/venv/E.java").forEach(f -> write(dir.resolve(f), "class K {\n" + SUM + "}\n"));
         List<String> found = AtomPlanes.sourceFiles(dir, AtomFrontEnd.all()).stream()
                 .map(p -> dir.relativize(p).toString().replace('\\', '/')).collect(Collectors.toList());
         System.err.println("  project files: " + found);
-        check("project output skipped, packages and sources kept",
-                found.equals(List.of("lib/src/out/Kept.java", "src/main/java/p/build/Kept.java", "web/app.js")));
+        check("project output skipped, packages and sources kept", found.equals(List.of("lib/src/out/Kept.java",
+                "lib/src/p/out/O.java", "pk/venv/E.java", "src/main/java/p/build/Kept.java", "web/app.js")));
     }
 
     /** A deleted file of a partial build, pruned without a compilation: the tables equal the scan. */

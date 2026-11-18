@@ -27,9 +27,13 @@
 #                in annotationProcessors (nm) and one found on the class path (gu) still run; generated sources go
 #                to inline/generated, identical to the scan of target/generated-sources/annotations; a processor
 #                path in the compilerArguments map (cm) is left alone, logged, and its processor still runs
-#   test         mvn test-compile writes target/code-clustering/inline/test for the test sources
+#   test         mvn test-compile writes target/code-clustering/inline/test for the test sources; with every test
+#                source deleted (javac does not run) no rows are left
 #   incremental  a changed source after a second compile is in the tables; a source newly excluded drops out; with
 #                useIncrementalCompilation=false (pm) a deleted source drops out although javac does not run
+#   stale        an execution left alone (here: -Dclustering.inline=false) loses its earlier tables, and a later
+#                wired build that finds nothing to compile does not bring them back; a merging execution (pm) is
+#                marked INCOMPLETE.txt, and stays marked through its next merges
 #   off          -Dclustering.inline=false, FALSE, 0, no, off or empty writes nothing; a POM property turns one
 #                module off
 #   safe         an output path that is a file leaves the build green with a warning; a missing plugin jar, a jar
@@ -41,11 +45,16 @@
 #                (logged), other modules are wired; also with -T 4
 #   toolchain    a JDK toolchain stored in the build context by a plugin other than maven-toolchains-plugin leaves
 #                the execution alone (needs a scratch local repository: the plugin is built and installed there)
-#   heap         sources too large for this compilation's share of -Xmx are left alone, logged, build green
+#   heap         sources with too many tokens for this compilation's share of -Xmx are left alone, logged (sizes in
+#                KB below 1 MB), build green; comment-heavy sources with few tokens are wired under the same -Xmx; a
+#                dense generated module at -Xmx96m stays green
 #   java 23+     with JDK23_HOME set (a JDK 23 or newer): named and class-path processors still run, no -proc:none
 #                where processors are named
-#   maven 4      with MVN4 set (a Maven 4 mvn): maven-compiler-plugin 4.0.0-beta-5 is left alone, logged, and
-#                Lombok on its class path still runs
+#   maven 4      with MVN4 set (a Maven 4 mvn): maven-compiler-plugin 3.15.0 is wired; switched to 4.0.0-beta-5
+#                (the Maven 4 plugin API) it is left alone, logged, its earlier tables removed, Lombok still runs
+#   fork         with MVNF set (the mvn of the fork's -Pplugins distribution, the extension under test in its lib/ext):
+#                a project that pins no compiler gets the distribution's maven-compiler-plugin 4.2.0-SNAPSHOT (the
+#                3.16.0 code on the Maven 3 plugin API), which is wired; tables identical to the scan
 # Usage: test_inline_clustering.sh <extension.jar> <plugin.jar> <java-home> [mvn] [local-repository]
 # With a local repository, REPO_TAIL=<repository> chains another one behind it (maven.repo.local.tail), so the plugin
 # can be installed in a scratch repository while everything else comes from the usual one. Needs
@@ -53,7 +62,7 @@
 # (maven-plugin-plugin 3.15.2 and maven-core 3.9.9 for the toolchain step, maven-compiler-plugin 4.0.0-beta-5 for
 # the Maven 4 step). With KEEP_LOGS=<dir> the Maven logs are copied there.
 set -uo pipefail
-EXT=${1:?extension jar}; PLUGIN=${2:?plugin jar}; JH=${3:?java home}; MVN=${4:-mvn}; REPO=${5:-}
+EXT=${1:?extension jar}; PLUGIN=${2:?plugin jar}; JH=${3:?java home}; MVN=${4:-mvn}; REPO=${5:-}; TAIL=${REPO_TAIL:-}
 T=$(mktemp -d); trap '[ -n "${KEEP_LOGS:-}" ] && mkdir -p "$KEEP_LOGS" && cp "$T"/*.log "$KEEP_LOGS"/; rm -rf "$T"' EXIT
 fail() { echo "INLINE_CLUSTERING_TEST FAIL $*"; exit 1; }
 pass() { echo "PASS $*"; }
@@ -194,8 +203,8 @@ printf "package z;\n\nclass Z {\n$SUM}\n" > "$R/mr/src/main/java/z/Z.java"
 printf "package a;\n\nclass A {\n$SUM}\n" > "$R/mr/src/extra/java/a/A.java"
 mvnj() { # mvnj <java-home> <dir> <log> <args...>: Maven ($MVN, or MVNX) with the extension in <dir>; MOPTS adds JVM options
     local jh=$1 dir=$2 log=$3; shift 3
-    (cd "$dir" && JAVA_HOME="$jh" MAVEN_OPTS="-Dmaven.ext.class.path=$EXT ${MOPTS:-}" "${MVNX:-$MVN}" -o -B -ntp -s "$T/settings.xml" \
-        ${REPO:+-Dmaven.repo.local=$REPO} ${REPO_TAIL:+-Dmaven.repo.local.tail=$REPO_TAIL} "$@") > "$T/$log" 2>&1
+    (cd "$dir" && JAVA_HOME="$jh" MAVEN_OPTS="${EXT_OPT--Dmaven.ext.class.path=$EXT} ${MOPTS:-}" "${MVNX:-$MVN}" -o -B -ntp -s "$T/settings.xml" \
+        ${REPO:+-Dmaven.repo.local=$REPO} ${TAIL:+-Dmaven.repo.local.tail=$TAIL} "$@") > "$T/$log" 2>&1
 }
 mvnx() { local log=$1; shift; mvnj "$JH" "$R" "$log" "$@"; }
 scanned() { # scanned <java-home> <module> <table dir> <src dir>...: the inline tables equal the standalone scan of the roots
@@ -238,6 +247,12 @@ pass "processors: a processor path in the compilerArguments map is left alone (l
 mvnx test.log -Dclustering.pluginJar="$PLUGIN" test-compile || fail "test: build not green"
 same a src/test/java $I/test || fail "test: test tables differ from the scan"
 pass "test: target/code-clustering/inline/test identical to the scan of src/test/java"
+rm "$R/a/src/test/java/a/LibCheck.java"
+mvnx test-gone.log -Dclustering.pluginJar="$PLUGIN" -pl a test-compile || fail "test: build without test sources not green"
+grep -q 'Compiling [0-9]* source file' "$T/test-gone.log" && fail "test: javac ran (the step needs no test sources)"
+[ "$(tail -n +2 "$R/a/$I/test/ATOM_SOURCES.tsv" | wc -l | tr -d ' ')" = 0 ] && [ "$(tail -n +2 "$R/a/$I/test/ATOM_HASHES.tsv" | wc -l | tr -d ' ')" = 0 ] \
+    || fail "test: rows of deleted test sources kept"
+pass "test: every test source deleted (javac did not run): no rows left"
 printf "package a;\n\npublic class Lib {\n$SUM    int product(int[] xs) {\n        int acc = 1;\n        for (int x : xs) {\n            acc *= x;\n        }\n        return acc;\n    }\n}\n" > "$R/a/src/main/java/a/Lib.java"
 mvnx again.log -Dclustering.pluginJar="$PLUGIN" compile || fail "incremental: build not green"
 grep -q $'Lib.product(int\[\])' "$R/a/$I/ATOM_HASHES.tsv" && same a src/main/java $I || fail "incremental: changed source not in the tables"
@@ -252,6 +267,19 @@ mvnx pm.log -Dclustering.pluginJar="$PLUGIN" -pl pm compile || fail "incremental
 grep -q 'Nothing to compile' "$T/pm.log" || fail "incremental: pm compiled (the step needs javac not to run)"
 same pm src/main/java $I && ! grep -q 'Y.java' "$R/pm/$I/ATOM_SOURCES.tsv" || fail "incremental: deleted Y.java still in pm's tables"
 pass "incremental: useIncrementalCompilation=false, a deleted source drops out although javac did not run"
+mvnx stale-off.log -Dclustering.pluginJar="$PLUGIN" -Dclustering.inline=false -pl x compile || fail "stale: off build not green"
+[ ! -e "$R/x/$I/ATOM_HASHES.tsv" ] || fail "stale: x tables kept with clustering.inline=false"
+grep -q 'Inline code clustering off for x default-compile: earlier inline tables removed' "$T/stale-off.log" || fail "stale: removal not logged"
+mvnx stale-again.log -Dclustering.pluginJar="$PLUGIN" -pl x compile || fail "stale: wired build not green"
+grep -q 'Nothing to compile' "$T/stale-again.log" || fail "stale: x compiled (the step needs javac not to run)"
+[ ! -e "$R/x/$I/ATOM_HASHES.tsv" ] || fail "stale: tables came back without a compilation"
+pass "stale: an execution left alone loses its tables; 'Nothing to compile' afterwards brings none back"
+mvnx stale-pm-off.log -Dclustering.pluginJar="$PLUGIN" -Dclustering.inline=false -pl pm compile || fail "stale: pm off build not green"
+[ ! -e "$R/pm/$I/ATOM_HASHES.tsv" ] && [ -f "$R/pm/$I/INCOMPLETE.txt" ] || fail "stale: pm tables kept, or pm not marked incomplete"
+printf "package pm;\n\nclass X {\n$SUM    int twice(int v) {\n        return 2 * v;\n    }\n}\n" > "$R/pm/src/main/java/pm/X.java"
+mvnx stale-pm.log -Dclustering.pluginJar="$PLUGIN" -pl pm compile || fail "stale: pm build not green"
+grep -q $'^pm/X.java\t' "$R/pm/$I/ATOM_SOURCES.tsv" && [ -f "$R/pm/$I/INCOMPLETE.txt" ] || fail "stale: pm merge after the removal not marked incomplete"
+pass "stale: a merging execution (pm) left alone loses its tables, marked INCOMPLETE.txt through its next merge"
 mvnx clean-off.log -Dclustering.pluginJar="$PLUGIN" -Dclustering.inline=false clean compile || fail "off: build not green"
 [ "$(tables)" = 0 ] || fail "off: tables written with clustering.inline=false"
 grep -q 'Inline code clustering' "$T/clean-off.log" && fail "off: wiring logged"
@@ -369,10 +397,28 @@ else
 fi
 HP="$T/hp"; mkdir -p "$HP/src/main/java/hp"
 printf '%s<groupId>fix</groupId><artifactId>hp</artifactId><version>1.0-SNAPSHOT</version>%s</project>\n' "$P" "$PROPS" > "$HP/pom.xml"
-{ printf 'package hp;\n\n/*\n'; awk 'BEGIN { for (i = 1; i <= 12000; i++) printf " * filler line %05d of a large source file, counted by the heap estimate\n", i }'; printf " */\npublic class Big {\n$SUM}\n"; } > "$HP/src/main/java/hp/Big.java"
-MOPTS=-Xmx128m mvnj "$JH" "$HP" hp.log -T 4 -Dclustering.pluginJar="$PLUGIN" compile || fail "heap: build not green"
-grep -q 'Inline code clustering skipped for hp default-compile: [0-9]* KB of Java sources need about [0-9]* MB of heap with the plugin' "$T/hp.log" || fail "heap: large sources under a tight -Xmx not left alone"
-pass "heap: $(grep -o '[0-9]* KB of Java sources need about [0-9]* MB of heap with the plugin, this compilation.s share is [0-9]* MB' "$T/hp.log" | head -1): left alone, build green"
+{ printf 'package hp;\n\npublic class Big {\n'; awk 'BEGIN { for (i = 1; i <= 20000; i++) printf "    static final int F%05d = %d + %d * (%d - %d);\n", i, i, i, i, i }'; printf "$SUM}\n"; } > "$HP/src/main/java/hp/Big.java"
+MOPTS=-Xmx256m mvnj "$JH" "$HP" hp.log -T 4 -Dclustering.pluginJar="$PLUGIN" compile || fail "heap: build not green"
+grep -q 'Inline code clustering skipped for hp default-compile: [0-9]* Java tokens need about [0-9]* MB of heap with the plugin' "$T/hp.log" || fail "heap: many tokens under a tight -Xmx not left alone"
+pass "heap: $(grep -o '[0-9]* Java tokens need about [0-9]* MB of heap with the plugin, this compilation.s share is [0-9]* MB' "$T/hp.log" | head -1): left alone, build green"
+HC="$T/hc"; mkdir -p "$HC/src/main/java/hc"
+printf '%s<groupId>fix</groupId><artifactId>hc</artifactId><version>1.0-SNAPSHOT</version>%s</project>\n' "$P" "$PROPS" > "$HC/pom.xml"
+{ printf 'package hc;\n\n/*\n'; awk 'BEGIN { for (i = 1; i <= 12000; i++) printf " * filler line %05d of a large source file, no tokens for the heap estimate\n", i }'; printf " */\npublic class Big {\n$SUM}\n"; } > "$HC/src/main/java/hc/Big.java"
+MOPTS=-Xmx256m mvnj "$JH" "$HC" hc.log -T 4 -Dclustering.pluginJar="$PLUGIN" compile || fail "heap: comment-heavy build not green"
+[ -f "$HC/$I/ATOM_HASHES.tsv" ] && ! grep -q 'Inline code clustering skipped' "$T/hc.log" || fail "heap: comment-heavy sources (few tokens) not wired"
+{ printf 'package hc;\n\nclass Fields {\n'; awk 'BEGIN { for (i = 1; i <= 80; i++) printf "    int f%02d = %d + %d * (%d - %d);\n", i, i, i, i, i }'; printf '}\n'; } > "$HC/src/main/java/hc/Fields.java"
+MOPTS=-Xmx256m mvnj "$JH" "$HC" hc-kb.log -T 4000 -Dclustering.pluginJar="$PLUGIN" compile || fail "heap: -T 4000 build not green"
+grep -q 'Inline code clustering skipped for hc default-compile: [0-9]* Java tokens need about [0-9]* MB of heap with the plugin, this compilation.s share is [0-9]* KB' "$T/hc-kb.log" \
+    && [ ! -e "$HC/$I/ATOM_HASHES.tsv" ] || fail "heap: a share below 1 MB not given in KB, or the tables of the skipped execution kept"
+pass "heap: 12,000 comment lines wired under the same -Xmx256m -T 4; at -T 4000 ($(grep -o 'share is [0-9]* KB' "$T/hc-kb.log" | head -1)): left alone, tables removed"
+HD="$T/hd"; mkdir -p "$HD/src/main/java/d"
+printf '%s<groupId>fix</groupId><artifactId>hd</artifactId><version>1.0-SNAPSHOT</version>%s</project>\n' "$P" "$PROPS" > "$HD/pom.xml"
+awk -v d="$HD/src/main/java/d" 'BEGIN { split("int m%d(int a,int b){return a*b+%d;}|long m%d(long a){if(a>%d)return a-%d;return a;}|String m%d(String s){return s==null?\"%d\":s+%d;}|boolean m%d(int[] v){for(int x:v)if(x==%d)return true;return false;}", f, "|")
+    for (n = 0; n < 500; n++) { file = d "/C" n ".java"; printf "package d;\nclass C%d{\n", n > file
+        for (i = 0; i < 60; i++) { s = f[i % 4 + 1]; gsub(/%d/, i, s); print s > file }; print "}" > file; close(file) } }'
+MOPTS=-Xmx96m mvnj "$JH" "$HD" hd.log -Dclustering.pluginJar="$PLUGIN" compile || fail "heap: a dense module (30,000 methods) at -Xmx96m failed: $(grep -m2 -E 'OutOfMemoryError|ERROR' "$T/hd.log")"
+HDN=$(grep -o 'skipped for hd default-compile: [0-9]* Java tokens' "$T/hd.log" | head -1)
+pass "heap: a dense module (500 files, 30,000 methods) at -Xmx96m green (${HDN:-wired})"
 if [ -n "${JDK23_HOME:-}" ]; then
     mvnj "$JDK23_HOME" "$R" j23.log -X -Dclustering.pluginJar="$PLUGIN" -pl proc,gu,nm clean compile || fail "java 23+: build not green: $(grep ERROR "$T/j23.log" | head -3)"
     grep -- '-processor gen.GenProc' "$T/j23.log" | grep -q -- '-proc:none' && fail "java 23+: -proc:none added beside a named processor"
@@ -383,13 +429,31 @@ else
 fi
 if [ -n "${MVN4:-}" ]; then
     R4="$T/r4"; mkdir -p "$R4/src/main/java/q" "$R4/.mvn" # .mvn: maven-compiler-plugin 4.x needs the root directory
-    printf '%s<groupId>fix</groupId><artifactId>r4</artifactId><version>1.0-SNAPSHOT</version>%s%s<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><version>4.0.0-beta-5</version></plugin></plugins></build></project>\n' "$P" "$PROPS" "$LOMBOK" > "$R4/pom.xml"
+    printf '%s<groupId>fix</groupId><artifactId>r4</artifactId><version>1.0-SNAPSHOT</version>%s%s<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><version>${cv}</version></plugin></plugins></build></project>\n' "$P" "${PROPS%</properties>}<cv>4.0.0-beta-5</cv></properties>" "$LOMBOK" > "$R4/pom.xml"
     printf 'package q;\n\n@lombok.Getter\npublic class Bean {\n    private int size = 3;\n}\n' > "$R4/src/main/java/q/Bean.java"
     printf 'package q;\n\nclass UseBean {\n    int size() {\n        return new Bean().getSize();\n    }\n}\n' > "$R4/src/main/java/q/UseBean.java"
+    MVNX="$MVN4" mvnj "$JH" "$R4" m4-3.log -Dclustering.pluginJar="$PLUGIN" -Dcv=3.15.0 compile || fail "maven 4: 3.15.0 build not green: $(grep ERROR "$T/m4-3.log" | head -3)"
+    [ -f "$R4/$I/ATOM_HASHES.tsv" ] && grep -q $'^q/Bean.java\tTYPE' "$R4/$I/ATOM_HASHES.tsv" || fail "maven 4: maven-compiler-plugin 3.15.0 not wired"
     MVNX="$MVN4" mvnj "$JH" "$R4" m4.log -Dclustering.pluginJar="$PLUGIN" compile || fail "maven 4: build not green: $(grep ERROR "$T/m4.log" | head -3)"
-    grep -q 'Inline code clustering skipped for r4 default-compile: maven-compiler-plugin 4.0.0-beta-5' "$T/m4.log" || fail "maven 4: maven-compiler-plugin 4.x not left alone"
-    pass "maven 4 ($("$MVN4" -v 2>/dev/null | head -1 | tr -d '\r')): maven-compiler-plugin 4.0.0-beta-5 left alone (logged), Lombok ran"
+    grep -q 'Inline code clustering skipped for r4 default-compile: maven-compiler-plugin 4.0.0-beta-5 uses the Maven 4 plugin API.* (earlier inline tables removed)' "$T/m4.log" \
+        && [ ! -e "$R4/$I/ATOM_HASHES.tsv" ] || fail "maven 4: maven-compiler-plugin 4.x not left alone, or its earlier tables kept"
+    pass "maven 4 ($("$MVN4" -v 2>/dev/null | head -1 | tr -d '\r')): 3.15.0 wired; 4.0.0-beta-5 (Maven 4 plugin API) left alone (logged), earlier tables removed, Lombok ran"
 else
     echo "SKIP maven 4: MVN4 not set"
+fi
+if [ -n "${MVNF:-}" ]; then
+    FD=$(cd "$(dirname "$MVNF")/.." && pwd); RF="$T/rf"; mkdir -p "$RF/src/main/java/f" "$RF/src/test/java/f" "$RF/.mvn"
+    printf '%s<groupId>fix</groupId><artifactId>rf</artifactId><version>1.0-SNAPSHOT</version>%s</project>\n' "$P" "$PROPS" > "$RF/pom.xml"
+    printf "package f;\n\npublic class F {\n$SUM}\n" > "$RF/src/main/java/f/F.java"
+    printf "package f;\n\nclass FCheck {\n$SUM}\n" > "$RF/src/test/java/f/FCheck.java"
+    EXT_OPT= TAIL="${TAIL:+$TAIL,}$FD/repository" MVNX="$MVNF" mvnj "$JH" "$RF" fork.log -Dclustering.pluginJar="$PLUGIN" test-compile \
+        || fail "fork: build not green: $(grep ERROR "$T/fork.log" | head -3)"
+    grep -q 'compiler:4.2.0-SNAPSHOT:compile' "$T/fork.log" || fail "fork: the distribution's maven-compiler-plugin 4.2.0-SNAPSHOT did not run"
+    grep -q 'Inline code clustering: javac plugin CodeClustering from' "$T/fork.log" && ! grep -q 'Inline code clustering skipped' "$T/fork.log" \
+        || fail "fork: maven-compiler-plugin 4.2.0-SNAPSHOT not wired: $(grep 'Inline code clustering' "$T/fork.log" | head -2)"
+    ( R=$T; scanned "$JH" rf $I src/main/java && scanned "$JH" rf $I/test src/test/java ) || fail "fork: tables differ from the scan"
+    pass "fork ($("$MVNF" -v 2>/dev/null | head -1 | tr -d '\r')): unpinned compiler 4.2.0-SNAPSHOT (Maven 3 plugin API) wired by default, main and test tables identical to the scan"
+else
+    echo "SKIP fork: MVNF not set"
 fi
 echo "INLINE_CLUSTERING_TEST PASS"

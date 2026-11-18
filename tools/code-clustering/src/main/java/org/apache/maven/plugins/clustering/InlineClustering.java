@@ -26,7 +26,11 @@ import com.sun.source.util.TaskListener;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.Trees;
 import java.io.IOException;
+import java.lang.ref.SoftReference;
 import java.lang.System.Logger.Level;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,15 +54,38 @@ import org.apache.maven.plugins.clustering.AtomPlanes.Atom;
  *       {@code generated} get their own tables in {@code out/generated}.</li>
  * </ul>
  * The plugin never fails a compilation: bad arguments disable it and any failure, errors such as a stack overflow
- * included, is logged as a warning through {@link System.Logger} (java.util.logging by default); a
- * {@link LinkageError} (a class missing from the plugin jar) turns it off after one warning. Only virtual machine
- * errors other than {@link StackOverflowError} propagate. Arguments: {@link InlineOptions}. {@link #prune} drops the
- * rows of deleted sources without a compilation.
+ * included, is logged as a warning through {@link System.Logger} (java.util.logging by default). A
+ * {@link LinkageError} (a class missing from the plugin jar, or compiled for a newer Java) and an
+ * {@link OutOfMemoryError} turn it off after one warning: it drops what it holds, so javac goes on with the heap it
+ * would have had without the plugin, and writes no tables. Between events the atoms are held softly, so the collector
+ * clears them before javac itself would run out of heap (the plugin then turns off the same way). Only other virtual
+ * machine errors propagate. Each javac
+ * callback ({@link #init}, {@link TaskListener#finished}) runs its whole body inside one {@code try}, with no lambda
+ * or other class of the plugin linked before it. Whenever a compilation's tables cannot be written, the tables in
+ * {@code out} are removed, so no tables of an earlier compilation stay as if they were this one's
+ * ({@link InlineTables#discard}). Arguments: {@link InlineOptions}. {@link #prune} drops the rows of deleted sources
+ * without a compilation.
  */
 public final class InlineClustering implements Plugin {
     static final String NAME = "CodeClustering";
     /** The directory under {@code out} of the tables of generated sources. */
     static final String GENERATED = "generated";
+    /**
+     * The files of a table set ({@link InlineTables}). Kept here, in the one class the core extension checks before it
+     * wires the plugin, so that a failed init can remove a set without any other class of the plugin.
+     */
+    static final List<String> TABLE_FILES = List.of("ATOM_HASHES.tsv", "CLUSTERS.tsv", "PLANE_SUMMARY.tsv",
+            "FILE_PAIRS.tsv", "FILE_CLUSTERS.tsv", "JNI.tsv", "ATOM_SOURCES.tsv");
+    /**
+     * The marker of a set that holds only the sources compiled since its tables were removed. The core extension
+     * writes the same file when it leaves a merging execution alone.
+     */
+    static final String INCOMPLETE = "INCOMPLETE.txt";
+    static final String INCOMPLETE_TEXT = "These tables hold only the sources compiled since the tables were removed"
+            + " (a compilation that could not write them, or an execution the core extension left alone). A full"
+            + " compilation (mvn clean compile) writes the whole set again.\n";
+    private static final String OUT = "out=";
+    private static final String URI_SCHEME = "file:";
     private static final System.Logger LOG = System.getLogger(InlineClustering.class.getName());
 
     @Override
@@ -66,51 +93,80 @@ public final class InlineClustering implements Plugin {
         return NAME;
     }
 
-    /** One step of the listener. */
-    @FunctionalInterface
-    interface Step {
-        void run() throws IOException;
-    }
-
     /**
-     * Runs the step; logs its failure as one warning and returns {@code true} when it failed. A virtual machine error
-     * other than {@link StackOverflowError} (out of memory, an internal error) is rethrown.
+     * Whether a failure of the plugin propagates: a virtual machine error other than {@link StackOverflowError} and
+     * {@link OutOfMemoryError} (an internal error). Everything else is logged and, when it is a {@link #disabling}
+     * one, turns the plugin off.
      */
-    static boolean guarded(String what, Step step) {
-        Optional<Throwable> failure = attempt(step);
-        failure.ifPresent(f -> warn(what + " not recorded: " + f, f));
-        return failure.isPresent();
-    }
-
-    /** Runs the step and returns what it threw, empty when it did not; rethrows {@link #fatal} errors. */
-    static Optional<Throwable> attempt(Step step) {
-        try {
-            step.run();
-            return Optional.empty();
-        } catch (Throwable failure) {
-            if (fatal(failure)) throw (Error) failure;
-            return Optional.of(failure);
-        }
-    }
-
-    /** A virtual machine error other than {@link StackOverflowError}: out of memory, an internal error. */
     static boolean fatal(Throwable failure) {
-        return failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError);
+        return failure instanceof VirtualMachineError && !(failure instanceof StackOverflowError)
+                && !(failure instanceof OutOfMemoryError);
+    }
+
+    /** A failure after which the plugin stops for the compilation: a class it cannot link, or the heap ran out. */
+    static boolean disabling(Throwable failure) {
+        return failure instanceof LinkageError || failure instanceof OutOfMemoryError;
     }
 
     private static void warn(String message, Throwable failure) {
         LOG.log(Level.WARNING, "code clustering: " + message);
-        LOG.log(Level.DEBUG, "code clustering failure", failure);
+        if (failure != null) LOG.log(Level.DEBUG, "code clustering failure", failure);
     }
 
     /**
      * Adds the listener. Bad arguments, and a plugin jar that misses a class ({@link LinkageError}), disable the
-     * plugin with one warning.
+     * plugin with one warning and remove the tables {@code out=} names ({@link #forget}). The whole body is one
+     * {@code try}: nothing of the plugin links before it.
      */
     @Override
     public void init(JavacTask task, String... args) {
-        attempt(() -> task.addTaskListener(new Listener(task, InlineOptions.parse(args))))
-                .ifPresent(f -> LOG.log(Level.WARNING, "code clustering plugin disabled: " + f));
+        try {
+            task.addTaskListener(new Listener(task, InlineOptions.parse(args)));
+        } catch (Throwable failure) {
+            if (fatal(failure)) throw (Error) failure;
+            LOG.log(Level.WARNING, "code clustering plugin disabled: " + failure);
+            forget(args);
+        }
+    }
+
+    /**
+     * Removes the table sets of the first {@code out=} word (a file URI, as the core extension passes it, or a path),
+     * as {@link #forget(Path, boolean)} does.
+     */
+    private static void forget(String... args) {
+        try {
+            for (String word : args) {
+                if (!word.startsWith(OUT) || word.length() == OUT.length()) continue;
+                String value = word.substring(OUT.length());
+                forget(value.startsWith(URI_SCHEME) ? Path.of(URI.create(value)) : Path.of(value),
+                        List.of(args).contains("full=true"));
+                return;
+            }
+        } catch (Throwable failure) {
+            if (fatal(failure)) throw (Error) failure;
+            LOG.log(Level.DEBUG, "code clustering: tables not removed", failure);
+        }
+    }
+
+    /**
+     * Removes the table sets in {@code out} and {@code out/generated} with JDK classes only (another class of the plugin
+     * may be the one that is missing); without {@code full} an existing directory is marked {@value #INCOMPLETE}. Best
+     * effort: a failure is logged at DEBUG level.
+     */
+    static void forget(Path out, boolean full) {
+        try {
+            remove(out, full);
+            remove(out.resolve(GENERATED), full);
+        } catch (Throwable failure) {
+            if (fatal(failure)) throw (Error) failure;
+            LOG.log(Level.DEBUG, "code clustering: tables not removed", failure);
+        }
+    }
+
+    private static void remove(Path dir, boolean full) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        for (String table : TABLE_FILES) Files.deleteIfExists(dir.resolve(table));
+        if (!full) Files.writeString(dir.resolve(INCOMPLETE), INCOMPLETE_TEXT, StandardCharsets.UTF_8);
     }
 
     /**
@@ -129,70 +185,108 @@ public final class InlineClustering implements Plugin {
     }
 
     /**
-     * Collects the atoms after PARSE and the native methods after ANALYZE; writes the tables at the end. The first
-     * {@link LinkageError} (the plugin jar misses a class, or was replaced while javac runs) turns it off for the rest
-     * of the compilation, with one warning and no tables written.
+     * Collects the atoms after PARSE and the native methods after ANALYZE; writes the tables at the end. Between events
+     * the units (main and generated sources) are held only softly: the collector clears them before javac itself would
+     * run out of heap, so what the plugin holds never fails javac; the plugin then turns off with one warning and
+     * writes no tables. The first {@link #disabling} failure (the plugin jar misses a class, or was replaced while
+     * javac runs; the heap ran out in the plugin's own work) turns it off too, the units dropped. Turning off, and a
+     * failed COMPILATION step, remove the tables in {@code out}.
      */
     private static final class Listener implements TaskListener {
         private final InlineOptions options;
         private final JavacTask task;
         private final Trees trees;
-        private final InlineTables.Units units;
-        private final InlineTables.Units generated;
+        private final SoftReference<InlineTables.Units[]> held;
         private boolean off;
 
         Listener(JavacTask task, InlineOptions options) {
             this.options = options;
             this.task = task;
             this.trees = Trees.instance(task);
-            this.units = new InlineTables.Units(options.roots());
-            this.generated = new InlineTables.Units(options.generated().map(List::of).orElse(List.of()));
+            this.held = new SoftReference<>(new InlineTables.Units[] {new InlineTables.Units(options.roots()),
+                new InlineTables.Units(options.generated().map(List::of).orElse(List.of()))});
         }
 
+        /** One step per event; the whole body is one {@code try}, nothing of the plugin links before it. */
         @Override
         public void finished(TaskEvent event) {
             if (off) return;
-            attempt(() -> step(event)).ifPresent(f -> failed(event, f));
-        }
-
-        private void step(TaskEvent event) throws IOException {
-            switch (event.getKind()) {
-                case PARSE -> parsed(event.getCompilationUnit());
-                case ANALYZE -> analyzed(event.getCompilationUnit(), event.getTypeElement());
-                case COMPILATION -> written();
-                default -> { }
+            try {
+                InlineTables.Units[] units = held.get();
+                if (units == null) cleared(event);
+                else step(event, units);
+            } catch (Throwable failure) {
+                if (fatal(failure)) throw (Error) failure;
+                failed(event, failure);
             }
         }
 
-        private void failed(TaskEvent event, Throwable failure) {
-            off = failure instanceof LinkageError;
-            String effect = off ? "; plugin off for this compilation, tables not written (incomplete plugin jar?)" : "";
-            warn(event.getKind() + " not recorded: " + failure + effect, failure);
+        private void step(TaskEvent event, InlineTables.Units[] units) throws IOException {
+            TaskEvent.Kind kind = event.getKind();
+            if (kind == TaskEvent.Kind.PARSE) parsed(event.getCompilationUnit(), units);
+            else if (kind == TaskEvent.Kind.ANALYZE) analyzed(event.getCompilationUnit(), event.getTypeElement(), units);
+            else if (kind == TaskEvent.Kind.COMPILATION) written(units);
         }
 
-        private void parsed(CompilationUnitTree unit) throws IOException {
+        /** The collector cleared the units to give javac heap: off, one warning, the tables removed. */
+        private void cleared(TaskEvent event) {
+            off = true;
+            warn(event.getKind() + " not recorded: the heap ran short and the collector dropped the plugin's atoms;"
+                    + " plugin off for this compilation, tables not written (raise -Xmx)", null);
+            discard();
+        }
+
+        /** Logs the failure once; a disabling one drops the units first, so the heap they held is free again. */
+        private void failed(TaskEvent event, Throwable failure) {
+            off = disabling(failure);
+            if (off) held.clear();
+            String effect = off ? "; plugin off for this compilation, tables not written ("
+                    + (failure instanceof OutOfMemoryError ? "raise -Xmx" : "incomplete plugin jar?") + ")" : "";
+            warn(event.getKind() + " not recorded: " + failure + effect, failure);
+            if (off || event.getKind() == TaskEvent.Kind.COMPILATION) discard();
+        }
+
+        /**
+         * Removes the tables this compilation cannot write ({@link InlineTables#discard}); when that fails, a class of
+         * the plugin may be missing, so with JDK classes only ({@link #forget(Path, boolean)}).
+         */
+        private void discard() {
+            try {
+                InlineTables.discard(options);
+            } catch (Throwable failure) {
+                if (fatal(failure)) throw (Error) failure;
+                LOG.log(Level.DEBUG, "code clustering: tables not removed, removing them with JDK classes", failure);
+                forget(options.out(), options.full());
+            }
+        }
+
+        private void parsed(CompilationUnitTree unit, InlineTables.Units[] units) throws IOException {
             Optional<Path> file = UnitPaths.file(unit);
             if (file.isEmpty()) return;
             String path = UnitPaths.relative(file.get(), unit, roots(file.get()));
             List<Atom> atoms = new ArrayList<>();
             AtomPlanes.collect(unit, trees.getSourcePositions(), path, atoms);
-            units(file.get()).parsed(path, file.get(), atoms);
+            units[index(file.get())].parsed(path, file.get(), atoms);
         }
 
-        private void analyzed(CompilationUnitTree unit, TypeElement type) {
+        private void analyzed(CompilationUnitTree unit, TypeElement type, InlineTables.Units[] units) {
             Optional<Path> file = unit == null ? Optional.empty() : UnitPaths.file(unit);
             TreePath tree = type == null ? null : trees.getPath(type);
             if (file.isEmpty() || tree == null) return;
             String path = UnitPaths.relative(file.get(), unit, roots(file.get()));
-            units(file.get()).natives(file.get(), NativeMethods.of(trees, task.getElements(), task.getTypes(), tree, path));
+            units[index(file.get())].natives(file.get(),
+                    NativeMethods.of(trees, task.getElements(), task.getTypes(), tree, path));
         }
 
-        /** Writes the tables; a full compilation without generated sources removes the generated tables. */
-        private void written() throws IOException {
+        /**
+         * Writes the tables; a full compilation without generated sources removes the generated tables. Running out of
+         * heap here, after javac's own work, turns the plugin off like anywhere else ({@link #failed}).
+         */
+        private void written(InlineTables.Units[] units) throws IOException {
             Path out = options.out();
-            if (!units.isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, out, units));
+            if (!units[0].isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, out, units[0]));
             Path gen = out.resolve(GENERATED);
-            if (!generated.isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, gen, generated));
+            if (!units[1].isEmpty()) LOG.log(Level.DEBUG, "code clustering: " + InlineTables.write(options, gen, units[1]));
             else if (options.full() && options.generated().isPresent()) InlineTables.clear(gen);
         }
 
@@ -204,8 +298,9 @@ public final class InlineClustering implements Plugin {
             return isGenerated(file) ? List.of(options.generated().orElseThrow()) : options.roots();
         }
 
-        private InlineTables.Units units(Path file) {
-            return isGenerated(file) ? generated : units;
+        /** The units a file goes to: 0 the main ones, 1 those of generated sources. */
+        private int index(Path file) {
+            return isGenerated(file) ? 1 : 0;
         }
     }
 }
