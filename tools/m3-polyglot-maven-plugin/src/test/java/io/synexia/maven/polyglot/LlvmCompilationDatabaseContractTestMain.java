@@ -69,28 +69,28 @@ public final class LlvmCompilationDatabaseContractTestMain {
                     load(root, valid.replace("arg\tclang-c\t-c\n", "arg\tclang-c\t-c\narg\tclang-c\t@flags.rsp\n")),
                     root, "all"), "opaque response file cannot fabricate a compdb");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\t-std=c17\\n",
-                            "arg\\tclang-c\\t-std=c17\\n"
-                            + "arg\\tclang-c\\t-Xclang\\narg\\tclang-c\\t@hidden.rsp\\n")),
+                    load(root, valid.replace("arg\tclang-c\t-std=c17\n",
+                            "arg\tclang-c\t-std=c17\n"
+                            + "arg\tclang-c\t-Xclang\narg\tclang-c\t@hidden.rsp\n")),
                     root, "all"), "nested response-file operand must not bypass the parser");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\ttarget/hello.o\\n", "")),
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n", "")),
                     root, "all"), "dangling -o operand cannot produce a trusted IDE command");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\ttarget/hello.o\\n",
-                            "arg\\tclang-c\\ttarget/other.o\\n")),
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n",
+                            "arg\tclang-c\ttarget/other.o\n")),
                     root, "all"), "actual Clang -o must match an M3 declared output");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\t-o\\n",
-                            "arg\\tclang-c\\t-o\\narg\\tclang-c\\ttarget/other.o\\n")),
+                    load(root, valid.replace("arg\tclang-c\t-o\n",
+                            "arg\tclang-c\t-o\narg\tclang-c\ttarget/other.o\n")),
                     root, "all"), "duplicate -o must not fabricate one output identity");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\t-c\\n",
-                            "arg\\tclang-c\\t-Xclang\\narg\\tclang-c\\t-c\\n")),
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-Xclang\narg\tclang-c\t-c\n")),
                     root, "all"), "Clang -c consumed as a frontend operand is not compilation");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\\tclang-c\\t-c\\n",
-                            "arg\\tclang-c\\t-c\\narg\\tclang-c\\t-E\\n")),
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\narg\tclang-c\t-E\n")),
                     root, "all"), "preprocess-only output cannot appear as an object compile");
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
