@@ -17,8 +17,10 @@
  */
 package org.apache.maven.plugins.projectdb;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -40,6 +42,7 @@ public final class GradleProjectDbContractTestMain {
             verifyQuery(db);
             verifyReingest(db, root, modules);
         }
+        verifySymlinkPrunedCli(root);
         System.out.println("PASS: " + checks + " native Gradle module and JUnit evidence checks");
     }
 
@@ -95,6 +98,74 @@ public final class GradleProjectDbContractTestMain {
         ProjectDb.Ingest modified = db.ingest(root, modules, null);
         check(modified.build().parsed() == 1 && modified.build().reused() == 1,
                 "only changed native Gradle report is reparsed");
+    }
+
+    /**
+     * The actual standalone Maven CLI must keep a symlinked regular Gradle
+     * descriptor, reject module candidates in vendor/output subtrees, retain
+     * file:line provenance, and reuse the exact original content generation.
+     */
+    private static void verifySymlinkPrunedCli(Path sibling) throws Exception {
+        Path root = sibling.resolveSibling("gradle-pruned-symlink-cli-test");
+        reset(root);
+        write(root.resolve("settings.gradle"), "rootProject.name='m3-linked'\n");
+        write(root.resolve("build.gradle"), "// Gradle root\n");
+        Path descriptor = root.resolve("descriptor.gradle");
+        write(descriptor, "// canonical build descriptor\n");
+        Path link = root.resolve("linked/build.gradle");
+        Files.createDirectories(link.getParent());
+        try {
+            Files.createSymbolicLink(link, descriptor);
+        } catch (UnsupportedOperationException | IOException | SecurityException unavailable) {
+            System.out.println("SKIP: linked descriptor unavailable on this filesystem: " + unavailable);
+            return;
+        }
+        failedReport(root.resolve("linked"), "LinkedTest");
+        for (String excluded : List.of("node_modules/ignored", "target/ignored", "build/ignored")) {
+            Path module = root.resolve(excluded);
+            write(module.resolve("build.gradle"), "// generated or vendor output\n");
+            failedReport(module, "ExcludedTest");
+        }
+        List<Path> modules = Modules.discover(root);
+        check(modules.equals(List.of(root, root.resolve("linked"))),
+                "source-owned Gradle modules exclude vendor/output and keep linked descriptor: " + modules);
+        Path store = root.resolve("build/m3/project-db");
+        List<String> ingest = cli("ingest", root.toString(), "--store", store.toString());
+        check(ingest.size() == 1 && ingest.get(0).contains("\"sources\":1")
+                && ingest.get(0).contains("\"parsed\":1")
+                && ingest.get(0).contains("\"status\":\"red\""),
+                "real Maven CLI must ingest only one linked test source: " + ingest);
+        List<String> answer = cli("query", root.toString(), "LinkedTest failed in linked module",
+                "--store", store.toString(), "--k", "5", "--json");
+        check(answer.size() == 1 && answer.get(0).contains("\"status\":\"failed\"")
+                && answer.get(0).contains("\"file\":\"linked/src/test/java/org/example/LinkedTest.java\"")
+                && answer.get(0).contains("\"line\":11"), "source-line provenance from real Maven CLI: " + answer);
+        check(!answer.get(0).contains("ExcludedTest"), "vendor/output sources never enter retrieval");
+        List<String> warm = cli("ingest", root.toString(), "--store", store.toString());
+        check(warm.size() == 1 && warm.get(0).contains("\"parsed\":0")
+                && warm.get(0).contains("\"reused\":1"), "unchanged linked report must be reused: " + warm);
+        write(root.resolve("node_modules/ignored/build.gradle"), "updated vendor build\n");
+        List<String> unrelated = cli("ingest", root.toString(), "--store", store.toString());
+        check(unrelated.size() == 1 && unrelated.get(0).contains("\"parsed\":0")
+                && unrelated.get(0).contains("\"reused\":1"),
+                "mutating ignored vendor descriptors must not invalidate a linked module: " + unrelated);
+    }
+
+    private static List<String> cli(String... args) throws Exception {
+        List<String> lines = new ArrayList<>();
+        ProjectDbCli.execute(args, lines::add);
+        return lines;
+    }
+
+    private static void failedReport(Path module, String test) throws Exception {
+        Path java = module.resolve("src/test/java/org/example/" + test + ".java");
+        write(java, "package org.example;\n" + "\n".repeat(9)
+                + "class " + test + " { void fails() {} }\n");
+        Path report = module.resolve("build/test-results/test/TEST-org.example." + test + ".xml");
+        write(report, "<testsuite name=\"org.example." + test + "\">\n"
+                + "  <testcase classname=\"org.example." + test + "\" name=\"fails\">\n"
+                + "    <failure message=\"failed\">at org.example." + test + ".fails(" + test + ".java:11)\n"
+                + "    </failure>\n  </testcase>\n</testsuite>\n");
     }
 
     private static void write(Path file, String data) throws Exception {
