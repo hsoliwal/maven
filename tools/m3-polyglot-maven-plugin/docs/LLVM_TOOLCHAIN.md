@@ -185,7 +185,15 @@ The export is limited to the requested M3 target closure and
 materialized, declared translation units for C, C++, Objective-C,
 and Objective-C++ (including `objcpp` and `objc++`). Each JSON
 record preserves the original compiler executable/flags and absolute
-working directory, never a reconstructed shell command. Link steps,
+working directory, never a reconstructed shell command. To avoid implying
+complete compiler output ownership, an eligible task must have a real
+`-c` compile mode, exactly one tracked source, an explicit `-o` matching
+a declared M3 output, and any `-MF`, `-MJ` or
+`-serialize-diagnostics` sidecars separately declared. `-MD`/
+`-MMD` without an explicit `-MF`, dangling compiler options,
+preprocess-only/syntax-only flags, and response-file arguments
+(including those passed via `-Xclang`) are refused.
+Link steps,
 Flang and LLVM IR are not misidentified as source compiles. Untracked
 or ambiguous source operands, missing sources, and response-file
 operands are refused. The output is published atomically and
