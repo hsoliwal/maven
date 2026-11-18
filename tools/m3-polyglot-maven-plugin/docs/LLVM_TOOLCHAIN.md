@@ -126,12 +126,40 @@ separate contract-preserving pass.
 
 The Java 17 contract suite verifies ServiceLoader inventory, command
 selection, selector isolation, invalid/duplicate inputs, and side-effect-free
-dry-run planning **without assuming LLVM is installed**. Independent release
-qualification still requires the Maven 17/21 CI matrix, real Clang/Clang++
-C/C++ and Objective-C fixtures, Flang, `llc`, Windows paths, cross-compilation,
-exit codes/cancellation, diagnostics, CMake/Ninja/CTest integration,
-and toolchain/source/ABI provenance differential checks. Do not report
-those real-tool checks as passed until they execute.
+dry-run planning **without assuming LLVM is installed**. The additive
+`LlvmCompilerProviderContractTestMain` also checks literal argv preservation
+and that incremental dry-run planning creates no output or state.
+
+To execute its native cases, select an installed toolchain explicitly:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml \
+  -Dm3.polyglot.llvm.test.home=/opt/llvm verify
+M3_POLYGLOT_LLVM_TEST_HOME=/opt/llvm \
+  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+```
+
+This **test-only** setting points to an installation root containing `bin`.
+The test passes the existing `--m3-llvm-bin` task selector; it does not add
+a production home property or change the provider's PATH default.
+
+The native cases compile C, C++, Objective-C and Objective-C++ to object
+files through `TaskRunner`, verify repeated execution even with incremental
+state and artifact caching enabled, observe an included header changing
+object bytes, and require a real invalid-C failure to reach the caller.
+Optional LLVM IR and Fortran cases use the actual `llc` and `flang` drivers.
+Missing optional tools are reported as `NOT_RUN`; a present but unusable
+configured tool fails. If no test installation is selected, all native
+cases report `NOT_RUN`. Expected invalid-source compiler diagnostics are
+part of the passing failure-propagation case.
+
+Passing these tests qualifies only the selected installed compiler and
+host. It does not prove that the executable was built from the pinned
+LLVM fork revision. Independent release qualification still includes the
+Maven 17/21 CI matrix, Windows/macOS, cross-compilation, cancellation,
+CMake/Ninja/CTest integration, and toolchain/source/ABI provenance checks.
+Report each real-tool case from its actual result; planning a `flang` or
+`llc` command does not count as executing that compiler.
 
 References: [LLVM CMake](https://llvm.org/docs/CMake.html),
 [LLVM getting started](https://llvm.org/docs/GettingStarted.html),
