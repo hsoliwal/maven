@@ -98,6 +98,13 @@ final class M3PortableDbRuntime {
         }
     }
 
+    static Object constant(Class<?> type, String name) throws IOException {
+        try { return type.getField(name).get(null); }
+        catch (ReflectiveOperationException | RuntimeException error) {
+            throw new IOException("missing portable DB constant: " + type.getName() + "." + name, cause(error));
+        }
+    }
+
     static Object construct(Class<?> type, Class<?>[] parameterTypes, Object... args) throws IOException {
         try { return type.getConstructor(parameterTypes).newInstance(args); }
         catch (ReflectiveOperationException | RuntimeException error) {
