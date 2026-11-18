@@ -40,6 +40,7 @@ public final class LlvmNativeToolsProvider implements M3ToolProvider {
     static final String BIN_OPTION = "--m3-llvm-bin=";
     static final String HOME_OPTION = "--m3-llvm-home=";
     static final String SHA_OPTION = "--m3-llvm-sha256=";
+    static final String EVIDENCE_OPTION = "--m3-llvm-evidence=";
 
     private static final Set<M3ToolCapability> ROLES = Set.of(
             M3ToolCapability.LINKER, M3ToolCapability.OPTIMIZER, M3ToolCapability.ASSEMBLER,
@@ -69,6 +70,7 @@ public final class LlvmNativeToolsProvider implements M3ToolProvider {
         String binSelector = null;
         String homeSelector = null;
         String expectedHash = null;
+        String evidencePath = null;
         boolean literal = false;
         var forwarded = new ArrayList<String>(task.arguments().size());
 
@@ -95,6 +97,10 @@ public final class LlvmNativeToolsProvider implements M3ToolProvider {
                     throw new IOException("LLVM SHA-256 must be exactly 64 hexadecimal digits");
                 }
                 expectedHash = expectedHash.toLowerCase(Locale.ROOT);
+            } else if (!literal && argument.startsWith(EVIDENCE_OPTION)) {
+                if (evidencePath != null) throw new IOException("duplicate LLVM evidence selector");
+                evidencePath = argument.substring(EVIDENCE_OPTION.length());
+                if (evidencePath.isBlank()) throw new IOException("empty LLVM evidence selector");
             } else if (!literal && argument.startsWith("--m3-llvm-")) {
                 throw new IOException("unknown LLVM tool option: " + argument);
             } else {
@@ -128,6 +134,26 @@ public final class LlvmNativeToolsProvider implements M3ToolProvider {
             executable = verifiedExecutable(executable);
         } else if (expectedHash != null) {
             executable = findOnPath(binary);
+        }
+
+        if (evidencePath != null) {
+            if (binSelector == null && configuredHome == null) {
+                throw new IOException("LLVM evidence requires an explicit installation root or bin selector");
+            }
+            try {
+                Path folder = binSelector == null ? Path.of(configuredHome).resolve("bin") : Path.of(binSelector);
+                if (!folder.isAbsolute()) folder = workspace.resolve(folder);
+                folder = folder.toAbsolutePath().normalize();
+                if (folder.getFileName() == null || !"bin".equals(folder.getFileName().toString())) {
+                    throw new IOException("LLVM evidence requires the installation's bin directory");
+                }
+                Path evidence = Path.of(evidencePath);
+                if (!evidence.isAbsolute()) evidence = workspace.resolve(evidence);
+                LlvmToolchainEvidence.verifySelected(
+                        folder.getParent(), LlvmToolchainEvidence.read(evidence), executableName);
+            } catch (InvalidPathException invalid) {
+                throw new IOException("invalid LLVM evidence manifest path", invalid);
+            }
         }
 
         if (expectedHash != null && !expectedHash.equals(sha256(executable))) {
