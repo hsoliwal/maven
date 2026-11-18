@@ -68,7 +68,7 @@ public final class LlvmCompilationDatabaseContractTestMain {
             refuses(() -> LlvmCompilationDatabase.render(
                     load(root, valid.replace("arg\tclang-c\t-c\n", "arg\tclang-c\t-c\narg\tclang-c\t@flags.rsp\n")),
                     root, "all"), "opaque response file cannot fabricate a compdb");
-            refuses(() -> LlvmCompilationDatabase.render(graph, root, "link"),
+            refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
             Files.delete(root.resolve("src/hello.c"));
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "all"),
@@ -123,7 +123,14 @@ public final class LlvmCompilationDatabaseContractTestMain {
                 + "dep\tall\tclang-c\n"
                 + "dep\tall\tcpp\n"
                 + "dep\tall\tlink\n"
-                + "dep\tlink\tclang-c\n";
+                + "dep\tlink\tclang-c\n"
+                + "task\tstandalone\t@m3:llvm:compiler:c\t.\n"
+                + "arg\tstandalone\t--m3-llvm-bin=pretend LLVM/bin\n"
+                + "arg\tstandalone\ttarget/hello.o\n"
+                + "arg\tstandalone\t-o\n"
+                + "arg\tstandalone\ttarget/standalone\n"
+                + "input\tstandalone\ttarget/hello.o\n"
+                + "output\tstandalone\ttarget/standalone\n";
     }
 
     private static TaskManifest load(Path root, String manifest) throws IOException {
