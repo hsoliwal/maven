@@ -394,6 +394,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>tycho-final-p2-facts-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration><arguments>
+              <argument>-classpath</argument><classpath/>
+              <argument>io.synexia.maven.polyglot.M3TychoFinalP2FactsWireContractTestMain</argument>
+            </arguments></configuration>
+          </execution>
+          <execution>
             <id>cargo-build-facts-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>

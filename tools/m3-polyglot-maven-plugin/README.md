@@ -986,6 +986,50 @@ native link inputs, generated artifacts, or full source completeness.
 M3DB output reuse remains prohibited without independent original
 owner evidence.
 
+### Original Tycho FINAL p2 platform facts
+
+The Tycho fork's \`M3FinalP2BuildEvidence\` reads **only** an already
+resolved \`ReactorProject\` final \`P2TargetPlatform\` context.
+It never uses Tycho's preliminary dependency-only target, computes
+a new target, downloads p2 artifacts or guesses environment
+resolution by parsing a \`*.target\` file.
+
+The source-owner \`M3-TYCHO-FINAL-P2-FACTS-V1\` packet includes
+Maven group/artifact/version/packaging, an independently supplied
+Eclipse \`.project\` identity, selected original Eclipse build
+configuration, original invocation UUID, explicit target os/ws/arch,
+sorted actual final installable-unit ID/version SHA-256 and count.
+
+Maven's standalone Java 17 \`M3TychoFinalP2FactsWire\` is the
+single strict decoder of these bytes:
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli tycho-final-p2 \
+  /project/target/ide/tycho-final-p2-facts.ide \
+  /project/target/ide/build-handoff.ide
+\`\`\`
+
+The reader requires \`stage=final\`, exact original project,
+configuration and invocation equality with the independent
+Eclipse \`M3-ECLIPSE-BUILD-HANDOFF-V1\` packet, canonical
+UTF-8/LF/Base64URL/UUID/sha256, and bounded packet/IU counts.
+It refuses preliminary stages, symlinked inputs, foreign projects
+and mismatched original generations. Output schema:
+\`m3-tycho-final-p2-facts-v1\`.
+
+A golden v1 packet is byte-identical in Tycho and Maven contract
+tests. The Maven no-runtime Java17 \`verify.sh\` and plugin Maven
+\`verify\` both execute the decoder's strict contract suite;
+Gradle's optional \`m3EclipseTychoFinalP2Facts\` task delegates
+through this exact independently SHA-256-pinned Maven JAR.
+
+The IU hash is **not** a complete target-platform or build-cache key.
+It does not establish physical artifact bytes, execution environment
+package closure, OSGi wiring, fragments, p2 filters, generated outputs
+or successful compilation. \`authorizesBuildSkipping=false\` always.
+Tycho and Eclipse retain native build and lifecycle authority.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
