@@ -158,8 +158,9 @@ all take `--store DIR` and `--persistent`.
   after an ignored vendor descriptor changes. It uses the unchanged
   `ProjectDb`/`IndexStore` owner and runs through the original `mvn verify`
   execution; it is not a second parser or a Gradle task-cache test.
-  If a filesystem cannot create symlinks, that *subcase* reports SKIP;
-  on Linux CI, its symlink verification should run.
+  On Linux a failure to create the symlink is an assertion failure
+  rather than a silent skip; on other filesystems the subcase reports
+  an explicit SKIP if symlinks cannot be created.
 
 ## Real Gradle consumer TestKit in Maven's CI
 
