@@ -5,6 +5,7 @@
 package io.synexia.maven.polyglot;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -98,18 +99,25 @@ final class M3DirectoryVacuum {
             if (!blob.getFileName().toString().matches(BLOB_PATTERN)) return new Report(false, 0, 0);
             if (Files.size(blob) > MAX_BLOB_BYTES) throw new IOException("M3IndexDB blob exceeds bound");
         }
-        long reclaimed = 0;
-        int removed = 0;
+        List<Path> orphaned = new ArrayList<>();
         for (Path blob : blobFiles) {
-            String name = blob.getFileName().toString();
-            if (!live.contains(name.substring(0, 64))) {
-                long size = Files.size(blob);
-                Files.delete(blob);
-                reclaimed += size;
-                removed++;
+            if (!live.contains(blob.getFileName().toString().substring(0, 64))) orphaned.add(blob);
+        }
+        if (orphaned.isEmpty()) return new Report(true, 0, 0);
+        // If any ref is already corrupt, leave all files for recovery/forensics.
+        // This full SHA pass happens only when actual garbage needs deletion.
+        for (String id : live) {
+            if (!id.equals(sha256(blobs.resolve(id + ".blob")))) {
+                throw new IOException("M3IndexDB referenced blob digest mismatch");
             }
         }
-        return new Report(true, removed, reclaimed);
+        long reclaimed = 0;
+        for (Path blob : orphaned) {
+            long size = Files.size(blob);
+            Files.delete(blob);
+            reclaimed += size;
+        }
+        return new Report(true, orphaned.size(), reclaimed);
     }
 
     private static boolean ordinary(Path file) {
@@ -129,8 +137,24 @@ final class M3DirectoryVacuum {
         return items;
     }
 
+    private static String sha256(Path file) throws IOException {
+        try (InputStream stream = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            MessageDigest digest = sha256();
+            byte[] buffer = new byte[65_536];
+            for (int count; (count = stream.read(buffer)) != -1;) {
+                if (count == 0) throw new IOException("stalled M3IndexDB blob reader");
+                digest.update(buffer, 0, count);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        }
+    }
+
     private static String sha256(byte[] bytes) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        return HexFormat.of().formatHex(sha256().digest(bytes));
+    }
+
+    private static MessageDigest sha256() {
+        try { return MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException("SHA-256 unavailable", impossible); }
     }
 }
