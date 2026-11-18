@@ -285,7 +285,12 @@ public final class LlvmCompilerIntegrationTestMain {
         single(root, "objcpp", "objcpp", List.of("-std=c++20", "-Wno-objc-root-class", "-x", "objective-c++",
                 "-c", objcpp, "-o", "target native/objcpp.o"), objcpp, "target native/objcpp.o");
         check(Files.size(root.resolve("target native/objcpp.o")) > 0, "Objective-C++ frontend emits an object");
-        System.out.println("PASS: Objective-C/Objective-C++ compile-only (no SDK or Objective-C runtime qualification)");
+        single(root, "objc-plus-plus", "objc++", List.of("-std=c++20", "-Wno-objc-root-class",
+                "-x", "objective-c++", "-c", objcpp, "-o", "target native/objc-plus-plus.o"),
+                objcpp, "target native/objc-plus-plus.o");
+        check(Files.size(root.resolve("target native/objc-plus-plus.o")) > 0,
+                "additive objc++ spelling and original objcpp both emit Objective-C++ objects");
+        System.out.println("PASS: Objective-C and both Objective-C++ spellings compile (no SDK/runtime qualification)");
     }
 
     private static void fortran(Path root) throws Exception {
