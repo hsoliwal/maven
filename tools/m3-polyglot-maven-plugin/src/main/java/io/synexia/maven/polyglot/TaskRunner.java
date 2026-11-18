@@ -60,7 +60,7 @@ public final class TaskRunner {
      * Opt-in incremental execution with one persistent M3DB file per module.
      * Only ordinary deterministic tasks with complete declared inputs and outputs
      * may reuse a success. Provider-owned, in-place and untracked dependency work
-     * always executes. Existing overloads retain their non-incremental default.
+     * always executes through this overload. Existing defaults are preserved.
      */
     public static List<String> run(
             TaskManifest plan,
@@ -124,6 +124,27 @@ public final class TaskRunner {
             String stateBackend,
             Path buildCache,
             Consumer<String> log) throws IOException, InterruptedException {
+        return run(plan, workspace, target, dryRun, timeoutPerTask, allowRewriteApply,
+                incremental, stateBackend, buildCache, false, log);
+    }
+
+    /**
+     * Explicit provider reuse requires a complete provider-owned input contract in
+     * addition to ordinary task declarations. An absent/unavailable proof preserves
+     * execution. Existing callers never opt into this contract or output cleanup.
+     */
+    public static List<String> run(
+            TaskManifest plan,
+            Path workspace,
+            String target,
+            boolean dryRun,
+            Duration timeoutPerTask,
+            boolean allowRewriteApply,
+            boolean incremental,
+            String stateBackend,
+            Path buildCache,
+            boolean providerReuse,
+            Consumer<String> log) throws IOException, InterruptedException {
         Objects.requireNonNull(stateBackend, "stateBackend");
         if (!Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2", "hsqldb").contains(stateBackend)
                 && !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) {
@@ -134,6 +155,9 @@ public final class TaskRunner {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(timeoutPerTask, "timeoutPerTask");
         Objects.requireNonNull(log, "log");
+        if (providerReuse && !dryRun && !incremental && buildCache == null) {
+            throw new IllegalArgumentException("provider reuse requires incremental execution or a build cache");
+        }
         if (timeoutPerTask.isNegative() || timeoutPerTask.isZero() || timeoutPerTask.compareTo(Duration.ofHours(12)) > 0) {
             throw new IllegalArgumentException("timeout must be between 1ns and 12 hours");
         }
@@ -158,13 +182,13 @@ public final class TaskRunner {
         // prevent one Maven process from reusing another process's unfinished outputs.
         try (ModuleStateDb store = dryRun ? null : ModuleStateDb.open(root, stateBackend, incremental, log)) {
             return runTasks(plan, tasks, root, dryRun, timeoutPerTask, allowRewriteApply,
-                    incremental, store, cache, cacheDirectory, log);
+                    incremental, store, cache, cacheDirectory, providerReuse, log);
         }
     }
 
     private static List<String> runTasks(TaskManifest plan, List<TaskManifest.Task> tasks,
             Path root, boolean dryRun, Duration timeout, boolean allowRewriteApply, boolean incremental,
-            ModuleStateDb store, BuildCache cache, Path cacheDirectory, Consumer<String> log)
+            ModuleStateDb store, BuildCache cache, Path cacheDirectory, boolean providerReuse, Consumer<String> log)
             throws IOException, InterruptedException {
         List<String> performed = new ArrayList<>(tasks.size());
         Map<String, String> generations = new HashMap<>();
@@ -183,8 +207,9 @@ public final class TaskRunner {
                     + " inputs=" + task.inputs().size() + " outputs=" + task.outputs().size());
             List<String> qualityCommand = QualityTaskCommands.supported(task.tool())
                     ? QualityTaskCommands.command(task, root, dryRun || allowRewriteApply) : null;
-            List<String> m3Command = task.tool().startsWith("@m3")
-                    ? M3ToolProviders.command(task, root) : null;
+            M3ToolProviders.Plan providerPlan = task.tool().startsWith("@m3")
+                    ? M3ToolProviders.plan(task, root, providerReuse && !dryRun) : null;
+            List<String> m3Command = providerPlan == null ? null : providerPlan.command();
             if (dryRun) {
                 performed.add(task.name());
                 continue;
@@ -214,22 +239,64 @@ public final class TaskRunner {
                     : m3Command != null ? m3Command : ordinaryCommand(task, directory);
             ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).inheritIO();
             Map<String, String> environment = Map.copyOf(builder.environment());
-            boolean candidate = (incremental || cache != null) && qualityCommand == null && m3Command == null
+            boolean tracked = (incremental || cache != null) && qualityCommand == null
                     && !task.inputs().isEmpty() && !task.outputs().isEmpty() && InputStamps.separate(task)
                     && (cacheDirectory == null || task.inputs().stream()
                             .noneMatch(path -> overlaps(cacheDirectory, root.resolve(path))))
-                    && !overlappingOutputs.contains(task.name())
+                    && !overlappingOutputs.contains(task.name());
+            M3ToolReuseInputs reuse = tracked && providerPlan != null
+                    ? providerPlan.reuseInputs().orElse(null) : null;
+            String providerIdentity = null;
+            if (reuse != null) {
+                try {
+                    validateProviderInputs(task, root, cacheDirectory, reuse);
+                    providerIdentity = InputStamps.providerIdentity(reuse, root);
+                } catch (IOException unavailable) {
+                    // Optional proof must not turn an otherwise valid build into a failure.
+                    reuse = null;
+                    log.accept("ALWAYS-RUN " + task.name() + " (provider input identity unavailable)");
+                }
+            }
+            boolean candidate = tracked && (m3Command == null || reuse != null)
                     && task.prerequisites().stream().allMatch(generations::containsKey);
-            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations, engine) : null;
-            String cacheStamp = candidate && cache != null
-                    && task.prerequisites().stream().allMatch(portableGenerations::containsKey)
-                    ? InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine) : null;
+            boolean portableCache = reuse == null || reuse.relocatable();
+            String input = null;
+            String cacheStamp = null;
+            try {
+                if (candidate) {
+                    input = InputStamps.stamp(task, root, command, environment, generations, engine);
+                    if (providerIdentity != null) input = providerStamp(input, providerIdentity);
+                    if (cache != null && !portableCache) {
+                        cacheStamp = localProviderCache(input);
+                    } else if (cache != null && task.prerequisites().stream().allMatch(portableGenerations::containsKey)) {
+                        cacheStamp = InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine);
+                        if (providerIdentity != null) cacheStamp = providerStamp(cacheStamp, providerIdentity);
+                    }
+                }
+            } catch (IOException unavailable) {
+                if (reuse == null) throw unavailable; // Preserve ordinary-task proof failures.
+                // Extra declared inputs can be valid for execution but unhashable
+                // for optional reuse. Do not clean outputs under an incomplete proof.
+                reuse = null;
+                input = null;
+                cacheStamp = null;
+                portableCache = false;
+                log.accept("ALWAYS-RUN " + task.name() + " (declared input identity unavailable)");
+            }
             String receiptKey = stateKey(task.name());
             if (incremental && input != null && store.matchesInput(receiptKey, input)) {
-                String output = existingOutputs(task, root);
+                String output;
+                try {
+                    output = existingOutputs(task, root);
+                } catch (IOException unavailable) {
+                    if (reuse == null) throw unavailable;
+                    // A damaged provider-owned output tree is a miss. Revocation
+                    // precedes the existing no-follow cleanup/restoration below.
+                    output = null;
+                }
                 if (store.hit(receiptKey, input, output)) {
                     generations.put(task.name(), InputStamps.combine(List.of(input, output)));
-                    if (cacheStamp != null) {
+                    if (cacheStamp != null && portableCache) {
                         portableGenerations.put(task.name(), InputStamps.combine(List.of(cacheStamp, output)));
                     }
                     log.accept("UP-TO-DATE " + task.name() + " (M3DB input and output content verified)");
@@ -246,7 +313,14 @@ public final class TaskRunner {
                 invalidateDependents(reverseGraph, task.name(), store);
             }
             boolean restored = cacheStamp != null && cache.restore(task, root, cacheStamp);
-            if (!restored) execute(task, builder, timeout);
+            if (!restored) {
+                // Qualified compilers own these complete output roots. Clean after
+                // revocation, so removed/renamed sources cannot retain stale products.
+                if (reuse != null) {
+                    for (String output : reuse.cleanOutputs()) BuildCache.clear(checked(root, output));
+                }
+                execute(task, builder, timeout);
+            }
             for (String output : task.outputs()) {
                 if (!Files.exists(checked(root, output), LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException("missing declared output from " + task.name() + ": " + output);
@@ -257,11 +331,26 @@ public final class TaskRunner {
                 String portableAfter = null;
                 String output = null;
                 try {
-                    List<String> afterCommand = ordinaryCommand(task, directory);
+                    M3ToolProviders.Plan afterPlan = providerPlan == null ? null
+                            : M3ToolProviders.plan(task, root, true);
+                    List<String> afterCommand = afterPlan == null ? ordinaryCommand(task, directory) : afterPlan.command();
+                    String afterProviderIdentity = null;
+                    if (afterPlan != null) {
+                        M3ToolReuseInputs afterReuse = afterPlan.reuseInputs().orElseThrow(
+                                () -> new IOException("provider no longer supplies a complete reuse contract"));
+                        validateProviderInputs(task, root, cacheDirectory, afterReuse);
+                        afterProviderIdentity = InputStamps.providerIdentity(afterReuse, root);
+                    }
                     after = InputStamps.stamp(task, root, afterCommand, environment, generations, engine);
-                    if (cacheStamp != null) {
+                    if (afterProviderIdentity != null) after = providerStamp(after, afterProviderIdentity);
+                    if (cacheStamp != null && !portableCache) {
+                        portableAfter = localProviderCache(after);
+                    } else if (cacheStamp != null) {
                         portableAfter = InputStamps.portableStamp(
                                 task, root, afterCommand, environment, portableGenerations, engine);
+                        if (afterProviderIdentity != null) {
+                            portableAfter = providerStamp(portableAfter, afterProviderIdentity);
+                        }
                     }
                     output = InputStamps.outputs(task, root);
                 } catch (IOException changed) {
@@ -277,7 +366,7 @@ public final class TaskRunner {
                     // Stage only; one module commit follows a successful full task graph.
                     if (incremental) store.stage(stateKey(task.name()), input, output);
                     generations.put(task.name(), InputStamps.combine(List.of(input, output)));
-                    if (cacheStamp != null) {
+                    if (cacheStamp != null && portableCache) {
                         portableGenerations.put(task.name(), InputStamps.combine(List.of(cacheStamp, output)));
                     }
                     if (restored) log.accept("FROM-CACHE " + task.name() + " (input and restored output content verified)");
@@ -293,6 +382,36 @@ public final class TaskRunner {
         // earlier cache entries were revoked before any output mutation.
         if (incremental && !dryRun) store.commitStaged();
         return List.copyOf(performed);
+    }
+
+    private static String providerStamp(String taskIdentity, String providerIdentity) {
+        return InputStamps.digest("m3.provider-reuse.v1", taskIdentity, providerIdentity);
+    }
+
+    /** Local-only providers can restore here without granting cross-workspace reuse. */
+    private static String localProviderCache(String input) {
+        return InputStamps.digest("m3.provider-local-cache.v1", input);
+    }
+
+    /** Provider/toolchain reads cannot alias products, internal state, or the artifact store. */
+    private static void validateProviderInputs(TaskManifest.Task task, Path root, Path cacheDirectory,
+            M3ToolReuseInputs reuse) throws IOException {
+        for (String output : task.outputs()) {
+            if (overlaps(root.resolve(".m3"), checked(root, output))) {
+                throw new IOException("provider output overlaps module state");
+            }
+        }
+        for (Path input : reuse.additionalInputs()) {
+            if (overlaps(input, root.resolve(".m3"))
+                    || cacheDirectory != null && overlaps(input, cacheDirectory)) {
+                throw new IOException("provider input overlaps state or artifact cache");
+            }
+            for (String output : task.outputs()) {
+                if (overlaps(input, checked(root, output))) {
+                    throw new IOException("provider input overlaps a declared output");
+                }
+            }
+        }
     }
 
     /** Resolve existing cache ancestors so a symlink alias cannot hide declared-path overlap. */

@@ -1,0 +1,19 @@
+M3-POLYGLOT-TASKS-V1
+task	compile	@m3:jdk:compiler:java	.
+arg	compile	-proc:none
+arg	compile	-implicit:none
+arg	compile	-Xprefer:source
+arg	compile	-encoding
+arg	compile	UTF-8
+arg	compile	--release
+arg	compile	17
+arg	compile	-classpath
+arg	compile	empty-classpath
+arg	compile	-sourcepath
+arg	compile	src/main/java
+arg	compile	-d
+arg	compile	classes
+arg	compile	src/main/java/Hello.java
+input	compile	src/main/java
+input	compile	empty-classpath
+output	compile	classes

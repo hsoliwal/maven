@@ -72,8 +72,12 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/QualityTaskCommands.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolCapability.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolReuseInputs.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkReuseInputs.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolReuseInputsContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
@@ -145,6 +149,10 @@ java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBui
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.M3ToolReuseInputsContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.ProviderReuseExecutionTestMain
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.LlvmCompilerSelectionContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources" \

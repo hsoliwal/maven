@@ -7,6 +7,7 @@ package io.synexia.maven.polyglot;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -44,4 +45,30 @@ public interface M3ToolProvider {
      */
     List<String> command(M3ToolCapability capability, String language,
             TaskManifest.Task task, Path workspace) throws IOException;
+
+    /**
+     * Optional, complete additional input and output-ownership contract for the
+     * runner's explicit provider-reuse mode. The default retains unconditional
+     * execution for all existing providers. Returning a contract is a trusted
+     * provider assertion, not an automatically established hermeticity proof.
+     *
+     * <p>The runner hashes these inputs with the actual command, environment,
+     * declared inputs and prerequisites before and after execution. A provider
+     * must decline when it cannot account for every output-affecting dependency.
+     * Qualified outputs must be determined by this captured content and execution
+     * context. File timestamps are not part of content identity: an invocation
+     * that selects dependencies by mtime, uses undeclared network or process-global
+     * state, or depends on uncaptured clock/random state must decline reuse.</p>
+     *
+     * <p>Planning must not execute tools or mutate the workspace. The registry
+     * also binds this provider's implementation code source. That binding does
+     * not discover transitive dependencies: every dependent provider library,
+     * toolchain resource and configuration read remains the provider's explicit
+     * responsibility. Returning an assertion does not sandbox or independently
+     * prove the behavior of trusted provider code.</p>
+     */
+    default Optional<M3ToolReuseInputs> reuseInputs(M3ToolCapability capability, String language,
+            TaskManifest.Task task, Path workspace) throws IOException {
+        return Optional.empty();
+    }
 }

@@ -37,6 +37,7 @@ public final class PolyglotCli {
         }
         boolean approveRewriteApply = false;
         boolean incremental = false;
+        boolean providerReuse = false;
         String stateBackend = "embedded";
         boolean stateBackendSupplied = false;
         Path buildCache = null;
@@ -51,6 +52,10 @@ public final class PolyglotCli {
                 case "--incremental" -> {
                     if (incremental || !"run".equals(args[0])) throw usage();
                     incremental = true;
+                }
+                case "--provider-reuse" -> {
+                    if (providerReuse || !"run".equals(args[0])) throw usage();
+                    providerReuse = true;
                 }
                 case "--state-backend" -> {
                     if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
@@ -79,9 +84,11 @@ public final class PolyglotCli {
             }
         }
         if (stateBackendSupplied && !incremental) throw usage();
+        if (providerReuse && !incremental && buildCache == null) throw usage();
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend, buildCache, output);
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend,
+                buildCache, providerReuse, output);
         output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
         return done;
     }
@@ -89,7 +96,8 @@ public final class PolyglotCli {
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
                 + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|hsqldb|ext-id] [--approve-rewrite-apply]"
-                + " [--build-cache <dir>]"
-                + " (incremental, build-cache and approval require run; state-backend also requires incremental)");
+                + " [--build-cache <dir>] [--provider-reuse]"
+                + " (incremental, build-cache, provider-reuse and approval require run;"
+                + " state-backend also requires incremental; provider-reuse requires incremental or build-cache)");
     }
 }

@@ -292,7 +292,8 @@ public final class IndexStoreContractTestMain {
     }
 
     private static List<String> classNames(String packageName) throws IOException, URISyntaxException {
-        Class<?> owner = packageName.equals("jdk/m3/db") ? jdk.m3.db.M3DB.class : LibraryIndexStore.engineType();
+        // Maven separates production classes from the pinned current-owner test fixtures.
+        Class<?> owner = "jdk/m3/db".equals(packageName) ? IndexStoreContractTestMain.class : LibraryIndexStore.engineType();
         Path source = Path.of(owner.getProtectionDomain().getCodeSource().getLocation().toURI());
         if (Files.isDirectory(source)) {
             try (Stream<Path> files = Files.list(source.resolve(packageName))) {
