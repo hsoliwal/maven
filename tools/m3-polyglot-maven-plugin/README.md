@@ -143,7 +143,11 @@ persistence/restart/revocation/backend switch suite. The LMDB adapter targets th
 `Env.Builder.open(File, EnvFlags...)`, `Env.openDbi(String, DbiFlags...)`,
 and `Dbi.put(Txn, key, value, PutFlags...)`. These methods differ from the
 unreleased LmdbJava 1.0 builder API, so a different runtime fails compatibility
-preflight instead of silently opening an unexpected layout. Without the profile, the default JDK-only contract checks
+preflight instead of silently opening an unexpected layout. MapDB and LMDB
+also **open existing collections without create flags on reads**; only an
+explicit write may create the store. All four donor adapters preflight their
+required public method signatures before the M3 module-state generation is
+opened, so incompatible runtime JARs are refused rather than admitted. Without the profile, the default JDK-only contract checks
 registration and path safety, then reports `NOT_RUN` for unavailable native
 runtimes. A module must never silently substitute another backend. Driver
 compatibility and native crash-recovery qualification are separate from
