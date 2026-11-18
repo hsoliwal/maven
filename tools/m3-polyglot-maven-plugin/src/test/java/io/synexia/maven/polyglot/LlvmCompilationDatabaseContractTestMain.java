@@ -104,8 +104,8 @@ public final class LlvmCompilationDatabaseContractTestMain {
                 Path inputAlias = root.resolve("src/source-link.c");
                 Files.createSymbolicLink(inputAlias, root.resolve("src/hello.c"));
                 refuses(() -> LlvmCompilationDatabase.render(
-                        load(root, valid.replace("arg\\tclang-c\\tsrc/hello.c\\n",
-                                "arg\\tclang-c\\tsrc/source-link.c\\n")),
+                        load(root, valid.replace("arg\tclang-c\tsrc/hello.c\n",
+                                "arg\tclang-c\tsrc/source-link.c\n")),
                         root, "all"), "source symlink is refused even under a declared input directory");
                 Files.delete(inputAlias);
                 Files.delete(out);
