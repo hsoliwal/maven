@@ -43,6 +43,11 @@ public final class EclipseModelCli {
             // source-bound validation of the original invocation.
             System.out.println(M3CargoBuildEvidenceWire.inspect(
                     Path.of(args[1]), Path.of(args[2])).toJson());
+        } else if (args != null && args.length == 3 && "tycho-final-p2".equals(args[0])) {
+            // Only the original Tycho FINAL platform is source-owned evidence.
+            // Do not compute a target or infer p2 resolution from .target.
+            System.out.println(M3TychoFinalP2FactsWire.inspect(
+                    Path.of(args[1]), Path.of(args[2])).toJson());
         } else {
             throw new IllegalArgumentException(
                     "usage: EclipseModelCli <project-directory> | owners <project-directory>"
@@ -50,7 +55,8 @@ public final class EclipseModelCli {
                             + " | reconcile <project-directory> <Eclipse-invocation-packet>"
                             + " | jdt-facts <JDT-owner-packet> <Eclipse-invocation-packet>"
                             + " | cdt-facts <CDT-owner-packet> <Eclipse-invocation-packet>"
-                            + " | cargo-facts <Corrosion-owner-packet> <Eclipse-invocation-packet>");
+                            + " | cargo-facts <Corrosion-owner-packet> <Eclipse-invocation-packet>"
+                            + " | tycho-final-p2 <Tycho-final-packet> <Eclipse-invocation-packet>");
         }
     }
 }
