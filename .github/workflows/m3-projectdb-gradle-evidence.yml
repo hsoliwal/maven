@@ -41,3 +41,61 @@ jobs:
         run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
       - name: Run project-DB ingestion, retrieval, provenance and RAT contracts
         run: mvn -B -ntp -f tools/project-db/pom.xml verify
+
+
+  # The Gradle fork's Actions have no recent runs; verify the actual consumer
+  # on Maven's active runners without copying or replacing Gradle build logic.
+  gradle-consumer-real-testkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - name: Check out current Maven source and its M3IndexDB owner
+        uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: |
+            tools/m3-polyglot-maven-plugin/pom.xml
+            tools/project-db/pom.xml
+      - name: Qualify and install current Maven polyglot M3IndexDB engine
+        run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: Qualify and package original Maven project database
+        run: mvn -B -ntp -f tools/project-db/pom.xml verify
+      - name: Check out exact reviewed Gradle project-DB consumer source
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Execute real Gradle TestKit with source-built Maven project DB
+        env:
+          M3_POLYGLOT_JAR: ${{ github.workspace }}/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          M3_PROJECT_DB_JAR: ${{ github.workspace }}/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar
+        run: |
+          test -s "$M3_POLYGLOT_JAR"
+          test -s "$M3_PROJECT_DB_JAR"
+          chmod +x consumer-gradle/gradlew
+          cd consumer-gradle
+          ./gradlew --no-daemon --stacktrace --console=plain \
+            -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+      - name: Retain Gradle TestKit reports for accepted or failed runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projectdb-gradle-testkit-jdk-${{ matrix.java }}
+          path: |
+            consumer-gradle/m3/quality-bridge/build/test-results/test/**
+            consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 14

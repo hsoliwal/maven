@@ -24,5 +24,9 @@ expect_count "        java: ['17', '21']" 1
 expect_count "run: sh tools/project-db/scripts/verify-gradle-sources.sh" 1
 expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install" 1
 expect_count "run: mvn -B -ntp -f tools/project-db/pom.xml verify" 1
+expect_count "  gradle-consumer-real-testkit:" 1
+expect_count "          ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6" 1
+expect_count "test --tests '*M3ProjectDb*' --rerun-tasks" 1
+expect_count "name: projectdb-gradle-testkit-jdk-" 1
 
-echo "PASS: project DB CI covers both storage owner and evidence consumer on JDK 17/21"
+echo "PASS: source-qualified project DB and real Gradle TestKit consumers on JDK 17/21"
