@@ -134,12 +134,12 @@ public final class MavenizerContractTestMain {
     private static void detectsErlangAndPhp(Path root) throws Exception {
         // Known native build descriptors only; never guess an Erlang/PHP compiler
         // from an Eclipse nature or from a source file extension.
-        Path erlang = dir(root, "erlang", "rebar.config", "{erl_opts, [debug_info]}.\\n");
+        Path erlang = dir(root, "erlang", "rebar.config", "{erl_opts, [debug_info]}.\n");
         expect(erlang, "compile rebar3-compile rebar3 [compile]");
         Files.createDirectories(erlang.resolve("test"));
         expect(erlang, "compile rebar3-compile rebar3 [compile]",
                 "test rebar3-test rebar3 [eunit]");
-        Path php = dir(root, "php", "composer.json", "{\\\"name\\\":\\\"example/app\\\"}");
+        Path php = dir(root, "php", "composer.json", "{\"name\":\"example/app\"}");
         expect(php, "validate composer-validate composer [validate, --no-check-publish]");
         Files.writeString(php.resolve("phpunit.xml"), "<phpunit/>");
         expect(php, "validate composer-validate composer [validate, --no-check-publish]",
@@ -155,8 +155,8 @@ public final class MavenizerContractTestMain {
                 "planning never invokes Composer or downloads packages");
         Mavenizer.mavenize(php, "org.example", "1.0-SNAPSHOT", true);
         String emitted = Files.readString(php.resolve("m3-build.tsv"));
-        require(emitted.contains("task\\tcomposer-validate\\tcomposer\\t.\\n")
-                && emitted.contains("arg\\tcomposer-test\\tphpunit\\n"),
+        require(emitted.contains("task\tcomposer-validate\tcomposer\t.\n")
+                && emitted.contains("arg\tcomposer-test\tphpunit\n"),
                 "native PHP commands preserved as strict argument-vector tasks");
         require(Files.readString(php.resolve("pom.xml")).contains("<id>m3-polyglot</id>"),
                 "native language lifecycle activation remains an explicit Maven profile");
