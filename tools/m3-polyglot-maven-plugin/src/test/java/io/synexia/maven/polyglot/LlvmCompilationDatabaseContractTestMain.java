@@ -11,6 +11,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 /** Deterministic compiler database contracts without Maven CLI or native LLVM. */
