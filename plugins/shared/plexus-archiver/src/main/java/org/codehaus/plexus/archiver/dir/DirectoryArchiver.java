@@ -1,0 +1,294 @@
+/*
+ * Copyright 2001-2005 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.codehaus.plexus.archiver.dir;
+
+import javax.inject.Named;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.codehaus.plexus.archiver.AbstractArchiver;
+import org.codehaus.plexus.archiver.ArchiveEntry;
+import org.codehaus.plexus.archiver.ArchiverException;
+import org.codehaus.plexus.archiver.ResourceIterator;
+import org.codehaus.plexus.archiver.SymlinkFailureMode;
+import org.codehaus.plexus.archiver.exceptions.EmptyArchiveException;
+import org.codehaus.plexus.archiver.util.ArchiveEntryUtils;
+import org.codehaus.plexus.archiver.util.DeferredSymlinks;
+import org.codehaus.plexus.archiver.util.ResourceUtils;
+import org.codehaus.plexus.components.io.attributes.SymlinkUtils;
+import org.codehaus.plexus.components.io.functions.SymlinkDestinationSupplier;
+import org.codehaus.plexus.components.io.resources.PlexusIoResource;
+
+/**
+ * A plexus archiver implementation that stores the files to archive in a directory.
+ */
+@Named("dir")
+public class DirectoryArchiver extends AbstractArchiver {
+
+    private final List<Runnable> directoryChmods = new ArrayList<>();
+    private long filesCopied;
+
+    private SymlinkFailureMode symlinkFailureMode = SymlinkFailureMode.COPY_TARGET;
+
+    /**
+     * Returns what happens to a symbolic link that the file system refuses to create.
+     *
+     * @return the failure mode, {@link SymlinkFailureMode#COPY_TARGET} by default
+     * @since 4.15.0
+     */
+    public SymlinkFailureMode getSymlinkFailureMode() {
+        return symlinkFailureMode;
+    }
+
+    /**
+     * Sets what happens to a symbolic link that the file system refuses to create, for example on Windows without
+     * the "Create symbolic links" right or Developer Mode.
+     *
+     * @param symlinkFailureMode the failure mode
+     * @since 4.15.0
+     */
+    public void setSymlinkFailureMode(SymlinkFailureMode symlinkFailureMode) {
+        if (symlinkFailureMode == null) {
+            throw new IllegalArgumentException("symlinkFailureMode must not be null");
+        }
+        this.symlinkFailureMode = symlinkFailureMode;
+    }
+
+    /**
+     * Creates a symbolic link. Visible for testing, so a test can simulate a file system that refuses links.
+     *
+     * @param link the link to create
+     * @param target the link target
+     * @throws IOException if the link cannot be created
+     * @since 4.15.0
+     */
+    protected void createSymbolicLink(File link, File target) throws IOException {
+        SymlinkUtils.createSymbolicLink(link, target);
+    }
+
+    /**
+     * Default constructor.
+     */
+    public DirectoryArchiver() {
+        // preserver default behavior
+        setForced(false);
+    }
+
+    public void resetArchiver() throws IOException {
+        cleanUp();
+    }
+
+    @Override
+    public void execute() throws ArchiverException, IOException {
+        // Most of this method was copied from org.codehaus.plexus.archiver.tar.TarArchiver
+        // and modified to store files in a directory, not a tar archive.
+        final ResourceIterator iter = getResources();
+        if (!iter.hasNext()) {
+            throw new EmptyArchiveException("archive cannot be empty");
+        }
+
+        final File destDirectory = getDestFile();
+        if (destDirectory == null) {
+            throw new ArchiverException("You must set the destination directory.");
+        }
+        if (destDirectory.exists() && !destDirectory.isDirectory()) {
+            throw new ArchiverException(destDirectory + " is not a directory.");
+        }
+        if (destDirectory.exists() && !destDirectory.canWrite()) {
+            throw new ArchiverException(destDirectory + " is not writable.");
+        }
+
+        getLogger().info("Copying files to {}", destDirectory.getAbsolutePath());
+
+        DeferredSymlinks deferredSymlinks = new DeferredSymlinks(getLogger());
+        try {
+            final Path root = destDirectory.getCanonicalFile().toPath();
+            while (iter.hasNext()) {
+                final ArchiveEntry f = iter.next();
+                // Check if we don't add directory file in itself
+                if (ResourceUtils.isSame(f.getResource(), destDirectory)) {
+                    throw new ArchiverException("The destination directory cannot include itself.");
+                }
+                String fileName = f.getName();
+                final String destDir = destDirectory.getCanonicalPath();
+                fileName = destDir + File.separator + fileName;
+                PlexusIoResource resource = f.getResource();
+                if (resource instanceof SymlinkDestinationSupplier) {
+                    String dest = ((SymlinkDestinationSupplier) resource).getSymlinkDestination();
+                    File target = new File(dest);
+                    File symlink = new File(fileName);
+                    makeParentDirectories(symlink);
+                    try {
+                        createSymbolicLink(symlink, target);
+                    } catch (IOException | UnsupportedOperationException e) {
+                        if (symlinkFailureMode == SymlinkFailureMode.FAIL) {
+                            if (e instanceof IOException) {
+                                throw (IOException) e;
+                            }
+                            throw new IOException("Cannot create symbolic link " + symlink, e);
+                        }
+                        boolean copy = symlinkFailureMode == SymlinkFailureMode.COPY_TARGET;
+                        getLogger()
+                                .warn(
+                                        "Cannot create symbolic link {} -> {} ({}). On Windows this needs the"
+                                                + " 'Create symbolic links' right or Developer Mode; {}.",
+                                        f.getName(),
+                                        dest,
+                                        e.getMessage(),
+                                        copy ? "the link target will be copied instead" : "the entry is skipped");
+                        if (copy) {
+                            deferredSymlinks.add(root, symlink, dest, f.getName());
+                        }
+                    }
+                } else {
+                    copyFile(f, fileName);
+                }
+            }
+
+            deferredSymlinks.resolve();
+
+            directoryChmods.forEach(Runnable::run);
+            directoryChmods.clear();
+
+            if (filesCopied > 0) {
+                getLogger()
+                        .info(
+                                "{} file{} copied to {}",
+                                filesCopied,
+                                filesCopied > 0 ? "s" : "",
+                                destDirectory.getAbsolutePath());
+            } else {
+                getLogger().info("All files are uptodate in {}", destDirectory.getAbsolutePath());
+            }
+
+            filesCopied = 0;
+
+        } catch (final IOException ioe) {
+            final String message = "Problem copying files : " + ioe.getMessage();
+            throw new ArchiverException(message, ioe);
+        }
+    }
+
+    /**
+     * Copies the specified file to the specified path, creating any ancestor directory structure as necessary.
+     *
+     * @param entry The file to copy (IOException will be thrown if this does not exist)
+     * @param vPath The fully qualified path to copy the file to.
+     *
+     * @throws ArchiverException If there is a problem creating the directory structure
+     * @throws IOException If there is a problem copying the file
+     */
+    protected void copyFile(final ArchiveEntry entry, final String vPath) throws ArchiverException, IOException {
+        // don't add "" to the archive
+        if (vPath.length() <= 0) {
+            return;
+        }
+
+        final PlexusIoResource in = entry.getResource();
+        final File outFile = new File(vPath);
+
+        final long inLastModified = in.getLastModified();
+
+        if (!isForced()) {
+            final long outLastModified = outFile.lastModified();
+            if (ResourceUtils.isUptodate(inLastModified, outLastModified)) {
+                return;
+            }
+        }
+
+        if (!in.isDirectory()) {
+            makeParentDirectories(outFile);
+            try (InputStream input = entry.getInputStream()) {
+                ResourceUtils.copyFile(input, outFile);
+            }
+            filesCopied++;
+            setFileModes(entry, outFile, inLastModified);
+        } else { // file is a directory
+            if (outFile.exists()) {
+                if (!outFile.isDirectory()) {
+                    // should we just delete the file and replace it with a directory?
+                    // throw an exception, let the user delete the file manually.
+                    throw new ArchiverException("Expected directory and found file at copy destination of "
+                            + in.getName() + " to " + outFile);
+                }
+            } else if (!outFile.mkdirs()) {
+                // Failure, unable to create specified directory for some unknown reason.
+                throw new ArchiverException("Unable to create directory or parent directory of " + outFile);
+            }
+
+            directoryChmods.add(() -> {
+                try {
+                    setFileModes(entry, outFile, inLastModified);
+                } catch (IOException e) {
+                    throw new ArchiverException("Failed setting file attributes", e);
+                }
+            });
+        }
+    }
+
+    private static void makeParentDirectories(File file) {
+        if (!file.getParentFile().exists()) {
+            // create the parent directory...
+            if (!file.getParentFile().mkdirs()) {
+                // Failure, unable to create specified directory for some unknown reason.
+                throw new ArchiverException("Unable to create directory or parent directory of " + file);
+            }
+        }
+    }
+
+    private void setFileModes(ArchiveEntry entry, File outFile, long inLastModified) throws IOException {
+        if (!isIgnorePermissions()) {
+            ArchiveEntryUtils.chmod(outFile, entry.getMode());
+        }
+
+        if (getLastModifiedTime() == null) {
+            FileTime fromMillis = FileTime.fromMillis(
+                    inLastModified == PlexusIoResource.UNKNOWN_MODIFICATION_DATE
+                            ? System.currentTimeMillis()
+                            : inLastModified);
+            Files.setLastModifiedTime(outFile.toPath(), fromMillis);
+        } else {
+            Files.setLastModifiedTime(outFile.toPath(), getLastModifiedTime());
+        }
+    }
+
+    @Override
+    protected void cleanUp() throws IOException {
+        super.cleanUp();
+        setIncludeEmptyDirs(false);
+        setIncludeEmptyDirs(true);
+    }
+
+    @Override
+    protected void close() throws IOException {}
+
+    @Override
+    protected String getArchiveType() {
+        return "directory";
+    }
+
+    @Override
+    public boolean isSupportingForced() {
+        return true;
+    }
+}

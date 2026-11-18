@@ -1,0 +1,143 @@
+package org.codehaus.plexus.archiver;
+
+import java.io.File;
+import java.nio.file.Files;
+
+import org.codehaus.plexus.archiver.dir.DirectoryArchiver;
+import org.codehaus.plexus.archiver.tar.TarArchiver;
+import org.codehaus.plexus.archiver.tar.TarLongFileMode;
+import org.codehaus.plexus.archiver.tar.TarUnArchiver;
+import org.codehaus.plexus.archiver.util.DefaultFileSet;
+import org.codehaus.plexus.archiver.zip.ZipArchiver;
+import org.codehaus.plexus.archiver.zip.ZipUnArchiver;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * @author Kristian Rosenvold
+ */
+class SymlinkTest extends TestSupport {
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void symlinkDir() throws Exception {
+        File dummyContent = getTestFile("src/test/resources/symlinks/src/symDir");
+        assertTrue(dummyContent.isDirectory());
+        assertTrue(Files.isSymbolicLink(dummyContent.toPath()));
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void symlinkDirWithSlash() throws Exception {
+        File dummyContent = getTestFile("src/test/resources/symlinks/src/symDir/");
+        assertTrue(dummyContent.isDirectory());
+        assertTrue(Files.isSymbolicLink(dummyContent.toPath()));
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void symlinkFile() {
+        File dummyContent = getTestFile("src/test/resources/symlinks/src/symR");
+        assertFalse(dummyContent.isDirectory());
+        assertTrue(Files.isSymbolicLink(dummyContent.toPath()));
+    }
+
+    @Test
+    void symlinkTar() throws Exception {
+        TarArchiver archiver = (TarArchiver) lookup(Archiver.class, "tar");
+        archiver.setLongfile(TarLongFileMode.posix);
+
+        File dummyContent = getTestFile("src/test/resources/symlinks/src");
+        archiver.addDirectory(dummyContent);
+        final File archiveFile = new File("target/output/symlinks.tar");
+        archiver.setDestFile(archiveFile);
+        archiver.createArchive();
+        File output = getTestFile("target/output/untaredSymlinks");
+        output.mkdirs();
+        TarUnArchiver unarchiver = (TarUnArchiver) lookup(UnArchiver.class, "tar");
+        unarchiver.setSourceFile(archiveFile);
+        unarchiver.setDestFile(output);
+        unarchiver.extract();
+        // second unpacking should also work
+        unarchiver.extract();
+    }
+
+    @Test
+    void symlinkZip() throws Exception {
+        ZipArchiver archiver = (ZipArchiver) lookup(Archiver.class, "zip");
+
+        File dummyContent = getTestFile("src/test/resources/symlinks/src");
+        archiver.addDirectory(dummyContent);
+        final File archiveFile = new File("target/output/symlinks.zip");
+        archiveFile.delete();
+        archiver.setDestFile(archiveFile);
+        archiver.createArchive();
+
+        File output = getTestFile("target/output/unzippedSymlinks");
+        output.mkdirs();
+        ZipUnArchiver unarchiver = (ZipUnArchiver) lookup(UnArchiver.class, "zip");
+        unarchiver.setSourceFile(archiveFile);
+        unarchiver.setDestFile(output);
+        unarchiver.extract();
+        // second unpacking should also work
+        unarchiver.extract();
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void symlinkDirArchiver() throws Exception {
+        DirectoryArchiver archiver = (DirectoryArchiver) lookup(Archiver.class, "dir");
+
+        File dummyContent = getTestFile("src/test/resources/symlinks/src");
+        archiver.addDirectory(dummyContent);
+        final File archiveFile = new File("target/output/dirarchiver-symlink");
+        archiveFile.mkdirs();
+        archiver.setDestFile(archiveFile);
+        archiver.addSymlink("target/output/dirarchiver-symlink/aNewDir/symlink", ".");
+
+        archiver.createArchive();
+
+        File symbolicLink = new File("target/output/dirarchiver-symlink/symR");
+        assertTrue(Files.isSymbolicLink(symbolicLink.toPath()));
+
+        symbolicLink = new File("target/output/dirarchiver-symlink/aDirWithALink/backOutsideToFileX");
+        assertTrue(Files.isSymbolicLink(symbolicLink.toPath()));
+    }
+
+    @Test
+    void fileSetDoesNotFollowSymLinksByDefault() {
+        assertFalse(new DefaultFileSet(getTestFile("src/test/resources/symlinks/src")).isFollowingSymLinks());
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void followingSymLinksResolvesLinkedDirectories() throws Exception {
+        DirectoryArchiver archiver = (DirectoryArchiver) lookup(Archiver.class, "dir");
+
+        File dummyContent = getTestFile("src/test/resources/symlinks/src");
+        archiver.addFileSet(new DefaultFileSet(dummyContent).followingSymLinks(true));
+        final File archiveFile = new File("target/output/dirarchiver-followed-symlink");
+        archiveFile.mkdirs();
+        archiver.setDestFile(archiveFile);
+
+        archiver.createArchive();
+
+        // a link to a directory becomes the directory, and its target's contents are included
+        File linkedDir = new File(archiveFile, "symDir");
+        assertFalse(Files.isSymbolicLink(linkedDir.toPath()));
+        assertTrue(linkedDir.isDirectory());
+        assertTrue(new File(linkedDir, "targetFile.txt").isFile());
+
+        // including when the target lies outside the base directory
+        assertTrue(new File(archiveFile, "symLinkToDirOnTheOutside/FileInDirOnTheOutside.txt").isFile());
+
+        // a link to a file becomes the file
+        File linkedFile = new File(archiveFile, "symR");
+        assertFalse(Files.isSymbolicLink(linkedFile.toPath()));
+        assertTrue(linkedFile.isFile());
+    }
+}

@@ -1,0 +1,48 @@
+package org.codehaus.plexus.archiver.util;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import org.codehaus.plexus.components.io.attributes.FileAttributes;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class ArchiveEntryUtilsTest {
+
+    @TempDir
+    private Path tempDir;
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void chmodForFileWithDollarPLXCOMP164() throws Exception {
+        File temp = Files.createTempFile(tempDir, "A$A", "BB$").toFile();
+        ArchiveEntryUtils.chmod(temp, 0770);
+        assert0770(temp);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void chmodWithJava7() throws Exception {
+        File temp = Files.createTempFile(tempDir, "D$D", "BB$").toFile();
+        ArchiveEntryUtils.chmod(temp, 0770);
+        assert0770(temp);
+    }
+
+    private void assert0770(File temp) throws IOException {
+        FileAttributes j7 = new FileAttributes(temp);
+        assertTrue(j7.isGroupExecutable());
+        assertTrue(j7.isGroupReadable());
+        assertTrue(j7.isGroupWritable());
+
+        assertFalse(j7.isWorldExecutable());
+        assertFalse(j7.isWorldReadable());
+        assertFalse(j7.isWorldWritable());
+    }
+}

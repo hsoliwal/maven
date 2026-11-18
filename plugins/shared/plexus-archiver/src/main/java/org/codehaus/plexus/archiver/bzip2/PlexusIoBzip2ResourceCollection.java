@@ -1,0 +1,40 @@
+package org.codehaus.plexus.archiver.bzip2;
+
+import javax.annotation.Nonnull;
+import javax.annotation.WillNotClose;
+import javax.inject.Named;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.codehaus.plexus.components.io.attributes.FileAttributes;
+import org.codehaus.plexus.components.io.attributes.PlexusIoResourceAttributes;
+import org.codehaus.plexus.components.io.resources.PlexusIoCompressedFileResourceCollection;
+import org.codehaus.plexus.components.io.resources.PlexusIoResourceCollection;
+
+import static org.codehaus.plexus.archiver.util.Streams.fileInputStream;
+
+/**
+ * Implementation of {@link PlexusIoResourceCollection} for
+ * bzip2 compressed files.
+ */
+@Named("bzip2")
+public class PlexusIoBzip2ResourceCollection extends PlexusIoCompressedFileResourceCollection {
+
+    @Nonnull
+    @Override
+    protected @WillNotClose InputStream getInputStream(File file) throws IOException {
+        return BZip2UnArchiver.getBZip2InputStream(fileInputStream(file));
+    }
+
+    @Override
+    protected PlexusIoResourceAttributes getAttributes(File file) throws IOException {
+        return new FileAttributes(file);
+    }
+
+    @Override
+    protected String getDefaultExtension() {
+        return ".bz2";
+    }
+}
