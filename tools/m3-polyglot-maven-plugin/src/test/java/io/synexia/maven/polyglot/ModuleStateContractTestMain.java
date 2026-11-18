@@ -396,9 +396,14 @@ public final class ModuleStateContractTestMain {
 
     private static void doesNotWriteDuringPlanning(Path temporary) throws Exception {
         Path project = copyProject(temporary, "dry-run", "copy");
-        TaskRunner.run(TaskManifest.load(project.resolve("m3-build.tsv")), project, "copy", true,
-                TIMEOUT, false, true, ignored -> {});
-        check(!Files.exists(project.resolve(".m3")) && count(project) == 0, "planning creates no state and starts no tool");
+        TaskManifest plan = TaskManifest.load(project.resolve("m3-build.tsv"));
+        TaskRunner.run(plan, project, "copy", true, TIMEOUT, false, true, ignored -> {});
+        for (String backend : List.of("embedded", "file", "sqlite", "h2", "native", "ext-review")) {
+            TaskRunner.run(plan, project, "copy", true, TIMEOUT, false, true, backend,
+                    project.resolve("uncreated-cache"), ignored -> {});
+            check(!Files.exists(project.resolve(".m3")) && count(project) == 0,
+                    "planning with " + backend + " creates no state, cache or tool process");
+        }
         run(project, "copy", false);
         run(project, "copy", false);
         check(count(project) == 2, "disabled incremental mode always executes");
