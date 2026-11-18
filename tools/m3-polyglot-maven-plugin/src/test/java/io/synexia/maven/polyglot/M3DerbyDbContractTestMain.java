@@ -67,6 +67,8 @@ public final class M3DerbyDbContractTestMain {
                 checkIo(() -> ModuleStateDb.open(empty, ID), "missing optional Derby driver is explicit");
                 require(!Files.exists(empty.resolve(ModuleStateDb.EMBEDDED_FILE)),
                         "Derby driver absence does not fall back to M3IndexDB");
+                require(!Files.exists(empty.resolve(ModuleStateDb.MARKER)),
+                        "missing Derby driver cannot dirty or create a successful generation");
                 System.out.println("NOT_RUN: real Derby 10.16.1.1 engine not installed");
                 System.out.println("PASS: " + checks + " offline Derby SPI and path contracts");
                 return;
@@ -207,7 +209,8 @@ public final class M3DerbyDbContractTestMain {
     private static void child(String mode, Path module, int expected) throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
-        Process process = new ProcessBuilder(java.toString(), "-cp",
+        Process process = new ProcessBuilder(java.toString(),
+                "-Dderby.stream.error.field=java.lang.System.err", "-cp",
                 System.getProperty("java.class.path"), M3DerbyDbContractTestMain.class.getName(),
                 mode, module.toString()).inheritIO().start();
         if (!process.waitFor(45, TimeUnit.SECONDS)) {
