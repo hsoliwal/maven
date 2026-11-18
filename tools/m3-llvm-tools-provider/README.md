@@ -162,6 +162,25 @@ native tasks or restoring their outputs until a separate verified
 producer-specific cache admission design exists. The existing provider
 runner continues to execute all provider tasks.
 
+A native tool task can additionally demand this exact manifest at plan
+time. For example, in a `m3-build.tsv` optimizer task declare:
+
+```text
+arg<TAB>optimize<TAB>--m3-llvm-home=/opt/llvm-fork
+arg<TAB>optimize<TAB>--m3-llvm-evidence=/work/llvm-toolchain.tsv
+```
+
+The `--m3-llvm-evidence=<path>` option is consumed by the existing
+`@m3:llvm-tools` provider and never forwarded to LLVM. Before returning
+the original command vector it re-verifies all manifest rows and **requires
+that the executable selected for the task is among them**. The task must
+also have an explicit or shared LLVM installation root (or an explicit
+`bin` directory ending in `bin`); a bare PATH executable cannot silently
+acquire provenance from some other installation. A missing manifest,
+unrecognized selected driver, changed binary or escaping symlink fails
+planning. This is an optional security/evidence gate: without the option,
+existing tasks are unchanged, and **no provider work becomes cacheable**.
+
 The offline Java 17 suite exercises sorting, content changes,
 canonical verification, root-relative paths, symlinks, external-target
 refusal, missing/duplicate tools and atomic publication. Its success does
