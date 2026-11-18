@@ -35,7 +35,7 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
 
-    /** Embedded M3IndexDB by default; file/native, SQLite/H2, and explicit ext-* providers remain available. */
+    /** Embedded M3IndexDB by default; file/native, SQLite/H2/HSQLDB, and explicit ext-* providers remain available. */
     @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "embedded")
     private String incrementalState;
 

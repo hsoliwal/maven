@@ -55,6 +55,7 @@ public final class ModuleStateView {
             case "m3db" -> M3DbModuleStore.NATIVE_DIRECTORY;
             case "sqlite" -> M3ModuleJdbcStorage.SQLITE_FILE;
             case "h2" -> M3ModuleJdbcStorage.H2_FILE;
+            case "hsqldb" -> M3ModuleJdbcStorage.HSQLDB_FILE;
             default -> M3DbModuleStore.MARKER;
         };
     }

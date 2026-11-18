@@ -56,7 +56,7 @@ public final class PolyglotCli {
                     if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
                     stateBackendSupplied = true;
                     stateBackend = args[index];
-                    if (!java.util.Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2")
+                    if (!java.util.Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2", "hsqldb")
                             .contains(stateBackend)
                             && !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) throw usage();
                 }
@@ -88,7 +88,7 @@ public final class PolyglotCli {
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|ext-id] [--approve-rewrite-apply]"
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|hsqldb|ext-id] [--approve-rewrite-apply]"
                 + " [--build-cache <dir>]"
                 + " (incremental, build-cache and approval require run; state-backend also requires incremental)");
     }

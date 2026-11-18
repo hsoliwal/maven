@@ -40,7 +40,7 @@ interface ModuleStateBackend {
             case "embedded" -> new ImageStateBackend(root.resolve(M3DbModuleStore.FILE), files);
             case "file" -> new ImageStateBackend(root.resolve(M3DbModuleStore.FILE_BACKEND), files);
             case "m3db" -> DirectoryStateBackend.open(root.resolve(M3DbModuleStore.NATIVE_DIRECTORY), files);
-            case "sqlite", "h2" -> new JdbcStateBackend(root, backend);
+            case "sqlite", "h2", "hsqldb" -> new JdbcStateBackend(root, backend);
             default -> ProviderStateBackend.open(root, backend);
         };
     }

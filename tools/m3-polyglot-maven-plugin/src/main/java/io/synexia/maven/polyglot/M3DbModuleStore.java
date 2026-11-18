@@ -222,10 +222,10 @@ final class M3DbModuleStore implements AutoCloseable {
             case "embedded", "legacy" -> "embedded";
             case "file" -> "file";
             case "m3db", "native" -> "m3db";
-            case "sqlite", "h2" -> value;
+            case "sqlite", "h2", "hsqldb" -> value;
             default -> {
                 if (!externalBackend(value)) {
-                    throw new IllegalArgumentException("state backend must be embedded, legacy, file, m3db, sqlite, h2 or ext-<provider>");
+                    throw new IllegalArgumentException("state backend must be embedded, legacy, file, m3db, sqlite, h2, hsqldb or ext-<provider>");
                 }
                 yield value;
             }
@@ -613,7 +613,7 @@ final class M3DbModuleStore implements AutoCloseable {
         try { lines = Files.readAllLines(path, StandardCharsets.US_ASCII); }
         catch (java.nio.charset.MalformedInputException corrupt) { return List.of(); }
         if (lines.size() != 4 || !MARKER_MAGIC.equals(lines.get(0))
-                || (!Set.of("embedded", "file", "m3db", "sqlite", "h2").contains(lines.get(1))
+                || (!Set.of("embedded", "file", "m3db", "sqlite", "h2", "hsqldb").contains(lines.get(1))
                         && !externalBackend(lines.get(1)))
                 || !lines.get(2).matches("[0-9a-f]{32}")
                 || !Set.of("clean", "dirty").contains(lines.get(3))) return List.of();
