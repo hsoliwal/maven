@@ -85,8 +85,10 @@ under the License.
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <!-- in-tree: plugins/shared/plexus-utils -->
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
+      <version>${project.version}</version>
     </dependency>
 
     <!-- dependencies to annotations -->
