@@ -179,6 +179,42 @@ to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
     -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
 ~~~
 
+### Executed JUnit receipt admission
+
+The real JDK 17 and 21 Gradle consumer results from GitHub Actions run
+`44237386509` have been inspected as **actual JUnit XML**, not inferred
+from a green Gradle process status. Each JDK emitted these same three
+suites: `M3ProjectDbRealEngineTest` (1 case),
+`M3ProjectDbGradleNativeRealEngineTest` (1 case) and
+`M3ProjectDbTaskTest` (4 cases). Each reported zero failed, errored
+or skipped tests. Both Gradle jobs completed successfully; the *separate
+Maven owner jobs in that historical run failed at a stale workflow guard*.
+Those historical Gradle JUnit facts therefore do not make the whole
+run green.
+
+The source-owned `scripts/verify-gradle-testkit-results.sh` compiles
+and runs `M3GradleTestKitReceiptMain.java` on the **consumer JDK** using
+`javac --release 17 -Xlint:all -Werror`, then securely parses the
+original JUnit XML with Java's built-in DOM API. DTDs and external XML
+entities are disabled. The parser validates the **six named required
+testcases**, three exact suites, zero skips/errors/failures and no extra
+project-DB suites after `test --tests '*M3ProjectDb*'`. It refuses
+missing, symlinked or oversized suite XML files, duplicated testcase IDs,
+and a swapped classname or noncanonical testcase count.
+
+Both the shell launcher and Java source are included in
+`qualified-maven-jars-jdk-<java>` and sealed alongside the original
+Maven JARs and `SOURCE_RECEIPT.tsv` in `SHA256SUMS`. The consumer
+cannot accept a green Gradle process exit with skipped real-engine tests,
+a missing expected suite or a forged testcase inside an XML comment.
+
+This Java receipt gate was compiled with JDK 21 targeting Java 17 and
+executed against both archived JDK XML reports: **PASS**. Eight
+deliberately altered reports were refused: missing or extra suite,
+nonzero skip/failure count, changed or duplicated testcase name,
+an invalid test count, forged XML comments and a DTD. It is **not** a full Gradle distribution, native toolchain,
+M3JDK21 platform or Windows/macOS qualification.
+
 This runs Gradle's original TestKit cases for an actual source-pinned
 Maven engine, including ingestion of a **Gradle-only** JUnit failure
 without a POM, source-line/build provenance, and changed/unchanged

@@ -103,8 +103,10 @@ Every run still validates canonical evidence, enumerates and hashes current
 inputs, and rechecks them after computation. Attribution and may-flow analysis
 run when requested because their dependency scope is wider than a single source
 file. This cache does not skip compilation, tests, resource processing, install,
-deploy, watch-mode clean builds, or any other lifecycle goal. The pending polyglot
-task-receipt proposals have a different scope and separate storage paths.
+deploy, watch-mode clean builds, or any other lifecycle goal. The merged
+[polyglot task cache](../m3-polyglot-maven-plugin/README.md#persistent-module-database)
+and opt-in [ordinary Maven lifecycle cache](extension/README.md) provide separate
+build-reuse capabilities with their own admission rules and storage paths.
 
 The `moduleDatabase` object in `target/m3-smart/machine-fingerprints.json` reports
 `hits`, `misses`, `filesComputed`, `mode`, `provider`, `status`, and `reason`. A warm

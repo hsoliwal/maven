@@ -47,8 +47,10 @@ jobs:
           mkdir -p qualified-maven-jars
           install -m 0644 tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/polyglot.jar
           install -m 0644 tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/project-db.jar
+          install -m 0644 tools/project-db/scripts/verify-gradle-testkit-results.sh qualified-maven-jars/verify-gradle-testkit-results.sh
+          install -m 0644 tools/project-db/scripts/M3GradleTestKitReceiptMain.java qualified-maven-jars/M3GradleTestKitReceiptMain.java
           printf 'M3-PROJECTDB-JARS-V1\t%s\t%s\n' "$GITHUB_SHA" '${{ matrix.java }}' > qualified-maven-jars/SOURCE_RECEIPT.tsv
-          (cd qualified-maven-jars && sha256sum polyglot.jar project-db.jar SOURCE_RECEIPT.tsv > SHA256SUMS && sha256sum -c SHA256SUMS)
+          (cd qualified-maven-jars && sha256sum polyglot.jar project-db.jar SOURCE_RECEIPT.tsv verify-gradle-testkit-results.sh M3GradleTestKitReceiptMain.java > SHA256SUMS && sha256sum -c SHA256SUMS)
       - name: Publish qualified Maven JAR bytes and SHA-256 receipt
         uses: actions/upload-artifact@v4
         with:
@@ -109,6 +111,8 @@ jobs:
           cd consumer-gradle
           ./gradlew --no-daemon --stacktrace --console=plain \
             -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+      - name: Enforce six real Gradle project-DB cases and zero skipped tests
+        run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test
       - name: Retain Gradle TestKit reports for accepted or failed runs
         if: always()
         uses: actions/upload-artifact@v4

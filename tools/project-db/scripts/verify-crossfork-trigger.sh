@@ -37,6 +37,10 @@ expect_count "M3-PROJECTDB-JARS-V1" 2
 expect_count "wrong Maven source SHA or JDK lane" 1
 expect_count "          ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6" 1
 expect_count "test --tests '*M3ProjectDb*' --rerun-tasks" 1
+expect_count "install -m 0644 tools/project-db/scripts/verify-gradle-testkit-results.sh" 1
+expect_count "install -m 0644 tools/project-db/scripts/M3GradleTestKitReceiptMain.java" 1
+expect_count "SOURCE_RECEIPT.tsv verify-gradle-testkit-results.sh M3GradleTestKitReceiptMain.java > SHA256SUMS" 1
+expect_count "run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test" 1
 expect_count "name: projectdb-gradle-testkit-jdk-" 1
 
 echo "PASS: one source-qualified Maven build and SHA-verified Gradle TestKit consumer per JDK"

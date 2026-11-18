@@ -358,6 +358,17 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
 
 To select preserved file storage, add `-Dm3.polyglot.incrementalState=file`.
 Use `m3db` or `native` only on M3jdk21 or with the MIndexDB runtime present in the plugin realm.
+Current M3JDK places `jdk.m3.db.M3DB` in `java.base`. When the package is concealed,
+launch Maven with `--add-exports=java.base/jdk.m3.db=ALL-UNNAMED` in `.mvn/jvm.config`
+or `MAVEN_OPTS`; the legacy package uses `jdk.m3.indexdb` in that option instead.
+See [Reaching the owner](../../docs/M3-MODULE-DB.md#reaching-the-owner) for the binding order.
+
+For a Maven 4 single-module root, also use
+`-Dmaven.reactor.outputRepository=target/project-local-repo` to keep Maven's generated
+project output repository under the build directory, outside the module's input tree.
+Newly initialized generated source inputs may need an initial build to settle before
+unchanged later builds can reuse the persisted compiler state.
+
 The phase-binding command in the next section additionally requires the smart core extension,
 the installed plugin and phase-named manifest targets. The shipped provider example is a
 reviewable CodeQL/OpenRewrite plan; its providers deliberately do not demonstrate cache hits.
