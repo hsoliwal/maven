@@ -124,6 +124,22 @@ Tests cover 4,096 simultaneously retained tasks, the 65,536-entry limit,
 immediate/transactional writes, restart persistence and a deterministic
 `TreeMap` oracle (test-only).
 
+**Packed SHA-256 lanes.** The committed and staged digest columns now retain
+exactly 32 bytes per input/output receipt in contiguous primitive `byte[]`
+storage, matching M3JDK21 `BuildState`'s array-backed SHA lanes. Only sorted
+task identities remain `String[]` fields. The original lowercase 64-character
+SHA strings are projected at the `ModuleStateDb.lookup`/`ModuleStateView` API
+boundary; no per-receipt digest String objects or entry nodes are retained.
+Bounded array shifts, sorted-run merges, prefix/bulk revocations and receipt
+serialization move 32-byte slices directly. Incremental cache-hit admission
+also compares caller-supplied lower-case SHA-256 text **against packed bytes**
+without first projecting two temporary hash Strings; `lookup()` remains
+unchanged for public consumers. The sealed **v2** receipt format
+remains byte-for-byte unchanged, including the original SHA-256 integrity seal,
+and all backend choices continue to consume the same image. A test-only
+deterministic model with distinct hashes, a structural primitive-array gate,
+and a manually produced v2 envelope guard against layout/format regressions.
+
 One owner holds the module state: `M3DbModuleStore` keeps the receipt codec, lease, generation marker and
 revocation; every backend is an implementation of the one `ModuleStateBackend` interface. The built-in
 backends store through the one storage layer `IndexStore` (M3IndexDB: the platform form on M3jdk21, the
@@ -566,6 +582,77 @@ receipt, or a goal-skip instruction. Maven and Gradle must bind independently
 verified toolchain, dependency, generation, source-root, output and ABI facts
 before trusting any incremental optimization.
 
+### One Eclipse invocation: original delta + selected build configuration
+
+The portable Java 17 \`M3EclipseBuildHandoffWire\` reads the **single packet**
+produced by \`hsoliwal/m2e-core\`'s
+\`M3EclipseBuildHandoff\`. The existing opt-in original m2e builder captures
+the actual \`IBuildConfiguration\` and its original \`IResourceDelta\` within
+one invocation; no Eclipse runner, JDT or CDT compiler is embedded in Maven.
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli handoff \
+  /project/root/target/ide/build-handoff.ide
+\`\`\`
+
+A successful decoding result has schema \`m3-eclipse-build-handoff-v1\` and
+includes source-owner/project/invocation IDs, selected and active
+configuration names, the original declared configuration/builder/nature
+lists, build kind, delta completeness and array-backed change records.
+The file is read once with \`NOFOLLOW_LINKS\` and bounded to 12 MiB.
+Malformed UTF-8, ambiguous Base64URL, noncanonical UUID, unknown change
+kind, duplicate/unsorted paths, configuration contradictions, false
+full/clean completeness and oversized inputs fail closed.
+
+\`Snapshot.scopeSha256(workspaceOwnerId)\` provides a stable **advisory**
+configuration scope for caller-selected, uniquely identified workspaces:
+the digest frames provider, workspace ID, project and selected
+configuration. It deliberately excludes the invocation UUID so repeated
+builds of the *same configuration* have the same scope, while Debug and
+Release or separate workspaces do not collide. It is **not** a cache key.
+Never use it to skip Maven goals or restore outputs without separately
+verified source, dependency graph, toolchain, environment, ABI and output
+completeness.
+
+The Maven plugin maintains the original \`EclipseModelCli owners\` and
+\`context\` entry points; the new \`handoff\` subcommand is opt-in and
+returns diagnostics only. The original m2e class writes packets explicitly;
+nothing automatically uploads Eclipse project contents or starts build
+processes. The same Maven JAR is consumed by Gradle's
+\`m3EclipseBuildHandoff\` task without copying this decoder.
+
+### Reconcile an Eclipse invocation with the current project model
+
+\`M3EclipseBuildReconciliation\` compares an original Eclipse
+\`M3-ECLIPSE-BUILD-HANDOFF-V1\` packet with the current read-only
+\`EclipseProjectModel\`. It checks the exact Eclipse project identity,
+ordered \`buildSpec\` builder IDs and ordered nature IDs. If the host
+reported a FULL/CLEAN build or an incomplete delta, it also requires
+ordinary reconciliation. The result is **not** a compiler/ABI/cache verdict.
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli reconcile \
+  /project/root /project/root/target/ide/build-handoff.ide
+\`\`\`
+
+The output schema \`m3-eclipse-reconciliation-v1\` returns one of
+\`DECLARATIONS_MATCH\` or \`RECONCILE\`, with deterministic reason codes:
+\`FOREIGN_PROJECT\`, \`BUILDERS_CHANGED\`, \`NATURES_CHANGED\`,
+\`FULL_OR_CLEAN\` and \`INCOMPLETE_DELTA\`. The report includes exact
+source-owner invocation and configuration names, original change count,
+the current \`.project\` SHA-256 and the advisory disposition.
+
+A matching declaration does **not** establish an atomic workspace
+generation: builder *arguments*, CDT scanner configurations, JDT
+classpath, annotation processors, Rust/Cargo targets, PDE/OSGi resolution,
+toolchain identity, generated outputs and runtime inputs are still
+language-owner evidence. Never treat \`DECLARATIONS_MATCH\` as a
+Maven/Gradle goal skip, source transformation authorization, or artifact
+cache admission. A future qualified Eclipse adapter can use the report to
+decide whether to ask the original owner for a full reconciliation.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
@@ -573,7 +660,7 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
-| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)) |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)); `@m3:llvm:compiler:{c,cpp,objc,objcpp,objc++,fortran,llvm-ir}` delegates to Clang, Flang and `llc` ([LLVM toolchain](docs/LLVM_TOOLCHAIN.md)) |
 | `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results; `@m3:surefire:interpreter:libtest` runs cargo test and reports its output; `@m3:surefire:interpreter:junit` runs CTest and normalises its JUnit XML |
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
@@ -586,6 +673,15 @@ versions, malformed service descriptors and invalid argv. The `plan` command
 validates provider resolution without starting a subprocess. Provider tasks are
 **never** skipped by module database reuse: provider-owned hidden inputs, classpaths and ABI
 need their own complete execution evidence.
+
+The optional [LLVM compiler adapter](docs/LLVM_TOOLCHAIN.md) selects the original
+`clang`, `clang++`, `flang` or `llc` executable from PATH, or from a task's explicit
+`--m3-llvm-bin=<directory>` argument. The additive home/digest options described
+below retain the existing `objcpp`, `llvm-ir`/`llc`, bin-selector and unconfigured
+no-installation planning contracts. It can use a separately built, pinned
+[hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project) toolchain without
+bundling LLVM or overriding CMake/Ninja native build ownership. Native header,
+sysroot and compiler dependency coverage is not automatically inferred.
 
 Only the `interpreter` operation may omit output declarations. The others need
 separate declared inputs and outputs, and overlapping source/output paths are
@@ -823,30 +919,27 @@ and runs those default suites in separate JVMs with their complete test classpat
 Real CodeQL extraction, real OpenRewrite application, full Maven reactor execution and m2e/PDE
 behavior have separate runtime acceptance gates.
 
-## LLVM compiler provider
+## LLVM installation selection and native qualification
 
-`@m3:llvm:compiler:<language>` runs the original installed LLVM compiler driver:
-`clang` for `c`, `objc` and `llvm-ir`; `clang++` for `cpp` and `objc++`; and `flang`
-for `fortran`. The language identifier selects the driver. Compiler flags and
-argument boundaries remain the build's responsibility. No LLVM binary is bundled
-or downloaded, and no LLVM implementation is copied into the Maven plugin.
+The existing `llvm` compiler provider now also accepts `objc++` as an alias for
+`objcpp`, `--m3-llvm-home=<installation>` and the optional executable pin
+`--m3-llvm-sha256=<64 hex characters>`. `llvm-ir` continues to select `llc`;
+`c`/`objc` select `clang`, `cpp`/`objcpp`/`objc++` select `clang++`, and `fortran`
+selects `flang`. Original compiler arguments retain their order and boundaries.
 
-Select an installation with `-Dm3.polyglot.llvm.home=/work/llvm-install`,
-`LLVM_HOME`, or a per-task `--m3-llvm-home=<installation>` argument. A per-task
-selection takes precedence over the system property, which takes precedence over
-the environment. Otherwise the existing task-directory/PATH lookup applies.
-An optional task argument `--m3-llvm-sha256=<64 hex characters>` pins the selected
-executable's bytes. These metadata arguments are stripped before the compiler
-is invoked; the first `--` and all later arguments pass through unchanged.
+A task's existing `--m3-llvm-bin=<directory>` or its new home selector takes
+precedence over `m3.polyglot.llvm.home` and then `LLVM_HOME`. Supplying both task
+selectors is refused. Home selection or a digest requires an available executable;
+unconfigured and unpinned legacy-bin commands preserve planning before the tools
+are installed. An executable digest does not pin the whole SDK, linker or runtime.
 
-LLVM provider tasks always execute under the existing `@m3` provider rule, even
-with incremental reuse or output caching enabled. The executable digest does
-not identify the whole SDK, linker or runtime installation. Dependency files
-produced through explicit `-MD -MF` flags are preserved as declared outputs; this
-provider does not consume them to skip compilation. The existing M3 module
-database and cache eligibility rules retain their ownership.
+LLVM tasks retain the existing `@m3` rule: they always execute and cannot restore
+cached outputs or publish reusable provider generations. Unverified dependents
+also execute. Explicit `-MD -MF` flags preserve depfiles as declared outputs; no
+new dependency scanner, cache engine or native skipping rule is introduced.
 
-See [LLVM toolchain setup and manifest examples](docs/LLVM_TOOLCHAIN.md) for
-installation precedence, digest limitations, failure handling, the pinned
-`hsoliwal/llvm-project` source reference, CMake/Ninja build instructions and the
-existing `code-clustering-clang` handoff through `compile_commands.json`.
+[LLVM toolchain details](docs/LLVM_TOOLCHAIN.md) describe selector precedence,
+legacy compatibility, digest limitations, C compilation/linking, the pinned
+`hsoliwal/llvm-project` source and the existing Clang atomizer handoff. The runnable
+Maven consumer in `examples/llvm` complements the preserved `examples/llvm-native`
+Clang-to-LLVM-IR-to-`llc` example. No LLVM implementation or binary is bundled.

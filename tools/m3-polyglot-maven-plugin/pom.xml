@@ -121,6 +121,17 @@
             </configuration>
           </execution>
           <execution>
+            <id>packed-sha-receipt-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3PackedReceiptContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>index-store-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
@@ -260,6 +271,28 @@
             </configuration>
           </execution>
           <execution>
+            <id>eclipse-model-reconciliation-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3EclipseBuildReconciliationContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>eclipse-invocation-handoff-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3EclipseBuildHandoffWireContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>eclipse-configuration-wire-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
@@ -280,13 +313,13 @@
             </configuration>
           </execution>
           <execution>
-            <id>llvm-provider-contract</id>
+            <id>llvm-installation-selection-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
             <configuration>
               <arguments>
                 <argument>-classpath</argument><classpath/>
-                <argument>io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain</argument>
+                <argument>io.synexia.maven.polyglot.LlvmInstallationSelectionContractTestMain</argument>
               </arguments>
             </configuration>
           </execution>
@@ -307,6 +340,15 @@
             <goals><goal>java</goal></goals>
             <configuration>
               <mainClass>io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>llvm-provider-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain</mainClass>
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>

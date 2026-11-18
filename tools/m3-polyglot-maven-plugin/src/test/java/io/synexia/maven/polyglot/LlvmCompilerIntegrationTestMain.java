@@ -8,9 +8,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -18,7 +20,8 @@ import java.util.stream.Stream;
 /**
  * Real LLVM compiler, linker and executable checks through the Maven task runner.
  * Optional when no toolchain is installed; --required makes its absence a failure.
- * A configured but incomplete toolchain always fails. This does not certify a
+ * A configured home missing either required C/C++ driver fails. Optional llc and
+ * Flang lanes report NOT_RUN when their drivers are absent. This does not certify a
  * particular LLVM source revision, cross target, SDK or native platform.
  */
 public final class LlvmCompilerIntegrationTestMain {
@@ -159,13 +162,25 @@ public final class LlvmCompilerIntegrationTestMain {
     }
 
     private static void llvmIr(Path root) throws Exception {
+        if (!available("llc", root)) {
+            System.out.println("NOT_RUN: LLVM IR object compile/link/run (llc driver unavailable)");
+            return;
+        }
         String source = "src with spaces/main.ll";
         String output = output("ir");
+        String object = "target native/ir.o";
         write(root, source, "define i32 @main() {\nentry:\n  ret i32 0\n}\n");
-        single(root, "ir", "llvm-ir", List.of("-Wno-override-module", "-x", "ir", source, "-o", output),
-                source, output);
-        check(execute(root, root.resolve(output)).isEmpty(), "LLVM IR compiles, links and executes");
-        System.out.println("PASS: LLVM IR compile/link/run");
+        StringBuilder manifest = new StringBuilder(TaskManifest.MAGIC).append('\n');
+        appendTask(manifest, "ir", "llvm-ir", List.of("-filetype=obj", source, "-o", object),
+                List.of(source), List.of(object));
+        appendTask(manifest, "ir-link", "c", List.of(object, "-o", output),
+                List.of(object), List.of(output));
+        manifest.append("dep\tir-link\tir\n");
+        TaskRunner.run(TaskManifest.load(write(root, "ir.tsv", manifest.toString())), root,
+                "ir-link", false, TIMEOUT, line -> { });
+        check(Files.size(root.resolve(object)) > 0, "legacy llvm-ir driver llc emits the requested object file");
+        check(execute(root, root.resolve(output)).isEmpty(), "LLVM IR object links through Clang and executes");
+        System.out.println("PASS: LLVM IR llc object compilation, separate Clang link and executable run");
     }
 
     private static void nestedWorkingDirectory(Path root) throws Exception {
@@ -173,8 +188,14 @@ public final class LlvmCompilerIntegrationTestMain {
         write(root, "nested working dir/main.c",
                 "#include <stdio.h>\nint main(void) { puts(\"31\"); return 0; }\n");
         String executable = "nested" + (windows() ? ".exe" : "");
+        String selected = M3ToolProviders.command(probe("c"), root).get(0);
+        Path driver = Path.of(TaskRunner.resolveTool(selected, root));
+        if (!driver.isAbsolute()) driver = root.resolve(driver);
+        String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(driver)));
         String manifest = TaskManifest.MAGIC + "\n"
                 + "task\tnested\t@m3:llvm:compiler:c\tnested working dir\n"
+                + "arg\tnested\t--m3-llvm-bin=" + driver.getParent() + "\n"
+                + "arg\tnested\t--m3-llvm-sha256=" + digest + "\n"
                 + "arg\tnested\t-std=c17\n"
                 + "arg\tnested\tmain.c\n"
                 + "arg\tnested\t-o\n"
@@ -185,7 +206,7 @@ public final class LlvmCompilerIntegrationTestMain {
         TaskRunner.run(plan, root, "nested", false, TIMEOUT, line -> { });
         check(execute(root, root.resolve("nested working dir/" + executable)).equals("31"),
                 "task-relative argv and module-relative input/output declarations preserve the selected cwd");
-        System.out.println("PASS: LLVM nested task working directory with module-relative declarations");
+        System.out.println("PASS: LLVM nested task working directory, legacy bin selector and actual driver SHA-256");
     }
 
     private static void objectiveC(Path root) throws Exception {
@@ -202,7 +223,11 @@ public final class LlvmCompilerIntegrationTestMain {
         single(root, "objcpp", "objc++", List.of("-std=c++20", "-Wno-objc-root-class", "-x", "objective-c++",
                 "-c", objcpp, "-o", "target native/objcpp.o"), objcpp, "target native/objcpp.o");
         check(Files.size(root.resolve("target native/objcpp.o")) > 0, "Objective-C++ frontend emits an object");
-        System.out.println("PASS: Objective-C/Objective-C++ compile-only (no SDK or Objective-C runtime qualification)");
+        single(root, "objcpp-alias", "objcpp", List.of("-std=c++20", "-Wno-objc-root-class", "-x", "objective-c++",
+                "-c", objcpp, "-o", "target native/objcpp-alias.o"), objcpp, "target native/objcpp-alias.o");
+        check(Files.size(root.resolve("target native/objcpp-alias.o")) > 0,
+                "legacy objcpp and additive objc++ both compile Objective-C++");
+        System.out.println("PASS: Objective-C and both Objective-C++ names compile (no SDK/runtime linkage qualification)");
     }
 
     private static void fortran(Path root) throws Exception {

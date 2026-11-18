@@ -1,0 +1,15 @@
+M3-ECLIPSE-BUILD-HANDOFF-V1
+provider	eclipse.m2e
+project64	TWl4ZWQ
+invocation	9ab5cc33-33bd-4f33-8aa9-6c3c11223344
+selected64	RGVidWc
+active64	UmVsZWFzZQ
+kind	INCREMENTAL
+complete	true
+configuration64	RGVidWc
+configuration64	UmVsZWFzZQ
+builder64	b3JnLmVjbGlwc2UuamR0LmNvcmUuamF2YWJ1aWxkZXI
+builder64	b3JnLmVjbGlwc2UuY2R0Lm1hbmFnZWRidWlsZGVyLmNvcmUuZ2VubWFrZWJ1aWxkZXI
+nature64	dmVuZG9yLnJ1c3RkdC5uYXR1cmU
+change	ADDED	src/A.java
+change	MODIFIED	src/B.java

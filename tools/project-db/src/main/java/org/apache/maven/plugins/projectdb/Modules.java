@@ -19,15 +19,19 @@
 package org.apache.maven.plugins.projectdb;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * Module directories of a project outside Maven (CLI, MCP): the root and every directory below it that holds a
- * {@code pom.xml}, skipping build output and VCS folders. Inside Maven the reactor gives the modules instead.
+ * a Maven or Gradle build descriptor. Prune build output and VCS folders before walking their entries;
+ * inside Maven, the reactor still gives the authoritative modules.
  */
 final class Modules {
     private static final int DEPTH = 6;
@@ -38,17 +42,31 @@ final class Modules {
 
     static List<Path> discover(Path root) throws IOException {
         Path project = root.toAbsolutePath().normalize();
-        try (Stream<Path> walk = Files.walk(project, DEPTH)) {
-            return walk.filter(Modules::descriptor)
-                    .map(Path::getParent)
-                    .filter(module -> project.relativize(module).toString().isEmpty() || included(project, module))
-                    .distinct().sorted().toList();
-        }
+        List<Path> modules = new ArrayList<>();
+        Files.walkFileTree(project, Set.of(), DEPTH, visitor(project, modules));
+        return modules.stream().distinct().sorted().toList();
+    }
+
+    /** Reject output and vendor subtrees before opening their descendants. */
+    private static SimpleFileVisitor<Path> visitor(Path project, List<Path> modules) {
+        return new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
+                return !directory.equals(project) && SKIP.contains(directory.getFileName().toString())
+                        ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                if (attributes.isRegularFile() && descriptor(file)) modules.add(file.getParent());
+                return FileVisitResult.CONTINUE;
+            }
+        };
     }
 
     /** Native Gradle and Maven module boundaries, without treating output folders as modules. */
     private static boolean descriptor(Path path) {
-        if (path.getFileName() == null || !Files.isRegularFile(path)) return false;
+        if (path.getFileName() == null) return false;
         return switch (path.getFileName().toString()) {
             case "pom.xml", "build.gradle", "build.gradle.kts",
                     "settings.gradle", "settings.gradle.kts" -> true;
@@ -56,11 +74,4 @@ final class Modules {
         };
     }
 
-    /** True when no directory between the root and the module is a skipped folder. */
-    private static boolean included(Path root, Path module) {
-        for (Path part : root.relativize(module)) {
-            if (SKIP.contains(part.toString())) return false;
-        }
-        return true;
-    }
 }

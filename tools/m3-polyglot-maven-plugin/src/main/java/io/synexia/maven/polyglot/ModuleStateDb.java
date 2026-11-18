@@ -114,8 +114,12 @@ public final class ModuleStateDb implements AutoCloseable {
     public synchronized String[] lookup(String key) { return store.lookup(key); }
 
     public synchronized boolean hit(String key, String input, String output) {
-        String[] value = lookup(key);
-        return value != null && value[0].equals(input) && value[1].equals(output);
+        return store.matches(key, input, output);
+    }
+
+    /** Direct packed SHA input check without allocating a pair of hex Strings. */
+    public synchronized boolean matchesInput(String key, String input) {
+        return store.matchesInput(key, input);
     }
 
     public synchronized String generation(String key) {

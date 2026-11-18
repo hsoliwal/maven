@@ -73,9 +73,11 @@ Every store directory gets a `.gitignore` of `*`, so it is never committed; this
 The standalone ProjectDbCli now discovers project and module directories with
 `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, or
 `settings.gradle.kts` (without requiring a POM). It skips the build,
-target, .gradle, .m3 and VCS/output directories, de-duplicates modules with
-multiple descriptors, and reads original Gradle TEST-*.xml artifacts directly
-from each test task under build/test-results. It never starts Gradle or
+target, .gradle, .m3 and VCS/output directories **before descending into
+them**, de-duplicates modules with multiple descriptors, and reads original
+Gradle TEST-*.xml artifacts directly from each test task under
+build/test-results. This bounded FileVisitor traversal avoids enumerating
+large build trees or node_modules in order to reject their descriptors. It never starts Gradle or
 reprocesses unchanged report bytes; the original ProjectDb/IndexStore and
 SurefireParser remain the only data and parsing owners.
 
@@ -148,6 +150,38 @@ all take `--store DIR` and `--persistent`.
   facets (with and without question words), store locations, storage binding, MCP and CLI.
 - `scripts/e2e.sh` runs a real multi-module Maven build (`src/test/projects/e2e`) twice (green, then red), ingests
   both, and checks the five questions and that every answer has file, line and build id.
+
+## Real Gradle consumer TestKit in Maven's CI
+
+The project database's cross-fork workflow runs a second, independent
+JDK 17/21 job for the **actual Gradle fork consumer**, not just an
+in-process Maven test. It builds and verifies the original Maven
+polyglot `IndexStore` and project database JARs from the current
+Maven source, then checks out a **reviewed immutable Gradle consumer
+revision**, `e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`, with a sparse
+checkout of the wrapper and quality-bridge sources. The Gradle wrapper
+pins the 9.9.1 binary distribution by SHA-256.
+
+The job sets `M3_POLYGLOT_JAR` and `M3_PROJECT_DB_JAR` to those
+source-built JARs before executing:
+
+~~~sh
+./gradlew --no-daemon --stacktrace --console=plain \
+    -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+~~~
+
+This runs Gradle's original TestKit cases for an actual source-pinned
+Maven engine, including ingestion of a **Gradle-only** JUnit failure
+without a POM, source-line/build provenance, and changed/unchanged
+source handling. The wrapper and its plugins still need network access
+on the Actions runner. Failed or successful TestKit XML reports are
+retained as workflow artifacts for review.
+
+The immutable Gradle SHA is intentionally not `master`. A newer
+Gradle bridge source revision requires an explicit pin-update and
+fresh JDK 17/21 acceptance. Maven's own project-DB tests, Gradle's
+normal build cache, and Gradle TestKit are separate authorities; no
+cross-fork test automatically grants build-skip or release permission.
 
 ## Attribution
 

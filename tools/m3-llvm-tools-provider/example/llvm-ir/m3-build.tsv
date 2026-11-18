@@ -1,0 +1,24 @@
+M3-POLYGLOT-TASKS-V1
+# Tool names are original LLVM binaries; use --m3-llvm-home=<installed root> if not on PATH.
+task	optimize	@m3:llvm-tools:optimizer:llvm-ir	.
+arg	optimize	-S
+arg	optimize	-passes=instcombine
+arg	optimize	hello.ll
+arg	optimize	-o
+arg	optimize	hello.opt.ll
+input	optimize	hello.ll
+output	optimize	hello.opt.ll
+task	assemble	@m3:llvm-tools:assembler:llvm-ir	.
+dep	assemble	optimize
+arg	assemble	hello.opt.ll
+arg	assemble	-o
+arg	assemble	hello.bc
+input	assemble	hello.opt.ll
+output	assemble	hello.bc
+task	link	@m3:llvm-tools:linker:llvm-ir	.
+dep	link	assemble
+arg	link	hello.bc
+arg	link	-o
+arg	link	hello.linked.bc
+input	link	hello.bc
+output	link	hello.linked.bc

@@ -1,65 +1,240 @@
 <!--
-SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# LLVM compiler tools in Maven
+# LLVM fork as an M3 Maven compiler/toolchain donor
 
-The built-in `llvm` provider connects the existing polyglot task graph to an
-installed LLVM compiler driver. Select it with
-`@m3:llvm:compiler:<language>` in `m3-build.tsv`. Maven keeps its existing task
-planning, process execution, timeout, failure and declared-output checks; the
-selected LLVM driver compiles and links with the arguments supplied by the build.
+**Status: experimental, opt-in compiler command adapter.** This document describes
+the first integration with [hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project)
+and the boundaries for subsequent LLVM/MLIR/LLD work. LLVM source snapshot
+inspected 2026-11-18: `591f3d1edf0a9ee718d17a0ee70dd013b3c01908`
+(`main` at inspection, not a floating runtime dependency).
 
-The source reference is the
-[hsoliwal/llvm-project fork at `591f3d1edf0a9ee718d17a0ee70dd013b3c01908`](https://github.com/hsoliwal/llvm-project/tree/591f3d1edf0a9ee718d17a0ee70dd013b3c01908).
-The provider adds Java command selection and validation. It imports no LLVM
-implementation, bundles no compiler binary and downloads no toolchain.
+Nothing in Maven Core, its standard lifecycle, Maven's public API, or the
+upstream LLVM/CMake/Ninja build graph is replaced. No LLVM source code,
+libraries, binaries, downloads or automatic toolchain installation are bundled.
+LLVM's own code is Apache-2.0 WITH LLVM-exception; this new Java adapter is
+independently authored Apache-2.0 code with no copied LLVM implementation.
 
-## Supported commands
+## What is implemented
 
-| Language identifier | Selected driver | Input selected by the build |
+The existing `M3ToolProvider` SPI offers `@m3:llvm:compiler:<language>`.
+The tool is the **original LLVM executable**, with argument-vector execution
+(no shell). The provider has no automatic lifecycle phase; add a manifest task
+or explicitly bind the normal M3 polyglot lifecycle as usual.
+
+| Language ID | Original driver | Source/output ownership |
 | --- | --- | --- |
-| `c` | `clang` | C sources and ordinary Clang driver options |
-| `cpp` | `clang++` | C++ sources and ordinary Clang C++ driver options |
-| `objc` | `clang` | Objective-C sources, SDK and runtime options |
-| `objc++` | `clang++` | Objective-C++ sources, SDK and runtime options |
-| `fortran` | `flang` | Fortran sources and options supported by the installed Flang |
-| `llvm-ir` | `clang` | LLVM IR or bitcode accepted by the installed Clang |
+| `c` | `clang` | Clang |
+| `cpp` | `clang++` | Clang |
+| `objc` | `clang` | Clang, with the caller's source-language flags |
+| `objcpp` | `clang++` | Clang, with the caller's source-language flags |
+| `objc++` | `clang++` | Additional spelling for the existing `objcpp` driver |
+| `fortran` | `flang` | LLVM Flang (including separately built Flang-RT when linking) |
+| `llvm-ir` | `llc` | LLVM IR code generation |
 
-Only the `compiler` capability is registered. The language identifier chooses
-the driver; it does not add `-x`, `-c`, optimization, target or linker flags.
-Source extensions and explicit flags retain the compiler's original meaning.
-For example, a link task can select `compiler:cpp` and pass object files to
-`clang++`, which retains responsibility for its C++ runtime and linker choices.
-Other languages and capabilities are refused by the existing provider registry.
+The language ID chooses a driver; the caller still supplies all flags.
+In particular, pass `-x objective-c` or `-x objective-c++` when file
+extensions alone do not select the intended Objective-C mode. This provider
+does not claim to implement a Fortran or C++ standard library, or to infer
+any source/header/module graph.
 
-The provider uses `flang`, with no fallback to `flang-new`. Choose an installation
-that supplies the required executable and language features. Support for an
-identifier does not certify every version of that compiler or every target SDK.
+With no installation or digest configured, the driver is resolved from the
+process `PATH` when it executes. This preserves planning without LLVM installed.
+A task can set
+`arg<TAB>name<TAB>--m3-llvm-bin=<directory>` **once** to choose an explicit
+toolchain's `bin` directory. Relative directories are resolved against the
+manifest's module workspace; absolute directories are accepted (including
+Windows paths with spaces). This selector is removed before calling LLVM.
+An empty or duplicate selector fails planning. On Windows the selected
+compiler name ends in `.exe`. No path guessing or fallback to another
+installation happens when an explicit toolchain is selected.
 
-## Select and optionally pin the installation
+The original bin selector remains accepted at any argument position, including
+after `--`. The additive home and digest options below are recognized only before
+the first `--`; otherwise the delimiter and subsequent arguments remain literal.
 
-LLVM home selection uses this precedence:
+The existing M3 provider policy refuses undeclared inputs/outputs and
+overlapping source/output paths, validates argv, and does not classify
+provider-owned compiler work as incremental or output-cache reusable.
+Do **not** treat this provider's mere presence as complete dependency evidence:
+transitive `#include` files, Fortran modules, sysroots, runtime/linker inputs,
+response files and generated headers must be qualified before caching can be
+considered. LLVM's own CMake/Ninja/depfile engine remains authoritative for
+its native incremental compilation.
 
-1. A task argument `--m3-llvm-home=<installation>`.
+## A simple two-stage LLVM IR build
+
+`examples/llvm-native/m3-build.tsv` contains two ordered tasks:
+
+1. `compile`: `clang -S -emit-llvm hello.c -o hello.ll`;
+2. `codegen`: `llc -filetype=asm -o hello.s hello.ll`.
+
+Copy the example to a writable workspace with Clang and `llc` installed,
+then plan without executing either tool:
+
+```sh
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  plan /work/llvm-native /work/llvm-native/m3-build.tsv codegen
+```
+
+Execute only when the installed LLVM toolchain is intended:
+
+```sh
+java -cp /verified/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  run /work/llvm-native /work/llvm-native/m3-build.tsv codegen
+```
+
+For an isolated build of your LLVM fork, first build the chosen tools in
+the original repository using CMake/Ninja (outside the Maven plugin):
+
+```sh
+git clone https://github.com/hsoliwal/llvm-project.git
+cd llvm-project
+git checkout 591f3d1edf0a9ee718d17a0ee70dd013b3c01908
+cmake -S llvm -B build -G Ninja \
+  -DLLVM_ENABLE_PROJECTS="clang;flang;lld;mlir" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DLLVM_PARALLEL_LINK_JOBS=2
+cmake --build build --target clang llc flang
+```
+
+The exact target set depends on the selected LLVM build and host. Configure
+all required runtimes separately (especially Flang-RT for linking Fortran).
+Set `--m3-llvm-bin=<absolute path to llvm-project/build/bin>` on **each**
+manifest compiler task when not using `PATH`. This option is an explicit
+argument, not a global Maven installation setting.
+
+## Existing Maven owners to reuse
+
+- `tools/m3-polyglot-maven-plugin` remains the Maven/Gradle-compatible DAG
+  runner and M3DB receipt owner.
+- `tools/code-clustering-clang` already consumes `compile_commands.json`
+  and Clang JSON AST dumps. Do not duplicate it with a second native parser.
+- `mavenize` already handles `CMakeLists.txt`, CMake's
+  `compile_commands.json`, CTest and `.clangd` for CDT/clangd consumers.
+- `docs/M3-EXTERNAL-BUILD-BRIDGE.md` retains the original external
+  build-owner delta/reconciliation contract. IDE input is advisory, not
+  authorization to skip the native compiler.
+
+The next stages should add explicit, separately tested tooling for Clang
+diagnostics, LLD linking, `opt` pass pipelines, MLIR transforms, LLVM
+`lit`/FileCheck evidence, target triples/sysroots, depfile import,
+module dependency graphs, and reproducible native artifact/toolchain receipts.
+They are **not implemented by this provider**. OpenRewrite remains the
+recipe mutation authority, and M3 AST atomization/patternization is a
+separate contract-preserving pass.
+
+## Qualification gates
+
+The Java 17 contract suite verifies ServiceLoader inventory, command
+selection, selector isolation, invalid/duplicate inputs, and side-effect-free
+dry-run planning **without assuming LLVM is installed**. The additive
+`LlvmCompilerProviderContractTestMain` also checks literal argv preservation
+and that incremental dry-run planning creates no output or state.
+
+To execute its native cases, select an installed toolchain explicitly:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml \
+  -Dm3.polyglot.llvm.test.home=/opt/llvm verify
+M3_POLYGLOT_LLVM_TEST_HOME=/opt/llvm \
+  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+```
+
+This **test-only** setting points to an installation root containing `bin`.
+The test passes the existing `--m3-llvm-bin` task selector. Its setting is
+separate from the production `m3.polyglot.llvm.home` selection described below;
+without a production installation or digest selection, the provider retains its
+PATH default.
+
+The native cases compile C, C++, Objective-C and Objective-C++ to object
+files through `TaskRunner`, verify repeated execution even with incremental
+state and artifact caching enabled, observe an included header changing
+object bytes, and require a real invalid-C failure to reach the caller.
+Optional LLVM IR and Fortran cases use the actual `llc` and `flang` drivers.
+Missing optional tools are reported as `NOT_RUN`; a present but unusable
+configured tool fails. If no test installation is selected, all native
+cases report `NOT_RUN`. Expected invalid-source compiler diagnostics are
+part of the passing failure-propagation case.
+
+Passing these tests qualifies only the selected installed compiler and
+host. It does not prove that the executable was built from the pinned
+LLVM fork revision. Independent release qualification still includes the
+Maven 17/21 CI matrix, Windows/macOS, cross-compilation, cancellation,
+CMake/Ninja/CTest integration, and toolchain/source/ABI provenance checks.
+Report each real-tool case from its actual result; planning a `flang` or
+`llc` command does not count as executing that compiler.
+
+
+`LlvmInstallationSelectionContractTestMain` separately checks the installation
+home, executable digest, selector precedence and compatibility contracts without
+executing a compiler. `LlvmCompilerIntegrationTestMain` retains the additional
+installed-toolchain integration cases.
+
+References: [LLVM CMake](https://llvm.org/docs/CMake.html),
+[LLVM getting started](https://llvm.org/docs/GettingStarted.html),
+[Flang getting started](https://flang.llvm.org/docs/GettingStarted.html),
+and [LLVM license](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/LICENSE.TXT).
+
+## Installation homes and executable digests
+
+The existing `--m3-llvm-bin=<directory>` contract remains available for LLVM
+build trees and other explicitly selected bin folders. This extension also
+accepts `--m3-llvm-home=<installation>`, selecting `<installation>/bin/<driver>`.
+Selection uses the following order:
+
+1. A task's explicit `--m3-llvm-bin=<directory>` or
+   `--m3-llvm-home=<installation>`. Supplying both task selectors is refused.
 2. The Java system property `m3.polyglot.llvm.home`.
 3. The environment variable `LLVM_HOME`.
-4. If no home is configured, the existing runner's executable lookup in the
-   task working directory and then `PATH`.
+4. The original unconfigured driver name, resolved through process `PATH` when
+   execution begins.
 
-With an explicit home, the executable is `<installation>/bin/<driver>`
-(`<driver>.exe` on Windows). A configured installation must supply that driver;
-an invalid selection fails instead of silently choosing a different installation.
-The selected file must exist, and must be executable on POSIX. Ordinary
-executable symlinks are accepted. A `clang++` symlink retains its invocation name
-so that the compiler can select its original C++ driver behavior.
+An explicit bin selection takes precedence over the implicit home property or
+environment. Empty property/environment values are treated as unconfigured.
+Relative bin and home values resolve against the Maven module workspace;
+relative compiler arguments resolve against the task's working directory.
+Use absolute installation paths for easily reviewed configurations.
 
-Relative LLVM home values resolve against the Maven module workspace. Relative
-compiler arguments resolve against the task's working directory.
+A home selection requires the chosen executable to exist and to be executable
+on POSIX. A configured home that cannot supply the driver fails instead of
+falling back to another installation. Ordinary executable symlinks are accepted,
+and `clang++` retains its invocation spelling so its original C++ driver mode
+survives. Flang selection uses `flang`, with no fallback to `flang-new`.
 
-Use an absolute home path for a portable, reviewable task configuration. For
-example, after installing this Maven plugin:
+An optional task argument `--m3-llvm-sha256=<64 hexadecimal characters>` checks
+the selected executable's SHA-256. It can accompany either task selector. When
+used without a home or bin selection, it resolves the executable through the
+existing runner's task-working-directory/PATH lookup and records that absolute
+command for execution. A pin therefore requires a local executable even during
+planning. An unpinned legacy bin selection still permits planning before that
+tool is installed. Uppercase and lowercase hexadecimal digests are accepted.
+
+Both new options use `--name=value` and are removed from the compiler argv.
+Duplicate metadata, malformed values, unknown LLVM metadata before `--`,
+conflicting task selectors and digest mismatches fail. Compiler arguments retain
+their original order and boundaries. The provider adds no language, optimization,
+target, output or linking flags.
+
+**An executable digest does not identify the whole toolchain.** Shared libraries,
+Clang's resource directory, scanners, linkers, runtimes, sysroots, SDKs, plugins
+and the environment need their own provenance and qualification. The recorded
+LLVM source revision also does not prove the origin of a particular installed
+binary. This provider adds no toolchain download or automatic upgrade.
+
+From the Maven fork, install the plugin:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml install
+```
+
+In a consuming module with its own `m3-build.tsv`, plan or execute with an explicit
+installation home:
 
 ```sh
 mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:plan \
@@ -68,40 +243,18 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
     -Dm3.polyglot.llvm.home=/work/llvm-install
 ```
 
-The default manifest is the consuming module's `m3-build.tsv`, and the default
-target is `all`. Use `-Dm3.polyglot.manifest=<path>` and
-`-Dm3.polyglot.target=<name>` for another manifest or target. Install the plugin
-from the Maven fork with:
+The default manifest is the module's `m3-build.tsv`, and the default target is
+`all`. `-Dm3.polyglot.manifest=<path>` and `-Dm3.polyglot.target=<name>` select
+another manifest or target. The additive runnable Maven consumer in
+`examples/llvm` complements the preserved two-stage IR example in
+`examples/llvm-native`.
 
-```sh
-mvn -f tools/m3-polyglot-maven-plugin/pom.xml install
-```
+## Preserve Clang header evidence during compilation
 
-An optional task argument `--m3-llvm-sha256=<64 hexadecimal characters>` verifies
-the SHA-256 of the selected executable's bytes. Calculate the digest from the
-actual chosen binary, including the target of an executable symlink, and record
-it with the build configuration. The source revision above identifies the donor
-reference; it does not by itself prove the provenance of an installed binary.
-
-Both provider arguments use the `--name=value` form and are removed before
-invocation. They are recognized only before the first `--`. The `--` delimiter
-and every subsequent argument pass through unchanged. All other compiler
-arguments retain their original order and boundaries. Duplicate metadata,
-malformed values, unknown LLVM metadata and digest mismatches are refused.
-Planning validates command selection, including a supplied digest, without
-launching the compiler.
-
-**The optional digest covers the selected executable only.** It does not pin
-shared libraries loaded by the driver, Clang's resource directory, the scanner,
-linker, runtimes, sysroot, SDK, plugins or environment. A source-built release
-should separately record and qualify its full installation and target inputs.
-
-## A C compile and link manifest
-
-The following is a TSV manifest: the separators between fields are literal tabs.
-Supply `src/main/c/hello.c` containing the project's entry point and create the
-`target/llvm` output directory before execution, or declare an explicit directory
-preparation task. The provider does not create compiler output directories.
+The following TSV example compiles and links a C entry point. Separators are
+literal tabs. Supply `src/main/c/hello.c` and create `target/llvm` before running,
+or declare an explicit directory-preparation task. Output-directory creation
+remains the consuming build's responsibility.
 
 ```text
 M3-POLYGLOT-TASKS-V1
@@ -127,77 +280,46 @@ input	native-link	target/llvm/hello.o
 output	native-link	target/llvm/hello
 ```
 
-The example assumes a host toolchain that can link this executable. Choose the
-appropriate output filename, target triple, sysroot, libraries and other driver
-flags for the target platform. A Windows executable normally uses `.exe`.
-Headers, generated sources and other project inputs should also be declared.
-A prerequisite can generate headers before the compiler task. Compiler failures,
-timeouts and missing declared outputs fail the existing task runner.
+Choose the output filename, target triple, sysroot, runtime and library flags for
+the target platform; a Windows executable normally uses `.exe`. Declare project
+headers and generated files as inputs too. A prerequisite can create generated
+headers before compilation. Compiler failures, timeouts and missing declared
+outputs fail the existing task runner.
 
-Add per-task installation metadata as ordinary `arg` rows when a task needs a
-different home from the module-wide selection:
+`-MD -MF <file>` tells Clang to emit header dependency evidence. The runner checks
+the declared file exists but does not parse it to skip compilation. LLVM provider
+tasks always execute, including when incremental reuse or output caching is
+enabled. They do not restore cached outputs or publish reusable provider
+generations. Unverified dependents also execute. Existing M3DB storage, leases,
+revocation and ordinary-tool cache eligibility retain their original ownership.
 
-```text
-arg	native-compile	--m3-llvm-home=/work/llvm-install
-arg	native-link	--m3-llvm-home=/work/llvm-install
-```
-
-Apply an executable digest independently to each task that needs it. Two drivers
-in one installation can have different bytes; a digest for `clang` cannot be
-assumed to identify `flang`.
-
-## Dependency evidence and the module database
-
-`-MD -MF <file>` asks Clang to preserve a dependency file alongside an object.
-The provider forwards these options and the runner checks the declared depfile's
-existence. **This integration does not parse depfiles to authorize skipping.**
-
-LLVM provider tasks retain the existing rule for all `@m3` tasks: every selected
-task executes, even when module incremental reuse or the artifact output cache
-is enabled. They neither restore cached outputs nor publish reusable provider
-success evidence. Dependents whose prerequisite evidence is unverified also
-execute. The existing module database facade, storage choices, lifetime lease,
-receipt revocation and ordinary-tool caching rules retain their ownership.
-
-This behavior matters because a native compilation can read system headers,
-generated files, response files, module files and compiler resources outside the
-declared source list. Adding a new header earlier in a search path or changing an
-`__has_include` result can also change the compilation without changing the
-previous depfile's listed inputs. An executable digest and a successful compiler
-exit alone are insufficient evidence for native build reuse.
-
-For future scanner integration, preserve the distinction between header reads
-and C++ module ordering. The pinned
-[standard modules documentation](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/StandardCPlusPlusModules.md)
-describes `clang-scan-deps -format=p1689` for module dependencies, with a companion
-`-MD -MF` depfile for headers. P1689 scanning requires an `output` entry in the
-compilation database. Scanner output is evidence to inspect; this provider adds
-no scanner scheduler or inferred cache eligibility.
+A new header earlier in an include-search path or a changed `__has_include`
+result can affect compilation without changing the old depfile's listed inputs.
+For C++ modules, the pinned
+[module documentation](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/StandardCPlusPlusModules.md)
+describes P1689 module ordering separately from companion `-MD -MF` header
+evidence. P1689 scanning needs the compilation database's `output` field. Neither
+scanner scheduling nor inferred native cache eligibility is added here.
 
 ## Feed the existing Clang atomizer
 
-The fork already owns a
-[Clang front end for code clustering](../../code-clustering-clang/README.md).
-It reads per-file compilation flags from `compile_commands.json` and obtains
-syntax-tree atoms from Clang. Keep that existing owner for C-family atomization.
+The existing [Clang code-clustering front end](../../code-clustering-clang/README.md)
+owns C-family syntax-tree atoms. Continue obtaining `compile_commands.json` from
+the original native build, for example CMake with
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON` on a supported generator.
 
-For CMake projects, continue using the project's CMake/Ninja configuration with
-`CMAKE_EXPORT_COMPILE_COMMANDS=ON` on a generator that supports it. For individual
-Clang driver tasks, explicit `-MJ <fragment-path>` arguments produce compilation
-database fragments. Declare each fragment as an output and write each task to a
-distinct path. A `-MJ` fragment is not by itself a complete compilation database:
-assemble the JSON objects into a valid JSON array, removing the trailing separator
-before its closing bracket. This provider does not perform that aggregation.
+Individual Clang tasks may pass `-MJ <fragment-path>` to emit compilation database
+fragments. Use a distinct declared output for each task. A fragment is not a
+complete database: assemble the objects into a valid JSON array and remove the
+final separator before its closing bracket. The compiler provider does not
+perform that aggregation. The pinned
+[database contract](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/JSONCompilationDatabase.md)
+preserves working directory, source, original argv and multiple configurations
+per source. Prefer unescaped JSON `arguments`; do not split shell-escaped command
+strings on spaces.
 
-The pinned
-[compilation database contract](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/JSONCompilationDatabase.md)
-uses a command's working directory, source file and original argument vector.
-Prefer unescaped JSON `arguments` arrays, preserve multiple configurations of the
-same source, and retain `output` when available. Do not reconstruct a database by
-splitting a shell-escaped command on spaces.
-
-Once the existing clustering plugin and its Clang dependency are configured as
-documented there, select the same installation and generated database explicitly:
+After configuring the clustering plugin and its existing Clang dependency, point
+them at the same installation and native compilation database:
 
 ```sh
 mvn code-clustering:cluster \
@@ -206,76 +328,13 @@ mvn code-clustering:cluster \
     -Dclustering.clang.compileCommands=build/cmake/compile_commands.json
 ```
 
-`m3.polyglot.llvm.home` configures this compiler provider; it does not silently
-rewrite the clustering front end's own settings. The existing lexical fallback
-and outcome reporting still apply when that front end cannot parse a file.
+`m3.polyglot.llvm.home` does not rewrite the clustering front end's independent
+settings. Its existing lexical fallback and outcome reporting remain applicable.
+Java keeps its JDK/ECJ providers. `llvm-ar`, `clang-scan-deps`, `mlir-opt`, `opt`,
+`llc`, coverage and test tools can also remain ordinary explicit native tasks.
 
-## Build the selected LLVM source when needed
-
-An existing qualified installation is sufficient. To build the referenced fork,
-check out the exact source revision and preserve LLVM's original CMake build and
-Ninja execution. For example, with the source already checked out at the pinned
-revision, a separate build directory and explicit install prefix can be
-configured as follows:
-
-```sh
-cmake -S /work/llvm-project/llvm -B /work/llvm-build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/work/llvm-install \
-    '-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra;lld'
-cmake --build /work/llvm-build
-cmake --install /work/llvm-build
-```
-
-These are optional configuration instructions, not evidence that this repository
-built or qualified that toolchain. Select the projects, targets, runtimes and
-host prerequisites required by the consuming build. Fortran needs a compatible
-Flang installation and its MLIR/runtime dependencies; the example above does not
-build Flang. Cross-compilation also requires the target headers, libraries,
-sysroot and platform tools described by LLVM's
-[cross-compilation documentation](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/CrossCompilation.md).
-
-Maven can retain CMake/Ninja, `llvm-ar`, `clang-scan-deps`, `mlir-opt`, `opt`,
-`llc`, coverage and test tools as ordinary explicit tasks under their original
-commands. No additional provider capability, module scheduler, archive builder
-or MLIR pipeline is implied by this compiler integration. Java continues through
-the existing JDK/ECJ providers; LLVM does not supply a frontend for every language.
-
-## Provenance and qualification
-
-The pinned fork's
-[LICENSE.TXT](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/LICENSE.TXT)
-states `Apache-2.0 WITH LLVM-exception` for LLVM, with separate terms for identified
-third-party code. Keep the relevant component notices when distributing a built
-toolchain. This Apache-2.0 Maven provider uses the command interface and copies
-no LLVM implementation. The adjacent `FOSS_REUSE_DECISION.tsv` records that choice.
-
-`LlvmCompilerProviderContractTestMain` checks driver selection, metadata
-precedence (including fresh-JVM environment/PATH selection), argument boundaries,
-executable validation, digest checks, refusal behavior and read-only plans.
-`LlvmCompilerIntegrationTestMain` compiles and runs native fixtures through the
-actual task runner, covering headers appearing or changing, separate build
-configurations, task working directories, failure recovery and cache exclusion.
-LLVM IR and Objective-C-family frontend cases run with the selected Clang;
-Fortran compilation and execution run when that installation supplies `flang`.
-
-To run the standalone contracts with a particular installation:
-
-```sh
-M3_POLYGLOT_LLVM_HOME=/work/llvm-install \
-  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
-M3_POLYGLOT_LLVM_HOME=/work/llvm-install \
-  mvn -f tools/m3-polyglot-maven-plugin/pom.xml verify
-```
-
-Without an installed Clang toolchain, native integration reports `NOT_RUN`.
-Pass `--required` to the integration main to make missing C/C++ tools a failure;
-both existing polyglot CI entry points do this after building the plugin. An
-explicitly configured invalid toolchain always fails. The test-only environment
-variable `M3_POLYGLOT_LLVM_HOME` selects the installation for child-JVM tests;
-production builds use the home configuration described above.
-
-The [runnable C example](../examples/llvm/README.md) also exercises the Maven
-plugin realm. Each test result describes the toolchain and host it actually ran;
-it does not establish Apple SDK, Android, Windows, cross-target, full LLVM-build
+The FOSS decision ledger records external command reuse with no LLVM source
+copying. Tool-specific license notices, including identified third-party terms,
+remain relevant when distributing a separate toolchain. A passing host run does
+not establish all Flang, Windows, Android, Apple SDK, cross-target, full LLVM-build
 or full Maven-reactor qualification.

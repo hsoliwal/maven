@@ -5,302 +5,255 @@
 package io.synexia.maven.polyglot;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
-/** Planning-only contracts use deliberately non-program tool bytes; native execution has its own test. */
+/**
+ * Additional LLVM planning and real compiler contracts for the existing provider.
+ * The existing SPI suite owns driver inventory and selector validation. This
+ * suite executes installed tools only when the test-only
+ * {@code m3.polyglot.llvm.test.home} property names an LLVM installation root.
+ * Its {@code bin} directory is passed through the existing task selector.
+ * Missing optional llc and Flang tools are reported separately as NOT_RUN.
+ */
 public final class LlvmCompilerProviderContractTestMain {
-    private static int checks;
+    private static final String TEST_HOME = "m3.polyglot.llvm.test.home";
+    private static final String BIN_ARGUMENT = "--m3-llvm-bin=";
+    private static int assertions;
 
     private LlvmCompilerProviderContractTestMain() { }
 
-    public static void main(String[] args) throws Exception {
-        if (args.length == 3 && "--probe-lookup".equals(args[0])) {
-            List<String> command = M3ToolProviders.command(task("c", List.of("a.c")), Path.of(args[1]));
-            if (!command.get(0).equals(args[2])) throw new AssertionError("unexpected child lookup: " + command);
-            return;
-        }
-        Path root = Files.createTempDirectory("m3 llvm provider ");
-        String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+    public static void main(String[] ignored) throws Exception {
+        assertions = 0;
+        Path root = Files.createTempDirectory("m3-llvm-native-contract-");
         try {
-            Path home = fakeHome(root.resolve("LLVM installation"));
-            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, home.toString());
-            discoversCompilerFamily();
-            preservesArguments(root, home);
-            selectsConfiguredHome(root, home);
-            selectsEnvironmentCwdAndPath(root, home);
-            validatesExecutablePin(root, home);
-            rejectsMalformedOptions(root);
-            preservesDriverSymlink(root);
-            windowsDriverNames(root);
-            plansWithoutExecutionOrState(root, home);
-            System.out.println("PASS: " + checks + " LLVM provider contract assertions");
+            preservesRawArguments(root);
+            incrementalPlanningIsReadOnly(root.resolve("dry run"));
+            String nativeResult = nativeContracts(root.resolve("native"));
+            System.out.println("PASS: " + assertions
+                    + " LLVM provider contract assertions; native " + nativeResult);
         } finally {
-            restore(LlvmCompilerProvider.HOME_PROPERTY, previous);
             erase(root);
         }
     }
 
-    private static void discoversCompilerFamily() throws Exception {
-        var descriptor = M3ToolProviders.available().stream().filter(p -> p.id().equals("llvm"))
-                .findFirst().orElseThrow(() -> new AssertionError("LLVM provider not registered"));
-        require(descriptor.capabilities().equals(List.of("compiler")), "only the implemented compiler role");
-        require(Set.copyOf(descriptor.languages()).equals(Set.of("c", "cpp", "objc", "objc++", "fortran", "llvm-ir")),
-                "exact supported LLVM language dispatch");
+    private static void preservesRawArguments(Path root) throws Exception {
+        Path bin = root.resolve("tool chain/bin");
+        List<String> flags = List.of("-x", "c++", "-DNAME=\"two words\"", "$(literal)", "semi;colon",
+                "`literal`", "&&", "source with spaces.c", "unicode-\u03bb.c", "@flags.rsp", "--", "-operand");
+        var task = new TaskManifest.Task("compile", "@m3:llvm:compiler:cpp", ".",
+                configured(bin, flags), List.of(), List.of("source"), List.of("out/result.o"));
+        Map<String, String> before = snapshot(root);
+        List<String> command = M3ToolProviders.command(task, root);
+        require(command.subList(1, command.size()).equals(flags), "raw ordered argv is not shell interpreted");
+        require(snapshot(root).equals(before), "planning without an installed tool neither writes nor executes");
     }
 
-    private static void preservesArguments(Path root, Path home) throws Exception {
-        List<String> args = List.of("--target=aarch64-linux-gnu", "--sysroot=/SDK with spaces", "-x", "c++",
-                "-DVALUE=a b;$(not-a-shell)", "-Xclang", "-ast-dump=json", "@flags with spaces.rsp",
-                "-MD", "-MF", "target/header dependencies.d", "-MJ", "target/compile fragment.json",
-                "-fuse-ld=lld", "-Wl,--as-needed", "src/λ.c", "-o", "target/with spaces.o");
-        for (String language : List.of("c", "cpp", "objc", "objc++", "fortran", "llvm-ir")) {
-            String driver = switch (language) {
-                case "cpp", "objc++" -> "clang++";
-                case "fortran" -> "flang";
-                default -> "clang";
-            };
-            List<String> result = M3ToolProviders.command(task(language, args), root);
-            require(result.get(0).equals(home.resolve("bin").resolve(filename(driver)).toString()),
-                    "original driver selected for " + language);
-            require(result.subList(1, result.size()).equals(args), "unaltered argv for " + language);
-            try {
-                result.add("mutation");
-                throw new AssertionError("mutable command");
-            } catch (UnsupportedOperationException expected) {
-                checks++;
-            }
+    private static void incrementalPlanningIsReadOnly(Path root) throws Exception {
+        Files.createDirectories(root);
+        var text = new StringBuilder(TaskManifest.MAGIC).append('\n');
+        appendTask(text, "compile", "c", configured(root.resolve("uninstalled/bin"),
+                List.of("-c", "missing.c", "-o", "out/result.o")), List.of("missing.c"), "out/result.o");
+        TaskManifest manifest = loadManifest(root, text);
+        Map<String, String> before = snapshot(root);
+        var log = new ArrayList<String>();
+        TaskRunner.run(manifest, root, "compile", true, Duration.ofSeconds(30), false, true,
+                "embedded", root.resolve("artifact-cache"), log::add);
+        require(log.stream().anyMatch(line -> line.startsWith("PLAN compile")), "dry-run reports the task");
+        require(snapshot(root).equals(before), "incremental dry-run with cache opt-in remains read-only");
+        require(!Files.exists(root.resolve(".m3")) && !Files.exists(root.resolve("out")),
+                "dry-run creates no module state or compiler output");
+    }
+
+    private static String nativeContracts(Path root) throws Exception {
+        String configuredHome = System.getProperty(TEST_HOME, "");
+        if (configuredHome.isBlank()) {
+            return "NOT_RUN (set -D" + TEST_HOME + "=<LLVM installation>)";
         }
-        List<String> literal = List.of("--", "--m3-llvm-home=literal-input.c", "--m3-llvm-unknown=literal-input.c");
-        require(M3ToolProviders.command(task("c", literal), root).subList(1, 4).equals(literal),
-                "provider-looking filenames after -- stay literal");
+        Path bin = Path.of(configuredHome).toAbsolutePath().normalize().resolve("bin");
+        requireTool(bin.resolve("clang" + executableSuffix()));
+        requireTool(bin.resolve("clang++" + executableSuffix()));
+        boolean llc = optionalTool(bin, "llc");
+        boolean flang = optionalTool(bin, "flang");
+        Files.createDirectories(root.resolve("src"));
+        Files.createDirectories(root.resolve("out"));
+        writeNativeSources(root);
+        TaskManifest manifest = nativeManifest(root, bin, llc, flang);
+        noReuse(execute(manifest, root, "all"));
+        var outputs = new ArrayList<>(List.of("c", "cpp", "objc", "objcpp"));
+        if (llc) outputs.add("ir");
+        if (flang) outputs.add("fortran");
+        for (String name : outputs) {
+            require(Files.size(root.resolve("out/" + name + ".o")) > 0, "real " + name + " object exists");
+        }
+        repeatedCompilationAndHeaders(manifest, root);
+        failedCompilation(manifest, root);
+        return "PASS (C, C++, Objective-C, Objective-C++, repeat/header changes, compile failure); "
+                + "llc " + (llc ? "PASS" : "NOT_RUN") + "; Fortran " + (flang ? "PASS" : "NOT_RUN");
     }
 
-    private static void selectsConfiguredHome(Path root, Path home) throws Exception {
-        Path other = fakeHome(root.resolve("another LLVM"));
-        List<String> explicit = List.of(LlvmCompilerProvider.HOME + "another LLVM", "-c", "src/hello.c");
-        List<String> command = M3ToolProviders.command(task("c", explicit), root);
-        require(command.equals(List.of(other.resolve("bin").resolve(filename("clang")).toString(), "-c", "src/hello.c")),
-                "task home overrides property and is relative to module, not working directory");
-        require(M3ToolProviders.command(task("c", List.of("src/hello.c")), root).get(0)
-                .equals(home.resolve("bin").resolve(filename("clang")).toString()), "property used without task option");
-        System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, "LLVM installation");
+    private static void requireTool(Path tool) throws IOException {
+        if (!Files.isRegularFile(tool) || !Files.isExecutable(tool)) {
+            throw new IOException("configured LLVM test driver is not a regular executable: " + tool);
+        }
+    }
+
+    private static boolean optionalTool(Path bin, String name) throws IOException {
+        Path tool = bin.resolve(name + executableSuffix());
+        if (Files.notExists(tool, LinkOption.NOFOLLOW_LINKS)) {
+            System.out.println("LLVM " + name + " native contract NOT_RUN: " + tool + " is not installed");
+            return false;
+        }
+        // A present but broken symlink, directory or non-executable file is a configuration failure.
+        requireTool(tool);
+        return true;
+    }
+
+    private static void writeNativeSources(Path root) throws IOException {
+        write(root, "src/value.h", "#define VALUE 7\n");
+        write(root, "src/c.c", "#include \"value.h\"\nint answer(void) { return VALUE; }\n");
+        write(root, "src/cpp.cpp", "#include \"value.h\"\ntemplate<class T> T twice(T x) { return x+x; }\n"
+                + "int answer() { return twice(VALUE); }\n");
+        String objc = "__attribute__((objc_root_class)) @interface Root\n+ (int)value;\n@end\n"
+                + "@implementation Root\n+ (int)value { return 7; }\n@end\n";
+        write(root, "src/objc.m", objc);
+        write(root, "src/objcpp.mm", "template<class T> T twice(T x) { return x+x; }\n"
+                + objc.replace("return 7;", "return twice(7);"));
+        write(root, "src/ir.ll", "define i32 @answer() {\nentry:\n  ret i32 42\n}\n");
+        write(root, "src/fortran.f90", "integer function answer()\n  answer = 42\nend function answer\n");
+        write(root, "src/bad.c", "int broken = ;\n");
+    }
+
+    private static TaskManifest nativeManifest(Path root, Path bin, boolean llc, boolean flang) throws IOException {
+        String[][] tasks = {{"c", "c", "c"}, {"cpp", "cpp", "cpp"}, {"objc", "objc", "m"},
+                {"objcpp", "objcpp", "mm"}, {"ir", "llvm-ir", "ll"},
+                {"fortran", "fortran", "f90"}, {"bad", "c", "c"}};
+        var text = new StringBuilder(TaskManifest.MAGIC).append('\n').append("task\tall\t-\t.\n");
+        for (String[] row : tasks) {
+            String name = row[0], language = row[1], source = "src/" + name + "." + row[2];
+            if ((name.equals("ir") && !llc) || (name.equals("fortran") && !flang)) continue;
+            String output = "out/" + name + ".o";
+            List<String> inputs = name.equals("c") || name.equals("cpp")
+                    ? List.of(source, "src/value.h") : List.of(source);
+            String compileFlag = name.equals("ir") ? "-filetype=obj" : "-c";
+            appendTask(text, name, language, configured(bin, List.of(compileFlag, source, "-o", output)),
+                    inputs, output);
+            if (!name.equals("bad")) text.append("dep\tall\t").append(name).append('\n');
+        }
+        return loadManifest(root, text);
+    }
+
+    private static void repeatedCompilationAndHeaders(TaskManifest manifest, Path root) throws Exception {
+        Path object = root.resolve("out/c.o");
+        String original = sha256(object);
+        FileTime oldTime = FileTime.fromMillis(946684800000L);
+        Files.setLastModifiedTime(object, oldTime);
+        require(Files.getLastModifiedTime(object).equals(oldTime), "repeat witness timestamp established");
+        noReuse(execute(manifest, root, "c"));
+        require(!Files.getLastModifiedTime(object).equals(oldTime), "unchanged provider task rewrites its object");
+        require(sha256(object).equals(original), "unchanged fixture retains the same compiled object bytes");
+        write(root, "src/value.h", "#define VALUE 49\n");
+        noReuse(execute(manifest, root, "c"));
+        require(!sha256(object).equals(original), "changed header produces a different compiled object");
+    }
+
+    private static void failedCompilation(TaskManifest manifest, Path root) throws Exception {
         try {
-            require(M3ToolProviders.command(task("c", List.of("src/hello.c")), root).get(0)
-                    .equals(home.resolve("bin").resolve(filename("clang")).toString()),
-                    "relative property home has module-root semantics");
-        } finally {
-            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, home.toString());
-        }
-        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.HOME + "absent", "a.c")), root),
-                "configured missing home must not fall back to PATH");
-        Path emptyHome = Files.createDirectories(root.resolve("no compilers/bin")).getParent();
-        refuses(() -> M3ToolProviders.command(task("fortran", List.of(LlvmCompilerProvider.HOME + emptyHome, "a.f90")), root),
-                "missing Flang must not fall back to a different frontend");
-        if (!windows()) {
-            Path nonExecutable = Files.createDirectories(root.resolve("non executable/bin")).resolve("clang");
-            Files.writeString(nonExecutable, "non-executable", StandardCharsets.UTF_8);
-            require(!Files.isExecutable(nonExecutable), "fixture is not executable");
-            refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.HOME
-                    + nonExecutable.getParent().getParent(), "a.c")), root), "non executable driver");
-        }
-    }
-
-    private static void validatesExecutablePin(Path root, Path home) throws Exception {
-        Path compiler = home.resolve("bin").resolve(filename("clang"));
-        String expected = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(compiler)));
-        List<String> args = List.of(LlvmCompilerProvider.SHA256 + expected.toUpperCase(Locale.ROOT), "-c", "a.c");
-        require(M3ToolProviders.command(task("c", args), root).equals(List.of(compiler.toString(), "-c", "a.c")),
-                "uppercase digest accepted and stripped from compiler argv");
-        refuses(() -> M3ToolProviders.command(task("c", List.of(LlvmCompilerProvider.SHA256 + "0".repeat(64), "a.c")), root),
-                "wrong executable bytes");
-        byte[] original = Files.readAllBytes(compiler);
-        try {
-            Files.writeString(compiler, "changed executable contents", StandardCharsets.UTF_8);
-            refuses(() -> M3ToolProviders.command(task("c", args), root), "tool changed after pin creation");
-        } finally {
-            Files.write(compiler, original);
-        }
-    }
-
-    /** Fresh JVMs own controlled environments; no reflective mutation of System.getenv. */
-    private static void selectsEnvironmentCwdAndPath(Path root, Path propertyHome) throws Exception {
-        Path module = Files.createDirectories(root.resolve("lookup module"));
-        Path cwd = Files.createDirectories(module.resolve("nested build"));
-        Path cwdDriver = fakeTool(cwd.resolve(filename("clang")));
-        Path envHome = fakeHome(module.resolve("environment LLVM"));
-        Path pathHome = fakeHome(module.resolve("PATH LLVM"));
-        lookupChild(module, null, "environment LLVM", pathHome.resolve("bin"),
-                envHome.resolve("bin").resolve(filename("clang")));
-        lookupChild(module, propertyHome, envHome.toString(), pathHome.resolve("bin"),
-                propertyHome.resolve("bin").resolve(filename("clang")));
-        lookupChild(module, null, null, pathHome.resolve("bin"), cwdDriver);
-        Files.delete(cwdDriver);
-        lookupChild(module, null, null, pathHome.resolve("bin"), pathHome.resolve("bin").resolve(filename("clang")));
-    }
-
-    private static void lookupChild(Path workspace, Path propertyHome, String envHome, Path path, Path expected)
-            throws Exception {
-        var command = new ArrayList<String>();
-        command.add(Path.of(System.getProperty("java.home"), "bin", windows() ? "java.exe" : "java").toString());
-        if (propertyHome != null) command.add("-D" + LlvmCompilerProvider.HOME_PROPERTY + "=" + propertyHome);
-        command.add("-cp");
-        var classpath = new ArrayList<String>();
-        for (String entry : System.getProperty("java.class.path").split(java.io.File.pathSeparator)) {
-            classpath.add(Path.of(entry).toAbsolutePath().normalize().toString());
-        }
-        command.add(String.join(java.io.File.pathSeparator, classpath));
-        command.add(LlvmCompilerProviderContractTestMain.class.getName());
-        command.addAll(List.of("--probe-lookup", workspace.toString(), expected.toString()));
-        ProcessBuilder builder = new ProcessBuilder(command).directory(workspace.toFile()).inheritIO();
-        builder.environment().keySet().removeIf(key -> key.equalsIgnoreCase("LLVM_HOME") || key.equalsIgnoreCase("PATH")
-                || key.equals("JAVA_TOOL_OPTIONS") || key.equals("JDK_JAVA_OPTIONS") || key.equals("_JAVA_OPTIONS"));
-        builder.environment().put("PATH", path.toString());
-        if (envHome != null) builder.environment().put("LLVM_HOME", envHome);
-        Process child = builder.start();
-        try {
-            require(child.waitFor(30, TimeUnit.SECONDS), "bounded fresh-JVM tool lookup");
-            require(child.exitValue() == 0, "environment, cwd and PATH resolution in fresh JVM");
-        } finally {
-            if (child.isAlive()) {
-                child.destroyForcibly();
-                child.waitFor(5, TimeUnit.SECONDS);
-            }
-        }
-    }
-
-    private static void rejectsMalformedOptions(Path root) throws Exception {
-        for (List<String> args : List.of(
-                List.of(LlvmCompilerProvider.HOME),
-                List.of(LlvmCompilerProvider.HOME + " "),
-                List.of(LlvmCompilerProvider.HOME + "a", LlvmCompilerProvider.HOME + "b"),
-                List.of(LlvmCompilerProvider.SHA256),
-                List.of(LlvmCompilerProvider.SHA256 + "abc"),
-                List.of(LlvmCompilerProvider.SHA256 + "g".repeat(64)),
-                List.of(LlvmCompilerProvider.SHA256 + "0".repeat(64), LlvmCompilerProvider.SHA256 + "1".repeat(64)),
-                List.of("--m3-llvm-download=latest"),
-                List.of("--m3-llvm-home", "tools"))) {
-            refuses(() -> M3ToolProviders.command(task("c", args), root), "malformed provider options " + args);
-        }
-        refuses(() -> M3ToolProviders.command(task("java", List.of("A.java")), root), "unsupported Java frontend");
-        var interpreter = new TaskManifest.Task("bad", "@m3:llvm:interpreter:c", ".", List.of(), List.of(),
-                List.of("src/hello.c"), List.of("target/out"));
-        refuses(() -> M3ToolProviders.command(interpreter, root), "unsupported interpreter role");
-        var noOutput = new TaskManifest.Task("bad", "@m3:llvm:compiler:c", ".", List.of("a.c"), List.of(), List.of("a.c"), List.of());
-        refuses(() -> M3ToolProviders.command(noOutput, root), "compiler requires declared outputs");
-        var overlap = new TaskManifest.Task("bad", "@m3:llvm:compiler:c", ".", List.of("a.c"), List.of(),
-                List.of("src"), List.of("src/out.o"));
-        refuses(() -> M3ToolProviders.command(overlap, root), "existing source/output separation retained");
-    }
-
-    private static void preservesDriverSymlink(Path root) throws Exception {
-        if (windows()) return; // Windows symlink privileges are independent of driver-name coverage below.
-        Path home = Files.createDirectories(root.resolve("symlink LLVM/bin")).getParent();
-        Path clang = fakeTool(home.resolve("bin/clang"));
-        Files.createSymbolicLink(home.resolve("bin/clang++"), Path.of("clang"));
-        String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(clang)));
-        List<String> command = M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME + home,
-                LlvmCompilerProvider.SHA256 + digest, "a.cpp")), root);
-        require(command.get(0).equals(home.resolve("bin/clang++").toString()), "clang++ argv[0] survives symlink validation");
-    }
-
-    private static void windowsDriverNames(Path root) throws Exception {
-        String original = System.getProperty("os.name");
-        try {
-            System.setProperty("os.name", "Windows test");
-            Path home = fakeHome(root.resolve("Windows LLVM"));
-            require(M3ToolProviders.command(task("cpp", List.of(LlvmCompilerProvider.HOME + home, "a.cpp")), root)
-                    .get(0).equals(home.resolve("bin/clang++.exe").toString()), "Windows executable suffix planning");
-        } finally {
-            restore("os.name", original);
-        }
-    }
-
-    private static void plansWithoutExecutionOrState(Path root, Path home) throws Exception {
-        Path planRoot = Files.createDirectories(root.resolve("read only plan"));
-        Path manifest = planRoot.resolve("m3-build.tsv");
-        Files.writeString(manifest, TaskManifest.MAGIC + "\n"
-                + "task\tcompile\t@m3:llvm:compiler:c\t.\n"
-                + "arg\tcompile\t" + LlvmCompilerProvider.HOME + home + "\n"
-                + "arg\tcompile\tsrc/not-created-yet.c\n"
-                + "input\tcompile\tsrc/not-created-yet.c\n"
-                + "output\tcompile\ttarget/not-created.o\n", StandardCharsets.UTF_8);
-        List<Path> before = paths(planRoot);
-        var messages = new ArrayList<String>();
-        List<String> planned = TaskRunner.run(TaskManifest.load(manifest), planRoot, "compile", true,
-                Duration.ofSeconds(3), false, true, "embedded", planRoot.resolve("missing cache"), messages::add);
-        require(planned.equals(List.of("compile")), "actual runner plans the LLVM task");
-        require(messages.size() == 1 && messages.get(0).startsWith("PLAN compile"), "no execution or state reuse claimed");
-        require(paths(planRoot).equals(before), "planning creates no source, output, cache or module-state file");
-    }
-
-    private static TaskManifest.Task task(String language, List<String> args) {
-        return new TaskManifest.Task("compile", "@m3:llvm:compiler:" + language, "nested build", args,
-                List.of(), List.of("src/hello.c"), List.of("target/hello.o"));
-    }
-
-    private static Path fakeHome(Path home) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        for (String driver : List.of("clang", "clang++", "flang")) fakeTool(home.resolve("bin").resolve(filename(driver)));
-        return home;
-    }
-
-    private static Path fakeTool(Path file) throws IOException {
-        Files.writeString(file, "These bytes must never execute during planning.\n", StandardCharsets.UTF_8);
-        if (!file.toFile().setExecutable(true, true) && !windows()) throw new IOException("cannot prepare fixture mode");
-        return file;
-    }
-
-    private static boolean windows() {
-        return System.getProperty("os.name", "").startsWith("Windows");
-    }
-
-    private static String filename(String driver) {
-        return driver + (windows() ? ".exe" : "");
-    }
-
-    @FunctionalInterface private interface Attempt { void run() throws Exception; }
-
-    private static void refuses(Attempt attempt, String message) throws Exception {
-        try {
-            attempt.run();
+            execute(manifest, root, "bad");
         } catch (IOException expected) {
-            checks++;
+            require(String.valueOf(expected.getMessage()).contains("polyglot tool failed: bad"),
+                    "Clang failure propagates through TaskRunner: " + expected.getMessage());
+            require(!Files.exists(root.resolve("out/bad.o")), "failed compilation has no successful object");
             return;
         }
-        throw new AssertionError("must refuse " + message);
+        throw new AssertionError("invalid C source must fail compilation");
+    }
+
+    private static List<String> execute(TaskManifest manifest, Path root, String target) throws Exception {
+        var log = new ArrayList<String>();
+        TaskRunner.run(manifest, root, target, false, Duration.ofSeconds(120), false, true,
+                "embedded", root.resolve("artifact-cache"), log::add);
+        return log;
+    }
+
+    private static void noReuse(List<String> log) {
+        require(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE ") || line.startsWith("FROM-CACHE ")),
+                "LLVM provider retains the existing no-reuse policy: " + log);
+    }
+
+    private static List<String> configured(Path bin, List<String> flags) {
+        var all = new ArrayList<String>(flags.size() + 1);
+        all.add(BIN_ARGUMENT + bin);
+        all.addAll(flags);
+        return all;
+    }
+
+    private static String executableSuffix() {
+        return System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+    }
+
+    private static void appendTask(StringBuilder text, String name, String language, List<String> args,
+            List<String> inputs, String output) {
+        text.append("task\t").append(name).append("\t@m3:llvm:compiler:").append(language).append("\t.\n");
+        for (String arg : args) text.append("arg\t").append(name).append('\t').append(arg).append('\n');
+        for (String input : inputs) text.append("input\t").append(name).append('\t').append(input).append('\n');
+        text.append("output\t").append(name).append('\t').append(output).append('\n');
+    }
+
+    private static TaskManifest loadManifest(Path root, StringBuilder text) throws IOException {
+        Path manifest = root.resolve("m3-build.tsv");
+        Files.writeString(manifest, text.toString(), StandardCharsets.UTF_8);
+        return TaskManifest.load(manifest);
+    }
+
+    private static String sha256(Path file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream stream = Files.newInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            for (int count; (count = stream.read(buffer)) != -1;) digest.update(buffer, 0, count);
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static Map<String, String> snapshot(Path root) throws Exception {
+        Map<String, String> result = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path path : walk.toList()) {
+                String value = Files.isSymbolicLink(path) ? "link:" + Files.readSymbolicLink(path)
+                        : Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) ? "directory" : sha256(path);
+                result.put(root.relativize(path).toString(), value);
+            }
+        }
+        return result;
+    }
+
+    private static void write(Path root, String path, String text) throws IOException {
+        Files.writeString(root.resolve(path), text, StandardCharsets.UTF_8);
     }
 
     private static void require(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
-        checks++;
-    }
-
-    private static void restore(String key, String previous) {
-        if (previous == null) System.clearProperty(key);
-        else System.setProperty(key, previous);
-    }
-
-    private static List<Path> paths(Path root) throws IOException {
-        try (Stream<Path> walk = Files.walk(root)) {
-            return walk.sorted().toList();
-        }
+        assertions++;
     }
 
     private static void erase(Path root) throws IOException {
+        List<Path> paths;
         try (Stream<Path> walk = Files.walk(root)) {
-            for (Path file : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+            paths = walk.sorted(Comparator.reverseOrder()).toList();
         }
+        for (Path path : paths) Files.deleteIfExists(path);
     }
 }

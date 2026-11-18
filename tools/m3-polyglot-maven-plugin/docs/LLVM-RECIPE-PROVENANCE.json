@@ -1,0 +1,113 @@
+{
+  "schema": "M3_LLVM_RESULT_ONLY_PROVENANCE_V2",
+  "canonical": {
+    "repository": "hsoliwal/com.synexia",
+    "task_revision": "c014d71ba67db26813dd509ac372a61ee7b388f6",
+    "crate": "synexia-openrewrite-recipes/crates/m3-maven-llvm-provider-20261118",
+    "engine_source_revision": "85fadc59ef2579762be2b48ef98c5ebce39ecf06"
+  },
+  "target": {
+    "repository": "hsoliwal/maven",
+    "base_revision": "83284eb8de8758fa9ffa84ca6c2d764e67c183c8",
+    "accepted_provider_pr": 198,
+    "production_provider_modified": false,
+    "selector": "--m3-llvm-bin=<directory>",
+    "default_driver_resolution": "PATH",
+    "required_driver_hash": false,
+    "language_drivers": {
+      "c": "clang",
+      "cpp": "clang++",
+      "objc": "clang",
+      "objcpp": "clang++",
+      "fortran": "flang",
+      "llvm-ir": "llc"
+    }
+  },
+  "recipe": {
+    "packet": "m3-maven-llvm-reconcile-20261118",
+    "sdk_execution": "PASS",
+    "junit_tests": 2,
+    "refusal_cases": 20,
+    "fixed_point_passes_per_lane": 2,
+    "source_orders": [
+      "forward",
+      "reverse",
+      "seeded-shuffle"
+    ],
+    "manifest_sha256": {
+      "java": "0d2fe29ec3cc026d6ef23c10ab00d13994275a86a0ece54b851ec56fa867efbf",
+      "text": "52614f2ed704b4efc23bcf623a4d485eacebfefba679e66c74ad9a42cb85da1c"
+    },
+    "receipt_directory": "evidence/reconcile-sdk",
+    "receipt_sha256": {
+      "java": "9fd4880bccca825cd67556149bff9b28a26d5c33ea8a5003be311530945a8e44",
+      "text": "b050e70d16985bc07df0ccf637ca928de276ce1c5fc2a096051b4fb49ba3426b"
+    }
+  },
+  "outputs": [
+    {
+      "path": "tools/m3-polyglot-maven-plugin/docs/LLVM_TOOLCHAIN.md",
+      "before_sha256": "7e34e979f5968cc550000b0f74afb407b90099da7705c22fe2b28b75f01ab734",
+      "after_sha256": "477a0123954a9efbcc0b7f7479cd2f5a1425d9a85522cfae40ef9f32bebd9ade"
+    },
+    {
+      "path": "tools/m3-polyglot-maven-plugin/pom.xml",
+      "before_sha256": "07dc3674dcc80c1c7ad42ce9b0c33e89f79c3fe405bc658c1746141b3901204d",
+      "after_sha256": "47f73508791943c44581e1de63e4bcdcd72f0dc2e2348ff5988eaa4bdffbb0bc"
+    },
+    {
+      "path": "tools/m3-polyglot-maven-plugin/scripts/verify.sh",
+      "before_sha256": "2e933172ea19009698eef7ab76efd65ab21c46dd515a4251e541c06e5c57ab52",
+      "after_sha256": "6d43461e8a734fb59f69366f2da324c89bdb9d33f2e9b2ae70b05893d0ad8f40"
+    },
+    {
+      "path": "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java",
+      "before_sha256": "ABSENT",
+      "after_sha256": "ce53bd93b73561196a7cf93c0f99131b4452dcfc3d9063e1766f443adc53f3d3"
+    }
+  ],
+  "llvm": {
+    "source_repository": "hsoliwal/llvm-project",
+    "source_revision": "591f3d1edf0a9ee718d17a0ee70dd013b3c01908",
+    "tested_driver": "Debian Clang 18.1.8",
+    "tested_driver_sha256": "7965eca808fd8808a3825e361d85dd4cfa086e8593bcbd9bb9518753c65be3de",
+    "tested_driver_built_from_pinned_fork": false
+  },
+  "target_qualification": {
+    "offline_maven_verify": "PASS",
+    "existing_contracts": "PASS",
+    "llvm_provider_assertions": 18,
+    "planning_assertions": 5,
+    "native_languages": [
+      "c",
+      "cpp",
+      "objc",
+      "objcpp"
+    ],
+    "packaged_maven_consumer": "PASS: read-only dry-run and C compilation to ELF",
+    "java_api_bytecode_target": 17,
+    "java_runtime": 21,
+    "plugin_artifact_sha256": "1cf5c381e19096947ff0d973bf244ebe16a0695e64648658c347a36a9e920b3d",
+    "evidence": "evidence/reconcile-target-qualification.json",
+    "evidence_sha256": "7ed77de1fd625bb99849ea4faec8b535c6b6425a7249da5ec3b90e672d74bd92",
+    "not_run": [
+      "llc",
+      "Flang",
+      "LLVM fork source build",
+      "complete Maven fork assembly",
+      "hosted CI at local qualification",
+      "Windows",
+      "macOS",
+      "Java 17 runtime",
+      "optional cargo/CTest/ECJ native-tool cases when tools absent"
+    ],
+    "performance": "NOT_MEASURED"
+  },
+  "passive_receipt": {
+    "path": "tools/m3-polyglot-maven-plugin/docs/LLVM-RECIPE-PROVENANCE.json",
+    "packet": "m3-maven-llvm-reconcile-receipt-20261118",
+    "self_hash_included": false,
+    "authority": "evidence/reconcile-handoff-sdk/recipe-text-receipt.tsv",
+    "authority_revision": "Canonical follow-up to task_revision; immutable commit is recorded in the delivery PR."
+  }
+}
