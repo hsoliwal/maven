@@ -1076,8 +1076,10 @@ The opt-in `llvm-compile-db` Maven goal emits standard argv-based
 `@m3:llvm:compiler` C/C++/Objective-C compile tasks, using the original
 M3 graph/provider selection. The goal neither invokes Clang nor overwrites
 CMake's `build/cmake/compile_commands.json`. Only materialized,
-declared, unambiguous single-source compiles are exported; opaque
-response files and undeclared sources fail closed. See
+declared, unambiguous single-source compiles with an explicit
+declared `-o` output are exported. Clang `-MF` depfiles, `-MJ`
+fragments and diagnostic sidecars must also be declared; opaque response
+files, implicit depfile names and untracked sources fail closed. See
 [LLVM toolchain / compilation database](docs/LLVM_TOOLCHAIN.md).
 
 ### LLVM fork compiler toolchain

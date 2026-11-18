@@ -34,9 +34,9 @@ public final class LlvmCompilationDatabaseContractTestMain {
                     "valid JSON array envelope and deterministic LF output");
             check(count(json, "\"directory\"") == 2 && count(json, "\"arguments\"") == 2,
                     "one command per Clang translation unit, no linker row");
-            check(json.contains("\"file\":\"" + root.resolve("src/hello.c") + "\""),
-                    "C source key is absolute");
-            check(json.contains("\"file\":\"" + root.resolve("src/feature with spaces.cpp") + "\""),
+            check(json.contains("\"file\":\"" + jsonPath(root.resolve("src/hello.c")) + "\""),
+                    "C source key is absolute and correctly JSON escaped");
+            check(json.contains("\"file\":\"" + jsonPath(root.resolve("src/feature with spaces.cpp")) + "\""),
                     "C++ path with spaces preserved without shell escaping");
             check(json.contains("-DMSG=\\\"hello\\\""), "quote in argv is JSON escaped");
             check(json.contains("\"arguments\":[") && !json.contains("\"command\":"),
@@ -68,6 +68,64 @@ public final class LlvmCompilationDatabaseContractTestMain {
             refuses(() -> LlvmCompilationDatabase.render(
                     load(root, valid.replace("arg\tclang-c\t-c\n", "arg\tclang-c\t-c\narg\tclang-c\t@flags.rsp\n")),
                     root, "all"), "opaque response file cannot fabricate a compdb");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-std=c17\n",
+                            "arg\tclang-c\t-std=c17\n"
+                            + "arg\tclang-c\t-Xclang\narg\tclang-c\t@hidden.rsp\n")),
+                    root, "all"), "nested response-file operand must not bypass the parser");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n", "")),
+                    root, "all"), "dangling -o operand cannot produce a trusted IDE command");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n",
+                            "arg\tclang-c\ttarget/other.o\n")),
+                    root, "all"), "actual Clang -o must match an M3 declared output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n",
+                            "arg\tclang-c\ttarget/hello.o\n"
+                            + "arg\tclang-c\t-o\narg\tclang-c\ttarget/other.o\n")),
+                    root, "all"), "duplicate -o must not fabricate one output identity");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-Xclang\narg\tclang-c\t-c\n")),
+                    root, "all"), "Clang -c consumed as a frontend operand is not compilation");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\narg\tclang-c\t-E\n")),
+                    root, "all"), "preprocess-only output cannot appear as an object compile");
+            String depfileAndFragment = valid
+                    .replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\n"
+                            + "arg\tclang-c\t-MD\n"
+                            + "arg\tclang-c\t-MF\n"
+                            + "arg\tclang-c\ttarget/hello.d\n"
+                            + "arg\tclang-c\t-MJ\n"
+                            + "arg\tclang-c\ttarget/hello.json\n")
+                    .replace("output\tclang-c\ttarget/hello.o\n",
+                            "output\tclang-c\ttarget/hello.o\n"
+                            + "output\tclang-c\ttarget/hello.d\n"
+                            + "output\tclang-c\ttarget/hello.json\n");
+            String sidecarJson = LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment), root, "all");
+            check(sidecarJson.contains("\"-MF\",\"target/hello.d\"")
+                            && sidecarJson.contains("\"-MJ\",\"target/hello.json\""),
+                    "declared Clang depfile and -MJ fragment remain exact argv");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\narg\tclang-c\t-MD\n")),
+                    root, "all"), "implicit Clang depfile is not a known M3 output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment.replace("output\tclang-c\ttarget/hello.d\n", "")),
+                    root, "all"), "Clang depfile must be declared in task outputs");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment.replace("output\tclang-c\ttarget/hello.json\n", "")),
+                    root, "all"), "Clang -MJ fragment must be declared in task outputs");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\n"
+                            + "arg\tclang-c\t-serialize-diagnostics\n"
+                            + "arg\tclang-c\ttarget/hello.dia\n")),
+                    root, "all"), "Clang diagnostic sidecar cannot remain untracked");
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
             Files.delete(root.resolve("src/hello.c"));
@@ -76,6 +134,13 @@ public final class LlvmCompilationDatabaseContractTestMain {
             Files.writeString(root.resolve("src/hello.c"), "int x = 42;\n", StandardCharsets.UTF_8);
 
             if (!System.getProperty("os.name", "").startsWith("Windows")) {
+                Path inputAlias = root.resolve("src/source-link.c");
+                Files.createSymbolicLink(inputAlias, root.resolve("src/hello.c"));
+                refuses(() -> LlvmCompilationDatabase.render(
+                        load(root, valid.replace("arg\tclang-c\tsrc/hello.c\n",
+                                "arg\tclang-c\tsrc/source-link.c\n")),
+                        root, "all"), "source symlink is refused even under a declared input directory");
+                Files.delete(inputAlias);
                 Files.delete(out);
                 Files.createSymbolicLink(out, root.resolve("src/hello.c"));
                 refuses(() -> LlvmCompilationDatabase.publish(graph, root, "all"),
@@ -137,6 +202,11 @@ public final class LlvmCompilationDatabaseContractTestMain {
         Path file = root.resolve("m3-build.tsv");
         Files.writeString(file, manifest, StandardCharsets.UTF_8);
         return TaskManifest.load(file);
+    }
+
+    /** Match JSON string escaping on Windows paths without a JSON dependency. */
+    private static String jsonPath(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 
     private static int count(String value, String token) {
