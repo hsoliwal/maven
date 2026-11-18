@@ -82,6 +82,7 @@
             <goals><goal>exec</goal></goals>
             <configuration>
               <arguments>
+                <argument>-Dderby.stream.error.field=java.lang.System.err</argument>
                 <argument>-classpath</argument><classpath/>
                 <argument>io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain</argument>
               </arguments>
@@ -104,6 +105,7 @@
             <goals><goal>exec</goal></goals>
             <configuration>
               <arguments>
+                <argument>-Dderby.stream.error.field=java.lang.System.err</argument>
                 <argument>-classpath</argument><classpath/>
                 <argument>io.synexia.maven.polyglot.M3DerbyDbContractTestMain</argument>
               </arguments>
@@ -484,6 +486,7 @@
                   <executable>${java.home}/bin/java</executable>
                   <classpathScope>test</classpathScope>
                   <arguments>
+                    <argument>-Dderby.stream.error.field=java.lang.System.err</argument>
                     <argument>-classpath</argument><classpath/>
                     <argument>io.synexia.maven.polyglot.M3DerbyDbContractTestMain</argument>
                     <argument>--require-driver</argument>
@@ -512,6 +515,7 @@
                   <executable>${java.home}/bin/java</executable>
                   <classpathScope>test</classpathScope>
                   <arguments>
+                    <argument>-Dderby.stream.error.field=java.lang.System.err</argument>
                     <argument>-classpath</argument><classpath/>
                     <argument>io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain</argument>
                     <argument>--require-all</argument>
@@ -586,6 +590,7 @@
                   <executable>${java.home}/bin/java</executable>
                   <classpathScope>test</classpathScope>
                   <arguments>
+                    <argument>-Dderby.stream.error.field=java.lang.System.err</argument>
                     <argument>-classpath</argument><classpath/>
                     <argument>io.synexia.maven.polyglot.M3DerbyDbContractTestMain</argument>
                     <argument>--require-driver</argument>
