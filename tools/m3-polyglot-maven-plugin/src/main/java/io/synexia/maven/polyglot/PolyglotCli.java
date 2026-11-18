@@ -38,11 +38,14 @@ public final class PolyglotCli {
             // no parallel JSON parser, build graph or native scheduler.
             if (args.length != 4) throw usage();
             TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
-            Path db = LlvmCompilationDatabase.publish(manifest, Path.of(args[1]), args[3]);
-            String file = db.toAbsolutePath().normalize().toString();
-            if (file.chars().anyMatch(Character::isISOControl)) {
+            Path root = Path.of(args[1]).toAbsolutePath().normalize();
+            // A malformed TSV response path must be rejected *before* any
+            // compilation-database output is published.
+            if (root.toString().chars().anyMatch(Character::isISOControl)) {
                 throw new java.io.IOException("LLVM compilation database path cannot use control characters");
             }
+            Path db = LlvmCompilationDatabase.publish(manifest, root, args[3]);
+            String file = db.toString();
             output.accept("M3-LLVM-COMPILE-DB-V1");
             output.accept("file\t" + file);
             return List.of(file);
