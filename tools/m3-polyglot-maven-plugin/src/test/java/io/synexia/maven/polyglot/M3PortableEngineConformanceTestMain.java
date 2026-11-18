@@ -124,7 +124,8 @@ public final class M3PortableEngineConformanceTestMain {
     private static void crashRecovery(String backend, Path module) throws Exception {
         Path executable = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
-        Process child = new ProcessBuilder(executable.toString(), "-cp",
+        Process child = new ProcessBuilder(executable.toString(),
+                "-Dderby.stream.error.field=java.lang.System.err", "-cp",
                 System.getProperty("java.class.path"),
                 M3PortableEngineConformanceTestMain.class.getName(), "--crash", backend,
                 module.toString()).inheritIO().start();
