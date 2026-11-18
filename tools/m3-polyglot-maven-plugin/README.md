@@ -573,7 +573,7 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
-| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)) |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)); `@m3:llvm:compiler:<language>` runs a configured [LLVM fork toolchain](#llvm-fork-compiler-toolchain) |
 | `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results; `@m3:surefire:interpreter:libtest` runs cargo test and reports its output; `@m3:surefire:interpreter:junit` runs CTest and normalises its JUnit XML |
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
@@ -641,6 +641,56 @@ providers should exchange qualified IDs/digests and reference original source
 owners. The `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite
 recipe opt-in registers this Maven plugin in a consuming POM without binding
 any goal to the default lifecycle.
+
+### LLVM fork compiler toolchain
+
+The built-in `llvm` provider delegates to installed LLVM executables; it does **not** copy LLVM sources into Maven,
+compile LLVM implicitly, load LLVM into the Maven JVM, or replace the existing Clang AST atomizer. The selected
+source donor is [hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project), pinned for the initial
+integration to commit `591f3d1edf0a9ee718d17a0ee70dd013b3c01908` (2026-11-18). Its license is
+Apache-2.0 WITH LLVM-exception. The source commit identifies the intended build input; it is **not** proof that an
+arbitrary installed binary was built from that commit. Pin each actual compiler executable with its SHA-256.
+
+Build/install the needed LLVM projects from that checked-out commit using LLVM's CMake build process, then
+set `-Dm3.llvm.home=/absolute/path/to/llvm-install` or `M3_LLVM_HOME` to the toolchain root containing `bin/`.
+The same property/environment points `code-clustering-clang` at that fork's `bin/clang` for AST evidence.
+An individual task can override the root with `--m3-llvm-home=<root>` (relative to its workspace or absolute).
+Neither Maven nor this provider fetches a toolchain or falls back to a different clang on PATH if the selected
+toolchain is absent.
+
+| Task tool | Original tool | Notes |
+| --- | --- | --- |
+| `@m3:llvm:compiler:c` | `bin/clang` | C compilation |
+| `@m3:llvm:compiler:cpp` | `bin/clang++` | C++ compilation and linking |
+| `@m3:llvm:compiler:objc` | `bin/clang -x objective-c` | Objective-C source |
+| `@m3:llvm:compiler:objcpp` | `bin/clang++ -x objective-c++` | Objective-C++ source |
+| `@m3:llvm:compiler:fortran` | `bin/flang` (or `flang-new`) | Available only if Flang was built |
+| `@m3:llvm:compiler:llvm-ir` | `bin/llc` | LLVM IR to assembly/object; task supplies `-filetype=obj` if required |
+
+Example `m3-build.tsv` for a source file already present in the consuming project (literal tabs between columns):
+
+```text
+M3-POLYGLOT-TASKS-V1
+task	compile	@m3:llvm:compiler:c	.
+arg	compile	--m3-llvm-home=/opt/m3-llvm
+arg	compile	--m3-llvm-sha256=<sha256-of-bin-clang>
+arg	compile	-c
+arg	compile	src/main/c/example.c
+arg	compile	-o
+arg	compile	target/example.o
+input	compile	src/main/c/example.c
+output	compile	target/example.o
+```
+
+`--m3-llvm-home` and `--m3-llvm-sha256` are provider directives consumed in planning, not passed to Clang.
+The digest must be 64 hexadecimal digits of the selected actual executable's bytes. Wrong digests, missing tools,
+duplicate/unknown adapter directives, missing arguments and undeclared/overlapping outputs fail during `plan` as
+well as `run`; execution uses a direct argument vector, never a shell. Task outputs still need their normal parent
+directories and explicit source/header/library/tool dependencies. A task's compiler selection and content are
+already covered by the original verified runner and its build-cache fingerprint; provider tasks do not use the
+incremental task-skip shortcut. Linking, tests, ABI validation, recipe replay, contract-risk and fixed-point evidence
+remain separate promotion gates. The existing
+`io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite recipe is reused for opt-in POM registration.
 
 ### ECJ, the Eclipse Compiler for Java
 

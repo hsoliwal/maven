@@ -38,7 +38,8 @@ import org.apache.maven.plugins.clustering.AtomFrontEnd;
  * <ul>
  *   <li>{@code clustering.clang.enabled} ({@code CLUSTERING_CLANG_ENABLED}): {@code false} turns the front end off;</li>
  *   <li>{@code clustering.clang.executable} ({@code CLANG}): the clang to run, a path or a name on PATH. Default:
- *       {@code clang} on PATH, then the LLVM installation folders. Without clang the front end takes no file;</li>
+ *       {@code m3.llvm.home}/bin/clang (or {@code M3_LLVM_HOME}) when configured, then {@code clang} on PATH,
+ *       then the LLVM installation folders. Without clang the front end takes no file;</li>
  *   <li>{@code clustering.clang.compileCommands}: compile_commands.json files or folders that hold one, separated by
  *       commas, asked before the database found next to each file;</li>
  *   <li>{@code clustering.clang.flags} ({@code CLUSTERING_CLANG_FLAGS}): compiler flags for files that no database
@@ -68,7 +69,8 @@ record ClangSettings(Optional<Path> clang, List<Path> databases, List<String> fl
         Lookup look = new Lookup(properties, environment);
         boolean windows = File.separatorChar == '\\';
         boolean enabled = !"false".equalsIgnoreCase(look.get("clustering.clang.enabled", "CLUSTERING_CLANG_ENABLED"));
-        Optional<Path> clang = enabled ? clang(look.get("clustering.clang.executable", "CLANG"), environment, windows)
+        Optional<Path> clang = enabled ? clang(look.get("clustering.clang.executable", "CLANG"),
+                look.get("m3.llvm.home", "M3_LLVM_HOME"), environment, windows)
                 : Optional.empty();
         return new ClangSettings(clang, paths(look.get("clustering.clang.compileCommands", "")),
                 CommandWords.split(look.get("clustering.clang.flags", "CLUSTERING_CLANG_FLAGS"), windows),
@@ -99,8 +101,18 @@ record ClangSettings(Optional<Path> clang, List<Path> databases, List<String> fl
         }
     }
 
-    private static Optional<Path> clang(String configured, UnaryOperator<String> environment, boolean windows) {
+    private static Optional<Path> clang(String configured, String home, UnaryOperator<String> environment,
+            boolean windows) {
         if (!configured.isEmpty()) return executable(configured, environment, windows);
+        if (!home.isBlank()) {
+            try {
+                // A named fork toolchain must never silently resolve to another clang on PATH.
+                return Optional.of(Path.of(home, "bin", windows ? "clang.exe" : "clang"))
+                        .filter(Files::isRegularFile);
+            } catch (InvalidPathException invalid) {
+                return Optional.empty();
+            }
+        }
         return executable("clang", environment, windows)
                 .or(() -> INSTALLED.stream().map(Path::of).filter(Files::isRegularFile).findFirst());
     }
