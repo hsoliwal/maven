@@ -468,6 +468,31 @@ jobs:
             io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run
           RESULT="$(tools/m3-polyglot-maven-plugin/examples/llvm/target/hello)"
           test "$RESULT" = "Maven built this with LLVM"
+      - name: Export Clang compilation database through installed Maven plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          LLVM_ROOT="$(dirname "$(dirname "$(command -v clang)")")"
+          M3_LLVM_HOME="$LLVM_ROOT" mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/examples/llvm/pom.xml \
+            io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:llvm-compile-db
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("tools/m3-polyglot-maven-plugin/examples/llvm").resolve()
+          file = root / "target/m3-llvm/compile_commands.json"
+          rows = json.loads(file.read_text(encoding="utf-8"))
+          assert len(rows) == 1, rows
+          unit = rows[0]
+          assert Path(unit["directory"]) == root
+          assert Path(unit["file"]) == root / "native/hello.c"
+          assert Path(unit["arguments"][0]).name in ("clang", "clang.exe")
+          assert "-c" in unit["arguments"]
+          assert "native/hello.c" in unit["arguments"]
+          assert "command" not in unit
+          assert not (root / "build/cmake/compile_commands.json").exists()
+          print("PASS: original Clang argv exported for clangd/CDT without overwriting CMake")
+          PY
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes
