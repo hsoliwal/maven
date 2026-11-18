@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# Two independent JDK 17/21 jobs now validate both Maven and the actual
-# source-pinned Gradle TestKit consumer; fail on accidental lane loss.
+# One JDK 17/21 Maven owner job builds/verifies artifacts; matching Gradle
+# TestKit jobs depend on its success and consume SHA-256-verified JAR bytes.
+# Fail on lost source pins, test lanes or artifact receipt handoff.
 # A project DB source owner also changes whenever the shared M3IndexDB
 # engine, TaskRunner or polyglot source contract changes.
 set -eu
@@ -24,11 +25,15 @@ expect_count "    branches: [master]" 1
 expect_count "  workflow_dispatch:" 1
 expect_count "        java: ['17', '21']" 2
 expect_count "run: sh tools/project-db/scripts/verify-gradle-sources.sh" 1
-expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install" 2
-expect_count "run: mvn -B -ntp -f tools/project-db/pom.xml verify" 2
+expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install" 1
+expect_count "run: mvn -B -ntp -f tools/project-db/pom.xml verify" 1
 expect_count "  gradle-consumer-real-testkit:" 1
+expect_count "    needs: project-db-native-gradle" 1
+expect_count "uses: actions/download-artifact@v4" 1
+expect_count "name: qualified-maven-jars-jdk-" 2
+expect_count "sha256sum -c SHA256SUMS" 2
 expect_count "          ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6" 1
 expect_count "test --tests '*M3ProjectDb*' --rerun-tasks" 1
 expect_count "name: projectdb-gradle-testkit-jdk-" 1
 
-echo "PASS: source-qualified project DB and real Gradle TestKit consumers on JDK 17/21"
+echo "PASS: one source-qualified Maven build and SHA-verified Gradle TestKit consumer per JDK"
