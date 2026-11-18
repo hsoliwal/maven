@@ -117,8 +117,9 @@ receipt. Revocation of large dependency sets and namespace prefixes uses a
 single in-place compaction pass instead of one array shift per key. The
 published binary receipt schema, seal, generation, existing `record` behavior,
 and all backend-specific persistence APIs are unchanged. Near the hard
-capacity boundary, the original deterministic eviction semantics are
-retained; the 32-MiB sealed-image budget independently guards large payloads.
+capacity boundary, a primitive-mask min-head sweep preserves the original
+deterministic sequential eviction semantics without the old quadratic array
+shifting. The 32-MiB sealed-image budget independently guards large payloads.
 Tests cover 4,096 simultaneously retained tasks, the 65,536-entry limit,
 immediate/transactional writes, restart persistence and a deterministic
 `TreeMap` oracle (test-only).

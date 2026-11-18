@@ -377,9 +377,7 @@ final class M3DbModuleStore implements AutoCloseable {
         if ((long) size + pendingSize <= MAX_TASKS) {
             mergeStaged();
         } else {
-            for (int i = 0; i < pendingSize; i++) {
-                upsert(pendingNames[i], pendingInputs[i], pendingOutputs[i]);
-            }
+            mergeStagedAtCapacity();
         }
         publish();
         clearPending();
@@ -411,6 +409,73 @@ final class M3DbModuleStore implements AutoCloseable {
         inputs = nextInputs;
         outputs = nextOutputs;
         size = at;
+    }
+
+    /**
+     * Bounded sorted-run merge with exactly the old per-insertion min-eviction
+     * semantics, but no O(taskCount * stagedCount) array shifting.
+     *
+     * <p>Read heads advance monotonically through the old and staged lanes;
+     * 1 = newly inserted and alive, 2 = newly inserted then evicted,
+     * 3 = replacement of a still-visible old slot. A replacement is omitted
+     * if a later insertion evicts its original old slot. Only byte/int masks
+     * are transient; the committed physical layout stays parallel arrays.
+     */
+    private void mergeStagedAtCapacity() {
+        byte[] action = new byte[pendingSize];
+        int[] oldMatch = new int[pendingSize];
+        Arrays.fill(oldMatch, -1);
+        int oldHead = 0, stagedHead = 0, active = size;
+        for (int i = 0; i < pendingSize; i++) {
+            String key = pendingNames[i];
+            int oldIndex = Arrays.binarySearch(names, 0, size, key);
+            if (oldIndex >= oldHead) {
+                action[i] = 3;
+                oldMatch[i] = oldIndex;
+                continue;
+            }
+            if (active == MAX_TASKS) {
+                while (stagedHead < i && action[stagedHead] != 1) stagedHead++;
+                if (oldHead < size && (stagedHead == i
+                        || names[oldHead].compareTo(pendingNames[stagedHead]) <= 0)) {
+                    log.accept("M3DB receipt capacity reached; evicting " + names[oldHead++]);
+                } else {
+                    log.accept("M3DB receipt capacity reached; evicting " + pendingNames[stagedHead]);
+                    action[stagedHead++] = 2;
+                }
+                active--;
+            }
+            action[i] = 1;
+            active++;
+        }
+
+        String[] nextNames = new String[expandedCapacity(0, active)];
+        String[] nextInputs = new String[nextNames.length];
+        String[] nextOutputs = new String[nextNames.length];
+        int old = oldHead, staged = 0, at = 0;
+        while (old < size || staged < pendingSize) {
+            while (staged < pendingSize && (action[staged] == 2
+                    || action[staged] == 3 && oldMatch[staged] < oldHead)) staged++;
+            if (old == size && staged == pendingSize) break;
+            boolean useStaged;
+            if (old == size) {
+                useStaged = true;
+            } else if (staged == pendingSize) {
+                useStaged = false;
+            } else {
+                int comparison = names[old].compareTo(pendingNames[staged]);
+                useStaged = comparison >= 0;
+                if (comparison == 0) old++;
+            }
+            nextNames[at] = useStaged ? pendingNames[staged] : names[old];
+            nextInputs[at] = useStaged ? pendingInputs[staged] : inputs[old];
+            nextOutputs[at++] = useStaged ? pendingOutputs[staged++] : outputs[old++];
+        }
+        if (at != active) throw new IllegalStateException("M3DB bounded merge lost a receipt");
+        names = nextNames;
+        inputs = nextInputs;
+        outputs = nextOutputs;
+        size = active;
     }
 
     private void upsert(String task, String input, String output) {

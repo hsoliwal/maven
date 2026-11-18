@@ -377,11 +377,26 @@ public final class M3DbModuleStoreContractTestMain {
             check(Arrays.equals(store.lookup("slot-99999"), new String[] {OUTPUT, INPUT})
                             && store.lookup("slot-65535") != null,
                     "new successful receipts remain usable at capacity");
+            // A newly inserted key below the current minimum may itself be
+            // evicted by the next staged insertion; a later key can also
+            // reference an old identity that was evicted earlier in the batch.
+            // A plain "keep largest K" merge would be observably different.
+            store.stage("a00", OUTPUT, INPUT);
+            store.stage("slot-00000", OUTPUT, INPUT);
+            store.stage("z99", OUTPUT, INPUT);
+            store.commitStaged();
+            check(store.lookup("a00") == null && store.lookup("slot-00000") == null,
+                    "bounded merge honors sequential minimum eviction of newly staged keys");
+            check(store.lookup("slot-00002") == null && store.lookup("slot-00003") != null,
+                    "overflow removes exactly the next old minimum");
+            check(Arrays.equals(store.lookup("z99"), new String[] {OUTPUT, INPUT}),
+                    "newest staged success survives bounded merge");
         }
         try (M3DbModuleStore store = M3DbModuleStore.open(root, true, ignored -> {})) {
             check(store.lookup("slot-00000") == null && store.lookup("slot-65535") != null
-                    && Arrays.equals(store.lookup("slot-99999"), new String[] {OUTPUT, INPUT}),
-                    "large-capacity image and eviction policy survive process restart");
+                    && Arrays.equals(store.lookup("slot-99999"), new String[] {OUTPUT, INPUT})
+                    && Arrays.equals(store.lookup("z99"), new String[] {OUTPUT, INPUT}),
+                    "large-capacity image and overflow eviction survive process restart");
         }
     }
 
