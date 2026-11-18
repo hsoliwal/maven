@@ -375,10 +375,12 @@ public final class EclipseProjectModel {
             if (!required) return null;
             throw new IOException("missing Eclipse language descriptor: " + file);
         }
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Eclipse language descriptor must be a regular file: " + file);
+        }
         long expectedSize = Files.size(file);
-        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                || expectedSize > MAX_DESCRIPTOR_BYTES) {
-            throw new IOException("Eclipse language descriptor must be a regular file under 8 MiB: " + file);
+        if (expectedSize > MAX_DESCRIPTOR_BYTES) {
+            throw new IOException("Eclipse language descriptor exceeds its 8 MiB byte limit: " + file);
         }
         final MessageDigest digest;
         try {
