@@ -57,6 +57,18 @@ public final class M3DirectoryVacuumTest {
                     "damaged live blob prevents orphan deletion");
             Files.writeString(blobs.resolve(b + ".blob"), "newer", StandardCharsets.UTF_8);
             require(M3DirectoryVacuum.compact(dir).removedBlobs() == 1, "cleanup resumes after layout restored");
+            Path alien = Files.writeString(dir.resolve("future.header"), "opaque");
+            require(!M3DirectoryVacuum.compact(dir).recognized(), "unknown top-level format left untouched");
+            Files.delete(alien);
+            // A native provider can be interrupted after storing a blob but before
+            // publishing its reference: the unreferenced blob is safe to reclaim.
+            Path orphanOnly = Files.createDirectories(temp.resolve("interrupted"));
+            Files.createDirectories(orphanOnly.resolve("refs"));
+            Path onlyBlobs = Files.createDirectories(orphanOnly.resolve("blobs"));
+            String interrupted = blob(onlyBlobs, "unpublished");
+            require(M3DirectoryVacuum.compact(orphanOnly).removedBlobs() == 1
+                    && !Files.exists(onlyBlobs.resolve(interrupted + ".blob")),
+                    "interrupted pre-reference write is reclaimed under the module lease");
             originalBackendRetainsOnlyLiveContent(temp.resolve("backend"));
             System.out.println("PASS: M3IndexDB vacuum live refs, orphan reclamation, idempotence, corrupt/future safety");
         } finally {
