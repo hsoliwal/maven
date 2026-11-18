@@ -85,6 +85,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableEngineConformanceTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3HsqlDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PackedReceiptContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ReceiptArrayModelTestMain.java \
@@ -114,6 +115,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/DotnetReportsContractTestMain.java
 java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3HsqlDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain
