@@ -101,9 +101,11 @@
     <commonsLang3Version>3.21.0</commonsLang3Version>
     <commonsCompress>1.28.0</commonsCompress>
     <commonsIoVersion>2.22.0</commonsIoVersion>
-    <plexus-java-version>1.6.0</plexus-java-version>
+    <!-- in-tree: plugins/shared/plexus-languages -->
+    <plexus-java-version>${project.version}</plexus-java-version>
     <!-- Do not upgrade, leads to test failures, MSHARED-1014 -->
-    <mavenSharedUtilsVersion>3.5.0</mavenSharedUtilsVersion>
+    <!-- in-tree: plugins/shared/maven-shared-utils -->
+    <mavenSharedUtilsVersion>${project.version}</mavenSharedUtilsVersion>
     <jacocoVersion>0.8.15</jacocoVersion>
     <testngVersion>5.11</testngVersion>
     <maven.surefire.scm.devConnection>scm:git:https://github.com/apache/maven-surefire.git</maven.surefire.scm.devConnection>
@@ -195,7 +197,8 @@
       <dependency>
         <groupId>org.apache.maven.shared</groupId>
         <artifactId>maven-common-artifact-filters</artifactId>
-        <version>3.4.0</version>
+        <!-- in-tree: plugins/shared/maven-common-artifact-filters -->
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.apache.maven.plugin-testing</groupId>
@@ -227,6 +230,12 @@
         <groupId>org.codehaus.plexus</groupId>
         <artifactId>plexus-java</artifactId>
         <version>${plexus-java-version}</version>
+      </dependency>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-xml -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-xml</artifactId>
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.mockito</groupId>
