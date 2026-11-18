@@ -3,6 +3,12 @@
 name: M3 LLVM exact-fork source-built Maven native proof
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/m3-llvm-fork-source-proof.yml'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_SOURCE_PROOF.md'
   pull_request:
     paths:
       - '.github/workflows/m3-llvm-fork-source-proof.yml'
