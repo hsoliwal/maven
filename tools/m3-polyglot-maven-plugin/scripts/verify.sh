@@ -111,7 +111,7 @@ java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3EclipseBuilderRegistryContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3EclipseBuildContextWireContractTestMain
-java -cp "$DEST" io.synexia.maven.polyglot.M3EclipseBuildHandoffWireContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildHandoffWireContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
