@@ -19,6 +19,12 @@ public final class M3CdtCompilerFactsWireContractTestMain {
 
     public static void main(String[] ignored) throws Exception {
         byte[] packet = facts("Mixed", "Debug", INVOCATION).getBytes(StandardCharsets.UTF_8);
+        try (var fixture = M3CdtCompilerFactsWireContractTestMain.class.getResourceAsStream(
+                "/m3-cdt-compiler-facts-v1.fixture")) {
+            if (fixture == null) throw new IOException("missing cross-fork original CDT facts fixture");
+            require(java.util.Arrays.equals(packet, fixture.readAllBytes()),
+                    "CDT producer and Maven decoder must have byte-identical v1 schema");
+        }
         var cdt = M3CdtCompilerFactsWire.decode(packet);
         var eclipse = eclipse();
         var accepted = M3CdtCompilerFactsWire.bind(cdt, eclipse);
