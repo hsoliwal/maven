@@ -47,7 +47,7 @@ class DefaultPluginVersionResolverTest {
         MavenPluginManager pluginManager = Mockito.mock(MavenPluginManager.class);
         Mockito.when(pluginManager.getPluginDescriptor(Mockito.any(), Mockito.any(), Mockito.any()))
                 .thenReturn(new PluginDescriptor());
-        return new DefaultPluginVersionResolver(null, null, pluginManager, new GenericVersionScheme());
+        return new DefaultPluginVersionResolver(null, null, () -> pluginManager, new GenericVersionScheme());
     }
 
     private static DefaultPluginVersionResolver.Versions versions(String release, String... available) {

@@ -1,0 +1,501 @@
+# SPDX-License-Identifier: Apache-2.0
+# Superset of this fork's own checks (additive consolidation; runner-starvation fix).
+# Each job after 'changes' is the single job of one former workflow, with its steps verbatim. The former
+# workflow file stays in .github/workflows with only workflow_dispatch, so it can still be run by hand.
+# 'changes' recomputes each former workflow's triggers (event, branches, paths) with plain git and gates the
+# job on them; a change to this file runs every job, as a change to a former file ran that workflow.
+# Workflows that come from apache/maven (maven.yml, pr-*.yml, release-drafter.yml, stale*.yml,
+# update-lifecycle-plugins.yml) are not part of this file and stay as they are.
+name: Fork checks superset
+
+on:
+  pull_request:
+    paths:  # union of the former pull_request paths filters, plus this file
+      - 'tools/m3-analyzer-report-adapter/**'
+      - '.github/workflows/m3-analyzer-report-adapter.yml'
+      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
+      - '.github/workflows/m3-git-fixture-cleanup.yml'
+      - 'tools/m3-ide-bridge/maven-plugin/**'
+      - '.github/workflows/m3-ide-assess-goal.yml'
+      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java'
+      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java'
+      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*'
+      - 'm3/PATCH_RECIPE_BOOT.md'
+      - '.github/workflows/m3-native-pr-patch-bootstrap.yml'
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-smart-builder/extension/**'
+      - '.github/workflows/m3-polyglot-verify.yml'
+      - 'tools/m3-smart-builder/**'
+      - '.github/workflows/m3-smart-builder.yml'
+      - '.github/workflows/checks-superset.yml'
+  push:
+    branches:  # union of the former push branches filters
+      - 'fix/m3-patch-git-fixture-windows-cleanup-20261027'
+      - 'master'
+    paths:  # union of the former push paths filters, plus this file
+      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
+      - '.github/workflows/m3-git-fixture-cleanup.yml'
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - 'tools/m3-smart-builder/extension/**'
+      - '.github/workflows/m3-polyglot-verify.yml'
+      - '.github/workflows/checks-superset.yml'
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Consolidated check to run (all = every former workflow, as each former workflow_dispatch ran)
+        type: choice
+        default: all
+        options:
+          - 'all'
+          - 'analyzer-report-adapter'
+          - 'git-fixture-cleanup'
+          - 'ide-assess-goal'
+          - 'native-pr-patch-bootstrap'
+          - 'polyglot-verify'
+          - 'smart-builder'
+
+permissions:
+  contents: read
+
+# Non-default branches and pull requests: a newer run cancels the older one of the same ref.
+# Default branch: the group carries the run id, so no default-branch run is ever cancelled (the former
+# workflows had no concurrency).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  # Gate: for every former workflow, would its own on: block (event, branches, paths) have started it?
+  # Changed files come from plain git: three-dot base...head for pull_request (GitHub's paths-filter rule),
+  # two-dot before..sha for push. When the diff cannot be computed (new branch, unreachable before SHA,
+  # fetch error) every path filter counts as matched, as GitHub runs a workflow whose diff it cannot generate.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      analyzer-report-adapter: ${{ steps.gate.outputs.analyzer-report-adapter }}
+      git-fixture-cleanup: ${{ steps.gate.outputs.git-fixture-cleanup }}
+      ide-assess-goal: ${{ steps.gate.outputs.ide-assess-goal }}
+      native-pr-patch-bootstrap: ${{ steps.gate.outputs.native-pr-patch-bootstrap }}
+      polyglot-verify: ${{ steps.gate.outputs.polyglot-verify }}
+      smart-builder: ${{ steps.gate.outputs.smart-builder }}
+    steps:
+      - name: Changed files (plain git)
+        id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          list="$RUNNER_TEMP/changed-files.txt"
+          : > "$list"
+          status=unavailable
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE"; head="$PR_HEAD"; dots='...' ;;
+            push) base="$PUSH_BEFORE"; head="$PUSH_AFTER"; dots='..' ;;
+            *) base=''; head=''; dots='' ;;
+          esac
+          if [ -n "$base" ] && [ -n "$head" ] && [ -z "${base//0/}" ]; then
+            echo "before SHA is all zeros (new branch): diff unavailable"
+            base=''
+          fi
+          if [ -n "$base" ] && [ -n "$head" ]; then
+            repo="$RUNNER_TEMP/changes-repo"
+            git init -q "$repo"
+            git -C "$repo" remote add origin "$REPO_URL"
+            auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+            if git -C "$repo" -c http.extraheader="$auth" fetch -q --no-tags --filter=blob:none \
+                 origin "$base" "$head" \
+               && git -C "$repo" diff --name-only --no-renames "$base$dots$head" > "$list"; then
+              status=ok
+            fi
+          fi
+          echo "event=$EVENT_NAME range=$base$dots$head status=$status files=$(wc -l < "$list")"
+          head -n 400 "$list" | sed 's/^/changed: /'
+          {
+            echo "status=$status"
+            echo "list=$list"
+          } >> "$GITHUB_OUTPUT"
+      - name: Gate each consolidated check on its former triggers
+        id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          ONLY: ${{ inputs.only }}
+          DIFF_STATUS: ${{ steps.diff.outputs.status }}
+          CHANGED_FILES: ${{ steps.diff.outputs.list }}
+          SELF: '.github/workflows/checks-superset.yml'
+          # Former on: blocks, parsed from the former workflow files (pull_request / push filters).
+          GATES: |
+            {
+             "analyzer-report-adapter": {"workflow": "M3 Original Analyzer Report Adapter", "file": ".github/workflows/m3-analyzer-report-adapter.yml", "triggers": {"pull_request": {"paths": ["tools/m3-analyzer-report-adapter/**", ".github/workflows/m3-analyzer-report-adapter.yml"]}}},
+             "git-fixture-cleanup": {"workflow": "M3 Maven Git fixture Windows cleanup proof", "file": ".github/workflows/m3-git-fixture-cleanup.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}, "push": {"branches": ["fix/m3-patch-git-fixture-windows-cleanup-20261027"], "paths": ["impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java", ".github/workflows/m3-git-fixture-cleanup.yml"]}}},
+             "ide-assess-goal": {"workflow": "M3 Native Maven IDE Assessment Goal", "file": ".github/workflows/m3-ide-assess-goal.yml", "triggers": {"pull_request": {"paths": ["tools/m3-ide-bridge/maven-plugin/**", ".github/workflows/m3-ide-assess-goal.yml"]}}},
+             "native-pr-patch-bootstrap": {"workflow": "M3 Native GitHub Patch Bootstrap", "file": ".github/workflows/m3-native-pr-patch-bootstrap.yml", "triggers": {"pull_request": {"paths": ["impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java", "impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java", "impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*", "m3/PATCH_RECIPE_BOOT.md", ".github/workflows/m3-native-pr-patch-bootstrap.yml"]}}},
+             "polyglot-verify": {"workflow": "M3 Polyglot Maven Plugin", "file": ".github/workflows/m3-polyglot-verify.yml", "triggers": {"pull_request": {"paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}, "push": {"branches": ["master"], "paths": ["tools/m3-polyglot-maven-plugin/**", "tools/m3-smart-builder/extension/**", ".github/workflows/m3-polyglot-verify.yml"]}}},
+             "smart-builder": {"workflow": "M3 Smart Maven Builder", "file": ".github/workflows/m3-smart-builder.yml", "triggers": {"pull_request": {"paths": ["tools/m3-smart-builder/**", ".github/workflows/m3-smart-builder.yml"]}}}
+            }
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          gates = json.loads(os.environ["GATES"])
+          event, ref = os.environ["EVENT_NAME"], os.environ["GITHUB_REF"]
+          only = os.environ.get("ONLY") or "all"
+          ok = os.environ.get("DIFF_STATUS") == "ok"
+          files = []
+          if ok:
+              with open(os.environ["CHANGED_FILES"], encoding="utf-8") as f:
+                  files = [line.rstrip("\n") for line in f if line.strip()]
+
+          def rx(glob):
+              # GitHub filter glob: ** any characters, * any characters but '/', ? + [] as in a regex
+              out, i = "", 0
+              while i < len(glob):
+                  if glob.startswith("**", i):
+                      out, i = out + ".*", i + 2
+                      continue
+                  c = glob[i]
+                  out += {"*": "[^/]*", "?": "?", "+": "+", "[": "[", "]": "]"}.get(c, re.escape(c))
+                  i += 1
+              return re.compile(out + r"\Z")
+
+          def hit(patterns, name):
+              # ordered evaluation: a later '!pattern' excludes, a later pattern includes again
+              res = False
+              for p in patterns:
+                  neg = p.startswith("!")
+                  if rx(p[1:] if neg else p).match(name):
+                      res = not neg
+              return res
+
+          def branch_ok(spec):
+              name = os.environ["BASE_REF"] if event == "pull_request" else ref
+              if event == "push":
+                  if not ref.startswith("refs/heads/"):
+                      return False
+                  name = ref[len("refs/heads/"):]
+              if "branches" in spec and not hit(spec["branches"], name):
+                  return False
+              if "branches-ignore" in spec and hit(spec["branches-ignore"], name):
+                  return False
+              return True
+
+          def paths_ok(spec):
+              if not ok:
+                  return True, "diff unavailable: run"
+              if not files:
+                  return False, "no changed files"
+              if "paths" in spec:
+                  pats = spec["paths"] + [os.environ["SELF"]]
+                  m = [f for f in files if hit(pats, f)]
+                  return bool(m), ("matched " + m[0]) if m else "no file matches paths"
+              if "paths-ignore" in spec:
+                  m = [f for f in files if not hit(spec["paths-ignore"], f)]
+                  return bool(m), ("not ignored " + m[0]) if m else "all files ignored"
+              return True, "no paths filter"
+
+          rows = []
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              for key, g in gates.items():
+                  if event == "workflow_dispatch":
+                      run, why = only in ("all", key), "workflow_dispatch only=" + only
+                  elif event not in g["triggers"]:
+                      run, why = False, "event not a former trigger"
+                  elif not branch_ok(g["triggers"][event]):
+                      run, why = False, "branch filter"
+                  else:
+                      run, why = paths_ok(g["triggers"][event])
+                  out.write("%s=%s\n" % (key, "true" if run else "false"))
+                  rows.append((key, g["workflow"], event, "run" if run else "skip", why))
+                  print(json.dumps({"gate": key, "workflow": g["workflow"], "event": event,
+                                    "decision": "run" if run else "skip", "reason": why}))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as s:
+              s.write("| check | former workflow | event | decision | reason |\n|---|---|---|---|---|\n")
+              s.writelines("| %s | %s | %s | %s | %s |\n" % r for r in rows)
+          PY
+
+  # Former workflow 'M3 Original Analyzer Report Adapter' (.github/workflows/m3-analyzer-report-adapter.yml): job and steps verbatim.
+  original-analyzer-report-converter:
+    needs: changes
+    if: needs.changes.outputs.analyzer-report-adapter == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: tools/m3-analyzer-report-adapter/pom.xml
+      - name: Compile and run hermetic XML/SARIF/Semgrep JSON contracts
+        run: |
+          mvn -B -ntp -f tools/m3-analyzer-report-adapter/pom.xml verify
+      - name: Verify standalone shaded adapter and canonical SARIF report
+        run: |
+          jarfile=tools/m3-analyzer-report-adapter/target/m3-analyzer-report-adapter-0.1.0-SNAPSHOT.jar
+          root="$PWD/tools/m3-analyzer-report-adapter"
+          test -s "$jarfile"
+          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/NormalizeCli.class'
+          jar tf "$jarfile" | grep -F 'io/synexia/maven/analysis/internal/jackson/JsonFactory.class'
+          java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
+            SARIF PARTIAL "$root" "$root/src/test/resources/sarif/basic.sarif" \
+            "$root/target/standalone-sarif.tsv" "$root/target/standalone-sarif.sha256"
+          grep -F 'CodeQL.java/demo-rule' "$root/target/standalone-sarif.tsv"
+          recorded=$(cat "$root/target/standalone-sarif.sha256")
+          actual=$(sha256sum "$root/target/standalone-sarif.tsv" | cut -d ' ' -f 1)
+          test "$recorded" = "$actual"
+          java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
+            SEMGREP PARTIAL "$root" "$root/src/test/resources/semgrep/basic.json" \
+            "$root/target/standalone-semgrep.tsv" "$root/target/standalone-semgrep.sha256"
+          grep -F 'java.demo-rule' "$root/target/standalone-semgrep.tsv"
+          if grep -F 'sensitive source content' "$root/target/standalone-semgrep.tsv"; then
+            echo "The original Semgrep source snippet leaked into normalized evidence" >&2
+            exit 1
+          fi
+          recorded=$(cat "$root/target/standalone-semgrep.sha256")
+          actual=$(sha256sum "$root/target/standalone-semgrep.tsv" | cut -d ' ' -f 1)
+          test "$recorded" = "$actual"
+
+          if java -cp "$jarfile" io.synexia.maven.analysis.NormalizeCli \
+            SEMGREP COMPLETE "$root" "$root/src/test/resources/semgrep/error.json" \
+            "$root/target/semgrep-invalid.tsv" "$root/target/semgrep-invalid.sha256"; then
+            echo "Original Semgrep scan errors were incorrectly accepted as COMPLETE" >&2
+            exit 1
+          fi
+          test ! -e "$root/target/semgrep-invalid.tsv"
+          test ! -e "$root/target/semgrep-invalid.sha256"
+
+  # Former workflow 'M3 Maven Git fixture Windows cleanup proof' (.github/workflows/m3-git-fixture-cleanup.yml): job and steps verbatim.
+  strict-original-source:
+    needs: changes
+    if: needs.changes.outputs.git-fixture-cleanup == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile only original Maven bootstrap owners, strict Java17
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=target/m3-git-bootstrap-source-proof
+          mkdir -p "$out"
+          javac --release 17 -proc:none -encoding UTF-8 -Xlint:all -Werror -d "$out" \
+            impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java \
+            impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
+      - name: Real-Git fixture selftest, normal and interpreted modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=target/m3-git-bootstrap-source-proof
+          java -cp "$out" org.apache.maven.cling.M3GitHubPatchBootstrapSelfTest
+          java -Xint -cp "$out" org.apache.maven.cling.M3GitHubPatchBootstrapSelfTest
+      - name: Source hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+
+  # Former workflow 'M3 Native Maven IDE Assessment Goal' (.github/workflows/m3-ide-assess-goal.yml): job and steps verbatim.
+  maven4-native-plugin:
+    needs: changes
+    if: needs.changes.outputs.ide-assess-goal == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            java: '17'
+          - os: ubuntu-24.04
+            java: '21'
+          - os: windows-2025
+            java: '21'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            tools/m3-ide-bridge/maven-plugin/pom.xml
+      - name: Bootstrap Maven 4 CLI for building the fork
+        run: |
+          mvn --errors --batch-mode --show-version \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper '-Dmaven=4.0.0-rc-7'
+      - name: Install original M3 Maven API and implementation
+        run: |
+          ./mvnw -B -ntp -pl impl/maven-impl -am install
+      - name: Build and test standalone Maven 4 IDE plugin
+        run: |
+          ./mvnw -B -ntp -f tools/m3-ide-bridge/maven-plugin/pom.xml verify
+      - name: Inspect the actual generated Maven plugin descriptor
+        run: |
+          jarfile=tools/m3-ide-bridge/maven-plugin/target/m3-ide-bridge-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s "$jarfile"
+          jar tf "$jarfile" | grep -F 'META-INF/maven/plugin.xml'
+          jar xf "$jarfile" META-INF/maven/plugin.xml
+          grep -F 'ide-assess' META-INF/maven/plugin.xml
+
+  # Former workflow 'M3 Native GitHub Patch Bootstrap' (.github/workflows/m3-native-pr-patch-bootstrap.yml): job and steps verbatim.
+  native-source-regressions:
+    needs: changes
+    if: needs.changes.outputs.native-pr-patch-bootstrap == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Strict native Maven bootstrap source and refusal assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          javac --release 17 -Xlint:all -Werror -d "$work" \
+            impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java \
+            impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
+          java -cp "$work" org.apache.maven.cling.M3GitHubPatchBootstrapSelfTest
+
+  # Polyglot and ordinary lifecycle module-state gates share the Java 17/21 matrix.
+  contract-and-plugin:
+    needs: changes
+    if: needs.changes.outputs.polyglot-verify == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Source contract and provider argv tests
+        run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+      - name: Maven plugin descriptor, compile and contract verification
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: Core extension compile and lifecycle admission contracts
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
+      - name: Prepare pinned authentic JDBC test runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/m3-jdbc"
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar" \
+            https://github.com/xerial/sqlite-jdbc/releases/download/3.54.1.0/sqlite-jdbc-3.54.1.0.jar
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar" \
+            https://github.com/h2database/h2database/releases/download/version-2.5.252/h2-2.5.252.jar
+          cd "$RUNNER_TEMP/m3-jdbc"
+          sha256sum --check <<'SHA256'
+          f8dce420a6016278497f4f0560f65602b9db858de141b541cf91a4644ebe4639  sqlite-jdbc-3.54.1.0.jar
+          90b11dc413da82070ef15fc943282c1408e6ffd34fa68998335fea8603b5ff20  h2-2.5.252.jar
+          SHA256
+      - name: Actual JDBC rollback, interrupted-write and context-realm contracts
+        shell: bash
+        run: >-
+          java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes
+          io.synexia.maven.polyglot.M3JdbcDbContractTestMain
+          --driver-classpath "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar:$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar:$HOME/.m2/repository/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar"
+          h2 sqlite
+      - name: Real Maven module database acceptance
+        shell: bash
+        run: >-
+          python3 tools/m3-smart-builder/extension/src/it/verify_module_state.py
+          --maven "$(command -v mvn)" --repository "$HOME/.m2/repository"
+          --extension-jar tools/m3-smart-builder/extension/target/smart-maven-extension-0.1.0-SNAPSHOT.jar
+          --state-jar tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          --sqlite-jar "$RUNNER_TEMP/m3-jdbc/sqlite-jdbc-3.54.1.0.jar"
+          --h2-jar "$RUNNER_TEMP/m3-jdbc/h2-2.5.252.jar"
+          --work tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance --prime-repository
+      - name: Retain lifecycle acceptance logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-lifecycle-java-${{ matrix.java }}
+          path: |
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/logs/*.log
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/results.json
+            tools/m3-smart-builder/extension/target/m3-lifecycle-acceptance/acceptance.json
+
+  # Former workflow 'M3 Smart Maven Builder' (.github/workflows/m3-smart-builder.yml): job and steps verbatim.
+  verify:
+    needs: changes
+    if: needs.changes.outputs.smart-builder == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/m3-smart-builder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Python runtime-harness contract tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+      - name: Maven plugin descriptor, compile, tests, and isolated install
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3-smart-maven-repository"
+          mvn -B -ntp -Dmaven.repo.local="$RUNNER_TEMP/m3-smart-maven-repository" clean install
+      - name: JDK-only lint, test, and synthetic MCP qualification
+        run: sh scripts/verify.sh
+      - name: Invoke real Maven hook goal
+        shell: bash
+        run: >-
+          mvn -B -ntp "-Dmaven.repo.local=$RUNNER_TEMP/m3-smart-maven-repository"
+          io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:build-hook
+          -Dm3.smart.phase=pre-build -Dm3.smart.llmBackend=none
+      - name: Real Maven goal invocation, deterministic replay and offline refusal
+        shell: bash
+        run: |
+          python3 scripts/verify_maven_runtime.py --maven mvn --local-repo "$RUNNER_TEMP/m3-smart-maven-repository"
+      - name: Failed Maven build retains status and runs post hook
+        run: bash scripts/verify-build-hook-workflow.sh
+      - name: Retain real Maven acceptance logs and receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-smart-maven-runtime-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
+            tools/m3-smart-builder/target/m3-runtime-acceptance/acceptance.json

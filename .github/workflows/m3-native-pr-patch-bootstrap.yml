@@ -4,16 +4,8 @@
 # The ASF licenses this file to You under the Apache License, Version 2.0.
 name: M3 Native GitHub Patch Bootstrap
 on:
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java'
-      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java'
-      - 'impl/maven-cli/src/main/java/org/apache/maven/cling/MavenCling.java'
-      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrap*'
-      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacket*'
-      - 'm3/PATCH_RECIPE_BOOT.md'
-      - '.github/workflows/m3-native-pr-patch-bootstrap.yml'
 permissions:
   contents: read
 jobs:
@@ -34,8 +26,5 @@ jobs:
           trap 'rm -rf "$work"' EXIT
           javac --release 17 -Xlint:all -Werror -d "$work" \
             impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java \
-            impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java \
-            impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java \
-            impl/maven-cli/src/test/java/org/apache/maven/cling/M3ChromeAiReviewPacketSelfTest.java
+            impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
           java -cp "$work" org.apache.maven.cling.M3GitHubPatchBootstrapSelfTest
-          java -cp "$work" org.apache.maven.cling.M3ChromeAiReviewPacketSelfTest

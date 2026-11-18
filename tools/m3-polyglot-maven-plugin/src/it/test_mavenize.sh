@@ -54,6 +54,8 @@ grep -q 'TASK go-test' "$T/stock.log" && grep -q 'TASK python-test' "$T/stock.lo
     || fail "stock Maven: Go, Python or Cargo were not executed"
 grep -q 'TASK go-test' "$T/verify.log" && grep -q 'TASK python-test' "$T/verify.log" && grep -q 'TASK cargo-test' "$T/verify.log" \
     || fail "verify: go, python or cargo tests not run"
+grep -q 'tests="1"' "$R/crates/math/target/surefire-reports/TEST-math_src_lib.rs.xml" 2>/dev/null \
+    || fail "verify: cargo test wrote no surefire report"
 printf 'package api\n\nimport "testing"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 4 { t.Fatal("add") } }\n' > "$R/services/api/api_test.go"
 mvnx "$R" broken.log -o -Dm3.polyglot.lifecycle=true verify && fail "broken: a failing Go test left the build green"
 grep -q 'polyglot tool failed: go-test' "$T/broken.log" || fail "broken: not reported as the Go test"

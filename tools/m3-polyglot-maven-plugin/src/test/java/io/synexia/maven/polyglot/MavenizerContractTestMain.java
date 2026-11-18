@@ -28,6 +28,8 @@ public final class MavenizerContractTestMain {
         try {
             detectsEachToolFamily(temp.resolve("detect"));
             mavenizesANestedRepositoryWithoutOverwriting(temp.resolve("repo"));
+            mavenizesAGradleMultiProjectBuildAsOneProject(temp.resolve("gradle-multi"));
+            pointsClangdAtTheCMakeCompileDatabase(temp.resolve("clangd"));
             neverSkipsATaskWithoutDeclaredInputs(temp.resolve("noinputs"));
             resolvesBareToolNames(temp.resolve("tools"));
             System.out.println("PASS: " + passed + " Mavenizer contract cases");
@@ -44,15 +46,26 @@ public final class MavenizerContractTestMain {
                 "validate npm-validate npm [install]");
         expect(dir(root, "pnpm", "package.json", "{}", "pnpm-lock.yaml", ""), "validate pnpm-validate pnpm [install]");
         expect(dir(root, "cargo", "Cargo.toml", "[package]"),
-                "compile cargo-compile cargo [build]", "test cargo-test cargo [test]", "package cargo-package cargo [build, --release]");
+                "compile cargo-compile cargo [build]", "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast]",
+                "package cargo-package cargo [build, --release]",
+                "package cargo-package-2 cargo [package, --allow-dirty, --no-verify]");
+        // A lock file makes every step --locked; a virtual workspace has no crate of its own to package.
+        expect(dir(root, "cargo-workspace", "Cargo.toml", "[workspace]\nmembers = [\"a\"]\n\n[workspace.package]\n",
+                "Cargo.lock", ""),
+                "compile cargo-compile cargo [build, --locked]",
+                "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast, --locked]",
+                "package cargo-package cargo [build, --release, --locked]");
         expect(dir(root, "go", "go.mod", "module x"), "compile go-compile go [build, ./...]", "test go-test go [test, ./...]");
         expect(dir(root, "make", "Makefile", "all:\n\tcc x.c\ntest: all\n\t./x\n"), "compile make-compile make []", "test make-test make [test]");
         expect(dir(root, "make-notest", "Makefile", "all:\n\tcc x.c\n"), "compile make-compile make []");
         expect(dir(root, "cmake", "CMakeLists.txt", "project(x)\nenable_testing()\n"),
-                "validate cmake-validate cmake [-S, ., -B, build/cmake]", "compile cmake-compile cmake [--build, build/cmake]",
-                "test ctest-test ctest [--test-dir, build/cmake]");
+                "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
+                "compile cmake-compile cmake [--build, build/cmake, --config, Debug]",
+                "test ctest-test ctest [--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
+                        + "../../target/surefire-reports/TEST-ctest.xml]");
         expect(dir(root, "cmake-notest", "CMakeLists.txt", "project(x)\n"),
-                "validate cmake-validate cmake [-S, ., -B, build/cmake]", "compile cmake-compile cmake [--build, build/cmake]");
+                "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
+                "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
         Path python = dir(root, "python", "pyproject.toml", "[project]\nname='x'\n");
         Files.createDirectories(python.resolve("tests"));
         expect(python, "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
@@ -60,7 +73,22 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "pytest", "pyproject.toml", "[tool.pytest.ini_options]\n"),
                 "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
                 "test python-test python [-m, pytest]");
-        expect(dir(root, "dotnet", "App.csproj", "<Project/>"), "compile dotnet-compile dotnet [build]", "test dotnet-test dotnet [test]");
+        String dotnetTest = "test dotnet-test @m3:surefire:interpreter:trx [target/dotnet-test-results, "
+                + "target/surefire-reports, dotnet, test, --logger, trx, --results-directory, target/dotnet-test-results]";
+        String dotnetPack = "package dotnet-package dotnet [pack, --output, target/nuget]";
+        expect(dir(root, "dotnet", "App.csproj", "<Project/>"), "validate dotnet-validate dotnet [restore]",
+                "compile dotnet-compile dotnet [build]", dotnetTest, dotnetPack);
+        expect(dir(root, "fsharp", "Lib.fsproj", "<Project/>", "packages.lock.json", "{}"),
+                "validate dotnet-validate dotnet [restore, --locked-mode]", "compile dotnet-compile dotnet [build]",
+                dotnetTest, dotnetPack);
+        expect(dir(root, "vb", "Old.vbproj", "<Project/>"), "validate dotnet-validate dotnet [restore]",
+                "compile dotnet-compile dotnet [build]", dotnetTest, dotnetPack);
+        expect(dir(root, "dotnet-lookalike", "App.csproj.user", "<Project/>"));
+        List<Mavenizer.Step> dotnet = Mavenizer.steps(root.resolve("dotnet"));
+        require(Mavenizer.pom("g", "a", "1", List.of("dotnet"), List.of(), dotnet).contains("<goal>attach</goal>"),
+                "a packing .NET folder attaches its NuGet packages in the generated profile");
+        require(!Mavenizer.pom("g", "a", "1", List.of("cargo"), List.of(), Mavenizer.steps(root.resolve("cargo")))
+                .contains("<goal>attach</goal>"), "other tools attach nothing");
         expect(dir(root, "gradle", "build.gradle.kts", "", "gradlew.bat", ""),
                 "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
         expect(dir(root, "ant", "build.xml", "<project><target name=\"test\"/></project>"),
@@ -140,6 +168,50 @@ public final class MavenizerContractTestMain {
         passed++;
     }
 
+    /**
+     * The layout of Eclipse buildship (a Gradle build with a wrapper): included projects, buildSrc, a test fixture
+     * build under src/test/resources and a sample build with its own settings. All of it is one Gradle build run by
+     * the root wrapper; mavenizing it per sub-folder ran Gradle 25+ times, mixed the wrapper with the PATH gradle and
+     * turned buildSrc and fixtures into reactor modules.
+     */
+    private static void mavenizesAGradleMultiProjectBuildAsOneProject(Path root) throws Exception {
+        dir(root, ".", "settings.gradle", "include 'core', 'ui'\n", "build.gradle", "", "gradlew", "", "gradlew.bat", "");
+        dir(root, "core", "build.gradle", "");
+        dir(root, "ui", "build.gradle.kts", "");
+        dir(root, "buildSrc", "build.gradle", "");
+        dir(root.resolve("core/src/test/resources/sample-projects"), "simple-multimodule", "settings.gradle", "",
+                "build.gradle", "");
+        dir(root.resolve("samples"), "custom-tapi-model", "settings.gradle.kts", "", "build.gradle.kts", "");
+        List<String> plan = Mavenizer.mavenize(root, "org.example", "1.0-SNAPSHOT", false);
+        require(plan.equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv")), "one Gradle build, one project: " + plan);
+        expect(root, "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
+        Path standalone = dir(root.resolve(".."), "gradle-standalone", "build.gradle", "");
+        dir(standalone, "nested", "settings.gradle", "", "gradlew", "");
+        require(Mavenizer.mavenize(standalone, "g", "1", false).equals(List.of("PLAN pom.xml", "PLAN m3-build.tsv",
+                "PLAN nested/pom.xml", "PLAN nested/m3-build.tsv")), "a build without settings still finds builds below");
+        passed++;
+    }
+
+    private static void pointsClangdAtTheCMakeCompileDatabase(Path root) throws Exception {
+        dir(root, "native", "CMakeLists.txt", "project(x)\nenable_testing()\n");
+        dir(root, "kept", "CMakeLists.txt", "project(y)\n", ".clangd", "CompileFlags:\n  Add: [-Wall]\n");
+        dir(root, "crate", "Cargo.toml", "[package]\n");
+        List<String> plan = Mavenizer.mavenize(root, "org.example", "1", false);
+        require(plan.contains("PLAN native/.clangd") && plan.contains("KEEP kept/.clangd (exists)")
+                && plan.stream().noneMatch(line -> line.startsWith("PLAN crate/.clangd")), "plan: " + plan);
+        Mavenizer.mavenize(root, "org.example", "1", true);
+        require(Files.readString(root.resolve("native/.clangd")).equals("CompileFlags:\n  CompilationDatabase: build/cmake\n"),
+                "the .clangd pointer names the configure step's build folder");
+        require(Files.readString(root.resolve("kept/.clangd")).equals("CompileFlags:\n  Add: [-Wall]\n"),
+                "an existing .clangd (cdt-lsp writes one too) is never replaced");
+        TaskManifest crate = TaskManifest.load(root.resolve("crate/m3-build.tsv"));
+        require(names(crate.order("test")).equals(List.of("cargo-test", "test"))
+                && crate.order("test").get(0).tool().equals(CargoTestProvider.TOOL), "cargo tests run through the provider");
+        require(names(crate.order("package")).equals(List.of("cargo-package", "cargo-package-2", "package")),
+                "release build and .crate both bind to package");
+        passed++;
+    }
+
     private static void neverSkipsATaskWithoutDeclaredInputs(Path project) throws Exception {
         Files.createDirectories(project);
         String jdk = Path.of(System.getProperty("java.home"), "bin", "java").toString();
@@ -151,7 +223,7 @@ public final class MavenizerContractTestMain {
         TaskManifest manifest = TaskManifest.load(file);
         for (int i = 0; i < 2; i++) TaskRunner.run(manifest, project, "count", false, Duration.ofSeconds(60), false, true, line -> {});
         require(Files.readAllLines(project.resolve("runs.log")).size() == 2, "a task without declared inputs runs every time");
-        require(!Files.exists(project.resolve(InputStamps.DIRECTORY)), "and records no stamp");
+        require(!Files.exists(project.resolve(".m3/module.m3db")), "and records no reusable module state");
         passed++;
     }
 

@@ -104,17 +104,7 @@ public final class M3GitHubPatchBootstrap {
             try {
                 run(root, "git", "apply", "--check", "--index", temporary.toString());
             } catch (IOException unmerged) {
-                if (setting(args, "m3.chrome.ai.review")) {
-                    try {
-                        Path review = M3ChromeAiReviewPacket.write(
-                                root, plan.repository(), plan.pr(), plan.base(), plan.head(), digest, patch);
-                        // Only a safe local receipt path is printed, never source, token, or model text.
-                        System.err.println("M3_CHROME_AI_REVIEW_PACKET=" + root.relativize(review));
-                    } catch (IOException packetError) {
-                        unmerged.addSuppressed(packetError);
-                    }
-                }
-                throw unmerged; // Chrome AI never authorizes an automatic retry/apply.
+                throw unmerged; // an unmerged patch is never retried or applied automatically
             }
             if (apply) {
                 verifyClean(root);

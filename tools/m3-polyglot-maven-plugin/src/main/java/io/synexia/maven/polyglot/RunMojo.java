@@ -31,9 +31,17 @@ public final class RunMojo extends AbstractMojo {
     @Parameter(property = "m3.polyglot.approveRewriteApply", defaultValue = "false")
     private boolean approveRewriteApply;
 
-    /** Skip a task whose declared inputs and definition are unchanged since its last success (content stamps). */
+    /** Reuse a success only after input, context, prerequisite and output contents are verified. */
     @Parameter(property = "m3.polyglot.incremental", defaultValue = "false")
     private boolean incremental;
+
+    /** Embedded M3IndexDB by default; file/native, SQLite/H2, and explicit ext-* providers remain available. */
+    @Parameter(property = "m3.polyglot.incrementalState", defaultValue = "embedded")
+    private String incrementalState;
+
+    /** Explicit cache directory for restoring and storing declared, relocatable task outputs. */
+    @Parameter(property = "m3.polyglot.buildCache")
+    private File buildCache;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -47,7 +55,9 @@ public final class RunMojo extends AbstractMojo {
         try {
             var graph = TaskManifest.load(manifest.toPath());
             TaskRunner.run(graph, projectDirectory.toPath(), target, dryRun,
-                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, message -> getLog().info(message));
+                    Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, incrementalState,
+                    buildCache == null ? null : buildCache.toPath(),
+                    message -> getLog().info(message));
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("M3 polyglot tool execution interrupted", interruption);

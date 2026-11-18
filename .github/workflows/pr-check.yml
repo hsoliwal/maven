@@ -24,4 +24,11 @@ on:
 
 jobs:
   pr-check:
+    # Grants exactly what the nested jobs of pr-check.yml@v5 request (a reusable workflow can only reduce them):
+    #   pr-number: pull-requests: read
+    #   license-declaration: pull-requests: write, issues: write, statuses: write
+    permissions:
+      pull-requests: write
+      issues: write
+      statuses: write
     uses: apache/maven-gh-actions-shared/.github/workflows/pr-check.yml@v5

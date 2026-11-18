@@ -28,6 +28,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
     private boolean attributeTypes;
     @Parameter(property = "m3.smart.analyzeFlow", defaultValue = "false")
     private boolean analyzeFlow;
+    @Parameter(property = "m3.smart.moduleDb", defaultValue = "auto")
+    private String moduleDb = "auto";
 
     @Override public void execute() throws MojoExecutionException {
         if (baseDir == null || buildDir == null || sourceRoot == null || preparationReport == null
@@ -39,7 +41,8 @@ public final class MachineFingerprintMojo extends AbstractMojo {
                 "--atom-pattern-manifest", atomPatternManifest.toString(),
                 "--workers", Integer.toString(machineWorkers),
                 "--attribute-types", Boolean.toString(attributeTypes),
-                "--analyze-flow", Boolean.toString(analyzeFlow)).toArray(String[]::new), System.out, System.err);
+                "--analyze-flow", Boolean.toString(analyzeFlow),
+                "--module-db", moduleDb).toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 AST fingerprint generation refused (" + status + ")");
     }
 }

@@ -25,6 +25,13 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <!-- MavenProject and MavenProjectHelper for the attach goal; the engine itself stays dependency-free. -->
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>3.9.9</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>org.apache.maven.plugin-tools</groupId>
       <artifactId>maven-plugin-annotations</artifactId>
       <version>3.15.2</version>
@@ -52,58 +59,179 @@
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.5.0</version>
+        <!-- Child-JVM contracts need the actual process classpath, not an in-process Maven realm. -->
+        <configuration>
+          <executable>${java.home}/bin/java</executable>
+          <classpathScope>test</classpathScope>
+        </configuration>
         <executions>
           <execution>
             <id>task-contract</id>
             <phase>verify</phase>
-            <goals><goal>java</goal></goals>
+            <goals><goal>exec</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.TaskEngineContractTestMain</mainClass>
-              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.TaskEngineContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>module-state-db-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.ModuleStateDbContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>module-store-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>module-state-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.ModuleStateContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>backend-state-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.BackendStateContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>portable-db-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3PortableDbContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>build-cache-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.BuildCacheContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>build-cache-state-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.BuildCacheStateContractTestMain</argument>
+              </arguments>
             </configuration>
           </execution>
           <execution>
             <id>quality-contract</id>
             <phase>verify</phase>
-            <goals><goal>java</goal></goals>
+            <goals><goal>exec</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.QualityProviderContractTestMain</mainClass>
-              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.QualityProviderContractTestMain</argument>
+              </arguments>
             </configuration>
           </execution>
           <execution>
             <id>m3-provider-spi-contract</id>
             <phase>verify</phase>
-            <goals><goal>java</goal></goals>
+            <goals><goal>exec</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.M3ToolProvidersContractTestMain</mainClass>
-              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3ToolProvidersContractTestMain</argument>
+              </arguments>
             </configuration>
           </execution>
           <execution>
             <id>mavenizer-contract</id>
             <phase>verify</phase>
-            <goals><goal>java</goal></goals>
+            <goals><goal>exec</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.MavenizerContractTestMain</mainClass>
-              <classpathScope>test</classpathScope>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.MavenizerContractTestMain</argument>
+              </arguments>
             </configuration>
           </execution>
           <execution>
             <id>portable-cli-contract</id>
             <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.PolyglotCliContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>cargo-test-report-contract</id>
+            <phase>verify</phase>
             <goals><goal>java</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.PolyglotCliContractTestMain</mainClass>
+              <mainClass>io.synexia.maven.polyglot.CargoTestReportContractTestMain</mainClass>
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
           <execution>
             <id>eclipse-model-contract</id>
             <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.EclipseProjectModelContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>ecj-provider-contract</id>
+            <phase>verify</phase>
             <goals><goal>java</goal></goals>
             <configuration>
-              <mainClass>io.synexia.maven.polyglot.EclipseProjectModelContractTestMain</mainClass>
+              <mainClass>io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>dotnet-reports-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.DotnetReportsContractTestMain</mainClass>
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>

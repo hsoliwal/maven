@@ -1,1 +1,4 @@
 io.synexia.maven.polyglot.JdkCompilerProvider
+io.synexia.maven.polyglot.EcjCompilerProvider
+io.synexia.maven.polyglot.SurefireReportProvider
+io.synexia.maven.polyglot.CargoTestProvider

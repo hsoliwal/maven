@@ -1,0 +1,22 @@
+{
+  "schema": "m3.result-provenance.v3",
+  "license": "SPDX-License-Identifier: Apache-2.0",
+  "canonical_repository": "https://github.com/hsoliwal/com.synexia",
+  "canonical_recipe_id": "com.synexia.m3.MavenLifecyclePortableDbCurrent9420261117",
+  "canonical_crate": "synexia-openrewrite-recipes/recipe-crates/m3-maven-lifecycle-portable-db-20261117/followup-current94",
+  "engine_source_commit": "8073bf8e572d4d734322b6a41bd81a17632b9a37",
+  "target_repository": "https://github.com/hsoliwal/maven",
+  "target_baseline": "94dc48acb3afc3ef94106aea77b91210219ec1bc",
+  "previous_recipe_id": "com.synexia.m3.MavenLifecyclePortableDb20261117",
+  "integration": "Preserves current Maven portable database backends, opt-in artifact output cache, six task-runner overloads and CLI/Mojo APIs while applying the qualified lifecycle and sealed M3 module store through a new exact-baseline execution. Unrelated current fork services and browserless advice configuration remain inherited from the pinned baseline.",
+  "embedded_database_donor": {
+    "repository": "https://github.com/hsoliwal/M3JDK21",
+    "revision": "3dedac2b342a37d964a1ce93a2b497008a6fb6cf",
+    "source_manifest": "src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv",
+    "source_policy": "Eight original Java files retained byte-for-byte, including their original package and attribution."
+  },
+  "receipt_location": "The canonical crate retains actual SDK_RESULTS.tsv, input/output seals, refusal/fixed-point tests, runtime logs and correction memory.",
+  "authority": "This passive identity record is not executable recipe code or independent proof of SDK, packaging, CI or target-runtime success. The engine source pin identifies the upstream base; the canonical crate binds any qualified owner correction through ENGINE_EFFECTIVE.tsv. It does not claim this later task already exists at the upstream revision.",
+  "previous_published_target": "f7c1405d948218e9832986c746dfdcab0ca142e2",
+  "previous_qualified_sdk_results_sha256": "735f7b0331613875580ff50db7d2cb2519893ed3136fb69c33076c1535093653"
+}

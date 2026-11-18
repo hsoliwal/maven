@@ -42,6 +42,7 @@ public final class CanonGateTest {
         inventoryDispositions();
         idempotence();
         ChecksTest.run();
+        RegexSpecTest.run();
         System.out.println("CanonGateTest: " + checks + " checks passed");
     }
 

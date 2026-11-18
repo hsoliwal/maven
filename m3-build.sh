@@ -6,9 +6,8 @@ set -eu
 
 usage() {
   cat <<'USAGE'
-Usage: sh m3-build.sh [quick|test|verify|full|it] [Maven arguments...]
+Usage: sh m3-build.sh [quick|test|verify|full|it|dist] [Maven arguments...]
        sh m3-build.sh resume <module> [Maven arguments...]
-       sh m3-build.sh ai-check [Chrome AI agent arguments...]
        sh m3-build.sh canon <packet.tsv> <run-dir>
 
 Default: verify. Maven options alone also use verify.
@@ -17,8 +16,9 @@ Default: verify. Maven options alone also use verify.
   verify  Run the configured verification lifecycle.
   full    Clean outputs, then verify.
   it      Verify with Maven's existing run-its integration-test profile.
+  dist    Verify with -Pplugins: build the inline plugins under plugins/ and the
+          distribution with their boot repository.
   resume  Verify starting at a reactor module, using Maven -rf.
-  ai-check Run the installed Java Chrome AI agent explicitly; no Maven lifecycle.
   canon   Run the hard canon gate: the packet's stages run in the fixed order
           diff, atom_pattern, lint, compile, test, runtime; any packet, scope,
           atomization, verification or output-contract violation fails.
@@ -32,18 +32,15 @@ Examples:
 
 M3_MAVEN selects one Maven executable; the default is mvn on PATH.
 Relative executable paths and Maven paths are resolved from this script's directory.
-For ai-check, M3_JAVA selects one Java 21 executable (default java on PATH),
-and M3_CHROME_AI_AGENT_JAR names the installed agent JAR. For canon, M3_JAVA and
-M3_JAVAC select the Java 21 launcher and compiler (default java and javac on PATH). Agent arguments and
-paths resolve from this script's directory. The agent reads its token from
-CHROME_AI_API_TOKEN or the environment variable selected by --token-env.
+For canon, M3_JAVA and M3_JAVAC select the Java 21 launcher and compiler (default java and
+javac on PATH); its paths resolve from this script's directory.
 USAGE
 }
 
 mode=verify
 case "${1-}" in
   help|-h|--help) usage; exit 0 ;;
-  quick|test|verify|full|it|resume|ai-check|canon) mode=$1; shift ;;
+  quick|test|verify|full|it|dist|resume|canon) mode=$1; shift ;;
   ''|-*) ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -54,6 +51,7 @@ case "$mode" in
   verify) set -- verify "$@" ;;
   full) set -- clean verify "$@" ;;
   it) set -- verify -Prun-its "$@" ;;
+  dist) set -- verify -Pplugins "$@" ;;
   resume)
     case "${1-}" in
       ''|-*) echo 'resume requires a module selector, for example :maven-core.' >&2; exit 2 ;;
@@ -73,19 +71,6 @@ esac
 
 build_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$build_root"
-if [ "$mode" = ai-check ]; then
-  agent_jar=${M3_CHROME_AI_AGENT_JAR-}
-  if [ ! -f "$agent_jar" ] || [ ! -r "$agent_jar" ]; then
-    echo 'Set M3_CHROME_AI_AGENT_JAR to a readable installed agent JAR.' >&2
-    exit 2
-  fi
-  java_executable=${M3_JAVA:-java}
-  command -v "$java_executable" >/dev/null 2>&1 || {
-    echo 'Java executable not found. Install Java 21 or set M3_JAVA to one literal executable.' >&2
-    exit 127
-  }
-  exec "$java_executable" -jar "$agent_jar" "$@"
-fi
 if [ "$mode" = canon ]; then
   java_executable=${M3_JAVA:-java}
   javac_executable=${M3_JAVAC:-javac}

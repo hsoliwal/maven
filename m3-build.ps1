@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('quick', 'test', 'verify', 'full', 'it', 'resume', 'ai-check', 'help')]
+    [ValidateSet('quick', 'test', 'verify', 'full', 'it', 'dist', 'resume', 'help')]
     [string]$Mode = 'verify',
     [string]$Module,
     [string]$ResumeFrom,
@@ -18,23 +18,18 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Help -or $Mode -eq 'help') {
     @'
-Usage: ./m3-build.ps1 [-Mode quick|test|verify|full|it] [-Module <selector>]
+Usage: ./m3-build.ps1 [-Mode quick|test|verify|full|it|dist] [-Module <selector>]
                       [-Threads <count>] [-Maven <executable>] [-ExtraArgs <array>]
        ./m3-build.ps1 -Mode resume -ResumeFrom <selector> [-ExtraArgs <array>]
-       ./m3-build.ps1 -Mode ai-check -ExtraArgs <agent argument array>
 
 Default: verify. quick packages without running tests; full runs clean verify.
 it activates Maven's existing run-its integration-test profile for verify.
-ai-check runs the installed Java Chrome AI agent without a Maven lifecycle.
+dist verifies with -Pplugins: the inline plugins and the distribution with their boot repository.
 -Module selects a reactor project and its prerequisites (-pl/-am).
 resume delegates to Maven -rf and cannot be combined with -Module.
 Parallel execution is opt-in through -Threads or explicit Maven arguments.
 -Maven defaults to M3_MAVEN, then mvn on PATH.
 Relative executable paths and Maven paths are resolved from this script's directory.
-For ai-check, M3_JAVA selects one Java 21 executable (default java on PATH),
-and M3_CHROME_AI_AGENT_JAR names the installed agent JAR. Agent arguments and
-paths resolve from this script's directory. The agent reads its token from
-CHROME_AI_API_TOKEN or the environment variable selected by --token-env.
 '@
     return
 }
@@ -78,37 +73,6 @@ function Resolve-LiteralExecutable {
     return $resolvedExecutable
 }
 
-if ($Mode -eq 'ai-check') {
-    foreach ($option in @('Module', 'ResumeFrom', 'Threads', 'Maven')) {
-        if ($PSBoundParameters.ContainsKey($option)) {
-            throw "ai-check does not accept -$option. Pass agent arguments through -ExtraArgs."
-        }
-    }
-    if ([string]::IsNullOrEmpty($env:M3_CHROME_AI_AGENT_JAR)) {
-        throw 'Set M3_CHROME_AI_AGENT_JAR to a readable installed agent JAR.'
-    }
-    $agentExitCode = 1
-    Push-Location -LiteralPath $PSScriptRoot
-    try {
-        $agentJar = Get-Item -LiteralPath $env:M3_CHROME_AI_AGENT_JAR -ErrorAction SilentlyContinue
-        if ($agentJar -isnot [System.IO.FileInfo]) {
-            throw 'Set M3_CHROME_AI_AGENT_JAR to a readable installed agent JAR.'
-        }
-        $jarReader = [System.IO.File]::OpenRead($agentJar.FullName)
-        $jarReader.Dispose()
-        $java = $env:M3_JAVA
-        if ([string]::IsNullOrEmpty($java)) { $java = 'java' }
-        $javaExecutable = Resolve-LiteralExecutable -Name $java -Label 'Java'
-        $agentArgs = @('-jar', $env:M3_CHROME_AI_AGENT_JAR) + $ExtraArgs
-        $PSNativeCommandUseErrorActionPreference = $false
-        & $javaExecutable @agentArgs
-        $agentExitCode = $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-    exit $agentExitCode
-}
-
 if ($Module -and [string]::IsNullOrWhiteSpace($Module)) {
     throw '-Module requires a nonblank selector.'
 }
@@ -130,6 +94,7 @@ $goals = switch ($Mode) {
     'verify' { @('verify') }
     'full'   { @('clean', 'verify') }
     'it'     { @('verify', '-Prun-its') }
+    'dist'   { @('verify', '-Pplugins') }
     'resume' { @('verify', '-rf', $ResumeFrom) }
 }
 $mavenArgs = @('-B', '-ntp')

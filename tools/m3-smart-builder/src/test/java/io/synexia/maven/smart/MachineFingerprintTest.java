@@ -3,12 +3,16 @@
 package io.synexia.maven.smart;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import javax.tools.JavaFileObject;
 
 /** Source-bound AST, compiler and may-flow facts; deterministic fan-in, never equivalence authority. */
 public final class MachineFingerprintTest {
@@ -27,6 +31,8 @@ public final class MachineFingerprintTest {
                 "atom checkpoint producer covers the two-file input");
         require(original.run(1) == 0, "JDK21 AST producer consumes canonical Java evidence");
         Map<?, ?> receipt = original.receipt();
+        require("auto".equals(object(receipt.get("moduleDatabase")).get("mode")),
+                "existing callers select automatic module database mode");
         require("syntax-only".equals(receipt.get("status")), "producer reports syntax-only authority");
         require(Boolean.FALSE.equals(receipt.get("physicalAtomizationExecuted"))
                 && Boolean.FALSE.equals(receipt.get("semanticProofAuthenticated")),
@@ -339,7 +345,141 @@ public final class MachineFingerprintTest {
         Fixture invalid = fixture("class Example { int f( { return 1; } }\n", "Example.java", false);
         require(invalid.run(1) == 2 && "refused".equals(invalid.receipt().get("status")),
                 "Java parser diagnostics refuse a misleading partial AST ledger");
+        immutableCompilerSnapshot();
+        moduleDatabaseModes(baseline);
+        mojoModuleDatabaseModes(baseline);
         System.out.println("MACHINE FINGERPRINT TESTS PASS: " + checks + " (no semantic proof)");
+    }
+
+    /** Exercise the actual parser with retained bytes while the original path changes A -> B -> A. */
+    private static void immutableCompilerSnapshot() throws Exception {
+        String original = "class SnapshotExample { int f(int x) { return x + 1; } }\n";
+        String changed = original.replace("+ 1", "+ 2");
+        Fixture fixture = fixture(original, "SnapshotExample.java", false);
+        require(fixture.run(1, false, false, "off") == 0, "snapshot regression has original compiler rows");
+        List<String> expected = fixture.tsv().lines().skip(1).toList();
+        SourceInventory.FileFact fact = SourceInventory.inspectSelected(fixture.base, fixture.source).files().getFirst();
+        Path path = fixture.source.resolve(fact.path());
+        Method capture = MachineFingerprintMain.class.getDeclaredMethod(
+                "snapshotFile", Path.class, SourceInventory.FileFact.class);
+        Method parse = MachineFingerprintMain.class.getDeclaredMethod(
+                "fingerprintSnapshot", JavaFileObject.class, SourceInventory.FileFact.class);
+        capture.setAccessible(true);
+        parse.setAccessible(true);
+        JavaFileObject snapshot = (JavaFileObject) capture.invoke(null, path, fact);
+        require(snapshot.toUri().equals(path.toUri()) && snapshot.getCharContent(false).toString().equals(original),
+                "compiler snapshot preserves exact admitted text and original source URI");
+        try {
+            Files.writeString(path, changed);
+            require(Files.size(path) == fact.bytes() && snapshot.getCharContent(false).toString().equals(original),
+                    "same-size live-path mutation cannot change captured compiler text");
+            require(expected.equals(parse.invoke(null, snapshot, fact)),
+                    "actual javac fingerprint rows remain bound to A while the live source contains B");
+            snapshotRefused(capture, path, fact, "mismatched source hash refuses capture before javac");
+        } finally {
+            Files.writeString(path, original);
+        }
+        require(Hashes.sha256(path).equals(fact.sha256()) && expected.equals(parse.invoke(null, snapshot, fact)),
+                "restoring live A cannot cause intermediate B rows to be published under A's hash");
+        snapshotRefused(capture, path, new SourceInventory.FileFact(fact.path(), fact.sha256(), fact.bytes() + 1),
+                "mismatched source byte count refuses capture before javac");
+    }
+
+    private static void snapshotRefused(Method capture, Path path, SourceInventory.FileFact fact, String message)
+            throws Exception {
+        try {
+            capture.invoke(null, path, fact);
+            throw new AssertionError(message);
+        } catch (InvocationTargetException refused) {
+            require(refused.getCause() instanceof IOException, message);
+        }
+    }
+
+    private static void moduleDatabaseModes(String code) throws Exception {
+        Fixture fixture = fixture(code, "Example.java", true);
+        require(fixture.run(2, false, false, "off") == 0,
+                "explicit database off mode executes the original compiler path");
+        String expected = fixture.tsv();
+        Map<?, ?> disabled = object(fixture.receipt().get("moduleDatabase"));
+        require("off".equals(disabled.get("mode")) && "off".equals(disabled.get("status"))
+                && number(disabled.get("hits")) == 0 && number(disabled.get("filesComputed")) == 2,
+                "off mode reports two real computations and no reuse");
+        require(fixture.run(4, false, false, "off") == 0 && expected.equals(fixture.tsv()),
+                "disabled database keeps serial and parallel output byte-identical");
+        for (String mode : List.of("", "AUTO", "false", "memory")) {
+            require(fixture.run(1, false, false, mode) == 2
+                    && "refused".equals(fixture.receipt().get("status"))
+                    && fixture.tsv().equals("# m3.machine-evidence.refused\n"),
+                    "invalid database mode refuses and replaces previous successful evidence: " + mode);
+        }
+        boolean providerPresent;
+        try {
+            Class.forName("com.synexia.mindex.db.MIndexDB", false, MachineFingerprintTest.class.getClassLoader());
+            providerPresent = true;
+        } catch (ClassNotFoundException absent) {
+            providerPresent = false;
+        }
+        if (!providerPresent) {
+            require(fixture.run(1, false, false, "required") == 2
+                    && "refused".equals(fixture.receipt().get("status")),
+                    "required database mode refuses an unavailable MIndexDB provider");
+        }
+        require(fixture.run(1, false, false, "auto") == 0 && expected.equals(fixture.tsv()),
+                "automatic mode preserves exact syntax results after a refused invocation");
+        require("auto".equals(object(fixture.receipt().get("moduleDatabase")).get("mode")),
+                "explicit auto mode reaches the database controller");
+        try {
+            Thread.currentThread().interrupt();
+            require(fixture.run(1, false, false, "off") == 2 && Thread.currentThread().isInterrupted(),
+                    "interrupted generation refuses publication and preserves interruption");
+        } finally {
+            Thread.interrupted();
+        }
+        require(fixture.run(1, false, false, "off") == 0 && expected.equals(fixture.tsv()),
+                "a fresh invocation recovers after cancellation without changing syntax output");
+    }
+
+    /** Run with the real Maven API or the existing adapter harness, without adding a core-test dependency. */
+    private static void mojoModuleDatabaseModes(String code) throws Exception {
+        Class<?> type;
+        try {
+            type = Class.forName("io.synexia.maven.smart.MachineFingerprintMojo");
+        } catch (ClassNotFoundException missing) {
+            if (Boolean.getBoolean("m3.smart.requireMojoTests")) throw missing;
+            System.out.println("MACHINE FINGERPRINT MOJO TESTS SKIPPED: Maven adapter absent from JDK-only classpath");
+            return;
+        }
+        Fixture fixture = fixture(code, "Example.java", false);
+        Object mojo = type.getDeclaredConstructor().newInstance();
+        set(mojo, "baseDir", fixture.base.toFile());
+        set(mojo, "buildDir", fixture.base.resolve("target").toFile());
+        set(mojo, "sourceRoot", fixture.source.toFile());
+        set(mojo, "preparationReport", fixture.base.resolve("receipts/preparation.json").toFile());
+        set(mojo, "atomPatternManifest", fixture.base.resolve("synthetic-checkpoints.tsv").toFile());
+        type.getMethod("execute").invoke(mojo);
+        require("auto".equals(object(fixture.receipt().get("moduleDatabase")).get("mode")),
+                "Maven Mojo defaults to automatic database reuse");
+        String expected = fixture.tsv();
+        set(mojo, "moduleDb", "off");
+        type.getMethod("execute").invoke(mojo);
+        require("off".equals(object(fixture.receipt().get("moduleDatabase")).get("mode"))
+                && expected.equals(fixture.tsv()),
+                "Maven moduleDb parameter forwards off while preserving the syntax output");
+        set(mojo, "moduleDb", "invalid");
+        try {
+            type.getMethod("execute").invoke(mojo);
+            throw new AssertionError("invalid Maven moduleDb parameter was accepted");
+        } catch (java.lang.reflect.InvocationTargetException refused) {
+            require("org.apache.maven.plugin.MojoExecutionException".equals(refused.getCause().getClass().getName())
+                    && "refused".equals(fixture.receipt().get("status")),
+                    "invalid Maven database mode surfaces the goal failure and refusal receipt");
+        }
+    }
+
+    private static void set(Object object, String fieldName, Object value) throws Exception {
+        var field = object.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(object, value);
     }
 
     private static String column(Fixture fixture, int index) throws Exception {
@@ -348,7 +488,7 @@ public final class MachineFingerprintTest {
         throw new AssertionError("Example.java atom not found");
     }
 
-    private static Fixture fixture(String code, String file, boolean extra) throws Exception {
+    static Fixture fixture(String code, String file, boolean extra) throws Exception {
         Path project = Files.createTempDirectory("m3-ast-fingerprints-");
         Path source = Files.createDirectory(project.resolve("src"));
         Files.writeString(source.resolve(file), code);
@@ -361,7 +501,7 @@ public final class MachineFingerprintTest {
         return new Fixture(project, source);
     }
 
-    private record Fixture(Path base, Path source) {
+    record Fixture(Path base, Path source) {
         int run(int workers) {
             return run(workers, false);
         }
@@ -369,6 +509,9 @@ public final class MachineFingerprintTest {
             return run(workers, attributeTypes, false);
         }
         int run(int workers, boolean attributeTypes, boolean analyzeFlow) {
+            return run(workers, attributeTypes, analyzeFlow, null);
+        }
+        int run(int workers, boolean attributeTypes, boolean analyzeFlow, String databaseMode) {
             List<String> args = new ArrayList<>(List.of("--project-dir", base.toString(),
                     "--build-dir", "target", "--source-root", "src",
                     "--preparation-report", "receipts/preparation.json",
@@ -376,6 +519,7 @@ public final class MachineFingerprintTest {
                     "--workers", Integer.toString(workers),
                     "--attribute-types", Boolean.toString(attributeTypes),
                     "--analyze-flow", Boolean.toString(analyzeFlow)));
+            if (databaseMode != null) args.addAll(List.of("--module-db", databaseMode));
             return MachineFingerprintMain.run(args.toArray(String[]::new),
                     new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream()));
         }

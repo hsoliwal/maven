@@ -28,7 +28,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Java 17 adapter for original XML, SARIF 2.1.0 and Semgrep CLI JSON.
+ * Java 17 adapter for original XML, SARIF 2.1.0, Semgrep CLI JSON, ECJ XML logs and javac diagnostics.
  * Does not run analyzers, resolve dependencies, inspect source files, publish
  * Maven session evidence or claim that an original analyzer executed.
  *
@@ -51,7 +51,7 @@ public final class AnalyzerXmlNormalizer {
             .thenComparing(Finding::message);
 
     public enum Format {
-        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF, SEMGREP
+        CHECKSTYLE, PMD, SPOTBUGS, CPD, SARIF, SEMGREP, ECJ, JAVAC
     }
 
     public enum Status {
@@ -99,6 +99,17 @@ public final class AnalyzerXmlNormalizer {
      * The input is untrusted, so XML entities, unsupported structure and
      * oversized output fail closed instead of losing original findings.
      */
+    /** The findings of a report, read by the reader of its format. */
+    private static List<Finding> readFindings(Format format, Status status, Path root, byte[] xml) throws IOException {
+        return switch (format) {
+            case SARIF -> SarifJsonReader.read(root, status, xml);
+            case SEMGREP -> SemgrepJsonReader.read(root, status, xml);
+            case ECJ -> EcjXmlReader.read(root, status, xml);
+            case JAVAC -> JavacLogReader.read(root, status, xml);
+            default -> readXml(format, status, root, xml);
+        };
+    }
+
     public static Result normalize(Format format, Status status, Path projectRoot, byte[] xml)
             throws IOException {
         Objects.requireNonNull(format, "format");
@@ -118,11 +129,7 @@ public final class AnalyzerXmlNormalizer {
         } catch (CharacterCodingException malformed) {
             throw new IOException("original analyzer report must be strict UTF-8", malformed);
         }
-        List<Finding> facts = switch (format) {
-            case SARIF -> SarifJsonReader.read(root, status, xml);
-            case SEMGREP -> SemgrepJsonReader.read(root, status, xml);
-            default -> readXml(format, status, root, xml);
-        };
+        List<Finding> facts = readFindings(format, status, root, xml);
         facts.sort(ORDER);
         StringBuilder result = new StringBuilder(HEADER);
         result.append("status\t").append(status).append('\n').append(COLUMNS);

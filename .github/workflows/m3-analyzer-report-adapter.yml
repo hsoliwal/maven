@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 name: M3 Original Analyzer Report Adapter
 on:
-  pull_request:
-    paths:
-      - 'tools/m3-analyzer-report-adapter/**'
-      - '.github/workflows/m3-analyzer-report-adapter.yml'
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
 permissions:
   contents: read

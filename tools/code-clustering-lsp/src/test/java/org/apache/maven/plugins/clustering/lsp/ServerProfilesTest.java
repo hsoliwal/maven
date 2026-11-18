@@ -44,6 +44,7 @@ import org.apache.maven.plugins.clustering.lsp.ServerSpec.Unresolved;
 public final class ServerProfilesTest {
     private static final Checks CHECKS = new Checks("server profiles");
     private static final boolean WINDOWS = Lookup.system().windows();
+    private static final List<String> LANGUAGE_PLUGINS = List.of("groovy", "kotlin", "php", "cobol", "erlang");
 
     private ServerProfilesTest() { }
 
@@ -51,8 +52,10 @@ public final class ServerProfilesTest {
         Path dir = Path.of(args.length > 0 ? args[0] : "target/profiles-test").toAbsolutePath();
         Files.createDirectories(dir);
         selection();
+        languagePluginSelection();
         order(dir);
         configured(dir);
+        explicitLanguageIds();
         timeouts();
         detection(dir);
         jdt(dir);
@@ -72,6 +75,50 @@ public final class ServerProfilesTest {
         CHECKS.check("empty setting selects nothing", ServerProfiles.names(" ", warnings::add).isEmpty());
         CHECKS.check("wtp has the XML, HTML, CSS and JSON servers", ServerProfiles.select("web", warnings::add).stream()
                 .map(ServerSpec::id).toList().equals(List.of("wtp.xml", "wtp.html", "wtp.css", "wtp.json")));
+        goToSwiftSelection();
+    }
+
+    /** The go, typescript, csharp and swift profiles: aliases, their place in all, one server each. */
+    private static void goToSwiftSelection() {
+        List<String> warnings = new ArrayList<>();
+        CHECKS.check("aliases ts, js, javascript, cs; go and swift by name", ServerProfiles.names("swift,ts js JavaScript CS go",
+                warnings::add).equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
+        CHECKS.check("all has fourteen profiles: go to swift, then the Eclipse language plug-in ones",
+                ServerProfiles.NAMES.size() == 14 && ServerProfiles.NAMES.subList(5, 9).equals(List.of("go", "typescript",
+                "csharp", "swift")) && ServerProfiles.NAMES.subList(9, 14).equals(LANGUAGE_PLUGINS));
+        CHECKS.check("go, typescript, csharp and swift: one server each, with the profile's id",
+                ServerProfiles.select("go,typescript,csharp,swift", warnings::add).stream().map(ServerSpec::id).toList()
+                        .equals(List.of("go", "typescript", "csharp", "swift")) && warnings.isEmpty());
+        goToSwiftLanguageIds();
+    }
+
+    private static void goToSwiftLanguageIds() {
+        Map<String, String> ts = ServerProfiles.server("typescript").languageIds();
+        CHECKS.check("typescript languageIds: ts, mts, cts; tsx as typescriptreact; js, mjs, cjs; jsx as javascriptreact",
+                ts.get("ts").equals("typescript") && ts.get("mts").equals("typescript") && ts.get("cts").equals("typescript")
+                && ts.get("tsx").equals("typescriptreact") && ts.get("js").equals("javascript") && ts.get("mjs")
+                .equals("javascript") && ts.get("cjs").equals("javascript") && ts.get("jsx").equals("javascriptreact")
+                && ts.size() == 8);
+        CHECKS.check("go, csharp, swift languageIds", ServerProfiles.server("go").languageIds().equals(Map.of("go", "go"))
+                && ServerProfiles.server("csharp").languageIds().equals(Map.of("cs", "csharp", "csx", "csharp"))
+                && ServerProfiles.server("swift").languageIds().equals(Map.of("swift", "swift")));
+    }
+
+    /** The profiles of Groovy-Eclipse, Kotlin for Eclipse, PDT, Che4z COBOL and Erlide: aliases and languageIds. */
+    private static void languagePluginSelection() {
+        List<String> warnings = new ArrayList<>();
+        CHECKS.check("aliases groovy-eclipse, kt, pdt, che4z, erlide; lemminx is wtp", ServerProfiles.names(
+                "erlide che4z,PDT kt groovy-eclipse lemminx", warnings::add).equals(List.of("wtp", "groovy", "kotlin", "php",
+                "cobol", "erlang")) && warnings.isEmpty());
+        CHECKS.check("one server each, with the profile's id", ServerProfiles.select(String.join(",", LANGUAGE_PLUGINS),
+                warnings::add).stream().map(ServerSpec::id).toList().equals(LANGUAGE_PLUGINS) && warnings.isEmpty());
+        CHECKS.check("groovy, kotlin, php, cobol, erlang languageIds", ServerProfiles.server("groovy").languageIds()
+                .equals(Map.of("groovy", "groovy", "gvy", "groovy", "gy", "groovy", "gsh", "groovy"))
+                && ServerProfiles.server("kotlin").languageIds().equals(Map.of("kt", "kotlin", "kts", "kotlin"))
+                && ServerProfiles.server("php").languageIds().equals(Map.of("php", "php", "phtml", "php"))
+                && ServerProfiles.server("cobol").languageIds().equals(Map.of("cbl", "cobol", "cob", "cobol", "cpy", "cobol",
+                "cobol", "cobol")) && ServerProfiles.server("erlang").languageIds().equals(Map.of("erl", "erlang", "hrl",
+                "erlang")));
     }
 
     /** property > environment > detection; home before PATH; the home property before the home variable. */
@@ -119,6 +166,15 @@ public final class ServerProfilesTest {
         CHECKS.check("no settings, no servers", LspConfiguration.configured(lookup(Map.of(), Map.of()), warnings::add).isEmpty());
     }
 
+    /** Explicit {@code clustering.lsp.servers} entries take the languageIds of the new profiles' extensions. */
+    private static void explicitLanguageIds() {
+        Map<String, LspServer> table = LspConfiguration.explicit(
+                LspConfiguration.parse("swift=sk;mjs,cts=tls;csx=cls", m -> { }), Duration.ofSeconds(60));
+        CHECKS.check("explicit entries: languageIds of swift, mjs, cts, csx", table.get("swift").languageId("swift")
+                .equals("swift") && table.get("mjs").languageId("mjs").equals("javascript") && table.get("cts")
+                .languageId("cts").equals("typescript") && table.get("csx").languageId("csx").equals("csharp"));
+    }
+
     private static void timeouts() throws Unresolved {
         Map<String, String> env = Map.of("CLUSTERING_LSP_CDT_COMMAND", "c", "CLUSTERING_LSP_JDT_COMMAND", "j");
         Lookup none = lookup(Map.of(), env);
@@ -139,6 +195,13 @@ public final class ServerProfilesTest {
                 command(ServerProfiles.server("wtp.html"), Map.of(), Map.of("PATH", bin.toString(), "WTP_HOME", npm.toString()))
                         .equals(List.of(node, script.toString(), "--stdio")));
         cssOnPath(dir, bin, node);
+        xmlAndPython(dir, bin, node, npm);
+        rustAndNodeless(dir, npm);
+        moreDetection(dir, bin, node);
+    }
+
+    /** LemMinX from its uber jar; pylsp from a virtual environment, else pyright from an npm prefix. */
+    private static void xmlAndPython(Path dir, Path bin, String node, Path npm) throws Exception {
         Path jar = file(dir.resolve("detect/lemminx/org.eclipse.lemminx-0.31.2-uber.jar"));
         CHECKS.check("wtp.xml: the LemMinX uber jar, run with this JVM", command(ServerProfiles.server("wtp.xml"),
                 Map.of("clustering.lsp.wtp.xml.home", jar.getParent().toString()), Map.of())
@@ -151,11 +214,202 @@ public final class ServerProfilesTest {
         CHECKS.check("pydev: else pyright from an npm prefix", command(ServerProfiles.server("pydev"),
                 Map.of("clustering.lsp.pydev.home", npm.toString()), Map.of("PATH", bin.toString()))
                 .equals(List.of(node, pyright.toString(), "--stdio")));
+    }
+
+    private static void rustAndNodeless(Path dir, Path npm) throws Exception {
         Path ra = exe(dir.resolve("detect/ra"), "rust-analyzer").getParent();
         CHECKS.check("rust: rust-analyzer in its home directory", command(ServerProfiles.server("rust"),
                 Map.of("clustering.lsp.rust.home", ra.toString()), Map.of()).equals(List.of(exeName(ra, "rust-analyzer"))));
         CHECKS.check("npm server without node: unresolved", unresolved(ServerProfiles.server("wtp.html"), Map.of(),
                 Map.of("WTP_HOME", npm.toString())).contains("node"));
+    }
+
+    /** gopls, csharp-ls, typescript-language-server, sourcekit-lsp, then the Eclipse language plug-in servers. */
+    private static void moreDetection(Path dir, Path bin, String node) throws Exception {
+        goHomeAndPath(dir);
+        goInstallDirs(dir);
+        csharp(dir);
+        typescript(dir, bin, node);
+        swift(dir);
+        groovy(dir);
+        cobol(dir);
+        kotlin(dir);
+        phpAndErlang(dir, bin, node);
+    }
+
+    /** gopls: a home directory (GO_HOME, bin/) first, then the PATH before the go install directories. */
+    private static void goHomeAndPath(Path dir) throws Exception {
+        ServerSpec go = ServerProfiles.server("go");
+        Map<String, String> noHome = Map.of("user.home", Files.createDirectories(dir.resolve("go/home-empty")).toString());
+        Path home = exe(dir.resolve("go/gohome/bin"), "gopls").getParent().getParent();
+        Path gobin = exe(dir.resolve("go/gobin"), "gopls").getParent();
+        Path pathBin = exe(dir.resolve("go/path"), "gopls").getParent();
+        CHECKS.check("go: gopls in GO_HOME/bin first", command(go, noHome, Map.of("GO_HOME", home.toString(), "PATH",
+                pathBin.toString())).equals(List.of(exeName(home.resolve("bin"), "gopls"))));
+        CHECKS.check("go: the PATH before the go install directories", command(go, noHome, Map.of("PATH", pathBin.toString(),
+                "GOBIN", gobin.toString())).equals(List.of(exeName(pathBin, "gopls"))));
+    }
+
+    /** gopls in the go install directories: GOBIN, else each GOPATH entry's bin, else ~/go/bin. */
+    private static void goInstallDirs(Path dir) throws Exception {
+        ServerSpec go = ServerProfiles.server("go");
+        String empty = Files.createDirectories(dir.resolve("go/home-empty")).toString();
+        Map<String, String> noHome = Map.of("user.home", empty);
+        Path gobin = exe(dir.resolve("go/gobin"), "gopls").getParent();
+        Path gopath2 = exe(dir.resolve("go/gopath2/bin"), "gopls").getParent().getParent();
+        Path userGo = exe(dir.resolve("go/home-go/go/bin"), "gopls").getParent().getParent().getParent();
+        String gopath = Files.createDirectories(dir.resolve("go/gopath1")) + (WINDOWS ? ";" : ":") + gopath2;
+        CHECKS.check("go: GOBIN before GOPATH", command(go, noHome, Map.of("GOBIN", gobin.toString(), "GOPATH", gopath))
+                .equals(List.of(exeName(gobin, "gopls"))));
+        CHECKS.check("go: else the bin directory of any GOPATH entry", command(go, noHome, Map.of("GOPATH", gopath))
+                .equals(List.of(exeName(gopath2.resolve("bin"), "gopls"))));
+        CHECKS.check("go: else ~/go/bin", command(go, Map.of("user.home", userGo.toString()), Map.of())
+                .equals(List.of(exeName(userGo.resolve("go/bin"), "gopls"))));
+        String missing = unresolved(go, noHome, Map.of());
+        CHECKS.check("go: nothing found names ~/go", missing.contains("gopls") && missing.contains(Path.of(empty, "go").toString()));
+    }
+
+    /** csharp-ls: a home directory (a --tool-path directory), the PATH, then the .NET global tools directory. */
+    private static void csharp(Path dir) throws Exception {
+        ServerSpec cs = ServerProfiles.server("csharp");
+        String empty = Files.createDirectories(dir.resolve("cs/home-empty")).toString();
+        Path toolPath = exe(dir.resolve("cs/tool-path"), "csharp-ls").getParent();
+        Path user = exe(dir.resolve("cs/home/.dotnet/tools"), "csharp-ls").getParent().getParent().getParent();
+        Path cli = exe(dir.resolve("cs/cli/.dotnet/tools"), "csharp-ls").getParent().getParent().getParent();
+        CHECKS.check("csharp: CSHARP_HOME, a dotnet tool --tool-path directory", command(cs, Map.of("user.home", empty),
+                Map.of("CSHARP_HOME", toolPath.toString())).equals(List.of(exeName(toolPath, "csharp-ls"))));
+        CHECKS.check("csharp: ~/.dotnet/tools", command(cs, Map.of("user.home", user.toString()), Map.of())
+                .equals(List.of(exeName(user.resolve(".dotnet/tools"), "csharp-ls"))));
+        CHECKS.check("csharp: DOTNET_CLI_HOME before user.home", command(cs, Map.of("user.home", user.toString()),
+                Map.of("DOTNET_CLI_HOME", cli.toString())).equals(List.of(exeName(cli.resolve(".dotnet/tools"), "csharp-ls"))));
+        CHECKS.check("csharp: nothing found names the tools directory", unresolved(cs, Map.of("user.home", empty), Map.of())
+                .contains(Path.of(empty, ".dotnet", "tools").toString()));
+    }
+
+    /** typescript-language-server from an npm prefix, or its launcher on the PATH. */
+    private static void typescript(Path dir, Path nodeBin, String node) throws Exception {
+        ServerSpec ts = ServerProfiles.server("typescript");
+        Path prefix = dir.resolve("ts/npm");
+        Path cli = file(prefix.resolve("node_modules/typescript-language-server/lib/cli.mjs"));
+        CHECKS.check("typescript: TYPESCRIPT_HOME (an npm prefix), run with node from the PATH", command(ts, Map.of(),
+                Map.of("TYPESCRIPT_HOME", prefix.toString(), "PATH", nodeBin.toString()))
+                .equals(List.of(node, cli.toString(), "--stdio")));
+        typescriptLauncher(dir, nodeBin, node);
+    }
+
+    /** typescript-language-server's launcher on the PATH: run directly, or on Windows the script beside the .cmd. */
+    private static void typescriptLauncher(Path dir, Path nodeBin, String node) throws Exception {
+        ServerSpec ts = ServerProfiles.server("typescript");
+        Path global = dir.resolve("ts/global");
+        String name = "typescript-language-server";
+        List<String> expected;
+        if (WINDOWS) {
+            file(global.resolve(name + ".cmd"));
+            expected = List.of(node, file(global.resolve("node_modules/" + name + "/lib/cli.mjs")).toString(), "--stdio");
+        } else {
+            expected = List.of(exeName(exe(global, name).getParent(), name), "--stdio");
+        }
+        CHECKS.check("typescript: the launcher on the PATH " + expected, command(ts, Map.of(), Map.of("PATH", global
+                + (WINDOWS ? ";" : ":") + nodeBin)).equals(expected));
+    }
+
+    /** sourcekit-lsp from a toolchain's usr directory, or on the PATH. */
+    private static void swift(Path dir) throws Exception {
+        ServerSpec swift = ServerProfiles.server("swift");
+        Path usr = exe(dir.resolve("swift/toolchain/usr/bin"), "sourcekit-lsp").getParent().getParent();
+        Path onPath = exe(dir.resolve("swift/path"), "sourcekit-lsp").getParent();
+        CHECKS.check("swift: SWIFT_HOME (a toolchain's usr directory) before the PATH", command(swift, Map.of(), Map.of(
+                "SWIFT_HOME", usr.toString(), "PATH", onPath.toString())).equals(List.of(exeName(usr.resolve("bin"),
+                "sourcekit-lsp"))));
+        CHECKS.check("swift: sourcekit-lsp on the PATH", command(swift, Map.of(), Map.of("PATH", onPath.toString()))
+                .equals(List.of(exeName(onPath, "sourcekit-lsp"))));
+    }
+
+    /** groovy-language-server: the newest -all jar in a home, run with this JVM, before the launcher on the PATH. */
+    private static void groovy(Path dir) throws Exception {
+        String java = Lookup.system().runningJava().toString();
+        Path libs = dir.resolve("groovy/home/build/libs");
+        file(libs.resolve("groovy-language-server-0.9-all.jar"));
+        Path newest = file(libs.resolve("groovy-language-server-1.0-all.jar"));
+        file(libs.resolve("groovy-language-server-1.1.jar"));
+        Path onPath = exe(dir.resolve("groovy/path"), "groovy-language-server").getParent();
+        CHECKS.check("groovy: the newest -all jar in GROOVY_HOME/build/libs, before the PATH", command(ServerProfiles.server(
+                "groovy"), Map.of(), Map.of("GROOVY_HOME", dir.resolve("groovy/home").toString(), "PATH", onPath.toString()))
+                .equals(List.of(java, "-jar", newest.toString())));
+        CHECKS.check("groovy: else groovy-language-server on the PATH", command(ServerProfiles.server("groovy"), Map.of(),
+                Map.of("PATH", onPath.toString())).equals(List.of(exeName(onPath, "groovy-language-server"))));
+        groovyVersions(dir, java);
+    }
+
+    /** Versions compare by number: 0.10 is newer than 0.9 and 0.9.1, though it sorts first as text. */
+    private static void groovyVersions(Path dir, String java) throws Exception {
+        Path home = dir.resolve("groovy/versions");
+        file(home.resolve("lib/groovy-language-server-0.9-all.jar"));
+        Path newest = file(home.resolve("lib/groovy-language-server-0.10-all.jar"));
+        file(home.resolve("lib/groovy-language-server-0.9.1-all.jar"));
+        CHECKS.check("groovy: the newest jar by version number (0.10 after 0.9.1 and 0.9)", command(ServerProfiles.server(
+                "groovy"), Map.of("clustering.lsp.groovy.home", home.toString()), Map.of())
+                .equals(List.of(java, "-jar", newest.toString())));
+    }
+
+    /** The Che4z COBOL Language Support server.jar in a home, run with this JVM; else the launcher. */
+    private static void cobol(Path dir) throws Exception {
+        Path jar = file(dir.resolve("cobol/vsix/extension/server/jar/server.jar"));
+        file(dir.resolve("cobol/vsix/server.jar"));
+        CHECKS.check("cobol: an unpacked VSIX's extension/server/jar/server.jar first", command(ServerProfiles.server(
+                "cobol"), Map.of("clustering.lsp.cobol.home", dir.resolve("cobol/vsix").toString()), Map.of())
+                .equals(List.of(Lookup.system().runningJava().toString(), "-jar", jar.toString())));
+        Path launcher = exe(dir.resolve("cobol/path"), "cobol-language-support").getParent();
+        CHECKS.check("cobol: else cobol-language-support on the PATH", command(ServerProfiles.server("cobol"), Map.of(),
+                Map.of("PATH", launcher.toString())).equals(List.of(exeName(launcher, "cobol-language-support"))));
+        CHECKS.check("cobol: nothing found names the launcher", unresolved(ServerProfiles.server("cobol"), Map.of(),
+                Map.of()).contains("cobol-language-support"));
+    }
+
+    /** kotlin-language-server before kotlin-lsp; on Windows the distribution's .bat launcher through cmd.exe /c. */
+    private static void kotlin(Path dir) throws Exception {
+        ServerSpec kotlin = ServerProfiles.server("kotlin");
+        Path lsp = exe(dir.resolve("kotlin/lsp"), "kotlin-lsp").getParent();
+        Path kls = exe(dir.resolve("kotlin/kls"), "kotlin-language-server").getParent();
+        String path = lsp + (WINDOWS ? ";" : ":") + kls;
+        CHECKS.check("kotlin: kotlin-language-server first, though kotlin-lsp comes first on the PATH", command(kotlin,
+                Map.of(), Map.of("PATH", path)).equals(List.of(exeName(kls, "kotlin-language-server"))));
+        CHECKS.check("kotlin: else kotlin-lsp --stdio", command(kotlin, Map.of(), Map.of("PATH", lsp.toString()))
+                .equals(List.of(exeName(lsp, "kotlin-lsp"), "--stdio")));
+        CHECKS.check("kotlin: nothing found names both", unresolved(kotlin, Map.of(), Map.of()).contains("neither "
+                + "kotlin-language-server nor kotlin-lsp"));
+        kotlinLauncher(dir, lsp);
+    }
+
+    /** The distribution's kotlin-language-server.bat: through cmd.exe /c on Windows, never run elsewhere. */
+    private static void kotlinLauncher(Path dir, Path lsp) throws Exception {
+        ServerSpec kotlin = ServerProfiles.server("kotlin");
+        Path server = dir.resolve("kotlin/server");
+        Path bat = file(server.resolve("bin/kotlin-language-server.bat"));
+        List<String> expected = WINDOWS ? List.of("cmd.exe", "/c", bat.toAbsolutePath().toString())
+                : List.of(exeName(lsp, "kotlin-lsp"), "--stdio");
+        CHECKS.check("kotlin: KOTLIN_HOME/bin/kotlin-language-server.bat " + (WINDOWS ? "through cmd.exe /c"
+                : "is not run outside Windows"), command(kotlin, Map.of(), Map.of("KOTLIN_HOME", server.toString(), "PATH",
+                lsp.toString())).equals(expected));
+    }
+
+    /** phpactor before intelephense (an npm package); elp before erlang_ls; each with its own arguments. */
+    private static void phpAndErlang(Path dir, Path nodeBin, String node) throws Exception {
+        Path npm = dir.resolve("php/npm");
+        Path script = file(npm.resolve("node_modules/intelephense/lib/intelephense.js"));
+        Path phpactor = exe(dir.resolve("php/phpactor"), "phpactor").getParent();
+        Map<String, String> env = Map.of("PHP_HOME", npm.toString(), "PATH", nodeBin + (WINDOWS ? ";" : ":") + phpactor);
+        CHECKS.check("php: phpactor language-server first", command(ServerProfiles.server("php"), Map.of(), env)
+                .equals(List.of(exeName(phpactor, "phpactor"), "language-server")));
+        CHECKS.check("php: else intelephense from PHP_HOME (an npm prefix), run with node", command(ServerProfiles.server(
+                "php"), Map.of(), Map.of("PHP_HOME", npm.toString(), "PATH", nodeBin.toString()))
+                .equals(List.of(node, script.toString(), "--stdio")));
+        Path elp = exe(dir.resolve("erlang/elp"), "elp").getParent();
+        Path els = exe(dir.resolve("erlang/els"), "erlang_ls").getParent();
+        CHECKS.check("erlang: elp server first", command(ServerProfiles.server("erlang"), Map.of(), Map.of("PATH",
+                els + (WINDOWS ? ";" : ":") + elp)).equals(List.of(exeName(elp, "elp"), "server")));
+        CHECKS.check("erlang: else erlang_ls", command(ServerProfiles.server("erlang"), Map.of(), Map.of("PATH",
+                els.toString())).equals(List.of(exeName(els, "erlang_ls"))));
     }
 
     /** The CSS server's launcher on the PATH: run directly, or on Windows the script beside the .cmd with node. */

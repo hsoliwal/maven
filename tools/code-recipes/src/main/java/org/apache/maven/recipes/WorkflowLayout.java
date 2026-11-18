@@ -121,11 +121,16 @@ final class WorkflowLayout {
                         .allMatch(i -> ANY.equals(pattern[i]) || pattern[i].equals(keyPath.get(i)));
     }
 
+    /** The axis that a {@code ${{ matrix.<axis> }}} text refers to, when the whole text (trimmed) is one. */
+    static Optional<String> matrixReference(String text) {
+        return Optional.of(MATRIX_REFERENCE.matcher(text.trim()))
+                .filter(Matcher::matches)
+                .map(matcher -> matcher.group(1));
+    }
+
     private static Optional<String> matrixAxis(Yaml.Block javaVersion) {
         return javaVersion instanceof Yaml.Scalar scalar
-                ? Optional.of(MATRIX_REFERENCE.matcher(VersionScalar.content(scalar)))
-                        .filter(Matcher::matches)
-                        .map(matcher -> matcher.group(1))
+                ? matrixReference(VersionScalar.content(scalar))
                 : Optional.empty();
     }
 }

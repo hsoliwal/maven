@@ -2,16 +2,7 @@
 name: M3 Maven Git fixture Windows cleanup proof
 
 on:
-  pull_request:
-    paths:
-      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
-      - '.github/workflows/m3-git-fixture-cleanup.yml'
-  push:
-    branches:
-      - fix/m3-patch-git-fixture-windows-cleanup-20261027
-    paths:
-      - 'impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java'
-      - '.github/workflows/m3-git-fixture-cleanup.yml'
+  # Consolidated into .github/workflows/checks-superset.yml; kept for manual runs only.
   workflow_dispatch:
 
 permissions:
@@ -41,7 +32,6 @@ jobs:
           out=target/m3-git-bootstrap-source-proof
           mkdir -p "$out"
           javac --release 17 -proc:none -encoding UTF-8 -Xlint:all -Werror -d "$out" \
-            impl/maven-cli/src/main/java/org/apache/maven/cling/M3ChromeAiReviewPacket.java \
             impl/maven-cli/src/main/java/org/apache/maven/cling/M3GitHubPatchBootstrap.java \
             impl/maven-cli/src/test/java/org/apache/maven/cling/M3GitHubPatchBootstrapSelfTest.java
       - name: Real-Git fixture selftest, normal and interpreted modes

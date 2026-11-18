@@ -15,7 +15,7 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * Explicit CLI adapter for already-produced analyzer XML, SARIF or Semgrep JSON. Never executes
+ * Explicit CLI adapter for already-produced analyzer XML, SARIF, Semgrep JSON, ECJ logs or javac output. Never executes
  * Checkstyle/PMD, obtains rulesets, rewrites sources or changes Maven phases.
  *
  * <p>Six arguments: format status projectRoot originalReport output.tsv
@@ -25,10 +25,12 @@ import java.util.Objects;
 public final class NormalizeCli {
     private NormalizeCli() {}
 
+    private static final String USAGE = "usage: CHECKSTYLE|PMD|SPOTBUGS|CPD|SARIF|SEMGREP|ECJ|JAVAC"
+            + " COMPLETE|PARTIAL|FAILED root input.report output.tsv digest.sha256";
+
     public static void main(String[] args) throws Exception {
         if (args.length != 6) {
-            throw new IllegalArgumentException(
-                    "usage: CHECKSTYLE|PMD|SPOTBUGS|CPD|SARIF|SEMGREP COMPLETE|PARTIAL|FAILED root input.report output.tsv digest.sha256");
+            throw new IllegalArgumentException(USAGE);
         }
         AnalyzerXmlNormalizer.Format format = AnalyzerXmlNormalizer.Format.valueOf(args[0]);
         AnalyzerXmlNormalizer.Status status = AnalyzerXmlNormalizer.Status.valueOf(args[1]);

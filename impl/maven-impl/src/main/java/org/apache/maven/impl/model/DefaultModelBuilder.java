@@ -134,12 +134,26 @@ import org.slf4j.LoggerFactory;
 public class DefaultModelBuilder implements ModelBuilder {
 
     public static final String NAMESPACE_PREFIX = "http://maven.apache.org/POM/";
+
+    /**
+     * Properties naming the directory of the POM being read. Repository URLs keep them uninterpolated in the
+     * file model (the validator accepts exactly these), so an inherited repository resolves them per subproject.
+     */
+    private static final Set<String> PROJECT_DIRECTORY_PROPERTIES =
+            Set.of("basedir", "project.basedir", "project.basedir.uri", "project.baseUri");
+
     private static final String RAW = "raw";
     private static final String FILE = "file";
     private static final String IMPORT = "import";
     private static final String PARENT = "parent";
     private static final String PARENT_EXTERNAL = "parent-external";
     private static final String MODEL = "model";
+
+    /**
+     * User property that turns an explicit {@code parent.relativePath} pointing at no POM back into a
+     * FATAL problem. By default Maven warns and resolves the parent from the repositories, as Maven 3 did.
+     */
+    static final String STRICT_PARENT_RELATIVE_PATH = "maven.model.parentRelativePath.strict";
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -1323,7 +1337,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                 if (parentPath != null && !parentPath.isEmpty()) {
                     candidateSource = request.getSource().resolve(modelProcessor::locateExistingPom, parentPath);
                     if (candidateSource == null) {
-                        wrongParentRelativePath(childModel);
+                        missingParentRelativePath(childModel);
                         return null;
                     }
                 } else if (isParentOrSimpleMixin) {
@@ -1433,6 +1447,26 @@ public class DefaultModelBuilder implements ModelBuilder {
         }
 
         private void wrongParentRelativePath(Model childModel) {
+            wrongParentRelativePath(childModel, Severity.FATAL, "");
+        }
+
+        /**
+         * An explicit {@code parent.relativePath} with no POM behind it. Maven 3 warned and resolved
+         * the parent from the repositories; standalone checkouts of multi-repository builds (Eclipse
+         * platform repositories use {@code ../eclipse-platform-parent}, a sibling that exists only in
+         * the aggregator checkout) depend on that. The same holds here unless
+         * {@value DefaultModelBuilder#STRICT_PARENT_RELATIVE_PATH} is {@code true}, which restores the FATAL problem.
+         */
+        private void missingParentRelativePath(Model childModel) {
+            if (Boolean.parseBoolean(request.getUserProperties().get(STRICT_PARENT_RELATIVE_PATH))) {
+                wrongParentRelativePath(childModel);
+            } else {
+                wrongParentRelativePath(
+                        childModel, Severity.WARNING, "; resolving the parent from the repositories instead");
+            }
+        }
+
+        private void wrongParentRelativePath(Model childModel, Severity severity, String outcome) {
             Parent parent = childModel.getParent();
             String parentPath = parent.getRelativePath();
             StringBuilder buffer = new StringBuilder(256);
@@ -1442,9 +1476,10 @@ public class DefaultModelBuilder implements ModelBuilder {
             }
             buffer.append(" points at '").append(parentPath);
             buffer.append("' but no POM could be found, please verify your project structure");
+            buffer.append(outcome);
 
             setSource(childModel);
-            add(Severity.FATAL, Version.BASE, buffer.toString(), parent.getLocation(""));
+            add(severity, Version.BASE, buffer.toString(), parent.getLocation(""));
         }
 
         Model resolveAndReadParentExternally(
@@ -2020,8 +2055,11 @@ public class DefaultModelBuilder implements ModelBuilder {
                                             : null)
                             .build();
 
-                    // Repository URL interpolation with the same profile-aware properties
-                    UnaryOperator<String> callback = properties::get;
+                    // Repository URL interpolation with the same profile-aware properties, except the
+                    // project directory: a repository inherited by a subproject resolves ${project.basedir}
+                    // against the subproject, as in Maven 3, when the effective model is interpolated.
+                    UnaryOperator<String> callback =
+                            key -> PROJECT_DIRECTORY_PROPERTIES.contains(key) ? null : properties.get(key);
                     model = model.with()
                             .repositories(interpolateRepository(model.getRepositories(), callback))
                             .pluginRepositories(interpolateRepository(model.getPluginRepositories(), callback))

@@ -31,3 +31,16 @@ recipeList:
       minimumJavaMajorVersion: 21
   - org.apache.maven.recipes.FindJavaLevelAboveMaximum:
       maximumJavaMajorVersion: 21
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: org.apache.maven.recipes.Jdk21CiLeg
+displayName: JDK 21 CI leg
+description: >-
+  Adds Java 21 to the GitHub Actions matrix axis lists that `actions/setup-java` steps read and that lack it, then
+  marks the workflows in which no `actions/setup-java` step or reusable workflow input can run Java 21 (scalar and
+  reusable workflow shapes), for review by hand.
+recipeList:
+  - org.apache.maven.recipes.AddSetupJavaMatrixVersion:
+      javaMajorVersion: 21
+  - org.apache.maven.recipes.FindWorkflowWithoutSetupJavaVersion:
+      javaMajorVersion: 21

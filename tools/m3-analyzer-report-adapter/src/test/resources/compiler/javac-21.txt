@@ -1,0 +1,39 @@
+SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+SPDX-License-Identifier: Apache-2.0
+javac 21.0.9 --release 17 -Xlint:all output for src/demo/Bad.java and src/demo/Warn.java
+src/demo/Bad.java:6: error: incompatible types: String cannot be converted to int
+        int n = s;
+                ^
+src/demo/Bad.java:7: error: cannot find symbol
+        return missing(n);
+               ^
+  symbol:   method missing(int)
+  location: class Bad
+src/demo/Warn.java:13: warning: [rawtypes] found raw type: List
+    List names() {
+    ^
+  missing type arguments for generic class List<E>
+  where E is a type-variable:
+    E extends Object declared in interface List
+src/demo/Warn.java:14: warning: [rawtypes] found raw type: List
+        List raw = new ArrayList();
+        ^
+  missing type arguments for generic class List<E>
+  where E is a type-variable:
+    E extends Object declared in interface List
+src/demo/Warn.java:14: warning: [rawtypes] found raw type: ArrayList
+        List raw = new ArrayList();
+                       ^
+  missing type arguments for generic class ArrayList<E>
+  where E is a type-variable:
+    E extends Object declared in class ArrayList
+src/demo/Warn.java:15: warning: [unchecked] unchecked call to add(E) as a member of the raw type List
+        raw.add("x");
+               ^
+  where E is a type-variable:
+    E extends Object declared in interface List
+src/demo/Warn.java:22: warning: [deprecation] old() in Warn has been deprecated
+        Warn.old();
+            ^
+2 errors
+5 warnings

@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.synexia.maven.smart.canon;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,7 +19,8 @@ import java.util.stream.Collectors;
 
 /**
  * Repository observations (M3-SCALE v3.0 sections 6.3 and 15). Atom: one repository root. Pattern: gateway; it is
- * the only owner of git invocations, and it only reads: HEAD, ignore rules, working-tree changes and tracked files.
+ * the only owner of git invocations, and it only reads: HEAD, ignore rules, working-tree changes,
+ * tracked files and the blobs of a tree.
  */
 final class Git {
     private final Path root;
@@ -59,6 +63,47 @@ final class Git {
     /** Content of {@code path} in the tree of {@code base}. */
     String show(String base, String path) throws IOException, InterruptedException {
         return run("show", base + ":" + path);
+    }
+
+    /** Receives one blob of {@link #blobs}. */
+    interface BlobReader {
+        void read(String path, byte[] content) throws IOException;
+    }
+
+    /**
+     * Hands the content of each path in the tree of {@code rev} to {@code reader}, in order,
+     * through one {@code git cat-file --batch} process. A path that is not a blob there, or a
+     * blob that is not local (lazy fetching is turned off), fails the read.
+     */
+    void blobs(String rev, Collection<String> paths, BlobReader reader)
+            throws IOException, InterruptedException {
+        ProcessBuilder batch = builder(List.of("cat-file", "--batch"));
+        batch.environment().put("GIT_NO_LAZY_FETCH", "1");
+        Process process = batch.start();
+        try (OutputStream ask = process.getOutputStream();
+                InputStream answer = new BufferedInputStream(process.getInputStream())) {
+            for (String path : paths) {
+                ask.write((rev + ":" + path + "\n").getBytes(StandardCharsets.UTF_8));
+                ask.flush();
+                String[] head = header(answer).split(" ", -1);
+                if (head.length < 3 || !head[1].equals("blob")) {
+                    throw new IOException("not a local blob at " + rev + ": " + path);
+                }
+                byte[] content = answer.readNBytes(Integer.parseInt(head[2]));
+                if (answer.read() != '\n') throw new IOException("git cat-file output truncated");
+                reader.read(path, content);
+            }
+        }
+        if (process.waitFor() != 0) throw new IOException("git cat-file --batch failed");
+    }
+
+    private static String header(InputStream answer) throws IOException {
+        StringBuilder line = new StringBuilder();
+        for (int ch = answer.read(); ch != '\n'; ch = answer.read()) {
+            if (ch < 0) throw new IOException("git cat-file ended early");
+            line.append((char) ch);
+        }
+        return line.toString();
     }
 
     /** The patch from {@code base} to the working tree with no context lines and renames paired; untracked files are not in it. */
@@ -118,11 +163,15 @@ final class Git {
     }
 
     private Process start(String... args) throws IOException {
-        List<String> command = new ArrayList<>(List.of("git", "-C", root.toString()));
-        command.addAll(Arrays.asList(args));
-        Process process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        Process process = builder(Arrays.asList(args)).start();
         process.getOutputStream().close();
         return process;
+    }
+
+    private ProcessBuilder builder(List<String> args) {
+        List<String> command = new ArrayList<>(List.of("git", "-C", root.toString()));
+        command.addAll(args);
+        return new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD);
     }
 
     private static byte[] drain(Process process) throws IOException {

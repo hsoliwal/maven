@@ -37,6 +37,9 @@ public final class PolyglotCli {
         }
         boolean approveRewriteApply = false;
         boolean incremental = false;
+        String stateBackend = "embedded";
+        boolean stateBackendSupplied = false;
+        Path buildCache = null;
         boolean timeoutSupplied = false;
         int timeoutSeconds = 900;
         for (int index = 4; index < args.length; index++) {
@@ -48,6 +51,19 @@ public final class PolyglotCli {
                 case "--incremental" -> {
                     if (incremental || !"run".equals(args[0])) throw usage();
                     incremental = true;
+                }
+                case "--state-backend" -> {
+                    if (stateBackendSupplied || !"run".equals(args[0]) || ++index == args.length) throw usage();
+                    stateBackendSupplied = true;
+                    stateBackend = args[index];
+                    if (!java.util.Set.of("embedded", "legacy", "file", "m3db", "native", "sqlite", "h2")
+                            .contains(stateBackend)
+                            && !stateBackend.matches("ext-[a-z0-9][a-z0-9-]{0,47}")) throw usage();
+                }
+                case "--build-cache" -> {
+                    if (buildCache != null || !"run".equals(args[0]) || ++index == args.length
+                            || args[index].startsWith("--")) throw usage();
+                    buildCache = Path.of(args[index]);
                 }
                 case "--timeout-seconds" -> {
                     if (timeoutSupplied || ++index == args.length) throw usage();
@@ -62,16 +78,18 @@ public final class PolyglotCli {
                 default -> throw usage();
             }
         }
+        if (stateBackendSupplied && !incremental) throw usage();
         TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
         var done = TaskRunner.run(manifest, Path.of(args[1]), args[3], "plan".equals(args[0]),
-                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, output);
+                Duration.ofSeconds(timeoutSeconds), approveRewriteApply, incremental, stateBackend, buildCache, output);
         output.accept(("plan".equals(args[0]) ? "PLANNED " : "EXECUTED ") + done.size() + " targets");
         return done;
     }
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
-                + " [--timeout-seconds 1..43200] [--incremental] [--approve-rewrite-apply]"
-                + " (the last two flags require run)");
+                + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|ext-id] [--approve-rewrite-apply]"
+                + " [--build-cache <dir>]"
+                + " (incremental, build-cache and approval require run; state-backend also requires incremental)");
     }
 }

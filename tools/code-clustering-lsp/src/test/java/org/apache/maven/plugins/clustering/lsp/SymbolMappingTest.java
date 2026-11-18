@@ -43,6 +43,9 @@ public final class SymbolMappingTest {
     public static void main(String[] args) {
         kinds();
         code();
+        goSymbols();
+        typescriptSymbols();
+        csharpSymbols();
         markup();
         style();
         data();
@@ -103,6 +106,50 @@ public final class SymbolMappingTest {
                 flat("total", null, SymbolKind.Function, 13, 0, 18, 0), flat("sum_all", null, SymbolKind.Function, 20, 0, 25, 0));
         CHECKS.check("pydev (flat pylsp form) " + pydev, pydev.equals(List.of("TYPE#Shape", "METHOD#Shape.__init__(3)",
                 "METHOD#Shape.area(1)", "METHOD#total(1)", "METHOD#sum_all(1)")));
+    }
+
+    /** gopls 0.24.0 on the Go fixture, and receivers that are pointers or generic types. */
+    private static void goSymbols() {
+        List<String> go = names(Fixtures.GO, SymbolMapping.CODE,
+                sym("Point", SymbolKind.Struct, 5, 5, 8, 1, sym("X", SymbolKind.Field, 6, 4, 6, 13)),
+                sym("(Point).Norm", SymbolKind.Method, 10, 0, 12, 1), sym("Dist", SymbolKind.Function, 14, 0, 18, 1),
+                sym("Distance", SymbolKind.Function, 20, 0, 24, 1),
+                sym("Shape", SymbolKind.Interface, 26, 5, 28, 1, sym("Area", SymbolKind.Method, 27, 4, 27, 18)));
+        CHECKS.check("go (gopls): a method is owned by its receiver type " + go, go.equals(List.of("TYPE#Point",
+                "METHOD#Point.Norm(0)", "METHOD#Dist(2)", "METHOD#Distance(2)", "TYPE#Shape", "METHOD#Shape.Area(0)")));
+        String pointer = "func (l *List[T]) Push(v T) {\n}\nfunc (p *Point) Scale(k float64) {\n}\n";
+        List<String> receivers = names(pointer, SymbolMapping.CODE, sym("(*List[T]).Push", SymbolKind.Method, 1, 0, 2, 1),
+                sym("(*Point).Scale", SymbolKind.Method, 3, 0, 4, 1));
+        CHECKS.check("go: pointer and generic receivers " + receivers, receivers.equals(List.of("METHOD#List.Push(1)",
+                "METHOD#Point.Scale(1)")));
+    }
+
+    /** typescript-language-server 6.1.0 (TypeScript 6.0.3) on the TypeScript fixture. */
+    private static void typescriptSymbols() {
+        List<String> ts = names(Fixtures.TYPESCRIPT, SymbolMapping.CODE,
+                sym("dist", SymbolKind.Function, 9, 0, 13, 1, sym("dx", SymbolKind.Constant, 10, 10, 10, 24)),
+                sym("distance", SymbolKind.Function, 15, 0, 19, 1),
+                sym("Mode", SymbolKind.Enum, 25, 0, 28, 1, sym("Fast", SymbolKind.Constant, 26, 4, 26, 8)),
+                sym("Point", SymbolKind.Class, 1, 0, 7, 1, sym("constructor", SymbolKind.Constructor, 2, 4, 2, 54),
+                        sym("norm", SymbolKind.Method, 4, 4, 6, 5), sym("x", SymbolKind.Property, 2, 16, 2, 32)),
+                sym("Shape", SymbolKind.Interface, 21, 0, 23, 1, sym("area", SymbolKind.Method, 22, 4, 22, 19)));
+        CHECKS.check("typescript (typescript-language-server) " + ts, ts.equals(List.of("METHOD#dist(2)", "METHOD#distance(2)",
+                "TYPE#Mode", "TYPE#Point", "METHOD#Point.constructor(2)", "METHOD#Point.norm(0)", "TYPE#Shape",
+                "METHOD#Shape.area(0)")));
+    }
+
+    /** csharp-ls 0.28.0 on the C# fixture. */
+    private static void csharpSymbols() {
+        List<String> cs = names(Fixtures.CSHARP, SymbolMapping.CODE, sym("Calc.cs", SymbolKind.File, 1, 0, 33, 0,
+                sym("Demo", SymbolKind.Namespace, 1, 0, 33, 0, sym("Calc", SymbolKind.Class, 2, 0, 33, 0,
+                        sym("total", SymbolKind.Field, 5, 16, 5, 21), sym("Calc(int start)", SymbolKind.Constructor, 6, 0, 11, 0),
+                        sym("Sum(int[] values)", SymbolKind.Method, 11, 0, 18, 0),
+                        sym("Add(int[] items)", SymbolKind.Method, 18, 0, 25, 0),
+                        sym("IOp", SymbolKind.Interface, 25, 0, 30, 0, sym("Apply(int a, int b)", SymbolKind.Method, 28, 0, 29, 0)),
+                        sym("Mode", SymbolKind.Enum, 30, 0, 32, 0, sym("Fast", SymbolKind.Field, 31, 23, 31, 27))))));
+        CHECKS.check("csharp (csharp-ls): File and Namespace symbols are not atoms, their children are " + cs,
+                cs.equals(List.of("TYPE#Calc", "METHOD#Calc.Calc(1)", "METHOD#Calc.Sum(1)", "METHOD#Calc.Add(1)",
+                        "TYPE#Calc.IOp", "METHOD#Calc.IOp.Apply(2)", "TYPE#Calc.Mode")));
     }
 
     private static void markup() {
