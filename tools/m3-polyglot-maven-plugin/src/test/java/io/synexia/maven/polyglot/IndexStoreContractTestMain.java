@@ -292,7 +292,8 @@ public final class IndexStoreContractTestMain {
     }
 
     private static List<String> classNames(String packageName) throws IOException, URISyntaxException {
-        Path source = Path.of(LibraryIndexStore.engineType().getProtectionDomain().getCodeSource().getLocation().toURI());
+        Class<?> owner = packageName.equals("jdk/m3/db") ? jdk.m3.db.M3DB.class : LibraryIndexStore.engineType();
+        Path source = Path.of(owner.getProtectionDomain().getCodeSource().getLocation().toURI());
         if (Files.isDirectory(source)) {
             try (Stream<Path> files = Files.list(source.resolve(packageName))) {
                 return files.filter(file -> file.getFileName().toString().endsWith(".class"))

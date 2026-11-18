@@ -32,6 +32,9 @@ def main():
                         help='actual Xerial SQLite JDBC driver; enables six real SQLite Maven scenarios')
     parser.add_argument('--h2-jar', type=Path,
                         help='actual H2 JDBC driver; enables six real H2 Maven scenarios')
+    parser.add_argument('--mindexdb-classpath',
+                        help='actual MIndexDB provider and dependency JARs, separated by '
+                             + repr(os.pathsep) + '; enables ten native Maven scenarios on Java 21+')
     parser.add_argument('--work', required=True, type=Path)
     parser.add_argument('--prime-repository', action='store_true',
                         help='allow only the disabled baseline build to resolve pinned fixture dependencies online')
@@ -42,10 +45,32 @@ def main():
             if not path.is_file() or not zipfile.is_zipfile(path):
                 raise SystemExit(backend + ' driver must be an actual existing JAR')
             drivers[backend] = path.resolve()
+    mindexdb_jars = []
+    mindexdb_identities = []
+    if args.mindexdb_classpath is not None:
+        for entry in args.mindexdb_classpath.split(os.pathsep):
+            path = Path(entry)
+            if (not entry or path.suffix.lower() != '.jar'
+                    or not path.is_file() or not zipfile.is_zipfile(path)):
+                parser.error('--mindexdb-classpath must contain nonempty paths to existing JARs')
+            path = path.resolve()
+            if path in mindexdb_jars:
+                parser.error('--mindexdb-classpath contains the same JAR more than once')
+            try:
+                data = path.read_bytes()
+            except OSError as failure:
+                parser.error('cannot read MIndexDB classpath JAR: ' + str(failure))
+            mindexdb_jars.append(path)
+            mindexdb_identities.append({'path': str(path), 'bytes': len(data),
+                                       'sha256': hashlib.sha256(data).hexdigest()})
     work = args.work.resolve()
     if work.exists() and any(work.iterdir()):
         raise SystemExit('work directory must be new or empty')
     work.mkdir(parents=True, exist_ok=True)
+    native_evidence = ({'status': 'PENDING', 'classpath': mindexdb_identities}
+                       if mindexdb_jars else
+                       {'status': 'NOT_RUN', 'reason': 'No authentic MIndexDB classpath supplied'})
+    (work / 'mindexdb-provider.json').write_text(json.dumps(native_evidence, indent=2) + '\n')
     repo = work / 'repository'
     shutil.copytree(args.repository.resolve(), repo)
     reactor = work / 'reactor'
@@ -99,7 +124,7 @@ public class ConsumerTest {
 ''')
     env = dict(os.environ)
     ext = os.pathsep.join(str(p.resolve()) for p in
-                          (args.extension_jar, args.state_jar, *drivers.values()))
+                          (args.extension_jar, args.state_jar, *drivers.values(), *mindexdb_jars))
     env.pop('MAVEN_OPTS', None)
     env.pop('MAVEN_ARGS', None)
     runtime_version = subprocess.check_output([args.maven, '-version'], env=env, text=True).splitlines()
@@ -110,7 +135,15 @@ public class ConsumerTest {
         if not condition:
             raise AssertionError(message)
 
+    def unchanged_mindexdb_classpath():
+        for identity in mindexdb_identities:
+            data = Path(identity['path']).read_bytes()
+            require(len(data) == identity['bytes']
+                    and hashlib.sha256(data).hexdigest() == identity['sha256'],
+                    'MIndexDB classpath JAR changed during acceptance: ' + identity['path'])
+
     def run(name, flags=(), success=True, enabled=True, directory=None):
+        unchanged_mindexdb_classpath()
         command = base + (['-Dm3.lifecycle.incremental=true'] if enabled else []) + list(flags) + ['verify']
         if args.prime_repository and name == 'disabled-baseline':
             command.remove('-o')
@@ -289,16 +322,21 @@ public class OwnProcessor extends AbstractProcessor {
     require(processor_log.read_text().startswith(before) and 'other' in processor_log.read_text()[len(before):],
             'original compiler did not rerun the processor with its changed side input')
 
-    # Optional engines use their authentic JDBC implementations. Switching from
+    # Optional engines use their authentic supplied implementations. Switching from
     # another backend must start cold; the next separate JVM must reuse the
     # committed image and still run the original tests. Restored timestamps and
     # failing tests exercise the same lifecycle contract on each actual engine.
     jdbc_evidence = {}
-    for backend, driver in drivers.items():
+    native_artifacts = {}
+    optional_backends = list(drivers) + (['m3db'] if mindexdb_jars else [])
+    for backend in optional_backends:
         flags = ('-Dm3.lifecycle.backend=' + backend,)
         cold = run(backend + '-cold', flags=flags)
         require('M3DB UP-TO-DATE maven-compiler-plugin:compile (library)' not in cold,
                 backend + ' reused receipts across a backend switch')
+        if backend == 'm3db':
+            require('M3DB UP-TO-DATE maven-compiler-plugin:compile (consumer)' not in cold,
+                    'm3db reused downstream receipts across a backend switch')
         tests = count_tests()
         warm = run(backend + '-warm-fresh-jvm', flags=flags)
         require('M3DB UP-TO-DATE maven-compiler-plugin:compile (library)' in warm,
@@ -308,16 +346,33 @@ public class OwnProcessor extends AbstractProcessor {
         require('M3DB UP-TO-DATE maven-jar-plugin:jar (library)' in warm,
                 backend + ' did not reuse and attach the actual JAR')
         require(count_tests() == tests + 1, backend + ' skipped original tests')
-        image = reactor / ('library/.m3/module-state.' +
-                           ('sqlite' if backend == 'sqlite' else 'mv.db'))
-        require(image.is_file() and image.stat().st_size > 0,
-                backend + ' database image was not created')
+        if backend == 'm3db':
+            # This is the original com.synexia MIndexDB artifact format, distinct
+            # from the plugin's embedded library engine and its file backend.
+            artifact_name = hashlib.sha256(b'maven-module-build-state-v1').hexdigest() + '.miart'
+            for module in ('library', 'consumer'):
+                image = reactor / module / '.m3/maven-build-db' / artifact_name
+                require(image.is_file() and image.stat().st_size > 64,
+                        'native MIndexDB artifact missing for ' + module)
+                with image.open('rb') as stream:
+                    require(stream.read(8) == b'MINDEXAR',
+                            'native MIndexDB artifact format missing for ' + module)
+                native_artifacts[module] = str(image.relative_to(work))
+        else:
+            image = reactor / ('library/.m3/module-state.' +
+                               ('sqlite' if backend == 'sqlite' else 'mv.db'))
+            require(image.is_file() and image.stat().st_size > 0,
+                    backend + ' database image was not created')
         previous = int(expected_file.read_text().strip())
         following = previous + 1
         old = library.stat()
         library.write_text(library.read_text().replace('return ' + str(previous), 'return ' + str(following)))
         expected_file.write_text(str(following) + '\n')
         os.utime(library, ns=(old.st_atime_ns, old.st_mtime_ns))
+        if backend == 'm3db':
+            require(library.stat().st_size == old.st_size
+                    and library.stat().st_mtime_ns == old.st_mtime_ns,
+                    'native source-invalidation fixture did not preserve size and mtime')
         changed = run(backend + '-same-time-source-and-downstream', flags=flags)
         require('M3DB UP-TO-DATE maven-compiler-plugin:compile (library)' not in changed,
                 backend + ' reused a changed source with restored timestamp')
@@ -334,19 +389,48 @@ public class OwnProcessor extends AbstractProcessor {
         require(count_tests() == tests + 1, backend + ' failing test did not execute')
         failure_file.unlink()
         run(backend + '-after-test-failure', flags=flags)
-        jdbc_evidence[backend] = {'status': 'PASSED', 'cases': 6,
-                                  'driver_name': driver.name,
-                                  'driver_sha256': hashlib.sha256(driver.read_bytes()).hexdigest(),
-                                  'database': str(image.relative_to(work))}
+        if backend in drivers:
+            driver = drivers[backend]
+            jdbc_evidence[backend] = {'status': 'PASSED', 'cases': 6,
+                                      'driver_name': driver.name,
+                                      'driver_sha256': hashlib.sha256(driver.read_bytes()).hexdigest(),
+                                      'database': str(image.relative_to(work))}
+    if mindexdb_jars:
+        # Return to a previously populated backend, then to the real native
+        # store. Neither switch may revive a success from an older generation.
+        for backend, label in (('file', 'm3db-switch-file'), ('m3db', 'm3db-return-native')):
+            flags = ('-Dm3.lifecycle.backend=' + backend,)
+            cold = run(label + '-cold', flags=flags)
+            for module in ('library', 'consumer'):
+                require('M3DB UP-TO-DATE maven-compiler-plugin:compile (' + module + ')' not in cold,
+                        label + ' revived an earlier backend generation for ' + module)
+            tests = count_tests()
+            warm = run(label + '-warm-fresh-jvm', flags=flags)
+            for module in ('library', 'consumer'):
+                require('M3DB UP-TO-DATE maven-compiler-plugin:compile (' + module + ')' in warm,
+                        label + ' did not persist fresh compiler state for ' + module)
+            require('M3DB UP-TO-DATE maven-jar-plugin:jar (library)' in warm,
+                    label + ' did not reuse and attach the actual JAR')
+            require(count_tests() == tests + 1, label + ' skipped original tests')
+        unchanged_mindexdb_classpath()
+        native_evidence = {'status': 'PASSED', 'cases': 10,
+                           'provider': 'com.synexia.mindex.db.MIndexDB',
+                           'classpath': mindexdb_identities,
+                           'artifacts': {module: {'path': relative,
+                               'sha256': hashlib.sha256((work / relative).read_bytes()).hexdigest()}
+                               for module, relative in native_artifacts.items()}}
+        (work / 'mindexdb-provider.json').write_text(json.dumps(native_evidence, indent=2) + '\n')
     for backend in ('sqlite', 'h2'):
         if backend not in jdbc_evidence:
             jdbc_evidence[backend] = {'status': 'NOT_RUN', 'reason': 'No authentic JDBC driver supplied'}
+    unchanged_mindexdb_classpath()
     print('PASS: real Maven lifecycle reuse, content and archive invalidation, own-project processor admission, corruption, tests, clean, install, parallel reactor, portable file backend and ' + str(len(drivers)) + ' actual JDBC engines', flush=True)
     (work / 'acceptance.json').write_text(json.dumps({'status': 'PASSED', 'cases': len(results),
         'repository_priming': args.prime_repository,
         'extension_sha256': hashlib.sha256(args.extension_jar.read_bytes()).hexdigest(),
         'state_sha256': hashlib.sha256(args.state_jar.read_bytes()).hexdigest(),
         'jdbc_backends': jdbc_evidence,
+        'native_mindexdb': native_evidence,
         'runtime': runtime_version,
         'results': results}, indent=2) + '\n')
 
