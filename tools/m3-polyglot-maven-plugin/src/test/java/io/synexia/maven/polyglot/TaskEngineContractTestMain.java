@@ -49,6 +49,14 @@ public final class TaskEngineContractTestMain {
         require(names(manifest.order("all")).equals(List.of("shared", "a", "b", "all")), "ordered graph");
         require(manifest.orderAll().size() == 4, "all graph nodes");
         require(names(manifest.order("b")).equals(List.of("shared", "b")), "prerequisite subset");
+        TaskInvalidationIndex invalidations = new TaskInvalidationIndex(manifest);
+        require(invalidations.closure("shared").equals(List.of("a", "all", "b", "shared")),
+                "CSR transitive closure includes diamond descendants once");
+        require(invalidations.closure("a").equals(List.of("a", "all")),
+                "CSR closure does not invalidate unrelated sibling");
+        require(invalidations.closure("all").equals(List.of("all")), "CSR leaf closure");
+        require(invalidations.closure("shared").equals(List.of("a", "all", "b", "shared")),
+                "CSR repeated closure remains stable");
         passed++;
     }
 
