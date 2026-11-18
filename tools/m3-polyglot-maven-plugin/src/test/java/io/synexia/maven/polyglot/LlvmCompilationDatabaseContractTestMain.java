@@ -81,8 +81,9 @@ public final class LlvmCompilationDatabaseContractTestMain {
                             "arg\tclang-c\ttarget/other.o\n")),
                     root, "all"), "actual Clang -o must match an M3 declared output");
             refuses(() -> LlvmCompilationDatabase.render(
-                    load(root, valid.replace("arg\tclang-c\t-o\n",
-                            "arg\tclang-c\t-o\narg\tclang-c\ttarget/other.o\n")),
+                    load(root, valid.replace("arg\tclang-c\ttarget/hello.o\n",
+                            "arg\tclang-c\ttarget/hello.o\n"
+                            + "arg\tclang-c\t-o\narg\tclang-c\ttarget/other.o\n")),
                     root, "all"), "duplicate -o must not fabricate one output identity");
             refuses(() -> LlvmCompilationDatabase.render(
                     load(root, valid.replace("arg\tclang-c\t-c\n",
