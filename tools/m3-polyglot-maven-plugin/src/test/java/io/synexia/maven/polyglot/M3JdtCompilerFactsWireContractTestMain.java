@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Comparator;
-import java.util.List;
 
 /** JVM-only contract: original JDT claims must match the original Eclipse build. */
 public final class M3JdtCompilerFactsWireContractTestMain {
@@ -19,6 +18,12 @@ public final class M3JdtCompilerFactsWireContractTestMain {
 
     public static void main(String[] ignored) throws Exception {
         byte[] raw = packet("Mixed", "Debug", INVOCATION).getBytes(StandardCharsets.UTF_8);
+        try (var fixture = M3JdtCompilerFactsWireContractTestMain.class.getResourceAsStream(
+                "/m3-jdt-compiler-facts-v1.fixture")) {
+            if (fixture == null) throw new AssertionError("missing original m2e JDT packet fixture");
+            require(java.util.Arrays.equals(raw, fixture.readAllBytes()),
+                    "Maven decoder fixture must match original JDT producer bytes");
+        }
         var original = M3JdtCompilerFactsWire.decode(raw);
         var owner = M3EclipseBuildHandoffWire.decode(originalEclipseHandoff());
         var agreed = M3JdtCompilerFactsWire.bind(original, owner);
