@@ -75,6 +75,7 @@ public final class M3PortableDbContractTestMain {
             oneLeaseOwner(root.resolve("one-owner"));
             externalProviders(root.resolve("providers"));
             stagedTransactions(root.resolve("batch"));
+            batchedRunner(root.resolve("runner-batch"));
             System.out.println("PASS: " + passed + " M3 portable module DB lease and SPI checks");
         } finally {
             try (var paths = Files.walk(root)) {
@@ -205,6 +206,50 @@ public final class M3PortableDbContractTestMain {
             expectFailure(() -> M3ModuleDbRunLock.acquire(root), "facade excludes standalone whole-run lock");
         }
         check(!Files.exists(root.resolve(".m3/module.m3db.lock")), "no second lock protocol is created");
+    }
+
+    /** Public end-to-end runner: two deterministic tasks, exactly one DB publication. */
+    private static void batchedRunner(Path root) throws Exception {
+        Files.createDirectories(root);
+        Path module = Files.createDirectories(root.resolve("project"));
+        Files.writeString(module.resolve("in.txt"), "input");
+        Files.writeString(module.resolve("a.out"), "first");
+        Files.writeString(module.resolve("b.out"), "second");
+        Path executable = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
+        String script = TaskManifest.MAGIC + "\n"
+                + "task\ta\t" + executable + "\t.\n"
+                + "arg\ta\t-version\n"
+                + "input\ta\tin.txt\n"
+                + "output\ta\ta.out\n"
+                + "task\tb\t" + executable + "\t.\n"
+                + "arg\tb\t-version\n"
+                + "dep\tb\ta\n"
+                + "input\tb\ta.out\n"
+                + "output\tb\tb.out\n";
+        TaskManifest plan = TaskManifest.load(Files.writeString(module.resolve("m3-build.tsv"), script));
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader realm = providerRealm(root.resolve("service"), FixtureProvider.class.getName())) {
+            Thread.currentThread().setContextClassLoader(realm);
+            FixtureProvider.committedWrites = 0;
+            List<String> log = new java.util.ArrayList<>();
+            var first = TaskRunner.run(plan, module, "b", false, java.time.Duration.ofSeconds(20),
+                    false, true, "ext-fixture-v1", log::add);
+            check(first.equals(List.of("a", "b")), "selected two-task graph executes in order");
+            check(FixtureProvider.committedWrites == 1,
+                    "two executed tools publish one committed module snapshot");
+            log.clear();
+            TaskRunner.run(plan, module, "b", false, java.time.Duration.ofSeconds(20),
+                    false, true, "ext-fixture-v1", log::add);
+            check(log.stream().anyMatch(v -> v.startsWith("UP-TO-DATE a"))
+                            && log.stream().anyMatch(v -> v.startsWith("UP-TO-DATE b")),
+                    "second runner invocation reuses both verified task receipts");
+            check(FixtureProvider.committedWrites == 1,
+                    "all-cache-hit module run performs no backend image rewrite");
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+            FixtureProvider.committedWrites = 0;
+        }
     }
 
     /** Every selected build publishes one complete sealed image, never partial receipts. */
