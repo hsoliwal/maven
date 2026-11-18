@@ -403,7 +403,11 @@ and `package` run the native commands:
 | Gradle build or settings file | `assemble`, `test` (with `gradlew` when the wrapper is there) |
 | Bazel `MODULE.bazel` / `WORKSPACE` | `bazel build //...`, `bazel test //...` |
 | `Package.swift` | `swift build`, `swift test` |
+| `rebar.config` (Erlide/Erlang) | `rebar3 compile`; `rebar3 eunit` only when a `test/` directory exists |
+| `composer.json` (Eclipse PDT/PHP) | `composer validate --no-check-publish`; `composer exec phpunit` only for a present `phpunit.xml` / `.dist` |
 | `build.xml` | `ant`, `ant test` when a `test` target exists |
+
+For Erlide and PDT, Mavenizer emits an opt-in native tool plan only. Rebar3 may fetch its declared dependencies during an explicit original Rebar3 compile; Composer validation does not install packages, and PHPUnit execution assumes existing installed dependencies. Mavenizer does not download or compile anything on detection, does not rewrite original `rebar.config`/`composer.json`, and does not infer arbitrary scripts or PHP compilation from file extensions. The existing m2e polyglot tool registry already recognizes `rebar3` and `composer` and yields to an installed Erlide/PDT language service.
 
 Test reports. CTest writes its JUnit XML itself (`--output-junit`, CMake 3.21+) to `target/ctest/ctest-junit.xml`,
 and the `ctest-test` task runs it through `@m3:surefire:interpreter:junit`, which converts the file into
