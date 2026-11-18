@@ -7,6 +7,7 @@ package io.synexia.maven.polyglot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -41,7 +42,8 @@ public final class LlvmCompilerIntegrationTestMain {
         Path root = Files.createTempDirectory("m3 llvm integration ");
         try {
             plansLlcThenClangWithoutNative(root.resolve("offline IR plan"));
-            System.out.println("PASS: " + passed + " LLVM IR llc-to-clang graph planning assertions");
+            refusesMalformedOptionalTool(root.resolve("broken optional tool"));
+            System.out.println("PASS: " + passed + " offline LLVM graph and optional-tool refusal assertions");
             boolean configured = selectedHome != null || nonblank(LlvmCompilerProvider.configuredHome());
             if (!configured && (!available("clang", root) || !available("clang++", root))) {
                 if (required) throw new IOException("required LLVM integration needs clang and clang++");
@@ -109,6 +111,32 @@ public final class LlvmCompilerIntegrationTestMain {
         TaskRunner.run(plan, root, "link", true, TIMEOUT, line -> { });
         check(!Files.exists(root.resolve(object)) && !Files.exists(root.resolve(executable)),
                 "dry-run never executes the fake compiler or creates native outputs");
+    }
+
+    private static void refusesMalformedOptionalTool(Path root) throws Exception {
+        Path bin = Files.createDirectories(root.resolve("llvm installation/bin"));
+        Path llc = Files.createDirectories(bin.resolve("llc" + (windows() ? ".exe" : "")));
+        String previous = selectedHome;
+        try {
+            selectedHome = bin.getParent().toString();
+            try {
+                available("llc", root);
+                throw new AssertionError("present but malformed llc must not be treated as an optional skip");
+            } catch (IOException expected) {
+                check(expected.getMessage().contains("not an executable"),
+                        "configured optional LLVM driver must fail closed");
+            }
+        } finally {
+            selectedHome = previous;
+        }
+        Files.delete(llc);
+        String old = selectedHome;
+        try {
+            selectedHome = bin.getParent().toString();
+            check(!available("llc", root), "truly missing optional llc remains an explicit NOT_RUN");
+        } finally {
+            selectedHome = old;
+        }
     }
 
     private static void nativeDependencies(Path root) throws Exception {
@@ -315,7 +343,7 @@ public final class LlvmCompilerIntegrationTestMain {
         return List.copyOf(arguments);
     }
 
-    private static boolean available(String driver, Path root) {
+    private static boolean available(String driver, Path root) throws IOException {
         String home = selectedHome;
         if (!nonblank(home)) home = LlvmCompilerProvider.configuredHome();
         Path executable;
@@ -323,8 +351,12 @@ public final class LlvmCompilerIntegrationTestMain {
             Path folder = Path.of(home);
             if (!folder.isAbsolute()) folder = root.resolve(folder);
             executable = folder.resolve("bin").resolve(driver + (windows() ? ".exe" : ""));
-            if ("flang".equals(driver) && !Files.isRegularFile(executable)) {
+            if ("flang".equals(driver) && Files.notExists(executable, LinkOption.NOFOLLOW_LINKS)) {
                 executable = folder.resolve("bin").resolve("flang-new" + (windows() ? ".exe" : ""));
+            }
+            if (Files.exists(executable, LinkOption.NOFOLLOW_LINKS)
+                    && (!Files.isRegularFile(executable) || (!windows() && !Files.isExecutable(executable)))) {
+                throw new IOException("configured LLVM test driver is not an executable file: " + executable);
             }
         } else {
             executable = Path.of(TaskRunner.resolveTool(driver, root));
