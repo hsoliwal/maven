@@ -135,7 +135,11 @@ mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-portable-engines verify
 
 That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0 and LmdbJava
 0.9.3, and executes a **require-all** persistence/restart/revocation/backend
-switch suite. Without the profile, the default JDK-only contract checks
+switch suite. The LMDB adapter targets the actual **LmdbJava 0.9.3** API:
+`Env.Builder.open(File, EnvFlags...)`, `Env.openDbi(String, DbiFlags...)`,
+and `Dbi.put(Txn, key, value, PutFlags...)`. These methods differ from the
+unreleased LmdbJava 1.0 builder API, so a different runtime fails compatibility
+preflight instead of silently opening an unexpected layout. Without the profile, the default JDK-only contract checks
 registration and path safety, then reports `NOT_RUN` for unavailable native
 runtimes. A module must never silently substitute another backend. Driver
 compatibility and native crash-recovery qualification are separate from
