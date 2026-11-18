@@ -27,9 +27,9 @@ import java.util.HexFormat;
 import java.util.Optional;
 
 /**
- * {@link IndexStore} over an installed MIndexDB runtime ({@code com.synexia.mindex.db.MIndexDB}, the donor of
- * {@code jdk.m3.indexdb}), bound reflectively from the plugin's context realm first, then from this plugin. It is
- * reached only when the m3db backend is chosen and the running JDK has no {@code jdk.m3.indexdb}.
+ * {@link IndexStore} over an installed MIndexDB runtime ({@code com.synexia.mindex.db.MIndexDB},
+ * a donor of M3JDK storage), bound reflectively from the plugin's context realm first, then this plugin.
+ * It is used only when native storage is requested and no exported M3JDK owner is available.
  */
 final class DonorIndexStore implements IndexStore {
     static final String TYPE = "com.synexia.mindex.db.MIndexDB";

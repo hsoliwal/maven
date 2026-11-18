@@ -42,11 +42,10 @@ import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 /**
- * The one storage layer. In process: the library binding on a stock JDK, the platform binding from a module layer
- * holding {@code jdk.m3.indexdb}, one format for both, and no donor runtime on the contract classpath. In child
- * JVMs that carry {@code jdk.m3.indexdb} the way M3jdk21 does (as a boot-layer module, and as a {@code java.base}
- * package exported with {@code --add-exports}): the m3db backend runs through the platform IndexStore, from the
- * public CLI and the facade, and the library engine reads what it wrote.
+ * The one storage layer. Exercises both the current {@code jdk.m3.db.M3DB} M3JDK owner and the older
+ * {@code jdk.m3.indexdb.M3IndexDB} owner as named modules and as exported {@code java.base} packages.
+ * The current owner sources are pinned test-only snapshots; semantic-index signatures have a test stub.
+ * Child JVMs prove the real CLI and facade reuse, and cross-owner artifact format interoperability.
  */
 public final class IndexStoreContractTestMain {
     private static final byte[] PAYLOAD = "payload".getBytes(StandardCharsets.UTF_8);
@@ -59,8 +58,8 @@ public final class IndexStoreContractTestMain {
     public static void main(String[] arguments) throws Exception {
         if (arguments.length == 2 && "tool".equals(arguments[0])) {
             tool();
-        } else if (arguments.length == 2 && "child".equals(arguments[0])) {
-            child(Path.of(arguments[1]));
+        } else if (arguments.length == 3 && "child".equals(arguments[0])) {
+            child(Path.of(arguments[1]), arguments[2]);
         } else {
             parent();
         }
@@ -70,10 +69,18 @@ public final class IndexStoreContractTestMain {
         Path temporary = Files.createTempDirectory("index-store-contract-");
         try {
             libraryBindingOnStockJdk(temporary.resolve("library"));
-            platformBindingFromModuleLayer(temporary);
+            platformBindingFromModuleLayer(temporary, "jdk.m3.indexdb", moduleForm(temporary.resolve("layer-legacy")));
+            platformBindingFromModuleLayer(temporary, "jdk.m3.db", currentModuleForm(temporary.resolve("layer-current")));
+            prefersCurrentOwner(temporary.resolve("layer-both"));
             noDonorRuntimeOnContractClasspath();
-            runtimeBackendThroughPlatform(temporary.resolve("module-form"), moduleForm(temporary.resolve("modules")));
-            runtimeBackendThroughPlatform(temporary.resolve("base-form"), javaBaseForm(temporary.resolve("patch")));
+            runtimeBackendThroughPlatform(temporary.resolve("legacy-module"), moduleForm(temporary.resolve("modules")),
+                    "jdk.m3.indexdb.M3IndexDB");
+            runtimeBackendThroughPlatform(temporary.resolve("legacy-base"), javaBaseForm(temporary.resolve("patch")),
+                    "jdk.m3.indexdb.M3IndexDB");
+            runtimeBackendThroughPlatform(temporary.resolve("current-module"),
+                    currentModuleForm(temporary.resolve("current-modules")), "jdk.m3.db.M3DB");
+            runtimeBackendThroughPlatform(temporary.resolve("current-base"),
+                    currentJavaBaseForm(temporary.resolve("current-patch")), "jdk.m3.db.M3DB");
             System.out.println("PASS: " + checks + " IndexStore binding and m3db backend contract checks");
         } finally {
             erase(temporary);
@@ -92,16 +99,27 @@ public final class IndexStoreContractTestMain {
         }
     }
 
-    private static void platformBindingFromModuleLayer(Path temporary) throws Exception {
-        ModuleLayer layer = moduleLayer(moduleForm(temporary.resolve("layer")));
-        check(IndexStores.binding(layer).equals("platform"), "a layer with jdk.m3.indexdb binds the platform");
-        check(IndexStores.engineIdentity(layer).startsWith("platform:jdk.m3.indexdb"), "platform engine identity");
+    private static void platformBindingFromModuleLayer(Path temporary, String module, List<String> arguments)
+            throws Exception {
+        ModuleLayer layer = moduleLayer(arguments, Set.of(module));
+        check(IndexStores.binding(layer).equals("platform"), "a layer with " + module + " binds the platform");
+        check(IndexStores.engineIdentity(layer).startsWith("platform:" + module + ":" + module),
+                "platform engine identity includes the owner type");
         check(IndexStores.engineClasses(InputStamps.class, layer).equals(List.of(InputStamps.class)),
                 "platform engine has no library code source");
         Class<?> platform = IndexStores.platformType(layer).orElseThrow();
-        check(platform.getModule().getName().equals("jdk.m3.indexdb")
+        check(platform.getModule().getName().equals(module)
                 && platform != LibraryIndexStore.engineType(), "platform type comes from the named module");
-        oneFormat(layer, temporary.resolve("shared"));
+        oneFormat(layer, temporary.resolve("shared-" + module));
+    }
+
+    private static void prefersCurrentOwner(Path temporary) throws Exception {
+        List<String> old = moduleForm(temporary.resolve("old"));
+        List<String> current = currentModuleForm(temporary.resolve("current"));
+        ModuleLayer layer = moduleLayer(List.of("--module-path",
+                old.get(1) + File.pathSeparator + current.get(1)), Set.of("jdk.m3.indexdb", "jdk.m3.db"));
+        check(IndexStores.platformType(layer).orElseThrow().getName().equals("jdk.m3.db.M3DB"),
+                "current M3DB takes precedence when both platform owners are present");
     }
 
     /** What the platform binding writes, the library binding reads. */
@@ -127,11 +145,13 @@ public final class IndexStoreContractTestMain {
     }
 
     /** Runs the m3db scenario in a JVM with the given platform form, then reads its directory with the library. */
-    private static void runtimeBackendThroughPlatform(Path work, List<String> jvmOptions) throws Exception {
+    private static void runtimeBackendThroughPlatform(Path work, List<String> jvmOptions, String expectedType)
+            throws Exception {
         Files.createDirectories(work);
         List<String> command = new ArrayList<>(List.of(java()));
         command.addAll(jvmOptions);
-        command.addAll(List.of("-cp", classpath(), IndexStoreContractTestMain.class.getName(), "child", work.toString()));
+        command.addAll(List.of("-cp", classpath(), IndexStoreContractTestMain.class.getName(), "child",
+                work.toString(), expectedType));
         String log = run(command, work.resolve("child.log"));
         check(log.contains("PASS: child"), "m3db scenario passes on the platform binding: " + log);
         try (IndexStore store = IndexStore.open(work.resolve("cli/" + M3DbModuleStore.NATIVE_DIRECTORY))) {
@@ -141,9 +161,17 @@ public final class IndexStoreContractTestMain {
         }
     }
 
-    /** The m3db backend under a platform binding: public CLI twice, the read-only view, the facade. */
-    private static void child(Path work) throws Exception {
+    /** Both one-file embedded and native-directory M3DB backends: CLI twice, read-only view, facade. */
+    private static void child(Path work, String expectedType) throws Exception {
         check(IndexStores.binding(ModuleLayer.boot()).equals("platform"), "child JVM binds the platform");
+        check(IndexStores.platformType(ModuleLayer.boot()).orElseThrow().getName().equals(expectedType),
+                "child JVM uses the requested M3JDK owner");
+        Path embedded = project(work.resolve("embedded"));
+        check(cli(embedded, "embedded").stream().noneMatch(line -> line.startsWith("UP-TO-DATE"))
+                && runs(embedded) == 1, "cold one-file M3DB run executes the tool");
+        check(cli(embedded, "embedded").stream().anyMatch(line -> line.startsWith("UP-TO-DATE compile"))
+                && runs(embedded) == 1 && Files.isRegularFile(embedded.resolve(M3DbModuleStore.FILE)),
+                "warm one-file M3DB run reuses the runtime-owner receipt");
         Path module = project(work.resolve("cli"));
         check(cli(module, "m3db").stream().noneMatch(line -> line.startsWith("UP-TO-DATE")) && runs(module) == 1,
                 "cold m3db run executes the tool");
@@ -208,7 +236,7 @@ public final class IndexStoreContractTestMain {
         return Files.exists(counter) ? Files.readAllLines(counter).size() : 0;
     }
 
-    /** M3jdk21 module form: an automatic module named jdk.m3.indexdb on the module path. */
+    /** Older M3JDK module form, retained as a compatibility gate. */
     private static List<String> moduleForm(Path directory) throws Exception {
         Files.createDirectories(directory);
         Path jar = directory.resolve("jdk.m3.indexdb.jar");
@@ -216,39 +244,64 @@ public final class IndexStoreContractTestMain {
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         manifest.getMainAttributes().putValue("Automatic-Module-Name", "jdk.m3.indexdb");
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
-            for (String name : classNames()) copy(name, out);
+            for (String name : classNames("jdk/m3/indexdb")) copy(name, out);
         }
         return List.of("--module-path", jar.toString(), "--add-modules", "jdk.m3.indexdb");
     }
 
+    /** Current M3JDK owner form: public M3DB artifact API in a named module. */
+    private static List<String> currentModuleForm(Path directory) throws Exception {
+        Files.createDirectories(directory);
+        Path jar = directory.resolve("jdk.m3.db.jar");
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().putValue("Automatic-Module-Name", "jdk.m3.db");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
+            for (String name : classNames("jdk/m3/db")) copy(name, out);
+        }
+        return List.of("--module-path", jar.toString(), "--add-modules", "jdk.m3.db");
+    }
+
     /** M3jdk21 java.base form: the package patched into java.base and exported to the plugin's unnamed module. */
     private static List<String> javaBaseForm(Path directory) throws Exception {
-        for (String name : classNames()) {
+        return javaBaseForm(directory, "jdk/m3/indexdb");
+    }
+
+    private static List<String> currentJavaBaseForm(Path directory) throws Exception {
+        return javaBaseForm(directory, "jdk/m3/db");
+    }
+
+    private static List<String> javaBaseForm(Path directory, String packageName) throws Exception {
+        for (String name : classNames(packageName)) {
             Path target = Files.createDirectories(directory.resolve(name).getParent()).resolve(Path.of(name).getFileName());
             try (InputStream in = resource(name)) {
                 Files.copy(in, target);
             }
         }
-        return List.of("--patch-module", "java.base=" + directory, "--add-exports", "java.base/jdk.m3.indexdb=ALL-UNNAMED");
+        return List.of("--patch-module", "java.base=" + directory, "--add-exports",
+                "java.base/" + packageName.replace('/', '.') + "=ALL-UNNAMED");
     }
 
-    private static ModuleLayer moduleLayer(List<String> moduleForm) {
+    private static ModuleLayer moduleLayer(List<String> moduleForm, Set<String> roots) {
         ModuleLayer boot = ModuleLayer.boot();
-        Configuration configuration = boot.configuration().resolve(ModuleFinder.of(Path.of(moduleForm.get(1))),
-                ModuleFinder.of(), Set.of("jdk.m3.indexdb"));
+        Path[] paths = Arrays.stream(moduleForm.get(1).split(java.util.regex.Pattern.quote(File.pathSeparator)))
+                .map(Path::of).toArray(Path[]::new);
+        Configuration configuration = boot.configuration().resolve(ModuleFinder.of(paths),
+                ModuleFinder.of(), roots);
         return boot.defineModulesWithOneLoader(configuration, ClassLoader.getPlatformClassLoader());
     }
 
-    private static List<String> classNames() throws IOException, URISyntaxException {
+    private static List<String> classNames(String packageName) throws IOException, URISyntaxException {
         Path source = Path.of(LibraryIndexStore.engineType().getProtectionDomain().getCodeSource().getLocation().toURI());
         if (Files.isDirectory(source)) {
-            try (Stream<Path> files = Files.list(source.resolve("jdk/m3/indexdb"))) {
-                return files.map(file -> "jdk/m3/indexdb/" + file.getFileName()).sorted().toList();
+            try (Stream<Path> files = Files.list(source.resolve(packageName))) {
+                return files.filter(file -> file.getFileName().toString().endsWith(".class"))
+                        .map(file -> packageName + "/" + file.getFileName()).sorted().toList();
             }
         }
         try (JarFile jar = new JarFile(source.toFile())) {
             return jar.stream().map(JarEntry::getName)
-                    .filter(name -> name.startsWith("jdk/m3/indexdb/") && name.endsWith(".class")).sorted().toList();
+                    .filter(name -> name.startsWith(packageName + "/") && name.endsWith(".class")).sorted().toList();
         }
     }
 

@@ -24,15 +24,17 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Chooses the binding of {@link IndexStore}. M3jdk21 carries {@code jdk.m3.indexdb} either as a module of that
- * name or as a package of {@code java.base} exported to this code ({@code --add-exports}); either is the platform
- * binding. A stock JDK 17/21 gets the library form of the same M3IndexDB source.
+ * Chooses the binding of {@link IndexStore}. Current M3jdk21 owns {@code jdk.m3.db.M3DB} in
+ * {@code java.base}; older images may provide {@code jdk.m3.indexdb.M3IndexDB}. Either can
+ * be exported to this plugin or provided as a named module. A stock JDK uses the library form.
  */
 public final class IndexStores {
-    static final String MODULE = "jdk.m3.indexdb";
-    static final String TYPE = MODULE + ".M3IndexDB";
+    static final String MODULE = "jdk.m3.db";
+    static final String TYPE = MODULE + ".M3DB";
+    static final String LEGACY_MODULE = "jdk.m3.indexdb";
+    static final String LEGACY_TYPE = LEGACY_MODULE + ".M3IndexDB";
 
-    /** One bound M3IndexDB engine; every store it opens has the same binding. */
+    /** One bound M3DB engine; every store it opens has the same binding. */
     public interface Engine {
         String binding();
 
@@ -48,8 +50,8 @@ public final class IndexStores {
     }
 
     /**
-     * The runtime's own engine, never the library copy: the platform form, else an MIndexDB donor runtime
-     * installed on the plugin (context realm first). Absence is a reflective failure for the caller to report.
+     * The runtime's own engine, never the library copy: current M3DB, legacy M3IndexDB, or an MIndexDB
+     * donor runtime installed on the plugin (context realm first). Absence is a reflective failure.
      */
     static Engine runtimeEngine(ModuleLayer layer) throws ReflectiveOperationException {
         Optional<Class<?>> platform = platformType(layer);
@@ -61,17 +63,17 @@ public final class IndexStores {
         return engine(layer).open(root);
     }
 
-    /** "platform" when the layer holds {@code jdk.m3.indexdb}, "library" otherwise. */
+    /** "platform" when an exported M3JDK database is available, "library" otherwise. */
     public static String binding(ModuleLayer layer) {
         return engine(layer).binding();
     }
 
-    /** Stable identity of the storage engine for cache keys: platform module and runtime version, or library. */
+    /** Stable identity for cache keys: exact platform owner and runtime version, or the legacy library. */
     public static String engineIdentity(ModuleLayer layer) {
-        return platformModule(layer)
-                .map(module -> "platform:" + module.getDescriptor().toNameAndVersion() + ":" + MODULE + ":"
+        return platformType(layer)
+                .map(type -> "platform:" + type.getModule().getDescriptor().toNameAndVersion() + ":" + type.getName() + ":"
                         + System.getProperty("java.runtime.version", ""))
-                .orElse("library:" + MODULE);
+                .orElse("library:" + LEGACY_MODULE);
     }
 
     /** Classes whose code bytes identify the engine: the caller, plus the library form when it is bound. */
@@ -80,13 +82,18 @@ public final class IndexStores {
     }
 
     static Optional<Class<?>> platformType(ModuleLayer layer) {
-        return platformModule(layer).map(module -> Class.forName(module, TYPE));
+        Optional<Class<?>> current = platformType(layer, MODULE, TYPE);
+        return current.isPresent() ? current : platformType(layer, LEGACY_MODULE, LEGACY_TYPE);
     }
 
-    private static Optional<Module> platformModule(ModuleLayer layer) {
-        Optional<Module> named = layer.findModule(MODULE);
+    private static Optional<Class<?>> platformType(ModuleLayer layer, String packageName, String typeName) {
+        return platformModule(layer, packageName).flatMap(module -> Optional.ofNullable(Class.forName(module, typeName)));
+    }
+
+    private static Optional<Module> platformModule(ModuleLayer layer, String packageName) {
+        Optional<Module> named = layer.findModule(packageName);
         if (named.isPresent()) return named;
-        return layer.findModule("java.base").filter(base -> base.getPackages().contains(MODULE)
-                && base.isExported(MODULE, IndexStores.class.getModule()));
+        return layer.findModule("java.base").filter(base -> base.getPackages().contains(packageName)
+                && base.isExported(packageName, IndexStores.class.getModule()));
     }
 }

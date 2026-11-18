@@ -28,9 +28,9 @@ import java.util.stream.Stream;
 
 /**
  * The m3db (alias native) backend: an {@link IndexStore} directory {@code .m3/maven-build-db} written by the
- * runtime's own M3IndexDB engine, never by the library copy this plugin carries. The engine is the running JDK's
- * {@code jdk.m3.indexdb} (M3jdk21), else an installed MIndexDB runtime; without either the choice fails and
- * nothing falls back to another backend.
+ * runtime's own M3DB engine, never by the library copy this plugin carries. The engine is the running JDK's
+ * {@code jdk.m3.db.M3DB} (current M3JDK), {@code jdk.m3.indexdb.M3IndexDB} (legacy), or an installed
+ * MIndexDB runtime; without any of these the choice fails and does not fall back to another backend.
  */
 final class DirectoryStateBackend implements ModuleStateBackend {
     static final String ARTIFACT = "maven-module-build-state-v1";
@@ -53,8 +53,8 @@ final class DirectoryStateBackend implements ModuleStateBackend {
         try {
             return new DirectoryStateBackend(path, files, IndexStores.runtimeEngine(ModuleLayer.boot()));
         } catch (ReflectiveOperationException | LinkageError missing) {
-            throw new M3DbModuleStore.BackendUnavailableException("the m3db backend needs jdk.m3.indexdb in the"
-                    + " running JDK or MIndexDB installed on the polyglot plugin classpath", missing);
+            throw new M3DbModuleStore.BackendUnavailableException("the m3db backend needs jdk.m3.db or"
+                    + " jdk.m3.indexdb in the running JDK, or MIndexDB on the polyglot plugin classpath", missing);
         }
     }
 

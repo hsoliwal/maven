@@ -12,10 +12,11 @@ The file may hold source and resource digests, typed compiler/ABI facts,
 dependency edges, atom/pattern receipts, toolchain/configuration identities,
 and output manifests once their original owners have supplied verified facts.
 
-**Owner (decision 55, 2026-11-17).** M3DB converges fully into M3JDK: one owner per
-responsibility. The artifact store is `jdk.m3.indexdb.M3IndexDB` (to be renamed by recipe
-to `jdk.m3.db.M3DB`); build state has a single owner, `jdk.m3.fs.M3BuildState` v2. Maven
-holds only consumer adapters. This document was carried forward from maven #144, whose own
+**Owner (decision 55, 2026-11-17; current M3JDK master).** M3DB converges into M3JDK:
+one owner per responsibility. The current artifact store is **`jdk.m3.db.M3DB`**, with
+`jdk.m3.db.BuildState` (v1) as the typed, columnar build-fact model. The older
+`jdk.m3.indexdb.M3IndexDB` remains a supported compatibility owner; Maven holds only
+consumer adapters. This document was carried forward from maven #144, whose own
 `M3ModuleDb` format was retired; the polyglot plugin's owner-backed module store (from #145,
 reconciled in #157) replaced it.
 
@@ -28,8 +29,8 @@ portable CLI. Reuse is explicit:
 mvn -Dm3.polyglot.lifecycle=true -Dm3.polyglot.incremental=true verify
 ```
 
-`m3.polyglot.incrementalState` defaults to `embedded`: the owner M3IndexDB image
-`.m3/module.m3db`. The portable CLI equivalent is `run ... --incremental`.
+`m3.polyglot.incrementalState` defaults to `embedded`: one per-module owner-compatible
+M3DB image at `.m3/module.m3db`. The portable CLI equivalent is `run ... --incremental`.
 
 The OpenRewrite recipe `io.synexia.maven.recipe.EnableM3ModuleDb`
 (`META-INF/rewrite/m3-module-db.yml` in the plugin) registers
@@ -39,7 +40,7 @@ values (including an explicit `false` or another state backend).
 
 Each module writes `.m3/module.m3db` (with `.m3/module.m3db.lock` and
 `.m3/module.m3db.state` for coordination). The file is a ZIP image of the **owner
-M3IndexDB** content-addressed `blobs/` and `refs/` layout holding the plugin's
+M3DB** content-addressed `blobs/` and `refs/` layout holding the plugin's
 versioned successful-task artifact; each receipt pairs a task name with the SHA-256 of
 its verified input generation (task, argv, working directory, declared input trees,
 resolved executable bytes, environment digest, local and ancestor Maven configuration,
@@ -65,21 +66,27 @@ File timestamps are never used to assert unchanged content.
 
 ## Reaching the owner
 
-The plugin currently carries byte-identical copies of the eight `jdk.m3.indexdb`
-owner sources (see `META-INF/M3INDEXDB-PROVENANCE.tsv`). They retire when the plugin
-compiles against the owner jar `com.m3:m3indexdb` on stock JDK. On M3JDK the package is
-a concealed java.base package; the plugin realm (an unnamed module) reaches it with the
-JVM flag `--add-exports java.base/jdk.m3.indexdb=ALL-UNNAMED` set in the launcher,
-`.mvn/jvm.config` or `MAVEN_OPTS` (route A; no java.base export is admitted). On M3JDK
-the plugin must not also carry the jar, or two copies of the package load.
+The stock-JDK fallback carries eight legacy `jdk.m3.indexdb` sources
+(see `META-INF/M3INDEXDB-PROVENANCE.tsv`); it is **not** an independently maintained
+module-state owner. On current M3JDK, the `jdk.m3.db` package lives in `java.base`.
+When it is concealed, launch Maven with
+`--add-exports java.base/jdk.m3.db=ALL-UNNAMED` in `.mvn/jvm.config` or `MAVEN_OPTS`.
+Legacy M3JDK uses `--add-exports java.base/jdk.m3.indexdb=ALL-UNNAMED` instead.
+No JDK modification or unconditional export is required.
 
-Every M3IndexDB access goes through one storage interface, `IndexStore`. Its binding is the
-platform form when the running JDK has `jdk.m3.indexdb` (a module of that name, or the `java.base`
-package exported with the flag above), otherwise the library copy. The `m3db`/`native` state backend
-(`.m3/maven-build-db/`) now selects the owner first: the platform form of `jdk.m3.indexdb`. Only
-when the JDK lacks it does the backend bind Synexia `com.synexia.mindex.db.MIndexDB` (plugin
-context realm first) as the IndexStore `donor` binding. Master's contract tests pin that discovery
-and the refusal without fallback, so retiring the donor binding waits for an explicit decision.
+Every artifact access goes through the single `IndexStore` interface. Resolution order:
+**current M3JDK `jdk.m3.db.M3DB` → legacy M3JDK `jdk.m3.indexdb.M3IndexDB`
+→ stock JDK library fallback** for the default `embedded`/`file` state.
+The explicit `m3db`/`native` backend (`.m3/maven-build-db/`) uses the two native
+owners in the same order, then the Synexia `com.synexia.mindex.db.MIndexDB` donor
+(context realm first), and **refuses to select the library fallback**. A changed
+owner identity invalidates older input receipts; both owner formats have the same
+content-addressed artifact layout, as verified by cross-owner reads in offline tests.
+The source of the current owner contract is `hsoliwal/M3jdk21`,
+`src/java.base/share/classes/jdk/m3/db/{M3DB,Artifact}.java`; test-only snapshots
+of those two source files exercise the actual public artifact methods without
+requiring an M3JDK distribution. Semantic-index methods have only a compile stub
+in these adapter tests and are not part of Maven's artifact-store contract.
 
 ## Safety / compatibility boundary
 
@@ -100,10 +107,12 @@ and the refusal without fallback, so retiring the donor binding waits for an exp
 
 ## Next native Maven integration gates
 
-Maven Core already has `M3BuildFingerprintService` for typed producer-supplied
+Maven Core has `M3BuildFingerprintService` for typed producer-supplied
 configuration, toolchain, dependency and environment digests; it stays a fact
-producer for the owner build state, not a store. A reusable native per-module
-state service should accept authenticated `M3PluginEvidenceService` and
+producer for the owner build state, not a store. The opt-in
+`tools/m3-smart-builder/extension` lifecycle strategy already reuses a guarded
+set of resources, compiler and JAR goals through the same per-module receipt store.
+Further integration should accept authenticated `M3PluginEvidenceService` and
 M3File/M3AST receipts, keep their original owners, maintain an ABI/reverse-
 dependency graph, and expose *advisory* changed/unchanged decisions. The owning
 plugin or Maven Build Cache Extension must independently establish complete

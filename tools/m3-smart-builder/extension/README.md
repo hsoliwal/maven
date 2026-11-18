@@ -82,12 +82,12 @@ reviewed standard plugin versions; other versions keep their original behavior.
 | Property | Meaning |
 | --- | --- |
 | `m3.lifecycle.incremental` | Explicit opt-in; default false |
-| `m3.lifecycle.backend=embedded` | Original source-inlined M3IndexDB in one portable ZIP image; default |
+| `m3.lifecycle.backend=embedded` | One portable `.m3/module.m3db` ZIP image, written through the current `jdk.m3.db.M3DB` owner on M3JDK, the legacy owner on older images, or the compatible library on stock JDK; default |
 | `m3.lifecycle.backend=file` | Bounded sealed atomic file image through the same M3 transaction owner |
 | `m3.lifecycle.backend=sqlite` | Transactional SQLite image in `.m3/module-state.sqlite`; requires an authentic SQLite JDBC driver on the extension classpath |
 | `m3.lifecycle.backend=h2` | Transactional H2 image in `.m3/module-state.mv.db`; requires an authentic H2 JDBC driver on the extension classpath |
 | `m3.lifecycle.backend=ext-<id>` | Local backend registered through `M3ModuleDbBackendProvider`; preserves the original `id/read/write` service contract |
-| `m3.lifecycle.backend=m3db` or `native` | Explicit canonical MIndexDB artifact API; requires that runtime on the extension classpath, with no fallback |
+| `m3.lifecycle.backend=m3db` or `native` | Explicit native artifact store under `.m3/maven-build-db/`; binds current M3JDK `jdk.m3.db.M3DB` first, legacy `jdk.m3.indexdb.M3IndexDB` next, or an installed MIndexDB donor; never falls back to the library copy |
 | `m3.lifecycle.backend=legacy` | Accepted compatibility alias for embedded; old per-task stamps do not authorize reuse |
 | `m3.lifecycle.inputs` | Comma-separated extra file/directory inputs, absolute or relative to the module |
 
