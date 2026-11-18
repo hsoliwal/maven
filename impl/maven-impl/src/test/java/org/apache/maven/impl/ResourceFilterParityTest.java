@@ -86,6 +86,14 @@ class ResourceFilterParityTest {
                     "custom-hash|multi:custom",
                     "maven-filtering misreads a begin token that starts with the"
                             + " first character of a multi-character escape string"),
+            Map.entry(
+                    "hash-wraps-angle|multi:custom",
+                    "maven-filtering misreads a begin token that starts with the"
+                            + " first character of a multi-character escape string"),
+            Map.entry(
+                    "at-around-escaped-dollar|multi:default",
+                    "inside an unresolved expression plexus-interpolation removes the character before the escape"
+                            + " string, not the escape string"),
             Map.entry("operator-default|multi:default", "the Interpolator resolves ${a:-x}; plexus looks up 'a:-x'"),
             Map.entry("operator-default|multi:multiline", "the Interpolator resolves ${a:-x}; plexus looks up 'a:-x'"),
             Map.entry(
@@ -153,6 +161,15 @@ class ResourceFilterParityTest {
         t.put("double-dollar", "$${a}");
         t.put("at-chain", "@a@b@");
         t.put("custom-angle", "<<a>> <<a>x>> <<b>>>");
+        t.put("at-around-dollar", "contact=dev@example.org,build=${b},ops@example.org");
+        t.put("at-around-mail", "mail a@b.com v=${a} c@d.com");
+        t.put("at-around-words", "@x ${a} y@");
+        t.put("at-wraps-dollar", "@${a}@");
+        t.put("dollar-wraps-at", "${x @a@ y}");
+        t.put("at-around-escaped-dollar", "@x \\${a} y@");
+        t.put("at-around-hash", "@x #{a} y@");
+        t.put("angle-wraps-at", "<<x @a@ y>>");
+        t.put("hash-wraps-angle", "#{x <<a>> y}");
     }
 
     private static void escapeTexts(Map<String, String> t) {

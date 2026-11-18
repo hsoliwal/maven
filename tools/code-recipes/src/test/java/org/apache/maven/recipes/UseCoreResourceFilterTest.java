@@ -65,6 +65,88 @@ class UseCoreResourceFilterTest implements RewriteTest {
         """
     };
 
+    private static final String MAVEN4_MOJO = """
+            package org.example;
+
+            import java.io.File;
+            import org.apache.maven.api.Session;
+            import org.apache.maven.shared.filtering.MavenFilteringException;
+            import org.apache.maven.shared.filtering.MavenResourcesExecution;
+            import org.apache.maven.shared.filtering.MavenResourcesFiltering;
+
+            class ResourcesMojo {
+                Session session;
+                MavenResourcesFiltering filtering;
+
+                void execute(File out) throws MavenFilteringException {
+                    MavenResourcesExecution execution = new MavenResourcesExecution();
+                    execution.setOutputDirectory(out);
+                    execution.setEncoding("UTF-8");
+                    execution.setEscapeString("\\\\");
+                    execution.setMavenProject(null);
+                    execution.setFilterFilenames(true);
+                    filtering.filterResources(execution);
+                }
+            }
+            """;
+
+    private static final String MAVEN4_MOJO_MARKED = """
+            package org.example;
+
+            import java.io.File;
+            import org.apache.maven.api.Session;
+            import org.apache.maven.shared.filtering.MavenFilteringException;
+            import org.apache.maven.shared.filtering.MavenResourcesExecution;
+            import org.apache.maven.shared.filtering.MavenResourcesFiltering;
+
+            class ResourcesMojo {
+                Session session;
+                MavenResourcesFiltering filtering;
+
+                void execute(File out) throws MavenFilteringException {
+                    MavenResourcesExecution execution = new MavenResourcesExecution();
+                    execution.setOutputDirectory(out);
+                    execution.setEncoding("UTF-8");
+                    execution.setEscapeString("\\\\");
+                    execution.setMavenProject(null);
+                    execution.setFilterFilenames(true);
+                    /*~~(ResourceFilter.copy(ResourceFilterRequest); builder: setEncoding -> encoding, \
+            setEscapeString -> escapeString, setOutputDirectory -> outputDirectory; callback: setMavenProject; \
+            no equivalent: setFilterFilenames)~~>*/filtering.filterResources(execution);
+                }
+            }
+            """;
+
+    private static final String EXECUTION_FROM_ELSEWHERE = """
+            import org.apache.maven.api.Session;
+            import org.apache.maven.shared.filtering.MavenFilteringException;
+            import org.apache.maven.shared.filtering.MavenResourcesExecution;
+            import org.apache.maven.shared.filtering.MavenResourcesFiltering;
+
+            class Mojo {
+                Session session;
+
+                void run(MavenResourcesFiltering f, MavenResourcesExecution e) throws MavenFilteringException {
+                    f.filterResources(e);
+                }
+            }
+            """;
+
+    private static final String EXECUTION_FROM_ELSEWHERE_MARKED = """
+            import org.apache.maven.api.Session;
+            import org.apache.maven.shared.filtering.MavenFilteringException;
+            import org.apache.maven.shared.filtering.MavenResourcesExecution;
+            import org.apache.maven.shared.filtering.MavenResourcesFiltering;
+
+            class Mojo {
+                Session session;
+
+                void run(MavenResourcesFiltering f, MavenResourcesExecution e) throws MavenFilteringException {
+                    /*~~(ResourceFilter.copy(ResourceFilterRequest))~~>*/f.filterResources(e);
+                }
+            }
+            """;
+
     @Override
     public void defaults(RecipeSpec spec) {
         spec.recipe(new UseCoreResourceFilter()).parser(JavaParser.fromJavaVersion().dependsOn(STUBS));
@@ -72,90 +154,12 @@ class UseCoreResourceFilterTest implements RewriteTest {
 
     @Test
     void marksTheCallOfAMaven4PluginWithTheMapping() {
-        rewriteRun(java(
-                """
-                package org.example;
-
-                import java.io.File;
-                import org.apache.maven.api.Session;
-                import org.apache.maven.shared.filtering.MavenFilteringException;
-                import org.apache.maven.shared.filtering.MavenResourcesExecution;
-                import org.apache.maven.shared.filtering.MavenResourcesFiltering;
-
-                class ResourcesMojo {
-                    Session session;
-                    MavenResourcesFiltering filtering;
-
-                    void execute(File out) throws MavenFilteringException {
-                        MavenResourcesExecution execution = new MavenResourcesExecution();
-                        execution.setOutputDirectory(out);
-                        execution.setEncoding("UTF-8");
-                        execution.setEscapeString("\\\\");
-                        execution.setMavenProject(null);
-                        execution.setFilterFilenames(true);
-                        filtering.filterResources(execution);
-                    }
-                }
-                """,
-                """
-                package org.example;
-
-                import java.io.File;
-                import org.apache.maven.api.Session;
-                import org.apache.maven.shared.filtering.MavenFilteringException;
-                import org.apache.maven.shared.filtering.MavenResourcesExecution;
-                import org.apache.maven.shared.filtering.MavenResourcesFiltering;
-
-                class ResourcesMojo {
-                    Session session;
-                    MavenResourcesFiltering filtering;
-
-                    void execute(File out) throws MavenFilteringException {
-                        MavenResourcesExecution execution = new MavenResourcesExecution();
-                        execution.setOutputDirectory(out);
-                        execution.setEncoding("UTF-8");
-                        execution.setEscapeString("\\\\");
-                        execution.setMavenProject(null);
-                        execution.setFilterFilenames(true);
-                        /*~~(ResourceFilter.copy(ResourceFilterRequest); builder: setEncoding -> encoding, \
-                setEscapeString -> escapeString, setOutputDirectory -> outputDirectory; callback: setMavenProject; \
-                no equivalent: setFilterFilenames)~~>*/filtering.filterResources(execution);
-                    }
-                }
-                """));
+        rewriteRun(java(MAVEN4_MOJO, MAVEN4_MOJO_MARKED));
     }
 
     @Test
     void marksACallWhoseExecutionComesFromElsewhere() {
-        rewriteRun(java(
-                """
-                import org.apache.maven.api.Session;
-                import org.apache.maven.shared.filtering.MavenFilteringException;
-                import org.apache.maven.shared.filtering.MavenResourcesExecution;
-                import org.apache.maven.shared.filtering.MavenResourcesFiltering;
-
-                class Mojo {
-                    Session session;
-
-                    void run(MavenResourcesFiltering f, MavenResourcesExecution e) throws MavenFilteringException {
-                        f.filterResources(e);
-                    }
-                }
-                """,
-                """
-                import org.apache.maven.api.Session;
-                import org.apache.maven.shared.filtering.MavenFilteringException;
-                import org.apache.maven.shared.filtering.MavenResourcesExecution;
-                import org.apache.maven.shared.filtering.MavenResourcesFiltering;
-
-                class Mojo {
-                    Session session;
-
-                    void run(MavenResourcesFiltering f, MavenResourcesExecution e) throws MavenFilteringException {
-                        /*~~(ResourceFilter.copy(ResourceFilterRequest))~~>*/f.filterResources(e);
-                    }
-                }
-                """));
+        rewriteRun(java(EXECUTION_FROM_ELSEWHERE, EXECUTION_FROM_ELSEWHERE_MARKED));
     }
 
     @Test
