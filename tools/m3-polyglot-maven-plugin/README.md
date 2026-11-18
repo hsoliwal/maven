@@ -839,12 +839,15 @@ arbitrary installed binary was built from that commit. Pin each actual compiler 
 
 Build/install the needed LLVM projects from that checked-out commit using LLVM's CMake build process, then
 set `-Dm3.llvm.home=/absolute/path/to/llvm-install` or `M3_LLVM_HOME` to the toolchain root containing `bin/`.
-The same property/environment points `code-clustering-clang` at that fork's `bin/clang` for AST evidence.
+The existing native LLVM tool aliases `-Dm3.polyglot.llvm.home=...` and `LLVM_HOME` also select that root.
+For the compiler, CMake generation, LLVM/MLIR/LLD tools, and `code-clustering-clang` AST evidence, global
+selection order is `m3.polyglot.llvm.home` → `m3.llvm.home` → `M3_LLVM_HOME` → `LLVM_HOME`; blank values are
+ignored. A selected but missing toolchain never silently resolves to a different clang on PATH.
 An individual task can override the root with `--m3-llvm-home=<root>` (relative to its workspace or absolute).
 Existing tasks may instead set `--m3-llvm-bin=<directory>` to use the selected bin directory directly; that
 explicit selector takes precedence over a global home and retains the original compiler flags. If no toolchain
 is selected at all, the original PATH behavior is preserved. Neither Maven nor this provider fetches a toolchain
-or silently falls back to a different clang on PATH when an explicit home is absent.
+or silently falls back to a different clang on PATH when an explicitly selected home has no driver.
 
 If `m3-polyglot:mavenize` finds an existing CMake project while the shared LLVM home is selected, its newly
 generated `cmake-validate` task supplies `-DCMAKE_C_COMPILER=<llvm>/bin/clang` and

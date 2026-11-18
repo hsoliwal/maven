@@ -95,7 +95,9 @@ public final class MavenizerContractTestMain {
         Path c = Files.writeString(toolchain.resolve("clang" + extension), "fixture clang");
         Path cpp = Files.writeString(toolchain.resolve("clang++" + extension), "fixture clang++");
         String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+        String previousPolyglot = System.getProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
         try {
+            System.clearProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
             System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("fork llvm").toString());
             expect(project, "validate cmake-validate cmake [-S, ., -B, build/cmake, "
                     + "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, -DCMAKE_C_COMPILER=" + c.toRealPath()
@@ -108,6 +110,12 @@ public final class MavenizerContractTestMain {
                     && emitted.contains("arg\tcmake-validate\t-DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "\n"),
                     "real generated task manifest retains each LLVM executable path as one argument");
             System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("absent").toString());
+            System.setProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, root.resolve("fork llvm").toString());
+            expect(project, "validate cmake-validate cmake [-S, ., -B, build/cmake, "
+                    + "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, -DCMAKE_C_COMPILER=" + c.toRealPath()
+                    + ", -DCMAKE_CXX_COMPILER=" + cpp.toRealPath() + "]",
+                    "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
+            System.clearProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
             try {
                 Mavenizer.steps(project);
                 throw new AssertionError("missing LLVM home must fail closed");
@@ -117,6 +125,8 @@ public final class MavenizerContractTestMain {
         } finally {
             if (previous == null) System.clearProperty(LlvmCompilerProvider.HOME_PROPERTY);
             else System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, previous);
+            if (previousPolyglot == null) System.clearProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.POLYGLOT_HOME_PROPERTY, previousPolyglot);
         }
         passed++;
     }

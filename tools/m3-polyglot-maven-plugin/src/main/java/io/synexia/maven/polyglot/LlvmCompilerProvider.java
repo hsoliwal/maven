@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 /**
  * Opt-in adapter for original LLVM command-line compilers, including the hsoliwal/llvm-project
@@ -22,8 +23,11 @@ import java.util.Set;
  * <p>For existing manifests, {@code --m3-llvm-bin=<directory>} selects a bin directory,
  * relative to the module workspace or absolute; without any selection, the driver is looked
  * up on PATH. Alternatively select a toolchain root via {@code --m3-llvm-home=},
- * {@code -Dm3.llvm.home=}, or {@code M3_LLVM_HOME}. An explicit bin selector takes
- * precedence over a global home. Explicit home and bin selectors are mutually exclusive.
+ * {@code -Dm3.llvm.home=}, or {@code M3_LLVM_HOME}. The shared LLVM native-tools
+ * aliases {@code m3.polyglot.llvm.home} and {@code LLVM_HOME} also work here, in that
+ * precedence order: polyglot property, M3 property, M3 environment, LLVM environment.
+ * An explicit bin selector takes precedence over a global home. Explicit home and bin
+ * selectors are mutually exclusive.
  * To verify the selected executable's bytes, use {@code --m3-llvm-sha256=<64 hex digits>}.
  * All selector directives are removed from the original compiler arguments.</p>
  *
@@ -34,8 +38,10 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
     static final String BIN_ARGUMENT = "--m3-llvm-bin=";
     static final String HOME_ARGUMENT = "--m3-llvm-home=";
     static final String SHA256_ARGUMENT = "--m3-llvm-sha256=";
+    static final String POLYGLOT_HOME_PROPERTY = "m3.polyglot.llvm.home";
     static final String HOME_PROPERTY = "m3.llvm.home";
     static final String HOME_ENVIRONMENT = "M3_LLVM_HOME";
+    static final String FALLBACK_HOME_ENVIRONMENT = "LLVM_HOME";
     private static final Set<String> LANGUAGES = Set.of("c", "cpp", "objc", "objcpp", "objc++", "fortran", "llvm-ir");
 
     @Override
@@ -124,8 +130,16 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
 
     /** One Maven-owned selection rule, shared by provider tasks and generated native CMake builds. */
     static String configuredHome() {
-        String property = System.getProperty(HOME_PROPERTY, "");
-        return property.isBlank() ? System.getenv(HOME_ENVIRONMENT) : property;
+        return configuredHome(System::getProperty, System::getenv);
+    }
+
+    /** Same global selector precedence as LLVM/MLIR/LLD tasks, with injectable lookup for contract tests. */
+    static String configuredHome(UnaryOperator<String> properties, UnaryOperator<String> environment) {
+        String home = properties.apply(POLYGLOT_HOME_PROPERTY);
+        if (home == null || home.isBlank()) home = properties.apply(HOME_PROPERTY);
+        if (home == null || home.isBlank()) home = environment.apply(HOME_ENVIRONMENT);
+        if (home == null || home.isBlank()) home = environment.apply(FALLBACK_HOME_ENVIRONMENT);
+        return home;
     }
 
     private static String driver(String language) {
