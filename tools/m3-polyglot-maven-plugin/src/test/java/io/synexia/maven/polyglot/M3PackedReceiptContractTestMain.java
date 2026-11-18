@@ -121,6 +121,11 @@ public final class M3PackedReceiptContractTestMain {
                             && !facade.hit("compile", first, second.toUpperCase(java.util.Locale.ROOT)),
                     "public hit remains exact, not case-folded");
         }
+        var view = ModuleStateView.read(module);
+        check(view.size() == 2, "read-only project database view retains both receipts");
+        check(view.stream().anyMatch(row -> row.task().equals("compile")
+                        && row.input().equals(first) && row.output().equals(second)),
+                "project-db ingest still receives the original hexadecimal digest boundary");
     }
 
     private static void model(Path module) throws Exception {
