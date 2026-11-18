@@ -70,7 +70,7 @@ final class M3ModuleJdbcStorage {
         String length = sqlite ? "length(CAST(image AS BLOB))" : "OCTET_LENGTH(image)";
         // SQLite's getBinaryStream first calls getBytes. Bound the projected
         // column inside this same SELECT, before a JDBC driver can materialize it.
-        try (Connection connection = connect();
+        try (Connection connection = connect(false);
                 PreparedStatement query = connection.prepareStatement(
                         "SELECT " + length + ", CASE WHEN " + length + " BETWEEN 1 AND " + MAX_IMAGE
                                 + " THEN image ELSE NULL END FROM " + TABLE + " WHERE slot = 1");
@@ -98,7 +98,7 @@ final class M3ModuleJdbcStorage {
             throw new IOException("module JDBC image outside sealed snapshot budget");
         }
         checkPaths();
-        try (Connection connection = connect()) {
+        try (Connection connection = connect(true)) {
             // SQLite's rollback journal is local and transient; avoid WAL mode's extra long-lived files.
             if (sqlite) {
                 try (Statement pragma = connection.createStatement();
@@ -170,11 +170,22 @@ final class M3ModuleJdbcStorage {
         }
     }
 
-    private Connection connect() throws SQLException, IOException {
+    private Connection connect(boolean create) throws SQLException, IOException {
         checkPaths();
         // DriverManager filters registered drivers using its caller's defining realm;
         // the selected actual Driver can instead reside solely in the plugin context realm.
-        Connection connection = driver.connect(url, new Properties());
+        // HSQLDB read-side connections must not manufacture a new database when
+        // stale sidecar files survive a damaged/incomplete catalog.
+        String selectedUrl = hsqldb && !create ? url + ";ifexists=true" : url;
+        Properties credentials = new Properties();
+        if (hsqldb) {
+            // The HSQLDB JDBC API documents the default local system user as
+            // SA with an empty password. Never introduce a network/database
+            // credential or borrow the user's external JDBC settings.
+            credentials.setProperty("user", "SA");
+            credentials.setProperty("password", "");
+        }
+        Connection connection = driver.connect(selectedUrl, credentials);
         if (connection == null) throw new SQLException("selected JDBC driver rejected its local module URL");
         return connection;
     }
