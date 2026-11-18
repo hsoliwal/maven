@@ -629,7 +629,7 @@ The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
 
 | Capability | What an extension supplies | Built in |
 | --- | --- | --- |
-| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)) |
+| `compiler` | Original compiler argv and build outputs | `@m3:jdk:compiler:java` delegates to the running JDK/M3JDK's `jdk.compiler`; `@m3:ecj:compiler:java` runs ECJ's batch compiler ([ECJ](#ecj-the-eclipse-compiler-for-java)); `@m3:llvm:compiler:{c,cpp,objc,objcpp,fortran,llvm-ir}` delegates to Clang, Flang and `llc` ([LLVM toolchain](docs/LLVM_TOOLCHAIN.md)) |
 | `interpreter` | Original interpreter argv, possibly with no output | `@m3:surefire:interpreter:trx` runs a test tool and reports its TRX results; `@m3:surefire:interpreter:libtest` runs cargo test and reports its output; `@m3:surefire:interpreter:junit` runs CTest and normalises its JUnit XML |
 | `transpiler` | Source-to-source translation argv | `@m3:surefire:transpiler:trx` converts TRX results into surefire reports |
 | `atomizer` | AST-backed atom/effect inventory argv | SPI only; provider required |
@@ -642,6 +642,13 @@ versions, malformed service descriptors and invalid argv. The `plan` command
 validates provider resolution without starting a subprocess. Provider tasks are
 **never** skipped by module database reuse: provider-owned hidden inputs, classpaths and ABI
 need their own complete execution evidence.
+
+The optional [LLVM compiler adapter](docs/LLVM_TOOLCHAIN.md) selects the original
+`clang`, `clang++`, `flang` or `llc` executable from PATH, or from a task's explicit
+`--m3-llvm-bin=<directory>` argument. It can use a separately built, pinned
+[hsoliwal/llvm-project](https://github.com/hsoliwal/llvm-project) toolchain without
+bundling LLVM or overriding CMake/Ninja native build ownership. Native header,
+sysroot and compiler dependency coverage is not automatically inferred.
 
 Only the `interpreter` operation may omit output declarations. The others need
 separate declared inputs and outputs, and overlapping source/output paths are

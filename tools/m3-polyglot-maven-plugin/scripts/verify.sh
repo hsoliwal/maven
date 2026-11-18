@@ -61,6 +61,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestOutput.java \
