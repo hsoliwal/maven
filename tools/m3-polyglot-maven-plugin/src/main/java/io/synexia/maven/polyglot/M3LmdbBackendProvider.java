@@ -108,9 +108,12 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
         Class<?> flagsType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.DbiFlags");
         Class<?> txnType = M3PortableDbRuntime.peer(envType, "org.lmdbjava.Txn");
         Object builder = M3PortableDbRuntime.callStatic(envType, "create", NONE);
-        M3PortableDbRuntime.call(builder, "setMapSize", new Class<?>[] {long.class}, MAP_BYTES);
-        M3PortableDbRuntime.call(builder, "setMaxDbs", new Class<?>[] {int.class}, 1);
-        Object env = M3PortableDbRuntime.call(builder, "open", new Class<?>[] {Path.class}, dir);
+        Object sized = M3PortableDbRuntime.call(builder, "setMapSize",
+                new Class<?>[] {long.class}, MAP_BYTES);
+        Object namedDatabases = M3PortableDbRuntime.call(sized, "setMaxDbs",
+                new Class<?>[] {int.class}, 1);
+        Object env = M3PortableDbRuntime.call(namedDatabases, "open",
+                new Class<?>[] {Path.class}, dir);
         try {
             Object dbiBuilder = M3PortableDbRuntime.call(env, "createDbi", NONE);
             Object named = M3PortableDbRuntime.call(dbiBuilder, "setDbName",
@@ -118,9 +121,9 @@ public final class M3LmdbBackendProvider implements M3ModuleDbBackendProvider {
             Object compared = M3PortableDbRuntime.call(named, "withDefaultComparator", NONE);
             Object flagArray = Array.newInstance(flagsType, 1);
             Array.set(flagArray, 0, M3PortableDbRuntime.constant(flagsType, "MDB_CREATE"));
-            M3PortableDbRuntime.call(compared, "setDbiFlags",
+            Object flagged = M3PortableDbRuntime.call(compared, "setDbiFlags",
                     new Class<?>[] {flagArray.getClass()}, flagArray);
-            Object db = M3PortableDbRuntime.call(compared, "open", NONE);
+            Object db = M3PortableDbRuntime.call(flagged, "open", NONE);
             try {
                 return action.run(env, db, txnType);
             } finally {

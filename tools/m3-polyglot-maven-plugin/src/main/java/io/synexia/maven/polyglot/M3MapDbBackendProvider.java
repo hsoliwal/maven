@@ -77,8 +77,8 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
                 new Class<?>[] {File.class}, file.toFile());
         // MapDB's transactional mode enables its WAL; the default non-WAL
         // mode would not give the module state a recoverable commit boundary.
-        M3PortableDbRuntime.call(maker, "transactionEnable", NONE);
-        Object database = M3PortableDbRuntime.call(maker, "make", NONE);
+        Object transactional = M3PortableDbRuntime.call(maker, "transactionEnable", NONE);
+        Object database = M3PortableDbRuntime.call(transactional, "make", NONE);
         try {
             Object string = M3PortableDbRuntime.constant(serializerType, "STRING");
             Object bytes = M3PortableDbRuntime.constant(serializerType, "BYTE_ARRAY");

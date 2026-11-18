@@ -122,7 +122,11 @@ add a selected database driver as a plugin dependency; for example:
 ```
 
 Then explicitly select
-`-Dm3.polyglot.incrementalState=ext-rocksdb-v1`. To test actual drivers
+`-Dm3.polyglot.incrementalState=ext-rocksdb-v1`. The separate standard Maven
+lifecycle extension accepts `-Dm3.lifecycle.backend=ext-rocksdb-v1`, but in
+that case the selected provider **and its runtime dependencies must be visible
+to the core extension's own classloader**, not just a different plugin realm.
+There is no cross-realm silent fallback. To test actual drivers
 without changing the plugin's production dependency graph, run:
 
 ```sh

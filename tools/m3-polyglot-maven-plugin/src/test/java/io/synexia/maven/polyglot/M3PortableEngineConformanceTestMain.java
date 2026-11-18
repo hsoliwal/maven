@@ -152,6 +152,12 @@ public final class M3PortableEngineConformanceTestMain {
                 new M3LmdbBackendProvider());
         for (M3ModuleDbBackendProvider provider : providers) {
             check(provider.id().matches("ext-[a-z0-9-]{1,48}"), "provider ID local and bounded");
+            // Size and envelope admission must fail before touching a selected
+            // optional library, so these work even when native jars are absent.
+            expectIo(() -> provider.write(root, new byte[0]),
+                    provider.id() + " refuses empty database images");
+            expectIo(() -> provider.write(root, new byte[M3DbModuleStore.MAX_PAYLOAD + 1]),
+                    provider.id() + " refuses oversized snapshots before native writes");
         }
         Path state = Files.createDirectories(root.resolve(".m3"));
         Path outside = Files.writeString(root.resolve("outside"), "private");
