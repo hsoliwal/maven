@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 /** A Gradle-only Java project: native Gradle test XML, no POM and no Maven goal execution. */
@@ -117,9 +118,14 @@ public final class GradleProjectDbContractTestMain {
         try {
             Files.createSymbolicLink(link, descriptor);
         } catch (UnsupportedOperationException | IOException | SecurityException unavailable) {
+            if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) {
+                throw new AssertionError("Linux CI must support the symlink fixture", unavailable);
+            }
             System.out.println("SKIP: linked descriptor unavailable on this filesystem: " + unavailable);
             return;
         }
+        check(Files.isSymbolicLink(link) && Files.isRegularFile(link),
+                "the linked module descriptor must remain a real symlink to a regular file");
         failedReport(root.resolve("linked"), "LinkedTest");
         for (String excluded : List.of("node_modules/ignored", "target/ignored", "build/ignored")) {
             Path module = root.resolve(excluded);
