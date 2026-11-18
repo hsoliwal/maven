@@ -106,6 +106,47 @@ jobs:
             "$(printf 'source_built_clang_llc_maven_native\tPASS')"
           test ! -e "$temporary/no-build"
           echo 'PASS: pin, overlap and stale-output refusals create no outputs'
+      - name: Refuse unreadable or failed native proof output scans
+        shell: bash
+        run: |
+          set -euo pipefail
+          script=tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh
+          test "$(id -u)" -ne 0
+          temporary="$(mktemp -d)"
+          trap 'chmod 700 "$temporary/unreadable" "$temporary/unreadable-parent" "$temporary/readonly" 2>/dev/null || :; rm -rf "$temporary"' EXIT
+          mkdir -p "$temporary/unreadable"
+          chmod 000 "$temporary/unreadable"
+          assert_scan_refusal() {
+            local status=0
+            bash "$script" "$GITHUB_WORKSPACE/llvm-source" "$1" "$2" \
+              > "$temporary/refused.log" 2>&1 || status="$?"
+            if [[ "$status" -ne 65 ]]; then
+              printf 'expected inaccessible output exit 65, got %s\n' "$status" >&2
+              cat "$temporary/refused.log" >&2
+              exit 1
+            fi
+            grep -F 'LLVM proof cannot inspect output directory:' "$temporary/refused.log"
+            test ! -e "$2"
+          }
+          assert_scan_refusal "$temporary/unreadable" "$temporary/refused-evidence"
+          chmod 700 "$temporary/unreadable"
+          # A child of an unreadable parent looks absent to [[ -e ]], but
+          # creating it may still leave another output directory behind.
+          mkdir -p "$temporary/unreadable-parent"
+          chmod 000 "$temporary/unreadable-parent"
+          assert_scan_refusal "$temporary/unreadable-parent/child" "$temporary/refused-evidence"
+          test ! -e "$temporary/refused-evidence"
+          chmod 700 "$temporary/unreadable-parent"
+          mkdir -p "$temporary/readonly"
+          chmod 500 "$temporary/readonly"
+          assert_scan_refusal "$temporary/readonly" "$temporary/refused-evidence"
+          chmod 700 "$temporary/readonly"
+          mkdir -p "$temporary/bin" "$temporary/empty"
+          printf '#!/usr/bin/env bash\nexit 72\n' > "$temporary/bin/find"
+          chmod +x "$temporary/bin/find"
+          PATH="$temporary/bin:$PATH" assert_scan_refusal \
+            "$temporary/empty" "$temporary/refused-evidence"
+          echo 'PASS: native proof refuses unreadable and failing directory scans without output'
       - name: Compile source-pinned LLVM Clang and llc, execute original Maven TaskRunner
         shell: bash
         run: |
