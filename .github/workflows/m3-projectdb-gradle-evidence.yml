@@ -16,11 +16,11 @@ on:
 permissions:
   contents: read
 
-# New commits to the same PR supersede earlier reviews. Default-branch
-# evidence and manual runs on master have a unique run ID and never cancel.
+# New commits to one PR supersede obsolete checks for that PR only.
+# Every push and manual run has its own group: never cancel master evidence.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.ref == 'refs/heads/master' && format('-{0}', github.run_id) || '' }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   project-db-native-gradle:
