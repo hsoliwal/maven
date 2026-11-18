@@ -109,6 +109,83 @@ It uses three ordinary tasks, outputs in the module root, and original LLVM
 binaries. The Maven plugin has no implicit phase binding and requires user
 opt-in for `plan` or `run`.
 
+## Deterministic toolchain evidence (M3-LLVM-TOOLCHAIN-V1)
+
+The standalone Java 17 class `LlvmToolchainEvidence` scans **only explicitly
+selected installed binaries** and produces sorted, root-relative content
+evidence. It does not execute the tools, download LLVM, or modify the LLVM
+installation. The byte sequence is stable across checkout relocation when
+the same tools, symlink targets and bytes are present.
+
+The example below runs with the already installed optional provider JAR,
+outside Maven Core. The LLVM installation must contain a `bin` directory:
+
+```sh
+java -cp m3-llvm-tools-provider.jar io.synexia.maven.llvm.LlvmToolchainEvidence \
+  scan /opt/llvm-fork /work/llvm-toolchain.tsv clang,clang++,llc,opt,ld.lld
+
+java -cp m3-llvm-tools-provider.jar io.synexia.maven.llvm.LlvmToolchainEvidence \
+  verify /opt/llvm-fork /work/llvm-toolchain.tsv
+```
+
+The input tool list is a strict, nonempty subset of documented LLVM driver
+names. Unknown, repeated, missing, non-executable and externally symlinked
+tools are refused. Existing toolchain files are read only. Evidence is
+published atomically in an **existing directory outside the selected
+toolchain**; an output symlink or alias back into the toolchain is refused.
+An unsupported atomic move is a failure, not permission to publish an
+unsealed partial result.
+
+The deterministic TSV shape is:
+
+```text
+M3-LLVM-TOOLCHAIN-V1
+tool<TAB>name<TAB>relative-invoked-path<TAB>relative-real-target<TAB>size<TAB>sha256
+```
+
+Each `tool` row names the original executable as invoked (for example
+`bin/clang++`) and the resolved file whose *bytes* were hashed (often
+`bin/clang` because Clang++ is a symlink). Paths are relative to the
+installation so the manifest does not embed personal filesystem roots.
+SHA-256 covers the complete executable bytes, not `--version` or a
+filename. The manifest version, sorted rows, exact bytes and symlink targets
+are checked again by `verify`. An incomplete requested toolchain is an
+error, not a partially qualified success.
+
+**Boundary:** a manifest is an exact tool selection snapshot, not proof
+that those bytes were compiled from the claimed LLVM Git SHA. It does not
+describe a complete native build dependency closure, compiler plugins,
+sysroot/runtime libraries, target ABI, environment, flags, headers,
+Fortran modules, or source-compatibility. M3DB/Gradle can retain this
+manifest as **advisory provenance**, but it cannot authorize skipping
+native tasks or restoring their outputs until a separate verified
+producer-specific cache admission design exists. The existing provider
+runner continues to execute all provider tasks.
+
+A native tool task can additionally demand this exact manifest at plan
+time. For example, in a `m3-build.tsv` optimizer task declare:
+
+```text
+arg<TAB>optimize<TAB>--m3-llvm-home=/opt/llvm-fork
+arg<TAB>optimize<TAB>--m3-llvm-evidence=/work/llvm-toolchain.tsv
+```
+
+The `--m3-llvm-evidence=<path>` option is consumed by the existing
+`@m3:llvm-tools` provider and never forwarded to LLVM. Before returning
+the original command vector it re-verifies all manifest rows and **requires
+that the executable selected for the task is among them**. The task must
+also have an explicit or shared LLVM installation root (or an explicit
+`bin` directory ending in `bin`); a bare PATH executable cannot silently
+acquire provenance from some other installation. A missing manifest,
+unrecognized selected driver, changed binary or escaping symlink fails
+planning. This is an optional security/evidence gate: without the option,
+existing tasks are unchanged, and **no provider work becomes cacheable**.
+
+The offline Java 17 suite exercises sorting, content changes,
+canonical verification, root-relative paths, symlinks, external-target
+refusal, missing/duplicate tools and atomic publication. Its success does
+not imply real LLVM binaries or cross-platform execution were tested.
+
 ## M3 invariants and limitations
 
 - Non-interpreter operations require disjoint declared source and output
