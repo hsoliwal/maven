@@ -90,16 +90,20 @@
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-archiver</artifactId>
-      <version>4.10.4</version>
+      <!-- in-tree: plugins/shared/plexus-archiver -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-interpolation</artifactId>
-      <version>1.29</version>
+      <!-- in-tree: plugins/shared/plexus-interpolation -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
+      <!-- in-tree: plugins/shared/plexus-xml -->
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-xml</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <!--
       Test dependencies
