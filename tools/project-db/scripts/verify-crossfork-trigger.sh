@@ -61,7 +61,7 @@ expect_count "install -m 0644 tools/project-db/scripts/verify-gradle-testkit-res
 expect_count "install -m 0644 tools/project-db/scripts/M3GradleTestKitReceiptMain.java" 1
 expect_count "SOURCE_RECEIPT.tsv verify-gradle-testkit-results.sh M3GradleTestKitReceiptMain.java > SHA256SUMS" 1
 expect_count "run: sh qualified-maven-jars/verify-gradle-testkit-results.sh consumer-gradle/m3/quality-bridge/build/test-results/test current-nine" 1
-expect_count "current-nine" 1
+expect_count "current-nine" 3
 expect_count "./gradlew --no-daemon" 1
 expect_count "name: projectdb-gradle-testkit-current-nine-jdk-" 1
 
