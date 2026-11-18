@@ -30,7 +30,8 @@ import org.apache.maven.plugins.annotations.Parameter;
 
 /**
  * Atoms, hash planes and clusters of the project's main sources: {@code mvn code-clustering:cluster}. Writes
- * ATOM_HASHES.tsv, CLUSTERS.tsv, PLANE_SUMMARY.tsv, FILE_PAIRS.tsv and FILE_CLUSTERS.tsv to {@code outputDirectory}.
+ * ATOM_HASHES.tsv, CLUSTERS.tsv, PLANE_SUMMARY.tsv, FILE_PAIRS.tsv and FILE_CLUSTERS.tsv to {@code outputDirectory},
+ * and JNI.tsv (Java native methods linked to their C, C++ and Objective-C functions) when the sources have JNI code.
  * With {@code against} set to the
  * ATOM_HASHES.tsv of another source set (a library that may already own this code), also writes JOIN.tsv and
  * COVERAGE.tsv. Reports only; it never changes a source file and never fails the build on what it finds.

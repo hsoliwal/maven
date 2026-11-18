@@ -36,8 +36,11 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.lang.model.element.Modifier;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
@@ -96,10 +99,14 @@ public final class AtomPlanes {
 
     /** Files under the root that a front end accepts, skipping build output, dependency caches and version control. */
     static List<Path> sourceFiles(Path root, List<AtomFrontEnd> frontEnds) throws IOException {
+        return sourceFiles(root, p -> frontEnds.stream().anyMatch(f -> f.accepts(p)));
+    }
+
+    /** Files under the root that the filter accepts, skipping the same directories. */
+    static List<Path> sourceFiles(Path root, Predicate<Path> accepted) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
         try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(p -> Files.isRegularFile(p) && !skipped(root.relativize(p)))
-                    .filter(p -> frontEnds.stream().anyMatch(f -> f.accepts(p))).sorted()
+            return walk.filter(p -> Files.isRegularFile(p) && !skipped(root.relativize(p))).filter(accepted).sorted()
                     .collect(Collectors.toList());
         }
     }
@@ -114,7 +121,11 @@ public final class AtomPlanes {
     private static final java.util.Set<String> SKIPPED = java.util.Set.of("node_modules", ".git", "target", "build",
             "dist", "out", "vendor", "__pycache__", ".venv", "venv", ".gradle", ".idea");
 
-    static List<Atom> parse(Path root, List<Path> files) throws IOException {
+    /**
+     * Atomizes the Java files, adds every method declared {@code native} to {@code natives} and the binary name of
+     * every named class to {@code classes}, for the JNI linker.
+     */
+    static List<Atom> parse(Path root, List<Path> files, List<JniMethod> natives, Set<String> classes) throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) throw new IOException("planes need a JDK (no system Java compiler)");
         DiagnosticCollector<JavaFileObject> ignored = new DiagnosticCollector<>();
@@ -122,29 +133,44 @@ public final class AtomPlanes {
             JavacTask task = (JavacTask) compiler.getTask(null, fm, ignored, List.of("-proc:none"), null,
                     fm.getJavaFileObjectsFromPaths(files));
             SourcePositions positions = Trees.instance(task).getSourcePositions();
-            List<Atom> atoms = new ArrayList<>();
-            for (CompilationUnitTree unit : task.parse()) {
-                String path = root.relativize(Path.of(unit.getSourceFile().toUri())).toString().replace('\\', '/');
-                new Collector(unit, positions, path, atoms).scan(unit, null);
-            }
-            return atoms;
+            List<CompilationUnitTree> units = new ArrayList<>();
+            task.parse().forEach(units::add);
+            JniTypes types = new JniTypes(units);
+            classes.addAll(types.binaries());
+            return atoms(root, units, positions, natives, types);
         }
     }
 
-    /** Walks one compilation unit and records an atom for every type and method. */
+    /** The atoms of the parsed units; the types they declare resolve the argument types of their native methods. */
+    private static List<Atom> atoms(Path root, List<CompilationUnitTree> units, SourcePositions positions,
+            List<JniMethod> natives, JniTypes types) throws IOException {
+        List<Atom> atoms = new ArrayList<>();
+        for (CompilationUnitTree unit : units) {
+            String path = root.relativize(Path.of(unit.getSourceFile().toUri())).toString().replace('\\', '/');
+            new Collector(unit, positions, path, atoms, types, natives).scan(unit, null);
+        }
+        return atoms;
+    }
+
+    /** Walks one compilation unit and records an atom for every type and method, and every native method. */
     private static final class Collector extends TreePathScanner<Void, Void> {
         private final CompilationUnitTree unit;
         private final SourcePositions positions;
         private final String path;
         private final List<Atom> atoms;
+        private final JniTypes types;
+        private final List<JniMethod> natives;
         private final String text;
         private final List<String> owners = new ArrayList<>();
 
-        Collector(CompilationUnitTree unit, SourcePositions positions, String path, List<Atom> atoms) throws IOException {
+        Collector(CompilationUnitTree unit, SourcePositions positions, String path, List<Atom> atoms, JniTypes types,
+                List<JniMethod> natives) throws IOException {
             this.unit = unit;
             this.positions = positions;
             this.path = path;
             this.atoms = atoms;
+            this.types = types;
+            this.natives = natives;
             this.text = unit.getSourceFile().getCharContent(true).toString();
         }
 
@@ -159,7 +185,11 @@ public final class AtomPlanes {
         @Override public Void visitMethod(MethodTree node, Void unused) {
             String params = node.getParameters().stream().map(p -> p.getType().toString())
                     .collect(Collectors.joining(","));
-            record("METHOD", String.join(".", owners) + "." + node.getName() + "(" + params + ")", node);
+            String symbol = String.join(".", owners) + "." + node.getName() + "(" + params + ")";
+            record("METHOD", symbol, node);
+            if (node.getModifiers().getFlags().contains(Modifier.NATIVE)) {
+                types.method(path, symbol, getCurrentPath()).ifPresent(natives::add);
+            }
             return super.visitMethod(node, unused);
         }
 

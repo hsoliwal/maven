@@ -55,13 +55,36 @@ public final class CodeClusteringTest {
 
     public static void main(String[] args) throws Exception {
         Path dir = Path.of(args.length > 0 ? args[0] : "target/code-clustering-test");
+        Path src = sources(dir);
+        planes(src);
+        clusters(dir, src);
+        joinAndCli(dir, src);
+        families(dir);
+        setters(dir);
+        nearJoin(dir);
+        suites(dir, src);
+        if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
+        System.err.println("code clustering: all checks passed");
+    }
+
+    /** Writes A with LF line ends and B with CRLF line ends under {@code dir/src}. */
+    private static Path sources(Path dir) throws Exception {
         Path src = dir.resolve("src");
         Files.createDirectories(src.resolve("p"));
         Files.createDirectories(src.resolve("q"));
         Files.writeString(src.resolve("p/A.java"), A, StandardCharsets.UTF_8);
         Files.writeString(src.resolve("q/B.java"), B.replace("\n", "\r\n"), StandardCharsets.UTF_8);
+        return src;
+    }
+
+    private static void planes(Path src) throws Exception {
         Map<String, Atom> atoms = AtomPlanes.scan(List.of(src)).stream()
                 .collect(Collectors.toMap(a -> a.path() + "#" + a.symbol(), Function.identity()));
+        hashes(atoms);
+        lines(atoms);
+    }
+
+    private static void hashes(Map<String, Atom> atoms) {
         Atom sum = atoms.get("p/A.java#A.sum(int[])");
         Atom copy = atoms.get("q/B.java#B.sum(int[])");
         Atom add = atoms.get("p/A.java#A.add(int[])");
@@ -74,10 +97,18 @@ public final class CodeClusteringTest {
         check("structure: literal changed", sum.structure().equals(start.structure()) && !sum.logic().equals(start.logic()));
         check("simhash: extra statement nearer than unrelated code",
                 PlaneHash.hamming(sum.simhash(), logged.simhash()) < PlaneHash.hamming(sum.simhash(), name.simhash()));
+    }
+
+    private static void lines(Map<String, Atom> atoms) {
+        Atom sum = atoms.get("p/A.java#A.sum(int[])");
+        Atom copy = atoms.get("q/B.java#B.sum(int[])");
         Atom type = atoms.get("p/A.java#A");
         check("javac lines: method 4-10, CRLF copy 4-10, type 3-" + A.lines().count(), sum.line() == 4
                 && sum.endLine() == 10 && copy.line() == 4 && copy.endLine() == 10 && type.line() == 3
                 && type.endLine() == A.lines().count());
+    }
+
+    private static void clusters(Path dir, Path src) throws Exception {
         Path out = dir.resolve("out");
         String line = CodeClustering.cluster(out, List.of(src), 12, 3);
         String clusters = Files.readString(out.resolve("CLUSTERS.tsv"));
@@ -85,18 +116,42 @@ public final class CodeClusteringTest {
         check("EXACT cluster", has(clusters, "EXACT", "p/A.java#A.sum(int[])|q/B.java#B.sum(int[])"));
         check("LOGIC cluster", has(clusters, "LOGIC", "p/A.java#A.add(int[])") && has(clusters, "LOGIC", "q/B.java#B.sum(int[])"));
         check("STRUCTURE cluster", has(clusters, "STRUCTURE", "p/A.java#A.start(int[])"));
-        joinAndCli(dir, src);
-        families(dir);
-        setters(dir);
-        nearJoin(dir);
+    }
+
+    /** The other test classes, each in its own scratch directory. */
+    private static void suites(Path dir, Path src) throws Exception {
         LexicalAtomsTest.run(dir.resolve("lexical"));
         failures += LexicalAtomsTest.failures();
         PlaneCompareTest.run(dir.resolve("compare"), src, B);
         failures += PlaneCompareTest.failures();
         FrontEndTest.run(dir.resolve("front-ends"));
         failures += FrontEndTest.failures();
-        if (failures > 0) throw new AssertionError(failures + " code clustering checks failed");
-        System.err.println("code clustering: all checks passed");
+        ObjectiveCTest.run(dir.resolve("objc"));
+        failures += ObjectiveCTest.failures();
+        nativeSuites(dir);
+    }
+
+    /** The JNI and C-family test classes. */
+    private static void nativeSuites(Path dir) throws Exception {
+        JniNamesTest.run(dir.resolve("jni-names"));
+        failures += JniNamesTest.failures();
+        JniLinkerTest.run(dir.resolve("jni"));
+        failures += JniLinkerTest.failures();
+        cFamilySuites(dir);
+        JniCasesTest.run(dir.resolve("jni-cases"));
+        failures += JniCasesTest.failures();
+        JniTypesTest.run(dir.resolve("jni-types"));
+        failures += JniTypesTest.failures();
+    }
+
+    /** The C-family block and name test classes. */
+    private static void cFamilySuites(Path dir) throws Exception {
+        CFamilyTest.run(dir.resolve("c-family"));
+        failures += CFamilyTest.failures();
+        CFamilyBlocksTest.run(dir.resolve("c-family-blocks"));
+        failures += CFamilyBlocksTest.failures();
+        CFamilyInitializerTest.run(dir.resolve("c-family-initializers"));
+        failures += CFamilyInitializerTest.failures();
     }
 
     /**
@@ -111,8 +166,10 @@ public final class CodeClusteringTest {
                 "    void setPassword(String password) { this.password = password; }",
                 "    void setPassphrase(String passphrase) { this.passphrase = passphrase; }",
                 "    void setSecret(String value) { this.password = value; }", "}", ""), StandardCharsets.UTF_8);
-        Map<String, Atom> atoms = AtomPlanes.scan(List.of(src)).stream()
-                .collect(Collectors.toMap(Atom::symbol, Function.identity()));
+        setterPlanes(AtomPlanes.scan(List.of(src)).stream().collect(Collectors.toMap(Atom::symbol, Function.identity())));
+    }
+
+    private static void setterPlanes(Map<String, Atom> atoms) {
         Atom password = atoms.get("Auth.setPassword(String)");
         Atom passphrase = atoms.get("Auth.setPassphrase(String)");
         Atom secret = atoms.get("Auth.setSecret(String)");
@@ -138,6 +195,10 @@ public final class CodeClusteringTest {
                 || rows.contains("a/One.java\tMETHOD\tm()\tNEAR\tb/Y.java"));
         check("near: distance 3 across three bands", rows.contains("a/Three.java\tMETHOD\tm()\tNEAR\tb/X.java"));
         check("near: distant hash absent", rows.contains("a/Far.java\tMETHOD\tm()\tABSENT"));
+        nearTie(dir, a1, b1);
+    }
+
+    private static void nearTie(Path dir, Atom a1, Atom b1) throws Exception {
         Atom tieLow = synthetic("b/A.java", "00000000000000fe");
         PlaneJoin.join(List.of(a1), List.of(b1, tieLow), dir.resolve("tie"), 3);
         check("near: tie goes to first path", Files.readString(dir.resolve("tie/JOIN.tsv"))
@@ -166,10 +227,16 @@ public final class CodeClusteringTest {
     }
 
     private static void joinAndCli(Path dir, Path src) throws Exception {
+        List<Atom> all = AtomPlanes.scan(List.of(src));
+        join(dir, all);
+        cli(dir, src, all);
+        oldTable(dir);
+    }
+
+    private static void join(Path dir, List<Atom> all) throws Exception {
         Path b = dir.resolve("b");
         Files.createDirectories(b.resolve("q"));
         Files.writeString(b.resolve("q/B.java"), B, StandardCharsets.UTF_8);
-        List<Atom> all = AtomPlanes.scan(List.of(src));
         List<Atom> left = all.stream().filter(a -> a.path().startsWith("p/")).collect(Collectors.toList());
         List<Atom> right = AtomPlanes.scan(List.of(b));
         String joined = PlaneJoin.join(left, right, dir.resolve("join"), 3);
@@ -179,6 +246,10 @@ public final class CodeClusteringTest {
                 && join.contains("p/A.java\tMETHOD\tA.add(int[])\tLOGIC\tq/B.java\tB.sum(int[])"));
         String coverage = Files.readString(dir.resolve("join/COVERAGE.tsv"));
         check("coverage row", coverage.contains("p/A.java\t6\t1\t1\t1\t") && coverage.contains("OWN_CODE"));
+    }
+
+    /** The command line: usage, cluster, a self join, and the atom table it writes. */
+    private static void cli(Path dir, Path src, List<Atom> all) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8);
         int usage = CodeClustering.execute(new String[] {"nothing"}, out);
@@ -191,6 +262,10 @@ public final class CodeClusteringTest {
         check("atom table line columns", Files.readAllLines(tsv).get(0).endsWith("\tsimhash\tline\tend_line")
                 && PlaneTables.readAtoms(tsv).stream().anyMatch(a -> a.symbol().equals("A.sum(int[])") && a.line() == 4
                 && a.endLine() == 10));
+    }
+
+    /** An atom table written before the line columns existed reads with lines 0. */
+    private static void oldTable(Path dir) throws Exception {
         Path old = dir.resolve("old/ATOM_HASHES.tsv");
         Files.createDirectories(old.getParent());
         Files.writeString(old, "path\tkind\tsymbol\ttokens\texact\tlogic\tstructure\tsimhash\n"

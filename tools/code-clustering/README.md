@@ -18,8 +18,8 @@ under the License.
 -->
 # Apache Maven Code Clustering Plugin
 
-Finds duplicated and similar code in a project's Java sources, and measures how much of one source set another
-already holds. It only writes reports. It never changes a source file and never fails a build because of what it
+Finds duplicated and similar code in a project's sources, measures how much of one source set another already
+holds, and links Java native methods to the C, C++ and Objective-C functions behind them. It only writes reports. It never changes a source file and never fails a build because of what it
 finds.
 
 ## How it works
@@ -31,7 +31,7 @@ finds.
    | Front end | Languages (extensions) | How |
    |---|---|---|
    | javac | Java (`.java`) | `JavacTask.parse()`: no classpath needed, nothing is compiled |
-   | lexical | C, C++, C#, JavaScript, TypeScript (incl. JSX/TSX), Go, Rust, Kotlin, Scala, Swift, PHP, Dart, Groovy (brace blocks); Python (indentation) | A tokenizer that skips comments and keeps literals whole. A block becomes a TYPE atom if its header names a type (class, struct, interface, enum, trait, impl, object, record, union, Go `type X struct`). It becomes a METHOD atom if the header has a name followed by a parameter list, or ends in `=>`. Control statements are not atoms. In Python, `def` and `class` lines open atoms that run to the next line indented as far or less, decorators included |
+   | lexical | C, C++, Objective-C (`.m`, `.mm`), C#, JavaScript, TypeScript (incl. JSX/TSX), Go, Rust, Kotlin, Scala, Swift, PHP, Dart, Groovy (brace blocks); Python (indentation) | A tokenizer that skips comments and keeps literals whole. A block becomes a TYPE atom if its header names a type (class, struct, interface, enum, trait, impl, object, record, union, Go `type X struct`). It becomes a METHOD atom if the header has a name followed by a parameter list, or ends in `=>`. Control statements are not atoms. In C, C++ and Objective-C, a function is named by the first name before a top-level parameter list that is not a macro call (see the JNI section), so a constructor with a member-initializer list is `Foo(1)`, a destructor `~Foo(0)`, an operator `operator+(1)`, `operator[](1)` or `operator bool(0)`. In Objective-C, a method definition (`-` or `+` that starts the header, or starts a line after macro names only such as `AWT_NS_WINDOW_IMPLEMENTATION`, an optional `(type)`, then the selector parts `name:(type)argument`, or one name that is not a keyword other than `class`, `self` and `new`) is a METHOD atom named by its full selector, without a parameter count (`View.drawRect:`, `View.initWithFrame:style:`, `View.dealloc`); a sign later in a header (`case -kLimit: {`, `operator-() const {`) is an operator. `@implementation Name` ... `@end` is a TYPE atom (`Name+Category` for a category); C and C++ functions in the same files keep the brace rules, `@"..."` is a string literal, and blocks after other `@` directives (`@synchronized`, `@autoreleasepool`, `@interface`) are not atoms. `.m` files are read as Objective-C. In Python, `def` and `class` lines open atoms that run to the next line indented as far or less, decorators included |
 
    More front ends plug in through the `AtomFrontEnd` service interface: add a jar that registers one in
    `META-INF/services/org.apache.maven.plugins.clustering.AtomFrontEnd` as a dependency of the plugin.
@@ -102,6 +102,104 @@ finds.
 Every cluster, family and coverage row is a proposal. Before you merge code, confirm the equivalence with a diff
 or a test.
 
+## Java and native code (JNI)
+
+`cluster` also links the Java methods declared `native` to the C, C++ and Objective-C functions that implement them,
+the way the JVM looks them up, and writes `JNI.tsv` when the sources have a native method or a `Java_` function. Scan
+the classes and the native sources in one run, for example a JDK module directory that holds `share/classes`,
+`share/native`, `unix/native` and `windows/native`.
+
+- **Java side.** The javac front end records every native method with the binary name of its class (`p/Outer$Inner`)
+  and its argument descriptor, from the syntax tree alone. Primitive and array types are exact, a type variable is the
+  erasure of its first bound, and a reference type resolves as the compiler resolves a simple name: a member type of
+  an enclosing class (declared, or inherited from its superclass and superinterfaces), a single-type import, a type of
+  the same package, a type of an on-demand import, a type of `java.lang`. Types are known from the compilation units
+  of the same source root and from the platform classes of the running JDK; an imported or qualified name that neither
+  knows is taken as a top-level class when every part before the last starts in lower case. When a supertype of an
+  enclosing class is not known, a simple name could be a member type it declares, so the long name is `UNRESOLVED`
+  (a qualified name whose first part starts in lower case is then taken as a package). Any other type that is not known
+  makes the long name `UNRESOLVED`; it is never guessed. Native methods of local and anonymous classes are left out
+  (their binary names depend on the compiler's numbering), and so are those of Java files that a plugged-in front end
+  takes over from javac; the `Java_` functions of an anonymous or local class of a scanned class
+  (`Java_p_Outer_000241_run`: `_00024` and a digit after the escaped class) are therefore not orphans.
+- **Names.** The short name is `Java_`, the escaped class, `_`, the escaped method; the long name adds `__` and the
+  escaped argument descriptor. Escaping follows the JNI specification: ASCII letters and digits stay, `/` becomes `_`,
+  `_` becomes `_1`, `;` becomes `_2`, `[` becomes `_3`, and any other UTF-16 code unit becomes `_0` and four
+  lower-case hex digits (so `$` is `_00024`). The test compares these names with the headers `javac -h` writes.
+- **Native side.** The METHOD atoms of `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.m` and `.mm` files, from
+  any front end, by their own name (`JNIEXPORT` is not required: the JVM finds a function by its name). In these
+  files the lexical front end ends a header at a preprocessor line (`#include`, `#if !defined(X)`), except inside an
+  open parenthesis or square bracket (`#ifdef` among the parameters, whose every branch then counts) or a C++
+  member-initializer list, and joins a header that names nothing after a preprocessor line (`#if ...
+  __attribute__((hot)) #endif` before the brace) to the header before it. That join happens only outside function
+  bodies, and only when the joined header is a type, an Objective-C method, or ends in the parameter list of the
+  function it names plus trailing specifiers, with no `=` and no leading control word; so `UNUSED(x) #endif #if ..
+  if (m) #endif {` in a function body and `XVEC(1, 2), ... #else {1, 2}` in an array initializer are not functions.
+  It names a function by the first name before a top-level parameter list that is not a macro call: a macro call is
+  followed by another declaration word (`DEFINE(Int, jint)` or `METHODDEF(void)` on the line above) while another
+  candidate follows. A `:` starts a member-initializer list (`: base(a), m(0)`, whose names do not count) only right
+  after a candidate's parameter list and its trailing specifiers (`const`, `noexcept(...)`, `try`, and upper-case
+  specifier macros such as `VULKAN_HPP_NOEXCEPT` or `SK_ACQUIRE(lock)`); an access label (`SG_ATTRIBUTE(...) private:
+  T getEffect() const {`) never does. `noexcept(...)` or `__attribute__((...))` never names a function, and a
+  `case FOO(1): {` block is not an atom. In C++ files (`.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.h`, `.mm`) the
+  member-initializer list runs on to the constructor's body: a brace right after an element's qualified name
+  (`fOrigin{0, 0}`, `Base<T>{a}`) or inside parentheses (`({150, 150})`, a lambda body) belongs to the list, and the
+  body is the first other brace, after `)`, a closing brace or a macro that stands for an initializer
+  (`st STATE_DEFAULT {}`). Outside function bodies, a brace initializer inside parentheses (a default argument
+  `SkVector advance = {0, 0}`) opens no block either. Functions whose names a macro gives are
+  expanded: an object-like alias, `#define FN Java_p_Lib_open` used as `JNIEXPORT jint JNICALL FN(...) {...}` (an
+  alias defined once per `#if` branch gives every branch's name); a name macro, `#define JNI_NAME(n) Java_p_Lib_##n`
+  used as `JNI_NAME(open)(JNIEnv *env, ...) {...}`; a macro that defines whole functions,
+  `#define DEFINE(NAME, T) ... Java_p_Lib_sort##NAME##0(...) {...}` instantiated as `DEFINE(Int, jint)`; a
+  defining macro whose function name is a parameter, `#define HANDLE(function, m) ... function(JNIEnv *env, ...) {...}`
+  instantiated with the full name, `HANDLE(Java_p_Lib_focusGained, fire)`; and, one level deep, a defining macro
+  whose function name is a use of a name macro, `#define DEF(n) ... CLS(n)(JNIEnv *env, ...) {...}` with
+  `#define CLS(n) Java_p_Lib_##n` (deeper nesting is not expanded, and its methods stay MISSING_NATIVE). The macros
+  of every header (`.h`, `.hh`, `.hpp`) under the root apply in every native file; a file's own macros hide a
+  header's macro of the same name. They are shown as written (`path#FN`, `path#JNI_NAME(open)`,
+  `path#DEFINE(Int,jint)`, `path#DEF(open)`); nothing else of the preprocessor is run. RegisterNatives tables are arrays `JNINativeMethod name[] = {...}` or `name[] {...}` whose entries give the
+  method name as a string literal: an entry fits a native method with that name and, when both are known, the same
+  signature, of a class that the table's file writes as a string literal (`FindClass(env, "p/Peer")`, scanned or not)
+  or defines `Java_` functions of; only when the file has neither a class-name literal nor a `Java_` function does any
+  class fit.
+- **OS.** The OS of a path is its first directory that is an OS directory (`share`, `unix`, `linux`, `macosx`,
+  `macos`, `windows`, `win32`, `aix`, `bsd`, `solaris`, `posix`, `android`, `ios`). A Java file under an OS directory
+  counts only native code under the same OS, under `share`, or in the same family: `unix` and `posix` with `linux`,
+  `macosx`, `macos`, `aix`, `bsd`, `solaris`, `android` and `ios` (a `linux` class takes `unix` code, a `unix` class
+  takes `linux` code, a `macosx` class does not take `linux` code); `windows` and `win32` are one OS. A Java file or
+  native file without an OS directory, or under `share`, fits every OS.
+
+| Status | Meaning |
+|---|---|
+| LINKED | a function of the Java file's OS has the method's short name |
+| LINKED_OVERLOAD | no short name, but a function of the Java file's OS has the long name (with an `UNRESOLVED` long name: a name that agrees with every resolved argument and has one class name for each unresolved one) |
+| REGISTERED | no function by name, but a RegisterNatives table entry of the Java file's OS fits |
+| LINKED_OTHER_OS | none of these for the Java file's OS, but one of them under another OS only |
+| VM_BOUND | none of these, and HotSpot implements the method itself (below) |
+| MISSING_NATIVE | none of these: no native code for the method in the scanned sources |
+| ORPHAN_NATIVE | a `Java_` function that no scanned native method names, in a scanned package |
+
+VM_BOUND covers the native methods that HotSpot binds without library code, so they are not reported missing when
+`src/hotspot` is not scanned: every native method of `java.lang.Object`, `jdk.internal.misc.Unsafe`,
+`java.lang.invoke.MethodHandleNatives`, `jdk.internal.vm.Continuation`, `jdk.internal.perf.Perf`, the JFR class
+`jdk.jfr.internal.JVM` and JVMCI's `jdk.vm.ci.hotspot.CompilerToVM`; of the classes whose `registerNatives` HotSpot
+binds in its own table (`lookup_special_native_methods` in `nativeLookup.cpp`): `jdk.internal.foreign.abi.UpcallStubs`,
+`UpcallLinker`, `NativeEntryPoint`, `jdk.internal.vm.vector.VectorSupport`, `jdk.internal.misc.ScopedMemoryAccess`,
+`jdk.vm.ci.runtime.JVMCI`, `jdk.vm.ci.services.Services` and the WhiteBox test classes; and the signature-polymorphic
+methods of `java.lang.invoke.MethodHandle` and `VarHandle` (native with a single variable arity `Object...`
+parameter; a plain `Object[]` parameter does not count). A method with native code in the scan keeps the status that
+code gives it.
+
+An unused `Java_` function is ORPHAN_NATIVE only when its name starts with a package that the scan holds Java classes
+of (`Java_p_q_` for package `p.q`), so a `Java_` prefix on a C helper (`Java_CTProvider`) or the functions of a
+library whose Java side is not scanned are not reported.
+
+`os_variants` lists the OS directories among a row's native paths, so a method implemented once per platform
+shows `linux,macosx,windows` and a missing variant stands out; `java_os` is the Java file's OS directory. The summary
+line gets a part such as `JNI 202 native methods: LINKED 200 LINKED_OVERLOAD 0 REGISTERED 0 LINKED_OTHER_OS 0
+VM_BOUND 0 MISSING_NATIVE 2 ORPHAN_NATIVE 0`. Like every other table, the rows are proposals: the build that compiles
+and loads the library is the proof.
+
 ## Use
 
 ```
@@ -146,7 +244,49 @@ family). The test then checks the atoms' source lines, the join, the coverage, t
 atom table's line columns and reading an 8-column table. `LexicalAtomsTest` checks the lexical front end on
 JavaScript, Python, Go, C, Rust and Kotlin fixtures: atom symbols, the logic and structure planes, braces inside
 strings and comments, and source lines. `FrontEndTest` checks front-end discovery and `rangeAtom`, including its
-lines.
+lines. `ObjectiveCTest` checks instance and class methods by selector, `@implementation` and a category, C functions
+around them, `@"{"`, `@synchronized` and a renamed argument. `CFamilyTest` checks C and C++ headers: a constructor
+with a member-initializer list, destructors, operators, a macro call above a function, a macro-named function,
+`#ifdef` among parameters, `#if ... __attribute__ ... #endif` before the brace, and that `case -kLimit: {` and C++
+operators in `.mm` are not Objective-C methods. `CFamilyBlocksTest` checks an access label after semicolon-less
+macro calls, upper-case specifier macros before an initializer list (also with `#if` branches in it), no join across
+`#if` inside a function body or an array initializer, brace, `Base{a}`, `({150, 150})`, lambda, `#ifdef` and macro
+elements in member-initializer lists, brace default arguments, a parenthesis left open by a macro body that does
+not swallow the next namespace, `case FOO(1): {`, and the one-word selectors `-object`, `-range` and `-type`. `JniNamesTest` checks the JNI specification's escaping
+cases and compares the names of a fixture (overloads, arrays, a nested class, a type variable, imported, same-package
+and on-demand types, varargs, a non-ASCII name) with the headers `javac -h` writes for it. `JniTypesTest` compares
+the names of member types inherited from a superclass, a platform superclass and a platform interface with
+`javac -h`, and checks that an unknown superclass makes a reference argument `UNRESOLVED`. `JniLinkerTest` links a
+JDK-shaped tree with `share`, `unix`, `windows`, `linux` and `macosx` native code: every status, the OS variants, a
+RegisterNatives table with and without `FindClass`, a macro-named function, and the removal of a stale `JNI.tsv`.
+`JniCasesTest` checks an object-like alias in two `#if` branches, a name macro from a header, a table without `=`,
+a defining macro given the full `Java_` name, a defining macro whose name is a use of a name macro, a table whose
+file names an unscanned class, `java_os` and LINKED_OTHER_OS, anonymous-class functions, VM_BOUND methods (and a
+plain `Object[]` MethodHandle native that is not), and `Java_` helpers outside the scanned packages.
+
+## C-family atoms on JDK modules
+
+The C-family rules above change the C, C++ and Objective-C atoms of native code, never the atoms of other languages
+(the Java, Go, JavaScript, Python, Rust and TypeScript atoms of the six modules below are byte-identical across the
+three versions). Counts from `J:/converge-join/m3jdk/src` (round 0: before the C-family rules; round 1: constructors,
+destructors, operators and `#if` lines; round 2: access labels, joins, initializer lists, `case` labels):
+
+| Module | Round 0 | Round 1 | Round 2 |
+|---|---|---|---|
+| java.base | 2934 | 2933 | 2932 |
+| java.desktop | 19444 | 19718 | 19716 |
+| jdk.accessibility | 665 | 665 | 665 |
+| jdk.m3.collections | 371 | 371 | 371 |
+| jdk.m3.io | 52 | 52 | 52 |
+| jdk.m3.graphics | 136438 | 149000 | 150282 |
+
+In jdk.m3.graphics, joined with round 1 by path, kind and closing line: 148517 atoms keep their symbol, 265 are
+renamed (constructors named after their class instead of a member, base or specifier macro, and the 8 functions that
+round 1 had named `SG_ATTRIBUTE` named after themselves again), 136 constructors keep their name with a later closing
+line (the body, not a brace initializer), 1366 constructors are new atoms (1219 in `vulkan_structs.hpp` with
+`= {}` default arguments, 19 in `VelloComputeSteps.cpp` with `({...})` initializers), and 77 false atoms are gone
+(`case` labels, initializer elements, `PNG_UNUSED`, `XVEC`). METHOD atoms named after an `f`-prefixed member went
+2780 -> 76 -> 2. JNI statuses are unchanged by round 2 in every module.
 
 ## Report columns
 
@@ -160,3 +300,7 @@ lines.
 - `JOIN.tsv`: path, kind, symbol, plane, match_path, match_symbol
 - `COVERAGE.tsv`: path, atoms, exact, logic, structure, near, absent, top_match, top_share, proposal
 - `COMPARE.tsv`: state, path, kind, symbol, baseline_path, baseline_symbol
+- `JNI.tsv`: java_path, java_symbol, short_name, long_name (`UNRESOLVED` when an argument type is not known), status,
+  native_atoms (`path#symbol|...`; a table entry is `path#table[name]`, a macro-named function `path#MACRO(name)`),
+  os_variants (comma-separated), java_os (the Java file's OS directory, empty when none). ORPHAN_NATIVE rows leave the
+  Java columns empty.
