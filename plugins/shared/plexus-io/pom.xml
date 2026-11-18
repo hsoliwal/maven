@@ -9,7 +9,7 @@
   </parent>
 
   <artifactId>plexus-io</artifactId>
-  <version>3.8.1</version>
+  <version>4.2.0-SNAPSHOT</version>
 
   <name>Plexus IO Components</name>
   <description>A component providing a uniform view of file, archive and in-memory resources, with selectors and
