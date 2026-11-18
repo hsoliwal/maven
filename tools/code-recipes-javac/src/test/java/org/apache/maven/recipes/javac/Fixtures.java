@@ -56,6 +56,7 @@ final class Fixtures {
                 Fixture.of("tck-record-patterns", TCK + RECORD_ORIGIN, "Test.java", FixtureSources.RECORD_PATTERNS),
                 Fixture.of("annotations-javadoc", OWN, "demo/Annotated.java", FixtureSources.ANNOTATED),
                 Fixture.of("two-top-level", OWN, "demo/TwoTypes.java", FixtureSources.TWO_TYPES),
+                Fixture.of("doc-references", OWN, "j/Refs.java", IsolationSources.DOC_REFERENCES),
                 packageInfo());
     }
 

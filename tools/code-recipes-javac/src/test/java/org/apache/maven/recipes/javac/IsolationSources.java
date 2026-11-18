@@ -120,5 +120,23 @@ final class IsolationSources {
             }
             """;
 
+    /**
+     * Javadoc references to classes javac completes (the design probe's {@code Refs.java} without the references into
+     * classes javac never completes): types, a method with a primitive array parameter, a member type and its field.
+     */
+    static final String DOC_REFERENCES = """
+            package j;
+            import java.util.List;
+            /**
+             * Uses {@link List}, {@link String#valueOf(int)}, {@link #take(List, int[])}, {@link Inner} and
+             * {@link Refs.Inner#x}.
+             */
+            public class Refs {
+              /** See {@link Refs#take(List, int[])} and {@link #take(List, int[])}. */
+              public int take(List<String> l, int[] a) { return l.size() + a.length + String.valueOf(1).length(); }
+              static class Inner { int x; }
+            }
+            """;
+
     private IsolationSources() {}
 }
