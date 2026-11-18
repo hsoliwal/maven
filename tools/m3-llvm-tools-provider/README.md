@@ -309,20 +309,20 @@ wasm.c --clang --target=wasm32-unknown-unknown--> m3.wasm.o
 m3.wasm.o --wasm-ld --no-entry --export=m3_answer--> m3.wasm
 
 coff.c --clang --target=x86_64-pc-windows-msvc--> m3.obj
-m3.obj --lld-link /dll /noentry /nodefaultlib--> m3.dll
+m3.obj --lld-link /dll /noentry /nodefaultlib /implib:--> m3.dll + m3.lib
 ```
 
 The fixtures are deliberately **freestanding** and do not require a WASI
 SDK or Windows SDK. They assert actual WebAssembly magic/version 1,
 an exported symbol, and a bounded PE signature, x86-64 machine identifier,
-IMAGE_FILE_DLL flag, and exported symbol. They do *not* attempt to execute
+IMAGE_FILE_DLL flag, and exported symbol. The COFF linker also emits a separate import library (`target/m3.lib`): the manifest explicitly names its `/implib` output, verifies its archive signature and exported name, and tests regeneration if it is deleted. They do *not* attempt to execute
 the Windows DLL on Linux or assert full WASI/Win32 runtime compatibility.
 
 Test lifecycle also checks the read-only plan produces no M3DB state or
 output files; all native outputs exist; repeated executions are never
 `UP-TO-DATE`/`CACHED`/`FROM-CACHE`; changing each C implementation
 changes its linked binary; invalid C fails rather than reusing a prior
-success; repairing source recovers; and a deleted DLL is regenerated.
+success; repairing source recovers; and a deleted DLL **or import library** is regenerated.
 Neither LLVM linker is admitted for incremental reuse or artifact
 restoration.
 
