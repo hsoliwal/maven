@@ -159,6 +159,16 @@ public final class M3EclipseBuildHandoffWire {
         if (bytes.length == 0 || bytes.length > MAX_BYTES) {
             throw new IOException("Eclipse handoff byte budget exceeded");
         }
+        // Bound row count before String.split allocates per-row objects.
+        // Eight fixed records plus the maximum configuration, builder, nature
+        // and original Eclipse resource change rows.
+        final int maxLines = 8 + 3 * MAX_ITEMS + MAX_CHANGES;
+        int lines = 0;
+        for (byte value : bytes) {
+            if (value == '\n' && ++lines > maxLines) {
+                throw new IOException("Eclipse handoff row count exceeds budget");
+            }
+        }
         final String body;
         try {
             body = StandardCharsets.UTF_8.newDecoder()
