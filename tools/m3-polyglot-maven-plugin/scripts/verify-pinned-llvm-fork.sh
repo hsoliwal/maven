@@ -31,7 +31,6 @@ if [[ "$BUILD" == "$EVIDENCE" || "$BUILD" == "$EVIDENCE/"* ||
   echo 'Build and evidence outputs must have disjoint ownership' >&2
   exit 65
 fi
-mkdir -p -- "$BUILD" "$EVIDENCE"
 readonly ACTUAL="$(git -C "$SOURCE" rev-parse --verify HEAD)"
 if [[ "$ACTUAL" != "$PIN" ]]; then
   printf 'LLVM fork source mismatch: expected %s, observed %s\n' "$PIN" "$ACTUAL" >&2
@@ -49,6 +48,9 @@ grep -Eq 'set\(LLVM_VERSION_MAJOR 24\)' "$SOURCE/cmake/Modules/LLVMVersion.cmake
   echo 'Unexpected LLVM version source closure (expected major 24)' >&2
   exit 66
 }
+# Publish no build/evidence directories until the source revision, clean state,
+# source closure, and source version have all passed admission.
+mkdir -p -- "$BUILD" "$EVIDENCE"
 {
   printf 'key\tvalue\n'
   printf 'source_repository\thsoliwal/llvm-project\n'

@@ -3,6 +3,12 @@
 name: M3 LLVM exact-fork source-built Maven native proof
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/m3-llvm-fork-source-proof.yml'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_SOURCE_PROOF.md'
   pull_request:
     paths:
       - '.github/workflows/m3-llvm-fork-source-proof.yml'
@@ -49,6 +55,40 @@ jobs:
           command -v mvn
           command -v java
           command -v ninja
+      - name: Prove refusal before output creation on invalid checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          script=tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh
+          bash -n "$script"
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          mkdir -p "$temporary/source"
+          git -C "$temporary/source" init -q
+          git -C "$temporary/source" -c user.name=M3 -c user.email=m3@example.invalid \
+            commit --allow-empty -qm invalid-checkout
+          verify_refusal() {
+            local expected="$1"
+            shift
+            local actual=0
+            bash "$script" "$@" > "$temporary/refused.log" 2>&1 || actual="$?"
+            if [ "$actual" -ne "$expected" ]; then
+              printf 'expected exit %s, observed %s\n' "$expected" "$actual" >&2
+              cat "$temporary/refused.log" >&2
+              exit 1
+            fi
+          }
+          verify_refusal 64
+          verify_refusal 65 "$temporary/source" "$temporary/source/unsafe-build" "$temporary/evidence"
+          test ! -e "$temporary/source/unsafe-build"
+          test ! -e "$temporary/evidence"
+          verify_refusal 65 "$temporary/source" "$temporary/same-output" "$temporary/same-output"
+          test ! -e "$temporary/same-output"
+          verify_refusal 66 "$temporary/source" "$temporary/rejected-build" "$temporary/rejected-evidence"
+          test ! -e "$temporary/rejected-build"
+          test ! -e "$temporary/rejected-evidence"
+          test -z "$(git -C "$temporary/source" status --porcelain --untracked-files=normal)"
+          echo 'PASS: pin, overlap and argument refusals create no outputs'
       - name: Compile source-pinned LLVM Clang and llc, execute original Maven TaskRunner
         shell: bash
         run: |
