@@ -81,16 +81,38 @@ under the License.
     <version.maven-invoker-plugin>3.9.1</version.maven-invoker-plugin>
   </properties>
 
+  <!-- Libraries this plugin reaches only transitively, pinned to the in-tree copies under
+       plugins/shared/ so the plugin's whole run-time closure is built here. -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-interpolation -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-interpolation</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <!-- in-tree: plugins/shared/plexus-build-api -->
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-build-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
     <!-- Needed dependencies -->
     <dependency>
       <groupId>org.apache.maven.shared</groupId>
       <artifactId>maven-filtering</artifactId>
-      <version>3.5.0</version>
+      <!-- in-tree: plugins/shared/maven-filtering -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
+      <!-- in-tree: plugins/shared/plexus-utils -->
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
+      <version>${project.version}</version>
     </dependency>
 
     <!-- Maven (provided) -->
