@@ -90,6 +90,10 @@ jobs:
           test -x /usr/lib/llvm-18/bin/llvm-as
           test -x /usr/lib/llvm-18/bin/clang
           test -x /usr/lib/llvm-18/bin/ld.lld
+          dpkg-query -W -f='${Package} ${Version}\n' llvm-18 llvm-18-tools mlir-18-tools clang-18 lld-18
+          for tool in mlir-opt mlir-translate llvm-as clang ld.lld; do
+            sha256sum "/usr/lib/llvm-18/bin/$tool"
+          done
       - name: Required real MLIR translation and LLD ELF linking via packaged M3
         shell: bash
         env:
