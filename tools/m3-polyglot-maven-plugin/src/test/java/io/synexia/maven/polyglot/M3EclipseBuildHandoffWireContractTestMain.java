@@ -20,6 +20,15 @@ public final class M3EclipseBuildHandoffWireContractTestMain {
     public static void main(String[] args) throws Exception {
         String original = valid();
         var snapshot = M3EclipseBuildHandoffWire.decode(original.getBytes(StandardCharsets.UTF_8));
+        try (var fixture = M3EclipseBuildHandoffWireContractTestMain.class.getResourceAsStream(
+                "/m3-eclipse-build-handoff-v1.fixture")) {
+            if (fixture == null) throw new AssertionError("missing shared m2e/Maven golden wire fixture");
+            byte[] originalBytes = fixture.readAllBytes();
+            require(java.util.Arrays.equals(originalBytes, original.getBytes(StandardCharsets.UTF_8)),
+                    "original m2e producer fixture must match the Maven consumer test exactly");
+            require(M3EclipseBuildHandoffWire.decode(originalBytes).toJson().equals(snapshot.toJson()),
+                    "cross-repository canonical bytes decode identically");
+        }
         require(snapshot.project().equals("Mixed"), "original Eclipse project ID");
         require(snapshot.invocation().equals(INVOCATION), "single bound build invocation");
         require(snapshot.selectedConfiguration().equals("Debug"), "selected build config");
