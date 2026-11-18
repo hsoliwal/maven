@@ -150,6 +150,17 @@ all take `--store DIR` and `--persistent`.
   facets (with and without question words), store locations, storage binding, MCP and CLI.
 - `scripts/e2e.sh` runs a real multi-module Maven build (`src/test/projects/e2e`) twice (green, then red), ingests
   both, and checks the five questions and that every answer has file, line and build id.
+- The existing `GradleProjectDbContractTestMain` now also runs the **real ProjectDbCli**
+  on a Gradle-only project with a symlinked regular `linked/build.gradle`,
+  three excluded output/vendor module descriptors and JUnit failures. It checks
+  exact module discovery, one-source red ingestion, file/line 11 provenance,
+  omission of excluded reports, zero-parse warm reuse, and non-invalidation
+  after an ignored vendor descriptor changes. It uses the unchanged
+  `ProjectDb`/`IndexStore` owner and runs through the original `mvn verify`
+  execution; it is not a second parser or a Gradle task-cache test.
+  On Linux a failure to create the symlink is an assertion failure
+  rather than a silent skip; on other filesystems the subcase reports
+  an explicit SKIP if symlinks cannot be created.
 
 ## Real Gradle consumer TestKit in Maven's CI
 
