@@ -46,7 +46,10 @@ public final class M3DerbyBackendProvider implements M3ModuleDbBackendProvider {
 
     @Override
     public void verifyAvailable(Path moduleRoot) throws IOException {
-        M3PortableDbRuntime.path(moduleRoot, DIRECTORY, true, false);
+        Path directory = M3PortableDbRuntime.path(moduleRoot, DIRECTORY, true, false);
+        // Reject URL delimiters before Maven acquires/rotates a cache
+        // generation or runs any output-producing build task.
+        url(directory);
         Class<?> type = M3PortableDbRuntime.type(DRIVER);
         if (!Driver.class.isAssignableFrom(type)) {
             throw new IOException("Derby embedded runtime is not a JDBC Driver");
