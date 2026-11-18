@@ -42,6 +42,15 @@ public final class LlvmToolchainEvidenceContractTestMain {
             check(java.util.Arrays.equals(Files.readAllBytes(out), manifest), "atomic manifest publication");
             LlvmToolchainEvidence.main(new String[]{"verify", home.toString(), out.toString()});
             check(true, "portable verify command");
+            Path oversized = temp.resolve("oversized.tsv");
+            Files.write(oversized, new byte[1_048_577]);
+            fail(() -> LlvmToolchainEvidence.read(oversized), "reject oversized input before allocation");
+            if (!windows) {
+                Path alias = temp.resolve("alias-into-toolchain");
+                Files.createSymbolicLink(alias, home);
+                fail(() -> LlvmToolchainEvidence.write(home, alias.resolve("sneaky.tsv"), requested),
+                        "output parent symlink to toolchain refused");
+            }
             fail(() -> LlvmToolchainEvidence.inspect(home, List.of("clang", "clang")), "duplicate tool");
             fail(() -> LlvmToolchainEvidence.inspect(home, List.of("../clang")), "path escape tool name");
             fail(() -> LlvmToolchainEvidence.inspect(home, List.of("flang")), "missing requested driver");
