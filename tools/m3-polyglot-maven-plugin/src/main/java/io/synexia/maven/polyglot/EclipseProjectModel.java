@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -37,6 +38,8 @@ import org.xml.sax.helpers.DefaultHandler;
  */
 public final class EclipseProjectModel {
     private static final int MAX_DESCRIPTOR_BYTES = 8 * 1024 * 1024;
+    private static final int MAX_LANGUAGE_SETTINGS = 1024;
+    private static final long MAX_LANGUAGE_SETTINGS_BYTES = 32L * 1024 * 1024;
     private static final List<String> DESCRIPTORS = List.of(
             ".project", ".classpath", ".cproject", ".pydevproject", "Cargo.toml",
             ".settings/org.eclipse.jdt.core.prefs", ".settings/org.eclipse.cdt.core.prefs",
@@ -176,6 +179,7 @@ public final class EclipseProjectModel {
             byte[] data = bytes(root.resolve(path), false);
             if (data != null) digests.put(path, sha256(data));
         }
+        discoverLanguageSettings(root, digests);
 
         Element main = project.getDocumentElement();
         String name = childText(main, "name");
@@ -244,6 +248,46 @@ public final class EclipseProjectModel {
         }
         return new Snapshot(name, natures, builders, buildCommands, references, linked, classpath,
                 configurations, pythonProperties, pythonPaths, digests);
+    }
+
+    /**
+     * Inventory arbitrary Eclipse language-plugin preference files by exact bytes.
+     * JDT/CDT/PyDev are not the only contributors to .settings: Rust, Scala,
+     * Groovy, DLTK, LSP4E and vendor plugins must retain their own metadata.
+     *
+     * <p>This intentionally scans only immediate regular files; nested plugin
+     * workspaces remain opaque. Hashing metadata is not configuration resolution
+     * and does not establish an atomic Eclipse workspace generation.</p>
+     */
+    private static void discoverLanguageSettings(Path root, Map<String, String> digests) throws IOException {
+        Path settings = root.resolve(".settings");
+        if (!Files.exists(settings, LinkOption.NOFOLLOW_LINKS)) return;
+        if (!Files.isDirectory(settings, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Eclipse .settings must be a real directory");
+        }
+        List<Path> files;
+        try (Stream<Path> stream = Files.list(settings)) {
+            files = new ArrayList<>(stream.limit(MAX_LANGUAGE_SETTINGS + 1L).toList());
+        }
+        if (files.size() > MAX_LANGUAGE_SETTINGS) {
+            throw new IOException("Eclipse .settings file count exceeds bound");
+        }
+        files.sort(Path::compareTo);
+        long total = 0;
+        for (Path file : files) {
+            if (Files.isSymbolicLink(file)) {
+                throw new IOException("Eclipse language settings cannot be symlinked: " + file);
+            }
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) continue;
+            String relative = ".settings/" + file.getFileName();
+            if (digests.containsKey(relative)) continue;
+            byte[] content = bytes(file, true);
+            total += content.length;
+            if (total > MAX_LANGUAGE_SETTINGS_BYTES) {
+                throw new IOException("Eclipse language settings byte budget exceeded");
+            }
+            digests.put(relative, sha256(content));
+        }
     }
 
     private static Document xml(Path root, String name, String expectedRoot, boolean required,
