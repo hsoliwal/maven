@@ -10,7 +10,7 @@ if [[ $# -ne 3 ]]; then
   printf 'usage: %s <checked-out-llvm-fork> <build-directory> <evidence-directory>\n' "$0" >&2
   exit 64
 fi
-for tool in git cmake ninja java javac mvn sha256sum grep realpath tee sed; do
+for tool in git cmake ninja java javac mvn sha256sum grep find realpath tee sed; do
   command -v "$tool" >/dev/null || { printf 'missing build tool: %s\n' "$tool" >&2; exit 69; }
 done
 
@@ -48,8 +48,21 @@ grep -Eq 'set\(LLVM_VERSION_MAJOR 24\)' "$SOURCE/cmake/Modules/LLVMVersion.cmake
   echo 'Unexpected LLVM version source closure (expected major 24)' >&2
   exit 66
 }
+# A CMakeCache.txt, stale compiled binary or prior success receipt could make
+# a non-fresh build appear source-qualified. Do not reuse occupied directories.
+# This runs only after the exact clean pinned source has passed validation and
+# before touching either output. Pre-created empty output directories are valid.
+for owned in "$BUILD" "$EVIDENCE"; do
+  if [[ -e "$owned" ]] && {
+       [[ ! -d "$owned" ]] ||
+       [[ -n "$(find "$owned" -mindepth 1 -maxdepth 1 -print -quit)" ]];
+     }; then
+    printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
+    exit 65
+  fi
+done
 # Publish no build/evidence directories until the source revision, clean state,
-# source closure, and source version have all passed admission.
+# source closure, source version and fresh-output checks have all passed admission.
 mkdir -p -- "$BUILD" "$EVIDENCE"
 {
   printf 'key\tvalue\n'

@@ -88,7 +88,24 @@ jobs:
           test ! -e "$temporary/rejected-build"
           test ! -e "$temporary/rejected-evidence"
           test -z "$(git -C "$temporary/source" status --porcelain --untracked-files=normal)"
-          echo 'PASS: pin, overlap and argument refusals create no outputs'
+          # The *real pinned checkout* must also refuse occupied outputs without
+          # reusing a foreign CMake cache or previous success receipt.
+          mkdir -p "$temporary/stale build"
+          printf 'CMAKE_HOME_DIRECTORY=/foreign/source\n' > "$temporary/stale build/CMakeCache.txt"
+          verify_refusal 65 "$GITHUB_WORKSPACE/llvm-source" \
+            "$temporary/stale build" "$temporary/no-evidence"
+          test "$(cat "$temporary/stale build/CMakeCache.txt")" = \
+            'CMAKE_HOME_DIRECTORY=/foreign/source'
+          test ! -e "$temporary/no-evidence"
+          mkdir -p "$temporary/stale evidence"
+          printf 'source_built_clang_llc_maven_native\tPASS\n' > \
+            "$temporary/stale evidence/source-receipt.tsv"
+          verify_refusal 65 "$GITHUB_WORKSPACE/llvm-source" \
+            "$temporary/no-build" "$temporary/stale evidence"
+          test "$(cat "$temporary/stale evidence/source-receipt.tsv")" = \
+            "$(printf 'source_built_clang_llc_maven_native\tPASS')"
+          test ! -e "$temporary/no-build"
+          echo 'PASS: pin, overlap and stale-output refusals create no outputs'
       - name: Compile source-pinned LLVM Clang and llc, execute original Maven TaskRunner
         shell: bash
         run: |
