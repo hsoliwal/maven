@@ -28,11 +28,17 @@ public final class EclipseModelCli {
             // Compare declarations only; a MATCH does not prove toolchain or output completeness.
             System.out.println(M3EclipseBuildReconciliation.assess(
                     Path.of(args[1]), Path.of(args[2])).toJson());
+        } else if (args != null && args.length == 3 && "jdt-facts".equals(args[0])) {
+            // Original JDT compiler options/classpath belong to the same
+            // Eclipse invocation and selected configuration, or are rejected.
+            System.out.println(M3JdtCompilerFactsWire.inspect(
+                    Path.of(args[1]), Path.of(args[2])).toJson());
         } else {
             throw new IllegalArgumentException(
                     "usage: EclipseModelCli <project-directory> | owners <project-directory>"
                             + " | context <Eclipse-context-packet> | handoff <Eclipse-invocation-packet>"
-                            + " | reconcile <project-directory> <Eclipse-invocation-packet>");
+                            + " | reconcile <project-directory> <Eclipse-invocation-packet>"
+                            + " | jdt-facts <JDT-owner-packet> <Eclipse-invocation-packet>");
         }
     }
 }
