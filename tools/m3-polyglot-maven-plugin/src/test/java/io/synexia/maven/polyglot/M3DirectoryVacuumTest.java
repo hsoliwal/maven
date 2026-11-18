@@ -52,10 +52,35 @@ public final class M3DirectoryVacuumTest {
                     && Files.exists(blobs.resolve(orphan + ".blob")), "foreign blob files prevent reclaim");
             Files.delete(unexpected);
             require(M3DirectoryVacuum.compact(dir).removedBlobs() == 1, "cleanup resumes after layout restored");
+            originalBackendRetainsOnlyLiveContent(temp.resolve("backend"));
             System.out.println("PASS: M3IndexDB vacuum live refs, orphan reclamation, idempotence, corrupt/future safety");
         } finally {
             try (var walk = Files.walk(temp)) {
                 for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            }
+        }
+    }
+
+    /**
+     * Exercise the real DirectoryStateBackend writer with the exact inlined
+     * M3IndexDB engine (not a fake provider). The source-pinned engine emits
+     * blob/ref pairs, and successive module commits must not retain orphans.
+     */
+    private static void originalBackendRetainsOnlyLiveContent(Path root) throws Exception {
+        Path state = Files.createDirectories(root.resolve(".m3"));
+        Path database = state.resolve("maven-build-db");
+        var backend = new DirectoryStateBackend(database,
+                new StateFiles(root, M3DbModuleStore.LOCK, M3DbModuleStore.MARKER),
+                LibraryIndexStore.ENGINE);
+        for (int i = 0; i < 12; i++) {
+            byte[] image = ("successful module state " + i).getBytes(StandardCharsets.UTF_8);
+            backend.write(image);
+            require(java.util.Arrays.equals(image, backend.read()), "native store read-after-write round trip");
+            try (var blobs = Files.list(database.resolve("blobs"))) {
+                require(blobs.count() == 1, "native store must retain only the live content blob");
+            }
+            try (var refs = Files.list(database.resolve("refs"))) {
+                require(refs.count() == 1, "native store retains canonical artifact reference");
             }
         }
     }
