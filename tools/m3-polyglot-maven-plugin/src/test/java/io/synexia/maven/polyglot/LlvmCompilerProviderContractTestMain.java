@@ -28,6 +28,7 @@ public final class LlvmCompilerProviderContractTestMain {
             }
             correctDriverAndArgumentBoundary(root);
             configuredHomeAndFlangFallback(root);
+            preservesDriverSymlinkName(root);
             pinsSelectedExecutable(root);
             refusesBadConfigurations(root);
             plansWithoutRunningCompiler(root);
@@ -70,6 +71,28 @@ public final class LlvmCompilerProviderContractTestMain {
         refuses(() -> command(root, "c", List.of("--m3-llvm-home=toolchain",
                 "--m3-llvm-sha256=" + "0".repeat(64), "-c", "src/file")), "changed binary SHA");
         passed++;
+    }
+
+    private static void preservesDriverSymlinkName(Path root) throws Exception {
+        // Windows symlink creation requires privileges; Linux/macOS exercise the real
+        // clang++ layout where the named symlink controls C++ driver defaults.
+        if (System.getProperty("os.name", "").startsWith("Windows")) return;
+        Path clang = root.resolve("toolchain/bin/clang");
+        Path cpp = root.resolve("toolchain/bin/clang++");
+        String old = Files.readString(cpp);
+        Files.delete(cpp);
+        try {
+            Files.createSymbolicLink(cpp, clang.getFileName());
+            String sha = InputStamps.fileSha256(clang);
+            var argv = command(root, "cpp", List.of("--m3-llvm-home=toolchain",
+                    "--m3-llvm-sha256=" + sha, "-c", "src/file"));
+            check(argv.get(0).equals(cpp.toAbsolutePath().normalize().toString()),
+                    "preserve clang++ driver name even when bytes are shared with clang");
+            passed++;
+        } finally {
+            Files.deleteIfExists(cpp);
+            Files.writeString(cpp, old);
+        }
     }
 
     private static void configuredHomeAndFlangFallback(Path root) throws Exception {

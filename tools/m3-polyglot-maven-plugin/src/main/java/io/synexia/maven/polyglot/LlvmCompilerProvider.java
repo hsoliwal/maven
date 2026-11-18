@@ -75,15 +75,14 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
             }
         }
         if (arguments.isEmpty()) throw new IOException("LLVM compiler requires original compiler arguments");
-        if (home == null) home = System.getProperty(HOME_PROPERTY, "");
-        if (home.isBlank()) home = System.getenv(HOME_ENVIRONMENT);
+        if (home == null) home = configuredHome();
         if (home == null || home.isBlank()) {
             throw new IOException("LLVM toolchain not configured: set " + HOME_ARGUMENT + "<root>, -D"
                     + HOME_PROPERTY + "=<root>, or " + HOME_ENVIRONMENT);
         }
         Path executable = resolve(home, driver(language), workspace);
         if (expectedSha256 != null && !expectedSha256.toLowerCase(Locale.ROOT)
-                .equals(InputStamps.fileSha256(executable))) {
+                .equals(InputStamps.fileSha256(executable.toRealPath()))) {
             throw new IOException("LLVM compiler SHA-256 mismatch: " + executable);
         }
         var command = new ArrayList<String>(arguments.size() + 3);
@@ -94,6 +93,12 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
         }
         command.addAll(arguments);
         return List.copyOf(command);
+    }
+
+    /** One Maven-owned selection rule, shared by provider tasks and generated native CMake builds. */
+    static String configuredHome() {
+        String property = System.getProperty(HOME_PROPERTY, "");
+        return property.isBlank() ? System.getenv(HOME_ENVIRONMENT) : property;
     }
 
     private static String driver(String language) {
@@ -118,7 +123,10 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
             if (!Files.isRegularFile(actual, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("LLVM driver is not a regular file: " + executable);
             }
-            return actual;
+            // clang++ is often a symlink to clang. Keep the driver spelling for argv[0]:
+            // Clang uses it to choose C++ defaults and its linker runtime. Hash the
+            // resolved target above, but execute the named path.
+            return executable.toAbsolutePath().normalize();
         } catch (InvalidPathException | java.nio.file.NoSuchFileException invalid) {
             throw new IOException("LLVM driver not found under toolchain " + home + "/bin: " + driver, invalid);
         }

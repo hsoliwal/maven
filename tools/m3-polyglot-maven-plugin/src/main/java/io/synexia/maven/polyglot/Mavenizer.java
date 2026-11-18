@@ -254,7 +254,16 @@ public final class Mavenizer {
      */
     private static void cmake(Path dir, List<Step> steps) throws IOException {
         if (!has(dir, "CMakeLists.txt")) return;
-        add(steps, "validate", "cmake", "-S", ".", "-B", CMAKE_BUILD, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
+        List<String> configure = new ArrayList<>(List.of("-S", ".", "-B", CMAKE_BUILD,
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"));
+        String llvmHome = LlvmCompilerProvider.configuredHome();
+        if (llvmHome != null && !llvmHome.isBlank()) {
+            // Explicit selection only: CMake's own toolchain stays authoritative otherwise. The
+            // compile_commands.json consumed by Clang atomization must describe this same compiler.
+            configure.add("-DCMAKE_C_COMPILER=" + LlvmCompilerProvider.resolve(llvmHome, "clang", dir));
+            configure.add("-DCMAKE_CXX_COMPILER=" + LlvmCompilerProvider.resolve(llvmHome, "clang++", dir));
+        }
+        add(steps, "validate", "cmake", configure.toArray(String[]::new));
         add(steps, "compile", "cmake", "--build", CMAKE_BUILD, "--config", CMAKE_CONFIG);
         String text = read(dir, "CMakeLists.txt");
         if (text.contains("enable_testing") || text.contains("add_test")) {

@@ -658,6 +658,13 @@ An individual task can override the root with `--m3-llvm-home=<root>` (relative 
 Neither Maven nor this provider fetches a toolchain or falls back to a different clang on PATH if the selected
 toolchain is absent.
 
+If `m3-polyglot:mavenize` finds an existing CMake project while the shared LLVM home is selected, its newly
+generated `cmake-validate` task supplies `-DCMAKE_C_COMPILER=<llvm>/bin/clang` and
+`-DCMAKE_CXX_COMPILER=<llvm>/bin/clang++`. The original `compile_commands.json` then describes the toolchain
+whose AST the Clang front end reads. Without explicit LLVM selection the original CMake generator flags are
+unchanged. Existing POMs, task manifests, `.clangd` files and native build descriptors are **never overwritten**;
+configuration changes to an already-mavenized project require a separately reviewed recipe/change.
+
 | Task tool | Original tool | Notes |
 | --- | --- | --- |
 | `@m3:llvm:compiler:c` | `bin/clang` | C compilation |
@@ -691,6 +698,21 @@ already covered by the original verified runner and its build-cache fingerprint;
 incremental task-skip shortcut. Linking, tests, ABI validation, recipe replay, contract-risk and fixed-point evidence
 remain separate promotion gates. The existing
 `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite recipe is reused for opt-in POM registration.
+
+The provider preserves the `clang++` **invocation path**, including when it is a symlink to `clang`; the
+digest check follows the symlink to hash the real executable bytes. This matters because the original Clang driver
+can select C++ defaults from its invoked name. The explicit real-LLVM verification suite is included in `verify`
+and the dependency-free `scripts/verify.sh`:
+
+```sh
+M3_LLVM_REAL_TEST_HOME=/absolute/path/to/llvm-install \
+  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+```
+
+It runs C, C++, Objective-C, Objective-C++, Fortran and LLVM IR **through the Maven TaskRunner**, checks that dry
+runs do not create outputs, pins each compiler executable's SHA-256, and verifies actual nonempty object files.
+Without that explicit variable, the suite reports `NOT RUN` rather than asserting LLVM was compiled. Cross-platform
+native ABI/linking, source-to-binary provenance, and the full Maven reactor remain distinct qualification gates.
 
 ### ECJ, the Eclipse Compiler for Java
 
