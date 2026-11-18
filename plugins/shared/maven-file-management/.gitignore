@@ -1,0 +1,17 @@
+target/
+.project
+.classpath
+.settings/
+.checkstyle
+.svn/
+bin/
+# Intellij
+*.ipr
+*.iml
+.idea
+out/
+.DS_Store
+/bootstrap
+/dependencies.xml
+.java-version
+.checkstyle
