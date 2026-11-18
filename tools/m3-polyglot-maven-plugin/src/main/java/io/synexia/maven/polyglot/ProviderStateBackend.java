@@ -46,6 +46,14 @@ final class ProviderStateBackend implements ModuleStateBackend {
             throw new M3DbModuleStore.BackendUnavailableException(
                     "requested M3 portable DB provider is absent: " + backend, null);
         }
+        // A missing optional runtime is a hard failure before the generation
+        // marker is dirtied, not an apparently successful cold-cache run.
+        try {
+            selected.verifyAvailable(root);
+        } catch (IOException | LinkageError unavailable) {
+            throw new M3DbModuleStore.BackendUnavailableException(
+                    "requested M3 portable DB runtime is unavailable: " + backend, unavailable);
+        }
         return new ProviderStateBackend(root, selected);
     }
 
