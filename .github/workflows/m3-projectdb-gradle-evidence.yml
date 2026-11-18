@@ -127,3 +127,46 @@ jobs:
             consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
           if-no-files-found: ignore
           retention-days: 14
+
+      # A fourth Gradle project-DB case was added after the original reviewed
+      # six-case source pin. Qualify Maven #208 symlink/pruning separately,
+      # without changing the original six-case JUnit acceptance scope.
+      - name: Check out exact reviewed Gradle #52 symlink regression source
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: 7c3d37575002b9c54ff8fa9c8648373aaffa1690
+          path: pruned-symlink-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Execute original Maven #208 Gradle symlink and pruning parity
+        env:
+          M3_PRUNED_PROJECT_DB_JAR: ${{ github.workspace }}/qualified-maven-jars/project-db.jar
+          M3_PRUNED_POLYGLOT_JAR: ${{ github.workspace }}/qualified-maven-jars/polyglot.jar
+        run: |
+          test -s "$M3_PRUNED_POLYGLOT_JAR"
+          test -s "$M3_PRUNED_PROJECT_DB_JAR"
+          chmod +x pruned-symlink-gradle/gradlew
+          cd pruned-symlink-gradle
+          ./gradlew --no-daemon --stacktrace --console=plain \
+            -p m3/quality-bridge test \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
+            --rerun-tasks
+      - name: Require one executed unsuppressed Gradle symlink and pruning testcase
+        run: |
+          sh qualified-maven-jars/verify-gradle-testkit-results.sh \
+            pruned-symlink-gradle/m3/quality-bridge/build/test-results/test pruned-symlink
+      - name: Retain source-pinned Gradle symlink acceptance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projectdb-gradle-pruned-symlink-jdk-${{ matrix.java }}
+          path: |
+            pruned-symlink-gradle/m3/quality-bridge/build/test-results/test/**
+            pruned-symlink-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 14
+
