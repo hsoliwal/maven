@@ -131,7 +131,10 @@ task identities remain `String[]` fields. The original lowercase 64-character
 SHA strings are projected at the `ModuleStateDb.lookup`/`ModuleStateView` API
 boundary; no per-receipt digest String objects or entry nodes are retained.
 Bounded array shifts, sorted-run merges, prefix/bulk revocations and receipt
-serialization move 32-byte slices directly. The sealed **v2** receipt format
+serialization move 32-byte slices directly. Incremental cache-hit admission
+also compares caller-supplied lower-case SHA-256 text **against packed bytes**
+without first projecting two temporary hash Strings; `lookup()` remains
+unchanged for public consumers. The sealed **v2** receipt format
 remains byte-for-byte unchanged, including the original SHA-256 integrity seal,
 and all backend choices continue to consume the same image. A test-only
 deterministic model with distinct hashes, a structural primitive-array gate,
