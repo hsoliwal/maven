@@ -41,7 +41,8 @@ final class DirectoryStateBackend implements ModuleStateBackend {
     private final StateFiles files;
     private final IndexStores.Engine engine;
 
-    private DirectoryStateBackend(Path path, StateFiles files, IndexStores.Engine engine) {
+    /** Package-private for isolated storage conformance tests with the exact library engine. */
+    DirectoryStateBackend(Path path, StateFiles files, IndexStores.Engine engine) {
         this.path = path;
         this.files = files;
         this.engine = engine;
