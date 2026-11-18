@@ -309,14 +309,45 @@ public final class M3DbModuleStoreContractTestMain {
 
     private static void boundsReceiptResidency(Path root) throws Exception {
         Files.createDirectories(root);
+        // The old fixed slot budget was 256, silently evicting otherwise useful
+        // successful steps in a large multi-language module. Staged sorted lanes
+        // now grow geometrically without changing the sealed v2 wire format.
         try (M3DbModuleStore store = M3DbModuleStore.open(root, true, ignored -> {})) {
-            for (int i = 0; i < 257; i++) store.record(String.format(java.util.Locale.ROOT, "task-%03d", i), INPUT, OUTPUT);
-            check(store.lookup("task-000") == null, "full store evicts an old receipt");
-            check(store.lookup("task-256") != null, "full store records latest success");
+            for (int i = 0; i < 4_096; i++) {
+                store.stage(String.format(java.util.Locale.ROOT, "task-%05d", i), INPUT, OUTPUT);
+            }
+            check(store.lookup("task-00000") == null, "staged large module is invisible before commit");
+            store.commitStaged();
+            check(store.lookup("task-00000") != null && store.lookup("task-04095") != null,
+                    "4,096 successful task receipts coexist without eviction");
+            store.stage("task-01024", OUTPUT, INPUT);
+            store.stage("task-03500", OUTPUT, INPUT);
+            store.commitStaged();
+            check(Arrays.equals(store.lookup("task-01024"), new String[] {OUTPUT, INPUT}),
+                    "sorted array merge replaces existing key with staged values");
+            check(store.lookup("task-01023")[0].equals(INPUT),
+                    "sorted merge retains independent unchanged neighbors");
+            store.invalidatePrefix("task-03");
+            check(store.lookup("task-03000") == null && store.lookup("task-03999") == null,
+                    "large prefix invalidation compacts all matching slots");
+            check(store.lookup("task-02999") != null && store.lookup("task-04095") != null,
+                    "prefix invalidation preserves unrelated slots");
+            java.util.List<String> removed = new ArrayList<>();
+            for (int i = 0; i < 2_000; i += 2) {
+                removed.add(String.format(java.util.Locale.ROOT, "task-%05d", i));
+            }
+            store.invalidate(removed);
+            check(store.lookup("task-00000") == null && store.lookup("task-00002") == null,
+                    "bulk revocation removes all selected keys");
+            check(store.lookup("task-00001") != null && store.lookup("task-01999") != null,
+                    "bulk revocation does not drop unscheduled tasks");
         }
         try (M3DbModuleStore store = M3DbModuleStore.open(root, true, ignored -> {})) {
-            check(store.lookup("task-000") == null, "eviction is durable");
-            check(store.lookup("task-001") != null && store.lookup("task-256") != null, "bounded receipts survive reopen");
+            check(store.lookup("task-00000") == null && store.lookup("task-03000") == null,
+                    "large bulk/prefix revocations survive clean reopen");
+            check(Arrays.equals(store.lookup("task-01025"), new String[] {INPUT, OUTPUT})
+                            && Arrays.equals(store.lookup("task-03500"), new String[] {OUTPUT, INPUT}),
+                    "unaffected and newly merged success receipts are durably restored");
         }
     }
 
