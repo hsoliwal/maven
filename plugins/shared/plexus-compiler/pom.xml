@@ -118,12 +118,14 @@
       <dependency>
         <groupId>org.codehaus.plexus</groupId>
         <artifactId>plexus-utils</artifactId>
-        <version>4.2.0</version>
+        <!-- in-tree: plugins/shared/plexus-utils -->
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.codehaus.plexus</groupId>
         <artifactId>plexus-xml</artifactId>
-        <version>3.1.1</version>
+        <!-- in-tree: plugins/shared/plexus-xml -->
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>
