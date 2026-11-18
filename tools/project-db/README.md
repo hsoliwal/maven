@@ -249,6 +249,50 @@ fresh JDK 17/21 acceptance. Maven's own project-DB tests, Gradle's
 normal build cache, and Gradle TestKit are separate authorities; no
 cross-fork test automatically grants build-skip or release permission.
 
+## Separate source-pinned Gradle #208 symlink/parity lane
+
+Maven #208 preserves legacy module discovery for a symlinked *regular*
+Gradle descriptor while pruning `build`, `target`, `.git`,
+`node_modules` and other excluded subtrees **before** traversal.
+The Gradle fork introduced its original integration case
+`M3ProjectDbPrunedSymlinkRealEngineTest` in merged Gradle #52,
+at immutable merge commit
+`7c3d37575002b9c54ff8fa9c8648373aaffa1690`.
+
+The Maven cross-fork CI now qualifies this **one additional case
+separately** after the original six-case report verifier finishes.
+It checks out the reviewed Gradle #52 revision into a second sparse
+workspace, but **reuses exactly the same Maven JDK lane's
+SHA-256/source/JDK-verified** `project-db.jar` and `polyglot.jar`.
+No Maven compilation is repeated and no Gradle source is copied into
+Maven.
+
+The exact class is selected using:
+
+~~~sh
+./gradlew --no-daemon --stacktrace --console=plain \
+  -p m3/quality-bridge test \
+  --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
+  --rerun-tasks
+~~~
+
+It must run with `M3_PRUNED_PROJECT_DB_JAR` and
+`M3_PRUNED_POLYGLOT_JAR` pointing to those original JAR bytes.
+An absent JAR would otherwise cause JUnit to **skip** the test.
+The same source-owned Java 17 JUnit XML verifier accepts the
+strict `pruned-symlink` mode, expecting exactly this one
+unskipped, successful case in its own isolated report directory.
+Malformed XML, missing reports, an unexpected suite, a duplicate
+testcase, skipped test, wrong class name or failure cause refusal.
+
+This lane is not allowed to weaken the earlier six-case gate:
+the original Gradle source pin remains
+`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`.
+The symlink suite is pinned independently and its test results have
+their own Actions artifact. Its hosted execution is **pending** until
+the JDK 17/21 consumer job actually finishes; a local synthetic
+one-case XML proof does not establish Maven/Gradle integration.
+
 ## Attribution
 
 `Retriever` and `Tokens` adapt the BM25 formula and token rule of Synexia's `Bm25Index` (M3JDK21,
