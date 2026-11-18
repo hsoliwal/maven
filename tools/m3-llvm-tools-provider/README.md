@@ -235,14 +235,14 @@ mvn -f tools/m3-llvm-tools-provider/pom.xml verify
 
 # Required external LLVM tools, selected as one installation:
 M3_LLVM_PIPELINE_HOME=/path/to/llvm-install java \
-  -cp 'tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/classes:tools/m3-polyglot-maven-plugin/target/classes' \
+  -cp 'tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar:tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar' \
   io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
 ```
 
 Without a selected/installed toolchain, the Maven `verify` suite still
 runs the read-only graph validation and clearly reports `NOT_RUN` for the
 real pipeline. An explicit but incomplete toolchain fails, including in
-optional mode. The isolated Ubuntu 24.04 CI job installs its distribution's
+optional mode. The isolated Ubuntu 24.04 CI job uses the packaged Maven/plugin JARs, installs its distribution's
 LLVM 18 tools at `/usr/lib/llvm-18` and runs this class with `--required`
 on Java 17 **and** Java 21. This qualifies the distribution LLVM runtime,
 not the independently audited fork source.
