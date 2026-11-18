@@ -4,6 +4,7 @@
  */
 package io.synexia.maven.polyglot;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -39,6 +40,34 @@ final class InputStamps {
     private InputStamps() {}
 
     /**
+     * Immutable transcript of the exact bytes previously fed into the task
+     * fingerprint for the loaded M3 engine implementation. This is deliberately
+     * NOT a cached source-file digest: every task input and every output remains
+     * content-hashed on every verification. One loaded plugin realm executes one
+     * engine implementation for the lifetime of a module run.
+     */
+    static final class EngineTranscript {
+        private final byte[] data;
+
+        private EngineTranscript(byte[] data) { this.data = data.clone(); }
+
+        void appendTo(MessageDigest fingerprint) { fingerprint.update(data); }
+
+        int size() { return data.length; }
+    }
+
+    /** Capture engine JAR/package identity once per selected task graph. */
+    static EngineTranscript captureEngineTranscript() throws IOException {
+        TranscriptDigest recorder = new TranscriptDigest();
+        engine(recorder);
+        byte[] data = recorder.digest();
+        if (data.length > 1_048_576) {
+            throw new IOException("M3 engine digest transcript exceeds 1 MiB");
+        }
+        return new EngineTranscript(data);
+    }
+
+    /**
      * Bind the actual command, inherited process environment, local Maven configuration,
      * declared inputs and successful prerequisite generations to this module location.
      * Tool libraries, external parents/settings and other hidden inputs remain declarations
@@ -46,13 +75,25 @@ final class InputStamps {
      */
     static String stamp(TaskManifest.Task task, Path root, List<String> command,
             Map<String, String> environment, Map<String, String> prerequisites) throws IOException {
-        return stamp(task, root, command, environment, prerequisites, false);
+        return stamp(task, root, command, environment, prerequisites, false, null);
+    }
+
+    static String stamp(TaskManifest.Task task, Path root, List<String> command,
+            Map<String, String> environment, Map<String, String> prerequisites,
+            EngineTranscript engine) throws IOException {
+        return stamp(task, root, command, environment, prerequisites, false, engine);
     }
 
     /** Explicit output-cache opt-in additionally declares that outputs can be relocated. */
     static String portableStamp(TaskManifest.Task task, Path root, List<String> command,
             Map<String, String> environment, Map<String, String> prerequisites) throws IOException {
-        return stamp(task, root, command, environment, prerequisites, true);
+        return stamp(task, root, command, environment, prerequisites, true, null);
+    }
+
+    static String portableStamp(TaskManifest.Task task, Path root, List<String> command,
+            Map<String, String> environment, Map<String, String> prerequisites,
+            EngineTranscript engine) throws IOException {
+        return stamp(task, root, command, environment, prerequisites, true, engine);
     }
 
     /** Standalone artifact-key helper; prerequisite work requires the verified-generation overload. */
@@ -66,7 +107,8 @@ final class InputStamps {
     }
 
     private static String stamp(TaskManifest.Task task, Path root, List<String> command,
-            Map<String, String> environment, Map<String, String> prerequisites, boolean portable) throws IOException {
+            Map<String, String> environment, Map<String, String> prerequisites,
+            boolean portable, EngineTranscript engineTranscript) throws IOException {
         MessageDigest digest = sha256();
         update(digest, DOMAIN);
         update(digest, portable ? "relocatable-output-cache-v1" : root.toString());
@@ -97,7 +139,8 @@ final class InputStamps {
             update(digest, property);
             update(digest, System.getProperty(property, ""));
         }
-        engine(digest);
+        if (engineTranscript == null) engine(digest);
+        else engineTranscript.appendTo(digest);
         Path tool = Path.of(command.get(0));
         if (!tool.isAbsolute()) tool = root.resolve(task.workingDir()).resolve(tool);
         // Installed tool launchers commonly use symlinks. Bind the actual target and bytes.
@@ -344,6 +387,27 @@ final class InputStamps {
         } catch (NoSuchAlgorithmException unavailable) {
             throw new IllegalStateException("SHA-256 unavailable", unavailable);
         }
+    }
+
+    /**
+     * Replays exactly the update stream of engine(digest). Source bytes are
+     * hashed inside file()/paths(); only small framed digest facts are retained.
+     * Replaying this transcript yields byte-identical legacy input keys.
+     */
+    private static final class TranscriptDigest extends MessageDigest {
+        private final ByteArrayOutputStream transcript = new ByteArrayOutputStream(1024);
+
+        TranscriptDigest() { super("M3-ENGINE-TRANSCRIPT"); }
+
+        @Override protected void engineUpdate(byte value) { transcript.write(value); }
+
+        @Override protected void engineUpdate(byte[] values, int offset, int count) {
+            transcript.write(values, offset, count);
+        }
+
+        @Override protected byte[] engineDigest() { return transcript.toByteArray(); }
+
+        @Override protected void engineReset() { transcript.reset(); }
     }
 
     private static final class Budget { private int paths; private long bytes; }
