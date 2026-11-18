@@ -74,6 +74,10 @@ jobs:
           ref: e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6
           path: consumer-gradle
           persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
       - name: Execute real Gradle TestKit with source-built Maven project DB
         env:
           M3_POLYGLOT_JAR: ${{ github.workspace }}/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
