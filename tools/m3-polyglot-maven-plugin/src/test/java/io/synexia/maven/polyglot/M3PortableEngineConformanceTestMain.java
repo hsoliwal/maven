@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.ServiceLoader;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Real-provider conformance suite. Without optional driver jars, verifies SPI
@@ -31,6 +32,11 @@ public final class M3PortableEngineConformanceTestMain {
     private M3PortableEngineConformanceTestMain() {}
 
     public static void main(String[] args) throws Exception {
+        if (args.length == 3 && "--crash".equals(args[0])) {
+            ModuleStateDb state = ModuleStateDb.open(Path.of(args[2]), args[1]);
+            state.record("task-crash", A, B);
+            Runtime.getRuntime().halt(23); // intentionally omit the clean marker
+        }
         boolean required = args.length == 1 && "--require-all".equals(args[0]);
         if (!(args.length == 0 || required)) throw new IllegalArgumentException("expected --require-all");
         List<String> available = new ArrayList<>();
@@ -93,11 +99,38 @@ public final class M3PortableEngineConformanceTestMain {
         try (ModuleStateDb recovered = ModuleStateDb.open(module, backend)) {
             check(recovered.lookup("task-transient") == null, backend + " aborted batch not published");
         }
+        crashRecovery(backend, module);
         try (ModuleStateDb changed = ModuleStateDb.open(module, "file")) {
             check(changed.lookup("task-compile") == null, backend + " backend switch revokes old evidence");
         }
         try (ModuleStateDb returned = ModuleStateDb.open(module, backend)) {
             check(returned.lookup("task-compile") == null, backend + " old backend cannot revive evidence");
+        }
+    }
+
+    private static void crashRecovery(String backend, Path module) throws Exception {
+        Path executable = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
+        Process child = new ProcessBuilder(executable.toString(), "-cp",
+                System.getProperty("java.class.path"),
+                M3PortableEngineConformanceTestMain.class.getName(), "--crash", backend,
+                module.toString()).inheritIO().start();
+        try {
+            if (!child.waitFor(40, TimeUnit.SECONDS)) {
+                child.destroyForcibly();
+                throw new AssertionError(backend + " crash fixture timed out");
+            }
+        } catch (InterruptedException interrupt) {
+            child.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw interrupt;
+        }
+        check(child.exitValue() == 23, backend + " crash fixture wrote state without closing");
+        try (ModuleStateDb reopened = ModuleStateDb.open(module, backend)) {
+            check(reopened.lookup("task-crash") == null,
+                    backend + " incomplete session cannot bless a previously written receipt");
+            check(reopened.lookup("task-compile") == null,
+                    backend + " dirty marker rotates the entire prior generation");
         }
     }
 
