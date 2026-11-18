@@ -95,6 +95,27 @@ public final class LlvmToolchainEvidence {
         }
     }
 
+    /**
+     * A task can require proof that the very driver it will invoke is in the
+     * supplied, fully reverified manifest. Other selected tools are also checked.
+     * This is an identity gate, never a native dependency-completeness gate.
+     */
+    public static void verifySelected(Path home, byte[] manifest, String tool) throws IOException {
+        if (!KNOWN.contains(tool)) throw new IOException("unknown LLVM evidence tool: " + tool);
+        verify(home, manifest);
+        if (!new String(manifest, StandardCharsets.UTF_8).contains("\ntool\t" + tool + "\t")) {
+            throw new IOException("selected LLVM tool absent from evidence: " + tool);
+        }
+    }
+
+    /** Reject oversized and symlinked external manifests before allocating bytes. */
+    public static byte[] read(Path file) throws IOException {
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > MAX_BYTES) {
+            throw new IOException("LLVM toolchain manifest must be a regular file within the byte budget");
+        }
+        return Files.readAllBytes(file);
+    }
+
     /** Output is committed only after a complete, valid manifest exists. */
     public static void write(Path home, Path output, List<String> tools) throws IOException {
         Path canonicalHome = home.toRealPath();
@@ -150,7 +171,7 @@ public final class LlvmToolchainEvidence {
             write(Path.of(args[1]), Path.of(args[2]), List.of(args[3].split(",", -1)));
             System.out.println("SEALED " + Path.of(args[2]).toAbsolutePath().normalize());
         } else if (args.length == 3 && "verify".equals(args[0])) {
-            verify(Path.of(args[1]), Files.readAllBytes(Path.of(args[2])));
+            verify(Path.of(args[1]), read(Path.of(args[2])));
             System.out.println("VERIFIED " + Path.of(args[2]).toAbsolutePath().normalize());
         } else {
             throw new IllegalArgumentException("usage: scan <llvm-home> <manifest.tsv> <comma-separated-tools> | verify <llvm-home> <manifest.tsv>");
