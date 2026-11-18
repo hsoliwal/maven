@@ -12,9 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
@@ -36,6 +39,8 @@ public final class LlvmToolchainEvidence {
 
     private LlvmToolchainEvidence() { }
 
+    private record Fingerprint(long size, FileTime modified, String sha256) { }
+
     /** Inspect only the tools explicitly requested by the build owner. */
     public static byte[] inspect(Path home, List<String> requested) throws IOException {
         if (requested == null || requested.isEmpty()) throw new IOException("at least one LLVM tool required");
@@ -50,6 +55,7 @@ public final class LlvmToolchainEvidence {
         }
         String suffix = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
         StringBuilder evidence = new StringBuilder(MAGIC).append('\n');
+        Map<Path, Fingerprint> seen = new HashMap<>();
         for (String id : sorted) {
             Path selected = bin.resolve(id + suffix);
             if (!Files.isRegularFile(selected) || !Files.isExecutable(selected)) {
@@ -59,12 +65,23 @@ public final class LlvmToolchainEvidence {
             if (!actual.startsWith(root) || !Files.isRegularFile(actual, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("LLVM tool escapes selected installation: " + id);
             }
+            Fingerprint fingerprint = seen.get(actual);
+            FileTime modified = Files.getLastModifiedTime(actual);
             long size = Files.size(actual);
-            String digest = hash(actual);
+            if (fingerprint == null) {
+                String digest = hash(actual);
+                if (Files.size(actual) != size || !modified.equals(Files.getLastModifiedTime(actual))) {
+                    throw new IOException("LLVM tool changed during evidence collection: " + id);
+                }
+                fingerprint = new Fingerprint(size, modified, digest);
+                seen.put(actual, fingerprint);
+            } else if (fingerprint.size() != size || !fingerprint.modified().equals(modified)) {
+                throw new IOException("LLVM tool changed between aliases: " + id);
+            }
             evidence.append("tool\t").append(id).append('\t')
                     .append(relative(root, selected)).append('\t')
                     .append(relative(root, actual)).append('\t')
-                    .append(size).append('\t').append(digest).append('\n');
+                    .append(fingerprint.size()).append('\t').append(fingerprint.sha256()).append('\n');
         }
         byte[] content = evidence.toString().getBytes(StandardCharsets.UTF_8);
         if (content.length > MAX_BYTES) throw new IOException("LLVM manifest exceeds maximum size");
