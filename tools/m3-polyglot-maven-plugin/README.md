@@ -29,7 +29,7 @@ of each cacheable task. The backend choices added to this fork remain available.
   A task needs separate declared input and output paths and verified prerequisite generations.
   CodeQL, OpenRewrite and pluggable M3 providers always execute, as do their unverified dependents.
 - `-Dm3.polyglot.incrementalState=embedded` selects the default original M3IndexDB implementation.
-  The existing `file`, `m3db`, `legacy`, `sqlite`, `h2` and `ext-*` values remain accepted
+  The existing `file`, `m3db`, `legacy`, `sqlite`, `h2`, `hsqldb` and `ext-*` values remain accepted
   as described below; `native` is an additional spelling for native MIndexDB.
 
 - `-Dm3.polyglot.buildCache=<folder>` separately enables the existing local artifact output cache.
@@ -75,6 +75,29 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
 
 ### Persistent module database
 
+**HSQLDB portable JDBC option.** The same module-local sealed receipt image
+can now be stored through HSQLDB 2.7.4, selected with
+`-Dm3.polyglot.incrementalState=hsqldb`. Its `.properties`, `.script`,
+`.log`, `.data`, `.backup`, and lock/recovery files remain inside `.m3`;
+all sidecars are excluded from task-input fingerprints and symlink traversal
+is refused. `hsqldb.write_delay=false` plus `SET FILES WRITE DELAY FALSE`
+requires the transaction log to sync on each commit, and `shutdown=true`
+closes a file database after its last connection. Strict log replay refuses
+incomplete recovered statements rather than silently accepting them.
+The default plugin does not bundle this JDBC driver. To execute the real
+driver corruption, crash, reboot and rollback-independent state checks:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-hsqldb verify
+```
+
+This profile adds `org.hsqldb:hsqldb:2.7.4` with test scope and runs a
+require-driver contract. Without the profile, the offline test confirms the
+explicit missing-driver behavior and path constraints, then reports NOT_RUN
+for native HSQLDB persistence.
+
+
+
 By default, each module owns one **`.m3/module.m3db`** file. This ZIP contains the
 **original M3IndexDB** content-addressed blob/ref format with a versioned successful-task artifact.
 The plugin includes the exact eight-file Apache-2.0 implementation from a pinned public M3JDK21
@@ -89,6 +112,7 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | Legacy configuration alias | `legacy` | Uses embedded M3IndexDB; old per-task stamps never authorize a skip and the first upgraded build establishes new evidence |
 | SQLite JDBC | `sqlite` | Preserves `.m3/module-state.sqlite` and local transaction sidecars; requires an explicit `org.sqlite.JDBC` runtime dependency |
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |
+| HSQLDB JDBC | `hsqldb` | Uses `.m3/module-state-hsqldb.*` local files, transaction log and `shutdown=true`; requires explicit `org.hsqldb.jdbc.JDBCDriver` (2.7.4) with write delay disabled and strict log replay |
 | External portable storage | `ext-*` | Preserves the public `M3ModuleDbBackendProvider` SPI; the selected trusted provider must be installed and independently qualified |
 | RocksDB JNI (optional) | `ext-rocksdb-v1` | `.m3/module-state-ext-rocksdb-v1/` with native RocksDB LSM/WAL; explicitly install `org.rocksdb:rocksdbjni`; sync-WAL put |
 | MapDB (optional) | `ext-mapdb-v1` | `.m3/module-state-ext-mapdb-v1.db` with transactional MapDB file store; explicitly install `org.mapdb:mapdb`; `DB.commit()` |
