@@ -34,9 +34,9 @@ public final class LlvmCompilationDatabaseContractTestMain {
                     "valid JSON array envelope and deterministic LF output");
             check(count(json, "\"directory\"") == 2 && count(json, "\"arguments\"") == 2,
                     "one command per Clang translation unit, no linker row");
-            check(json.contains("\"file\":\"" + root.resolve("src/hello.c") + "\""),
-                    "C source key is absolute");
-            check(json.contains("\"file\":\"" + root.resolve("src/feature with spaces.cpp") + "\""),
+            check(json.contains("\"file\":\"" + jsonPath(root.resolve("src/hello.c")) + "\""),
+                    "C source key is absolute and correctly JSON escaped");
+            check(json.contains("\"file\":\"" + jsonPath(root.resolve("src/feature with spaces.cpp")) + "\""),
                     "C++ path with spaces preserved without shell escaping");
             check(json.contains("-DMSG=\\\"hello\\\""), "quote in argv is JSON escaped");
             check(json.contains("\"arguments\":[") && !json.contains("\"command\":"),
@@ -101,6 +101,13 @@ public final class LlvmCompilationDatabaseContractTestMain {
             Files.writeString(root.resolve("src/hello.c"), "int x = 42;\n", StandardCharsets.UTF_8);
 
             if (!System.getProperty("os.name", "").startsWith("Windows")) {
+                Path inputAlias = root.resolve("src/source-link.c");
+                Files.createSymbolicLink(inputAlias, root.resolve("src/hello.c"));
+                refuses(() -> LlvmCompilationDatabase.render(
+                        load(root, valid.replace("arg\\tclang-c\\tsrc/hello.c\\n",
+                                "arg\\tclang-c\\tsrc/source-link.c\\n")),
+                        root, "all"), "source symlink is refused even under a declared input directory");
+                Files.delete(inputAlias);
                 Files.delete(out);
                 Files.createSymbolicLink(out, root.resolve("src/hello.c"));
                 refuses(() -> LlvmCompilationDatabase.publish(graph, root, "all"),
@@ -162,6 +169,11 @@ public final class LlvmCompilationDatabaseContractTestMain {
         Path file = root.resolve("m3-build.tsv");
         Files.writeString(file, manifest, StandardCharsets.UTF_8);
         return TaskManifest.load(file);
+    }
+
+    /** Match JSON string escaping on Windows paths without a JSON dependency. */
+    private static String jsonPath(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 
     private static int count(String value, String token) {
