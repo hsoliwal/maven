@@ -295,6 +295,61 @@ test **mandatory** after packaged ServiceLoader validation. The CI's LLVM
 installation fails; a missing optional host installation reports
 `NOT_RUN` with no native output claimed.
 
+## Freestanding WASM and Windows COFF native linkage
+
+`LlvmWasmCoffIntegrationTestMain` provides two further *real* cross-target
+linking fixtures. It uses the original Maven `TaskManifest` and
+`TaskRunner`, original `@m3:llvm:compiler:c` Clang dispatch and the
+already implemented `@m3:llvm-tools:linker:wasm`/`linker:coff` drivers.
+There is no second native compiler, cross-compilation manager, scheduler,
+parser or artifact cache in this test.
+
+```text
+wasm.c --clang --target=wasm32-unknown-unknown--> m3.wasm.o
+m3.wasm.o --wasm-ld --no-entry --export=m3_answer--> m3.wasm
+
+coff.c --clang --target=x86_64-pc-windows-msvc--> m3.obj
+m3.obj --lld-link /dll /noentry /nodefaultlib--> m3.dll
+```
+
+The fixtures are deliberately **freestanding** and do not require a WASI
+SDK or Windows SDK. They assert actual WebAssembly magic/version 1,
+an exported symbol, and a bounded PE signature, x86-64 machine identifier,
+IMAGE_FILE_DLL flag, and exported symbol. They do *not* attempt to execute
+the Windows DLL on Linux or assert full WASI/Win32 runtime compatibility.
+
+Test lifecycle also checks the read-only plan produces no M3DB state or
+output files; all native outputs exist; repeated executions are never
+`UP-TO-DATE`/`CACHED`/`FROM-CACHE`; changing each C implementation
+changes its linked binary; invalid C fails rather than reusing a prior
+success; repairing source recovers; and a deleted DLL is regenerated.
+Neither LLVM linker is admitted for incremental reuse or artifact
+restoration.
+
+On Linux with a separate original LLVM installation containing
+`bin/clang`, `bin/wasm-ld`, and `bin/lld-link`:
+
+```sh
+M3_LLVM_LINKER_HOME=/path/to/llvm-install java \
+  -cp 'tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar:tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar' \
+  io.synexia.maven.llvm.LlvmWasmCoffIntegrationTestMain --required
+```
+
+The existing optional Maven `verify` runs the no-native planning case and
+reports `NOT_RUN` for real linking if no complete host toolchain is found.
+A deliberately selected incomplete toolchain fails closed. The existing
+Ubuntu 24.04 Java 17/21 workflow uses the **same packaged JARs** and
+requires both real linker targets after the native LLVM IR and MLIR/ELF
+checks. It hashes the installed compiler/linkers as provenance, but those
+distribution binaries are not asserted to be built from the audited
+`hsoliwal/llvm-project` source revision.
+
+These are output-format and dependency-invalidation tests only: Windows
+runtime imports, full WASI bindings, cross-target ABI compatibility, JNI,
+source-build provenance and native build-cache admission require separate
+qualification. Do not change production compiler or linker behavior based
+on a passing cross-format fixture alone.
+
 ## Testing and release gate
 
 `sh tools/m3-llvm-tools-provider/scripts/verify.sh` runs Java 17 source
