@@ -77,6 +77,17 @@
             </configuration>
           </execution>
           <execution>
+            <id>portable-optional-backend-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>module-state-db-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
@@ -323,4 +334,49 @@
       </plugin>
     </plugins>
   </build>
+  <!-- Real donor engines are opt-in test dependencies, never part of the Maven plugin artifact. -->
+  <profiles>
+    <profile>
+      <id>m3-portable-engines</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.rocksdb</groupId><artifactId>rocksdbjni</artifactId>
+          <version>11.8.1</version><scope>test</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.mapdb</groupId><artifactId>mapdb</artifactId>
+          <version>3.1.0</version><scope>test</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.lmdbjava</groupId><artifactId>lmdbjava</artifactId>
+          <version>0.9.3</version><scope>test</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions>
+              <execution>
+                <id>portable-real-engine-contract</id>
+                <phase>verify</phase>
+                <goals><goal>exec</goal></goals>
+                <configuration>
+                  <executable>${java.home}/bin/java</executable>
+                  <classpathScope>test</classpathScope>
+                  <arguments>
+                    <argument>-classpath</argument><classpath/>
+                    <argument>io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain</argument>
+                    <argument>--require-all</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
