@@ -40,6 +40,19 @@ public final class EclipseProjectModel {
     private static final int MAX_DESCRIPTOR_BYTES = 8 * 1024 * 1024;
     private static final int MAX_LANGUAGE_SETTINGS = 1024;
     private static final long MAX_LANGUAGE_SETTINGS_BYTES = 32L * 1024 * 1024;
+    private static final int MAX_DYNAMIC_DESCRIPTORS = 128;
+    private static final long MAX_ROOT_DESCRIPTOR_BYTES = 32L * 1024 * 1024;
+    // These are authoring descriptors, not resolved toolchain/ABI or dependency
+    // evidence. Eclipse and the original language providers remain authorities.
+    private static final List<String> ROOT_BUILD_DESCRIPTORS = List.of(
+            "META-INF/MANIFEST.MF", "plugin.xml", "fragment.xml", "build.properties",
+            "feature.xml", "category.xml", "pom.xml", "m3-build.tsv",
+            "CMakeLists.txt", "meson.build", "Makefile", "GNUmakefile",
+            "compile_flags.txt", "go.mod", "go.sum", "Cargo.lock",
+            "Package.swift", "pyproject.toml", "requirements.txt", "setup.cfg",
+            "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+            "gradle.properties", "package.json", "package-lock.json", "pnpm-lock.yaml",
+            "tsconfig.json", "pubspec.yaml", "mix.exs", "project.clj");
     private static final List<String> DESCRIPTORS = List.of(
             ".project", ".classpath", ".cproject", ".pydevproject", "Cargo.toml",
             ".settings/org.eclipse.jdt.core.prefs", ".settings/org.eclipse.cdt.core.prefs",
@@ -180,6 +193,7 @@ public final class EclipseProjectModel {
             if (data != null) digests.put(path, sha256(data));
         }
         discoverLanguageSettings(root, digests);
+        discoverBuildDescriptors(root, digests);
 
         Element main = project.getDocumentElement();
         String name = childText(main, "name");
@@ -288,6 +302,63 @@ public final class EclipseProjectModel {
             }
             digests.put(relative, sha256(content));
         }
+    }
+
+    /**
+     * Fingerprint source-owned build descriptors from PDE/OSGi, Java, CDT,
+     * Rust/Cargo, Go, Swift, Python, JS/TS and arbitrary Eclipse plugins.
+     * Only exact project-local authoring files and immediate *.target/*.product
+     * documents participate: never walk generated output trees or follow links.
+     *
+     * <p>Presence/hash is a diagnostic fact, not a resolved target-platform,
+     * compiler argv, JDT classpath or build-cache proof. Original owners must
+     * separately supply effective configuration and compiler identities.</p>
+     */
+    private static void discoverBuildDescriptors(Path root, Map<String, String> digests) throws IOException {
+        long total = 0;
+        for (String relative : ROOT_BUILD_DESCRIPTORS) {
+            byte[] data = authoringBytes(root, relative);
+            if (data == null) continue;
+            total += data.length;
+            if (total > MAX_ROOT_DESCRIPTOR_BYTES) {
+                throw new IOException("Eclipse build descriptor byte budget exceeded");
+            }
+            digests.put(relative, sha256(data));
+        }
+        List<Path> dynamic;
+        try (Stream<Path> list = Files.list(root)) {
+            dynamic = list.filter(path -> {
+                String name = path.getFileName().toString();
+                return name.endsWith(".target") || name.endsWith(".product");
+            }).limit(MAX_DYNAMIC_DESCRIPTORS + 1L).toList();
+        }
+        if (dynamic.size() > MAX_DYNAMIC_DESCRIPTORS) {
+            throw new IOException("Eclipse target/product descriptor count exceeded");
+        }
+        for (Path candidate : dynamic.stream().sorted().toList()) {
+            String relative = candidate.getFileName().toString();
+            byte[] data = authoringBytes(root, relative);
+            if (data == null) continue;
+            total += data.length;
+            if (total > MAX_ROOT_DESCRIPTOR_BYTES) {
+                throw new IOException("Eclipse target/product descriptor byte budget exceeded");
+            }
+            digests.put(relative, sha256(data));
+        }
+    }
+
+    private static byte[] authoringBytes(Path root, String relative) throws IOException {
+        Path file = root.resolve(relative).normalize();
+        if (!file.startsWith(root)) {
+            throw new IOException("Eclipse build metadata outside project");
+        }
+        for (Path parent = file.getParent(); parent != null && parent.startsWith(root);
+                parent = parent.getParent()) {
+            if (Files.isSymbolicLink(parent)) {
+                throw new IOException("symlinked Eclipse build metadata directory: " + relative);
+            }
+        }
+        return bytes(file, false);
     }
 
     private static Document xml(Path root, String name, String expectedRoot, boolean required,
