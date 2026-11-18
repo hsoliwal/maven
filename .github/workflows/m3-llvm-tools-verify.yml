@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   contract-and-plugin:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -58,3 +58,25 @@ jobs:
           jar tf "$provider" | grep -Fx 'io/synexia/maven/llvm/LlvmNativeToolsProvider.class'
           rows="$(java -cp "$plugin:$provider" io.synexia.maven.polyglot.PolyglotCli providers)"
           printf '%s\n' "$rows" | awk -F '\t' '$0=="M3-POLYGLOT-PROVIDERS-V1" { magic++ } $1=="provider" && $2=="llvm-tools" && NF==4 { selected++ } END { if (magic!=1 || selected!=1) exit 1 }'
+      - name: Install explicit Ubuntu LLVM 18 IR toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends llvm-18 llvm-18-tools
+          test -x /usr/lib/llvm-18/bin/opt
+          test -x /usr/lib/llvm-18/bin/llvm-as
+          test -x /usr/lib/llvm-18/bin/llvm-link
+          /usr/lib/llvm-18/bin/opt --version
+      - name: Required real LLVM IR DAG execution and cache-exclusion regression
+        shell: bash
+        env:
+          M3_LLVM_PIPELINE_HOME: /usr/lib/llvm-18
+        run: |
+          set -euo pipefail
+          plugin=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          provider=tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar
+          test -s "$plugin"
+          test -s "$provider"
+          java -cp "tools/m3-llvm-tools-provider/target/test-classes:$plugin:$provider" \
+            io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
