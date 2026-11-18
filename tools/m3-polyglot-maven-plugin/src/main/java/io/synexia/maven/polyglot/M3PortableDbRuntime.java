@@ -132,22 +132,6 @@ final class M3PortableDbRuntime {
         }
     }
 
-    /** Resolve erased generic buffer APIs whose source-level type variable is T. */
-    static Object callCount(Object receiver, String name, int parameterCount, Object... args)
-            throws IOException {
-        Objects.requireNonNull(receiver, "receiver");
-        for (Method method : receiver.getClass().getMethods()) {
-            if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
-                try { return method.invoke(receiver, args); }
-                catch (ReflectiveOperationException | RuntimeException error) {
-                    throw new IOException("portable DB operation failed: "
-                            + receiver.getClass().getName() + "." + name, cause(error));
-                }
-            }
-        }
-        throw new IOException("optional DB API method missing: " + receiver.getClass().getName() + "." + name);
-    }
-
     static void close(Object value) throws IOException {
         if (value == null) return;
         if (!(value instanceof AutoCloseable handle)) {
