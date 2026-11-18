@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: M3 Eclipse Maven-Gradle original descriptor acceptance
+name: M3 Eclipse Maven-Gradle descriptor and JDT facts acceptance
 on:
   pull_request:
     paths:
@@ -38,12 +38,13 @@ jobs:
           jar=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
           test -s "$jar"
           sha256sum "$jar" | tee m3-eclipse-maven-jar.sha256
-      - name: Checkout immutable reviewed Gradle Eclipse descriptor consumer
+      - name: Checkout immutable reviewed Gradle Eclipse model and JDT facts consumer
         uses: actions/checkout@v4
         with:
           repository: hsoliwal/gradle
-          # Merge of hsoliwal/gradle#47; never replace with a floating branch.
-          ref: 6d3eb130f9d03a981f8322e426efefbde567e3cd
+          # Merge of hsoliwal/gradle#63, containing #47 plus source-owned JDT bridge.
+          # Never replace this with floating 'master' or an unreviewed checkout.
+          ref: c918c9b9dfc3b087987165c43b77dff63cc86fb1
           path: consumer-gradle
           persist-credentials: false
           sparse-checkout: |
@@ -68,6 +69,7 @@ jobs:
             if ./gradlew --no-daemon --stacktrace --console=plain \
                 -p m3/quality-bridge test \
                 --tests 'io.synexia.gradle.quality.M3EclipseNativeDescriptorsRealEngineTest' \
+                --tests 'io.synexia.gradle.quality.M3EclipseJdtRealEngineTest' \
                 --rerun-tasks > "$log" 2>&1; then
               cat "$log"
               break
@@ -86,19 +88,22 @@ jobs:
               attempt=$((attempt + 1))
             fi
           done
-      - name: Require one real accepted test with no ignored cases
+      - name: Require both real accepted tests with no ignored cases
         shell: bash
         run: |
           set -euo pipefail
           test -s tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
           sha256sum -c m3-eclipse-maven-jar.sha256
-          report=consumer-gradle/m3/quality-bridge/build/test-results/test/TEST-io.synexia.gradle.quality.M3EclipseNativeDescriptorsRealEngineTest.xml
-          test -s "$report"
-          grep -Eq 'tests="1"' "$report"
-          grep -Eq 'skipped="0"' "$report"
-          grep -Eq 'failures="0"' "$report"
-          grep -Eq 'errors="0"' "$report"
-          grep -Eq '<testcase ' "$report"
+          for qualified in M3EclipseNativeDescriptorsRealEngineTest M3EclipseJdtRealEngineTest; do
+            report="consumer-gradle/m3/quality-bridge/build/test-results/test/TEST-io.synexia.gradle.quality.${qualified}.xml"
+            test -s "$report"
+            # Reject successful Gradle invocation with unexecuted/ignored tests.
+            grep -Eq 'tests="1"' "$report"
+            grep -Eq 'skipped="0"' "$report"
+            grep -Eq 'failures="0"' "$report"
+            grep -Eq 'errors="0"' "$report"
+            grep -Eq '<testcase ' "$report"
+          done
       - name: Retain cross-fork Gradle evidence
         if: always()
         uses: actions/upload-artifact@v4

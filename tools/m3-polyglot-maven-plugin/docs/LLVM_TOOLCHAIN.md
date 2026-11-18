@@ -202,6 +202,19 @@ See the [packaged Maven example](../examples/llvm/README.md) for an explicit
 compile/link task graph and a header/depfile pair, without any automatic
 LLVM installation or lifecycle binding.
 
+CI now requires a separate **six-language object-compilation gate** on both Java
+17 and 21. Ubuntu 24.04 installs the versioned distribution packages
+`llvm-18`, `clang-18`, and `flang-18`. With
+`M3_LLVM_REAL_TEST_HOME=/usr/lib/llvm-18`, the existing
+`LlvmRealTestsMain` must compile six actual nonempty object files:
+C, C++, Objective-C, Objective-C++, Fortran (using `flang` or `flang-new`),
+and LLVM IR (through original `llc`). Absent tools, compilation failures,
+or a missing final PASS line fail the workflow rather than reporting a
+successful optional skip. Each Java lane retains native driver/package SHA-256
+and the full test result as an Actions artifact. These system-installed
+Ubuntu binaries have **not** been built from the audited
+`hsoliwal/llvm-project` revision; the latter remains a separate release gate.
+
 The legacy-bin native cases compile C, C++, Objective-C and Objective-C++ to object
 files through `TaskRunner`, verify repeated execution even with incremental
 state and artifact caching enabled, observe an included header changing
