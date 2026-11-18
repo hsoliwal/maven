@@ -93,6 +93,21 @@ final class IsolationFixtures {
                 .withOptions("-sourcepath", sourcepath.toString());
     }
 
+    /**
+     * The equivalence verifier's maven-classworlds finding: a package-info.java with only a doc comment gets an env
+     * (and a {@code -verbose} "checking" line) only when javac keeps doc comments, which the command-line javac does
+     * once any task listener is registered (Enter.java:329-333).
+     */
+    static Fixture docOnlyPackageInfo() {
+        return Fixture.of(
+                "doc-only-package-info",
+                ORIGIN,
+                "q/package-info.java",
+                IsolationSources.DOC_ONLY_PACKAGE_INFO,
+                "q/A.java",
+                IsolationSources.Q_A);
+    }
+
     /** The equivalence verifier's {@code RecordAnnoProbe} source: mixed-target and repeatable component annotations. */
     static Fixture records() {
         return Fixture.of("records", ORIGIN, "r/Shapes.java", IsolationSources.SHAPES);

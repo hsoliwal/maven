@@ -122,14 +122,16 @@ final class IsolationSources {
 
     /**
      * Javadoc references to classes javac completes (the design probe's {@code Refs.java} without the references into
-     * classes javac never completes): types, a method with a primitive array parameter, a member type and its field.
+     * classes javac never completes): types, a method with a primitive array parameter and a member type. A field
+     * reference ({@code Refs.Inner#x}) is left out: rewrite counts it as a method reference without a method type, in
+     * the classic parser too, and CompilerTreeLstTest requires every call to be attributed.
      */
     static final String DOC_REFERENCES = """
             package j;
             import java.util.List;
             /**
              * Uses {@link List}, {@link String#valueOf(int)}, {@link #take(List, int[])}, {@link Inner} and
-             * {@link Refs.Inner#x}.
+             * {@link Refs.Inner}.
              */
             public class Refs {
               /** See {@link Refs#take(List, int[])} and {@link #take(List, int[])}. */
@@ -137,6 +139,11 @@ final class IsolationSources {
               static class Inner { int x; }
             }
             """;
+
+    /** A package-info.java with only a doc comment: javac gives it an env only when it keeps doc comments. */
+    static final String DOC_ONLY_PACKAGE_INFO = "/** A package documented in package-info.java only. */\npackage q;\n";
+
+    static final String Q_A = "package q;\npublic class A {}\n";
 
     private IsolationSources() {}
 }

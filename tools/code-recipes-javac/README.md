@@ -29,7 +29,7 @@ This is leaf L01 of the plugin absorption design: the bridge and its proofs. It 
 **What it guarantees.** With the plugin on, javac's exit code, its diagnostics (text and order, `-Xlint:all -Werror`
 and `-verbose` included), its class files and its generated sources and resources are the same as without it, for
 compiles that pass and compiles that fail. Where it cannot guarantee that (a javac other than 21, a heap below the
-floor), it turns itself off and prints one `[MavenRecipes]` line. The tests compare all of this with and without the
+floor, `-verbose` in a command-line javac), it turns itself off and prints one `[MavenRecipes]` line. The tests compare all of this with and without the
 plugin, in process and forked.
 
 The module (`org.apache.maven.plugins:maven-code-recipes-javac`, JDK 21) calls OpenRewrite's own
@@ -53,6 +53,11 @@ mvn -f tools/code-recipes-javac/pom.xml install
   jars into a class loader of its own (or from its own class loader when `impl=` is absent) and registers
   `ThinListener`, the only listener javac holds. Anything that escapes the implementation drops it and closes that
   class loader.
+* **`-verbose` in a command-line javac.** That javac keeps doc comments only when some task listener is registered
+  (or a processor runs), and with doc comments kept it gives a `package-info.java` that has only a doc comment an env
+  of its own (`Enter.java:329-333`), which `-verbose` reports as one more `[checking <anonymous >]` line (found on
+  maven-classworlds). `VerboseGuard` therefore keeps the plugin off, with one notice, when a command-line javac runs
+  with `-verbose`. A javax.tools compile keeps doc comments anyway, so in process the plugin stays on.
 * **When.** `LstCollector` builds a file's tree at the ANALYZE event of its last top-level class, attributed and
   flowed, not yet desugared, under javac's default compile policy; the plugin sets no policy (see below). A file whose
   class javac already desugared is `skipped: desugared ...`; `package-info.java` gets its own ANALYZE event; a file
@@ -139,7 +144,7 @@ on the classpath only when it is not. Never give `annotationProcessorPaths` with
 
 | compile | wiring | proved |
 |---|---|---|
-| forked javac | `-J--class-path=<boot.jar>` and `-Xplugin:MavenRecipes impl=<jars> ...`: javac's processor class loader has the application class loader as parent, so it finds the plugin, and no javac option or path changes | `ForkedIsolationTest`, `ForkedJavacTest` (implicit processing, `-proc:full`, `-verbose`, both) |
+| forked javac | `-J--class-path=<boot.jar>` and `-Xplugin:MavenRecipes impl=<jars> ...`: javac's processor class loader has the application class loader as parent, so it finds the plugin, and no javac option or path changes; with `-verbose` the plugin turns itself off (one notice) | `ForkedIsolationTest`, `ForkedJavacTest` (implicit processing, `-proc:full`, `-verbose`, both) |
 | in process, with a processor path | append only the boot jar to it; the implementation comes through `impl=` | design probe P11 |
 | in process, no processor path, explicit `-proc:` | processor path = the compile's classpath (same jars, same order) + boot jar | `IsolationParityTest` (`-proc:full`) |
 | in process, no processor path, implicit processing, no `-verbose` | boot jar appended to `-classpath` (keeps javac's implicit-processing note) | `IsolationParityTest` |
@@ -232,7 +237,7 @@ except the two CommentTest cases of the known defect below, which upstream added
 | test | oracle | what must hold |
 |---|---|---|
 | `IsolationParityTest` | plain javac in process, default policy | for every reproducer and `-Xlint:all`, `-Xlint:all -Werror`, `-Xlint:none`, `-Xdoclint:all`, `-verbose`: same result, diagnostics (text and order), output text and class files, registered directly and through `-Xplugin`; every converted reproducer file is `ok` with `check=true`; no `ok` row when no class was generated; `built_at` `-` on skipped rows |
-| `ForkedIsolationTest` | plain command-line javac, default policy | the same reproducers forked; the classpath processor under four option sets; javac 17 and 25: one notice and the same compile; `-J-Xmx64m`: one notice and the same compile; `-J-Xmx320m`: the same compile with trees |
+| `ForkedIsolationTest` | plain command-line javac, default policy | the same reproducers forked; the classpath processor under four option sets; javac 17 and 25: one notice and the same compile; `-J-Xmx64m`: one notice and the same compile; `-J-Xmx320m`: the same compile with trees; `-verbose` (a doc-only `package-info.java` included): one notice and the same output |
 | `TreeIsolationTest` | a listener after the plugin | sees every node's type and symbol and the record-component annotation types exactly as without the plugin |
 | `CompletionRefusalTest` | the symbol table | refused, touched and restored classes keep the very field objects and completers they had; nothing is entered; the rest of the compile is unchanged |
 | `ContainmentTest` | plain javac | an OutOfMemoryError or StackOverflowError in a conversion is contained (one notice, the file failed, the rest skipped, the compile unchanged); a closed heap gate and the heap floor give one notice and the same compile; without keeping, no tree outlives its row |

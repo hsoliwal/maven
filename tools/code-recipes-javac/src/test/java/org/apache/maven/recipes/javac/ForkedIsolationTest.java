@@ -49,7 +49,8 @@ class ForkedIsolationTest {
     Stream<DynamicTest> forkedJavacIsUnchangedOnTheReproducers() {
         return IsolationParityTest.cases().stream()
                 .filter(c -> !c.options().contains("-Xdoclint:all"))
-                .map(c -> dynamicTest(c.name(), () -> assertSame(c.fixture(), c.options(), 0)));
+                .map(c ->
+                        dynamicTest(c.name(), () -> assertSame(c.fixture(), c.options(), verboseNotices(c.options()))));
     }
 
     @TestFactory
@@ -61,7 +62,7 @@ class ForkedIsolationTest {
                         List.of("-verbose", "-proc:full"))
                 .map(options -> dynamicTest("implicit " + String.join(" ", options), () -> {
                     String name = "proc-forked" + String.join("", options).replaceAll("\\W", "-");
-                    assertSame(IsolationFixtures.processorUse(name), options, 0);
+                    assertSame(IsolationFixtures.processorUse(name), options, verboseNotices(options));
                 }));
     }
 
@@ -75,6 +76,12 @@ class ForkedIsolationTest {
                     Fixture fixture = IsolationFixtures.completion(true).named("jdk" + feature);
                     assertSame(fixture, List.of("-Xlint:all"), 1, launcher(home));
                 }));
+    }
+
+    @Test
+    void verboseCommandLineJavacTurnsThePluginOffWithOneNotice() throws IOException, InterruptedException {
+        assertSame(IsolationFixtures.docOnlyPackageInfo(), List.of("-verbose"), 1);
+        assertSame(IsolationFixtures.docOnlyPackageInfo().named("doc-only-package-info-quiet"), List.of(), 0);
     }
 
     @Test
@@ -119,6 +126,11 @@ class ForkedIsolationTest {
     private static ForkedJavacTest.Spec spec(
             Fixture fixture, Path dir, Path src, Path javac, List<String> options, boolean plugin) {
         return new ForkedJavacTest.Spec(fixture, dir, src, javac, options, plugin, Javac.PluginArgs.DEFAULT);
+    }
+
+    /** A command-line javac with {@code -verbose} turns the plugin off with one notice ({@code VerboseGuard}). */
+    private static int verboseNotices(List<String> options) {
+        return options.contains("-verbose") ? 1 : 0;
     }
 
     private static List<String> noticeLines(String output) {

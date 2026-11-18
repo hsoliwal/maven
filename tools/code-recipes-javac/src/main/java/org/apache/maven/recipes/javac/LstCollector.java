@@ -108,14 +108,19 @@ public final class LstCollector implements TaskListener {
         try {
             Context context = ((BasicJavacTask) task).getContext();
             LstCollector collector = new LstCollector(context, PluginOptions.parse(args), headroom, keep);
-            context.put(LstCollector.class, collector);
-            return Optional.of(collector);
+            return VerboseGuard.off(task, context) ? Optional.empty() : Optional.of(collector.inContext());
         } catch (IllegalArgumentException e) {
             Notices.print(task, "options not understood, no trees and no census for this compile: " + e.getMessage());
         } catch (RuntimeException | LinkageError | AssertionError e) {
             Notices.print(task, "not started, no trees and no census for this compile: " + Notices.describe(e));
         }
         return Optional.empty();
+    }
+
+    /** Registers this collector in its compile's context, for {@link #of(JavacTask)}. */
+    private LstCollector inContext() {
+        context.put(LstCollector.class, this);
+        return this;
     }
 
     /**
