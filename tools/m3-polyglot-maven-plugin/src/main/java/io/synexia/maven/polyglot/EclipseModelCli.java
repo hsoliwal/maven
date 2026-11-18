@@ -33,12 +33,18 @@ public final class EclipseModelCli {
             // Eclipse invocation and selected configuration, or are rejected.
             System.out.println(M3JdtCompilerFactsWire.inspect(
                     Path.of(args[1]), Path.of(args[2])).toJson());
+        } else if (args != null && args.length == 3 && "cdt-facts".equals(args[0])) {
+            // Source-owned scanner, resolved language entries and CDT build
+            // settings must agree with the original Eclipse invocation.
+            System.out.println(M3CdtCompilerFactsWire.inspect(
+                    Path.of(args[1]), Path.of(args[2])).toJson());
         } else {
             throw new IllegalArgumentException(
                     "usage: EclipseModelCli <project-directory> | owners <project-directory>"
                             + " | context <Eclipse-context-packet> | handoff <Eclipse-invocation-packet>"
                             + " | reconcile <project-directory> <Eclipse-invocation-packet>"
-                            + " | jdt-facts <JDT-owner-packet> <Eclipse-invocation-packet>");
+                            + " | jdt-facts <JDT-owner-packet> <Eclipse-invocation-packet>"
+                            + " | cdt-facts <CDT-owner-packet> <Eclipse-invocation-packet>");
         }
     }
 }

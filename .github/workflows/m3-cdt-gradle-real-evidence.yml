@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 CDT Maven-Gradle original scanner facts acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - '.github/workflows/m3-cdt-gradle-real-evidence.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - '.github/workflows/m3-cdt-gradle-real-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-cdt-scanner-gradle-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: tools/m3-polyglot-maven-plugin/pom.xml
+      - name: Qualify original source-built Maven polyglot and CDT wire codec
+        run: |
+          set -euo pipefail
+          sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+          mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml verify
+          jar=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s "$jar"
+          sha256sum "$jar" | tee m3-cdt-maven-jar.sha256
+      - name: Checkout reviewed immutable Gradle CDT evidence candidate
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          # Exact hsoliwal/gradle#64 draft head; never use floating master.
+          ref: 7f709d374dce16b415beeea20e723a788eddf03b
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Configure Gradle dependency cache
+        uses: gradle/actions/setup-gradle@v4
+      - name: Execute original Maven CDT codec from pinned Gradle TestKit
+        shell: bash
+        env:
+          M3_POLYGLOT_JAR: ${{ github.workspace }}/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+        run: |
+          set -euo pipefail
+          sha256sum -c m3-cdt-maven-jar.sha256
+          test -s "$M3_POLYGLOT_JAR"
+          chmod +x consumer-gradle/gradlew
+          cd consumer-gradle
+          attempt=1
+          log="$RUNNER_TEMP/cdt-jdk-${{ matrix.java }}.log"
+          while :; do
+            if ./gradlew --no-daemon --stacktrace --console=plain \
+                -p m3/quality-bridge test \
+                --tests 'io.synexia.gradle.quality.M3EclipseCdtRealEngineTest' \
+                --rerun-tasks > "$log" 2>&1; then
+              cat "$log"
+              break
+            else
+              status=$?
+              cat "$log"
+              # Test failures cannot be retried; only verified Maven Central 429.
+              if [ "$attempt" -ge 3 ] \
+                  || ! grep -Fq 'Received status code 429 from server: Too Many Requests' "$log" \
+                  || ! grep -Fq 'https://repo.maven.apache.org/maven2/' "$log"; then
+                exit "$status"
+              fi
+              sleep $((attempt * 20))
+              attempt=$((attempt + 1))
+            fi
+          done
+      - name: Require an executed non-skipped real CDT acceptance case
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c m3-cdt-maven-jar.sha256
+          report=consumer-gradle/m3/quality-bridge/build/test-results/test/TEST-io.synexia.gradle.quality.M3EclipseCdtRealEngineTest.xml
+          test -s "$report"
+          grep -Eq 'tests="1"' "$report"
+          grep -Eq 'skipped="0"' "$report"
+          grep -Eq 'errors="0"' "$report"
+          grep -Eq 'failures="0"' "$report"
+          grep -Eq '<testcase ' "$report"
+      - name: Retain exact cross-fork Maven and CDT test receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-cdt-gradle-jdk-${{ matrix.java }}
+          path: |
+            m3-cdt-maven-jar.sha256
+            consumer-gradle/m3/quality-bridge/build/test-results/test/**
+            consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 14

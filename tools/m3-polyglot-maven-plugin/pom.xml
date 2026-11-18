@@ -383,6 +383,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>cdt-compiler-facts-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration><arguments>
+              <argument>-classpath</argument><classpath/>
+              <argument>io.synexia.maven.polyglot.M3CdtCompilerFactsWireContractTestMain</argument>
+            </arguments></configuration>
+          </execution>
+          <execution>
             <id>jdt-compiler-facts-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
