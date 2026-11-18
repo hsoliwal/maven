@@ -882,6 +882,11 @@ M3_LLVM_REAL_TEST_HOME=/absolute/path/to/llvm-install \
   sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
 ```
 
+The [packaged Maven consumer example](examples/llvm/README.md) uses two explicit
+tasks to compile a C17 source and link the object, including a tracked header
+and Clang depfile. It relies on the existing `plan`/`run` goals and accepts
+`m3.llvm.home`, not an implicit lifecycle binding.
+
 It runs C, C++, Objective-C, Objective-C++, Fortran and LLVM IR **through the Maven TaskRunner**, checks that dry
 runs do not create outputs, pins each compiler executable's SHA-256, and verifies actual nonempty object files.
 Without that explicit variable, the suite reports `NOT RUN` rather than asserting LLVM was compiled. Cross-platform

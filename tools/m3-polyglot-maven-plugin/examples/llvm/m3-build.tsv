@@ -1,0 +1,27 @@
+M3-POLYGLOT-TASKS-V1
+# SPDX-FileCopyrightText: 2026 Hitesh Soliwal and Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+task	all	-	.
+dep	all	link
+task	compile	@m3:llvm:compiler:c	.
+arg	compile	-std=c17
+arg	compile	-Wall
+arg	compile	-Wextra
+arg	compile	-Werror
+arg	compile	-c
+arg	compile	native/hello.c
+arg	compile	-MD
+arg	compile	-MF
+arg	compile	target/hello.d
+arg	compile	-o
+arg	compile	target/hello.o
+input	compile	native
+output	compile	target/hello.o
+output	compile	target/hello.d
+task	link	@m3:llvm:compiler:c	.
+dep	link	compile
+arg	link	target/hello.o
+arg	link	-o
+arg	link	target/hello
+input	link	target/hello.o
+output	link	target/hello
