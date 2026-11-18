@@ -157,6 +157,46 @@ full LLVM fork source/build/ABI and Windows/macOS gates remain separate.
 The additional `objc++` spelling does not replace or reinterpret
 `objcpp`; both call the original `clang++` driver.
 
+## Maven-owned Clang compilation database for clangd and CDT
+
+The opt-in `llvm-compile-db` goal emits the standard `arguments` array
+format from the existing M3 manifest and original
+`M3ToolProviders.command` for Clang C/C++/Objective-C compile-only
+tasks. CMake remains authoritative for its own
+`build/cmake/compile_commands.json`; no CMake files or global `.clangd`
+configuration are modified.
+
+Run after installing the plugin in the Maven fork:
+
+```sh
+mvn -B -ntp -f tools/m3-polyglot-maven-plugin/examples/llvm/pom.xml \
+  io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:llvm-compile-db \
+  -Dm3.llvm.home=/path/to/llvm-install
+```
+
+The module-owned output is `target/m3-llvm/compile_commands.json`.
+Point clangd at `--compile-commands-dir=target/m3-llvm` (relative
+to the module) or select this directory in the `.clangd`
+`CompileFlags.CompilationDatabase` setting. The existing
+`tools/code-clustering-clang` AST owner can consume it via
+`clustering.clang.compileCommands`.
+
+The export is limited to the requested M3 target closure and
+materialized, declared translation units for C, C++, Objective-C,
+and Objective-C++ (including `objcpp` and `objc++`). Each JSON
+record preserves the original compiler executable/flags and absolute
+working directory, never a reconstructed shell command. Link steps,
+Flang and LLVM IR are not misidentified as source compiles. Untracked
+or ambiguous source operands, missing sources, and response-file
+operands are refused. The output is published atomically and
+identical bytes preserve its timestamp; output symlinks are refused.
+
+This is **IDE command metadata**, not evidence that a compiler ran,
+that the installed tools came from the pinned LLVM source SHA,
+or that any native output is cacheable. Complete header, negative
+include, generated input, library/pass-plugin/sysroot, ABI and
+source-provenance evidence remain independent native build gates.
+
 ## Qualification gates
 
 The Java 17/21 offline contract suites verify ServiceLoader inventory,
