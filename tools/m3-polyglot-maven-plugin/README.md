@@ -90,6 +90,54 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | SQLite JDBC | `sqlite` | Preserves `.m3/module-state.sqlite` and local transaction sidecars; requires an explicit `org.sqlite.JDBC` runtime dependency |
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |
 | External portable storage | `ext-*` | Preserves the public `M3ModuleDbBackendProvider` SPI; the selected trusted provider must be installed and independently qualified |
+| RocksDB JNI (optional) | `ext-rocksdb-v1` | `.m3/module-state-ext-rocksdb-v1/` with native RocksDB LSM/WAL; explicitly install `org.rocksdb:rocksdbjni`; sync-WAL put |
+| MapDB (optional) | `ext-mapdb-v1` | `.m3/module-state-ext-mapdb-v1.db` with transactional MapDB file store; explicitly install `org.mapdb:mapdb`; `DB.commit()` |
+| LMDB (optional) | `ext-lmdb-v1` | `.m3/module-state-ext-lmdb-v1/` with LmdbJava native mapped environment; explicitly install `org.lmdbjava:lmdbjava`; read/write transactions |
+
+The optional donor engines are *real driver adapters*, not only conceptual
+donors. They use the original `M3ModuleDbBackendProvider` with a `ServiceLoader`
+registration, and keep the M3 receipt image format, hashes, module generation
+and exclusive Maven module lease unchanged. RocksDB writes the entire sealed
+snapshot with synchronous WAL durability; MapDB explicitly enables WAL and
+commits its stored `byte[]` value; LMDB copies read buffers before releasing a
+read-only transaction and commits a native write transaction. Neither source
+code nor native libraries from these donors are embedded in the default plugin.
+
+**Driver installation is explicit.** For a consuming Maven plugin declaration,
+add a selected database driver as a plugin dependency; for example:
+
+```xml
+<plugin>
+  <groupId>io.synexia</groupId>
+  <artifactId>m3-polyglot-maven-plugin</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <dependencies>
+    <dependency>
+      <groupId>org.rocksdb</groupId>
+      <artifactId>rocksdbjni</artifactId>
+      <version>11.8.1</version>
+    </dependency>
+  </dependencies>
+</plugin>
+```
+
+Then explicitly select
+`-Dm3.polyglot.incrementalState=ext-rocksdb-v1`. To test actual drivers
+without changing the plugin's production dependency graph, run:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-portable-engines verify
+```
+
+That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0 and LmdbJava
+0.9.3, and executes a **require-all** persistence/restart/revocation/backend
+switch suite. Without the profile, the default JDK-only contract checks
+registration and path safety, then reports `NOT_RUN` for unavailable native
+runtimes. A module must never silently substitute another backend. Driver
+compatibility and native crash-recovery qualification are separate from
+Java source compilation.
+
+
 
 For the recognized **native M3IndexDB blob/ref directory layout**, the `m3db` backend now
 performs bounded, conservative mark-and-sweep compaction under the existing
