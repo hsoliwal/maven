@@ -47,7 +47,8 @@
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
-      <version>3.6.2</version>
+      <!-- in-tree: plugins/shared/plexus-utils -->
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.code.findbugs</groupId>
