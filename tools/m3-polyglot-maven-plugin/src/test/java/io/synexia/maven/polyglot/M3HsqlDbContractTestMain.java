@@ -51,14 +51,17 @@ public final class M3HsqlDbContractTestMain {
             Path linked = Files.createDirectories(root.resolve("linked"));
             Path state = Files.createDirectories(linked.resolve(".m3"));
             Path outside = Files.writeString(root.resolve("outside"), "do not touch");
-            Path malicious = state.resolve("module-state-hsqldb.script");
-            try {
-                Files.createSymbolicLink(malicious, outside);
-                expectIo(() -> ModuleStateDb.open(linked, "hsqldb"),
-                        "HSQLDB rejects linked recovery sidecar before driver loading");
-                Files.delete(malicious);
-            } catch (UnsupportedOperationException | java.nio.file.FileSystemException unsupported) {
-                // Windows tests may lack permission to create symlinks.
+            for (String suffix : List.of(".script", ".log", ".lobs", ".properties", ".backup", ".lck")) {
+                Path malicious = state.resolve("module-state-hsqldb" + suffix);
+                try {
+                    Files.createSymbolicLink(malicious, outside);
+                    expectIo(() -> ModuleStateDb.open(linked, "hsqldb"),
+                            "HSQLDB rejects linked recovery sidecar " + suffix + " before driver loading");
+                    Files.delete(malicious);
+                } catch (UnsupportedOperationException | java.nio.file.FileSystemException unsupported) {
+                    // Windows tests may lack permission to create symlinks.
+                    break;
+                }
             }
             require(Files.readString(outside).equals("do not touch"), "no out-of-module writes");
 
@@ -88,6 +91,21 @@ public final class M3HsqlDbContractTestMain {
                     "HSQLDB never substitutes an embedded M3IndexDB ZIP");
 
             child("warm", module, 0);
+            // Exercise the actual HSQLDB transaction engine independently of
+            // the M3 wrapper: a DELETE rolled back before COMMIT must retain
+            // the previous sealed successful-task image.
+            try (Connection conn = DriverManager.getConnection(url(module))) {
+                conn.setAutoCommit(false);
+                try (PreparedStatement discard = conn.prepareStatement(
+                        "DELETE FROM M3_MODULE_SNAPSHOT WHERE slot=1")) {
+                    require(discard.executeUpdate() == 1, "real HSQLDB transaction tentatively removed the row");
+                }
+                conn.rollback();
+            }
+            try (ModuleStateDb database = ModuleStateDb.open(module, "hsqldb")) {
+                require(database.hit("task-compile", INPUT, OUTPUT),
+                        "HSQLDB rollback preserves the original sealed success image");
+            }
             List<ModuleStateView.TaskState> view = ModuleStateView.read(module);
             require(view.size() == 2 && view.stream().allMatch(row -> row.backend().equals("hsqldb")
                     && row.source().equals(ModuleStateDb.HSQLDB_FILE)),
