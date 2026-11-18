@@ -80,3 +80,29 @@ jobs:
           test -s "$provider"
           java -cp "tools/m3-llvm-tools-provider/target/test-classes:$plugin:$provider" \
             io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
+      - name: Install explicit MLIR 18, Clang 18 and LLD 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends mlir-18-tools clang-18 lld-18
+          test -x /usr/lib/llvm-18/bin/mlir-opt
+          test -x /usr/lib/llvm-18/bin/mlir-translate
+          test -x /usr/lib/llvm-18/bin/llvm-as
+          test -x /usr/lib/llvm-18/bin/clang
+          test -x /usr/lib/llvm-18/bin/ld.lld
+          dpkg-query -W -f='${Package} ${Version}\n' llvm-18 llvm-18-tools mlir-18-tools clang-18 lld-18
+          for tool in mlir-opt mlir-translate llvm-as clang ld.lld; do
+            sha256sum "/usr/lib/llvm-18/bin/$tool"
+          done
+      - name: Required real MLIR translation and LLD ELF linking via packaged M3
+        shell: bash
+        env:
+          M3_LLVM_PIPELINE_HOME: /usr/lib/llvm-18
+        run: |
+          set -euo pipefail
+          plugin=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          provider=tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar
+          test -s "$plugin"
+          test -s "$provider"
+          java -cp "tools/m3-llvm-tools-provider/target/test-classes:$plugin:$provider" \
+            io.synexia.maven.llvm.LlvmMlirLldIntegrationTestMain --required
