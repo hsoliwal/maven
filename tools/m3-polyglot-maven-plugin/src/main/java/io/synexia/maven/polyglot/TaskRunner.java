@@ -288,9 +288,10 @@ public final class TaskRunner {
             }
             performed.add(task.name());
         }
-        // A crash or failed later task cannot publish partially successful work.
-        // Earlier cache entries were already revoked before any output mutation.
-        if (incremental) store.commitStaged();
+        // Planning never opens a store and must not publish state.
+        // An executable incremental run commits only after all selected tasks succeed;
+        // earlier cache entries were revoked before any output mutation.
+        if (incremental && !dryRun) store.commitStaged();
         return List.copyOf(performed);
     }
 
