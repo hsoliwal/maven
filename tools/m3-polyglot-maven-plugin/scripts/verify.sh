@@ -32,6 +32,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateBackend.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ImageStateBackend.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/DirectoryStateBackend.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3DirectoryVacuum.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdbcStateBackend.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ProviderStateBackend.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateView.java \
@@ -66,6 +67,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DirectoryVacuumTest.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/BackendStateContractTestMain.java \
@@ -88,6 +90,7 @@ java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3DirectoryVacuumTest
 java -cp "$DEST" io.synexia.maven.polyglot.IndexStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.BackendStateContractTestMain

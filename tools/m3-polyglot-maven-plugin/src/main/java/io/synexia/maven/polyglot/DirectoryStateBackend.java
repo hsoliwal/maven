@@ -41,7 +41,8 @@ final class DirectoryStateBackend implements ModuleStateBackend {
     private final StateFiles files;
     private final IndexStores.Engine engine;
 
-    private DirectoryStateBackend(Path path, StateFiles files, IndexStores.Engine engine) {
+    /** Package-private for isolated storage conformance tests with the exact library engine. */
+    DirectoryStateBackend(Path path, StateFiles files, IndexStores.Engine engine) {
         this.path = path;
         this.files = files;
         this.engine = engine;
@@ -71,15 +72,34 @@ final class DirectoryStateBackend implements ModuleStateBackend {
 
     @Override
     public void write(byte[] image) throws IOException {
+        // The native blob/ref implementation is append-only: overwritten refs
+        // leave unreferenced blobs. Reclaim only a completely recognized layout
+        // under the existing module lease; unknown donor layouts remain untouched.
+        // The initial pass also recovers orphaned blobs from interrupted writes,
+        // before applying the existing bounded-directory admission check.
+        M3DirectoryVacuum.compact(path);
         check(false);
         try (IndexStore store = engine.open(path)) {
             store.write(ARTIFACT, KIND, M3DbModuleStore.VERSION, image);
         }
-        check(true);
-        byte[] published = read();
+        // Read back before reclamation: a store that failed to publish the ref
+        // cannot authorize deletion of the preceding live blob.
+        byte[] published;
+        try (IndexStore store = engine.open(path)) {
+            if (!store.contains(ARTIFACT)) throw new IOException("missing published M3DB module artifact");
+            IndexStore.Artifact artifact = store.read(ARTIFACT);
+            if (!KIND.equals(artifact.kind()) || artifact.version() != M3DbModuleStore.VERSION) {
+                throw new IOException("M3DB module artifact kind/version mismatch");
+            }
+            published = artifact.payload();
+        }
         if (published == null || !MessageDigest.isEqual(image, published)) {
             throw new IOException("module directory artifact publication mismatch");
         }
+        // Safe after ref publication and independent read-back. Reclamation is
+        // idempotent and deletes nothing when the runtime uses an unknown layout.
+        M3DirectoryVacuum.compact(path);
+        check(true);
     }
 
     /** Bounds entry count and bytes, refuses links and special files, and forces every file when asked. */
