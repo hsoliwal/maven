@@ -5,9 +5,11 @@
 package io.synexia.maven.polyglot;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,8 +18,10 @@ import java.util.regex.Pattern;
  * stable libtest ({@code test <name> ... ok|FAILED|ignored}, {@code ---- <name> stdout ----} failure sections,
  * {@code test result:}) and cargo's {@code Running} and {@code Doc-tests} lines, which name each binary; the JSON
  * and JUnit formats of libtest need nightly. Lines are fed in the order cargo's merged stdout and stderr give them;
- * nothing runs here. A binary that ends without a {@code test result:} line (it crashed or was stopped) gets an error
- * case, so a crash is never reported as passing tests only.
+ * nothing runs here. A binary that ends without a {@code test result:} line gets an error case when cargo names it
+ * in {@code error: test failed, to rerun pass ...} or exits non-zero without naming any binary, so a crash is never
+ * reported as passing tests only; otherwise (a {@code [[test]] harness = false} binary that passed) it gets one
+ * passed case.
  */
 public final class CargoTestOutput {
     private static final Pattern RUNNING = Pattern.compile("\\s+Running (?:unittests )?(.+?) \\((.+)\\)");
@@ -26,8 +30,12 @@ public final class CargoTestOutput {
     private static final Pattern FAILURE = Pattern.compile("---- (.+) stdout ----");
     private static final Pattern RESULT = Pattern.compile("test result: (?:ok|FAILED)\\..*");
     private static final Pattern HASH = Pattern.compile("-[0-9a-f]{16}$");
+    private static final String RERUN = "error: test failed, to rerun pass ";
 
     private final List<TestSuiteReport> done = new ArrayList<>();
+    private final Set<String> incomplete = new HashSet<>();
+    private final Set<String> rerun = new HashSet<>();
+    private String last;
     private String suite;
     private Map<String, TestSuiteReport.Case> cases = new LinkedHashMap<>();
     private String failing;
@@ -36,7 +44,9 @@ public final class CargoTestOutput {
     /** Feeds one output line, without its line end. */
     public void accept(String line) {
         Matcher match;
-        if ((match = RUNNING.matcher(line)).matches()) {
+        if (line.startsWith(RERUN)) {
+            rerun.add(suite != null ? suite : last);
+        } else if ((match = RUNNING.matcher(line)).matches()) {
             open(binary(match.group(2)) + " " + match.group(1).replace('\\', '/'));
         } else if ((match = DOC_TESTS.matcher(line)).matches()) {
             open(match.group(1) + " doc-tests");
@@ -45,10 +55,22 @@ public final class CargoTestOutput {
         }
     }
 
-    /** The suites read so far; a suite still open is closed as incomplete. */
-    public List<TestSuiteReport> finish() {
+    /** The suites read so far; a suite still open is closed as incomplete. {@code exit} is cargo's exit status. */
+    public List<TestSuiteReport> finish(int exit) {
         if (suite != null) close(false);
-        return List.copyOf(done);
+        return done.stream().map(s -> incomplete.contains(s.name()) ? ended(s, exit) : s).toList();
+    }
+
+    /** A suite without a result line: an error case when it failed, else one passed case for the whole binary. */
+    private TestSuiteReport ended(TestSuiteReport s, int exit) {
+        List<TestSuiteReport.Case> all = new ArrayList<>(s.cases());
+        if (rerun.contains(s.name()) || (exit != 0 && rerun.isEmpty())) {
+            all.add(new TestSuiteReport.Case(s.name(), s.name() + " (incomplete)", 0, TestSuiteReport.Status.ERRORED,
+                    "the test binary ended without a test result line", ""));
+        } else if (all.isEmpty()) {
+            all.add(new TestSuiteReport.Case(s.name(), s.name(), 0, TestSuiteReport.Status.PASSED, "", ""));
+        }
+        return new TestSuiteReport(s.name(), all);
     }
 
     private void inSuite(String line) {
@@ -97,12 +119,9 @@ public final class CargoTestOutput {
 
     private void close(boolean complete) {
         capture(null);
-        List<TestSuiteReport.Case> all = new ArrayList<>(cases.values());
-        if (!complete) {
-            all.add(new TestSuiteReport.Case(suite, suite + " (incomplete)", 0, TestSuiteReport.Status.ERRORED,
-                    "the test binary ended without a test result line", ""));
-        }
-        done.add(new TestSuiteReport(suite, all));
+        if (!complete) incomplete.add(suite);
+        done.add(new TestSuiteReport(suite, new ArrayList<>(cases.values())));
+        last = suite;
         suite = null;
     }
 

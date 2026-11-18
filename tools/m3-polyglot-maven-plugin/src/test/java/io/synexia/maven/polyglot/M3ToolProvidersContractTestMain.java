@@ -81,8 +81,8 @@ public final class M3ToolProvidersContractTestMain {
                 "languages ordered without interpretation");
         require(descriptions.get(4).id().equals("surefire")
                 && descriptions.get(4).capabilities().equals(List.of("interpreter", "transpiler"))
-                && descriptions.get(4).languages().equals(List.of("libtest", "trx")),
-                "built-in report provider: TRX files and libtest output");
+                && descriptions.get(4).languages().equals(List.of("junit", "libtest", "trx")),
+                "built-in report provider: TRX files, CTest JUnit XML and libtest output");
     }
 
     private static void portableInventory() throws Exception {

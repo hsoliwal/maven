@@ -32,6 +32,7 @@ public final class CargoTestReportContractTestMain {
         try {
             readsRecordedCargoOutput();
             reportsACrashedBinaryAsAnError();
+            aPassingCustomHarnessIsOnePassedCase();
             writesSurefireXml(temp.resolve("reports"));
             plansTheReportRunner(temp.resolve("plan"));
             plansTheSurefireLibtestFormat(temp.resolve("libtest"));
@@ -69,6 +70,19 @@ public final class CargoTestReportContractTestMain {
                 "     Running tests/it.rs (target/debug/deps/it-fedcba9876543210)", "", "running 3 tests",
                 "test first ... ok", "error: test failed, to rerun pass `--test it`", "",
                 "Caused by:", "  process didn't exit successfully: (signal: 11, SIGSEGV: invalid memory reference)");
+
+    /** A [[test]] harness = false binary prints no libtest lines; when it passes it is one passed case. */
+    private static void aPassingCustomHarnessIsOnePassedCase() {
+        List<String> run = List.of("     Running tests/custom.rs (target/debug/deps/custom-0123456789abcdef)",
+                "custom harness ran");
+        TestSuiteReport custom = parse(run).get(0);
+        require(custom.name().equals("custom tests/custom.rs")
+                && custom.summary().equals("Tests run: 1, Failures: 0, Errors: 0, Skipped: 0"),
+                "a passing custom harness is no error: " + custom.summary());
+        require(parse(run, 101).get(0).count(TestSuiteReport.Status.ERRORED) == 1,
+                "cargo failing without naming a binary: the binary without a result line is an error");
+        passed++;
+    }
 
     private static void reportsACrashedBinaryAsAnError() {
         List<TestSuiteReport> suites = parse(CRASHED_RUN);
@@ -184,9 +198,13 @@ public final class CargoTestReportContractTestMain {
     }
 
     private static List<TestSuiteReport> parse(List<String> lines) {
+        return parse(lines, 0);
+    }
+
+    private static List<TestSuiteReport> parse(List<String> lines, int exit) {
         CargoTestOutput parser = new CargoTestOutput();
         lines.forEach(parser::accept);
-        return parser.finish();
+        return parser.finish(exit);
     }
 
     private static List<String> fixture(String name) throws IOException {

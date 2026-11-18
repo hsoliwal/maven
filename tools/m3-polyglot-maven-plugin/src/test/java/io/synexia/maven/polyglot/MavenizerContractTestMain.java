@@ -78,8 +78,9 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "cmake", "CMakeLists.txt", "project(x)\nenable_testing()\n"),
                 "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]",
-                "test ctest-test ctest [--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
-                        + "../../target/surefire-reports/TEST-ctest.xml]");
+                "test ctest-test @m3:surefire:interpreter:junit [target/ctest, target/surefire-reports, ctest, "
+                        + "--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
+                        + "../../target/ctest/ctest-junit.xml]");
         expect(dir(root, "cmake-notest", "CMakeLists.txt", "project(x)\n"),
                 "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
@@ -233,12 +234,17 @@ public final class MavenizerContractTestMain {
                 "the .clangd pointer names the configure step's build folder");
         require(Files.readString(root.resolve("kept/.clangd")).equals("CompileFlags:\n  Add: [-Wall]\n"),
                 "an existing .clangd (cdt-lsp writes one too) is never replaced");
+        crateTasksBindToTheirPhases(root);
+        passed++;
+    }
+
+    /** The crate folder mavenized beside the CMake ones: tests through the provider, two package steps. */
+    private static void crateTasksBindToTheirPhases(Path root) throws Exception {
         TaskManifest crate = TaskManifest.load(root.resolve("crate/m3-build.tsv"));
         require(names(crate.order("test")).equals(List.of("cargo-test", "test"))
                 && crate.order("test").get(0).tool().equals(CargoTestProvider.TOOL), "cargo tests run through the provider");
         require(names(crate.order("package")).equals(List.of("cargo-package", "cargo-package-2", "package")),
                 "release build and .crate both bind to package");
-        passed++;
     }
 
     private static void neverSkipsATaskWithoutDeclaredInputs(Path project) throws Exception {

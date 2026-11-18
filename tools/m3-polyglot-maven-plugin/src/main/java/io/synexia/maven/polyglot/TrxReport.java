@@ -41,7 +41,7 @@ final class TrxReport {
     /** The cases of one TRX file, in file order. */
     static List<TestSuiteReport.Case> read(Path file) throws IOException {
         if (Files.size(file) > MAX_BYTES) throw new IOException("TRX file is over 64 MiB: " + file);
-        Document document = parse(file);
+        Document document = parse(file, "TRX");
         Element run = document.getDocumentElement();
         if (!NAMESPACE.equals(run.getNamespaceURI()) || !"TestRun".equals(run.getLocalName())) {
             throw new IOException("not a TRX TestRun document: " + file);
@@ -52,7 +52,8 @@ final class TrxReport {
         return List.copyOf(cases);
     }
 
-    private static Document parse(Path file) throws IOException {
+    /** A secure DOM parse: namespaces on, no document type declaration, no entity, no XInclude. */
+    static Document parse(Path file, String kind) throws IOException {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
@@ -64,7 +65,7 @@ final class TrxReport {
             builder.setErrorHandler(new DefaultHandler());
             return builder.parse(file.toFile());
         } catch (ParserConfigurationException | SAXException failure) {
-            throw new IOException("not a readable TRX file: " + file + ": " + failure.getMessage(), failure);
+            throw new IOException("not a readable " + kind + " file: " + file + ": " + failure.getMessage(), failure);
         }
     }
 

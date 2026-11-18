@@ -22,6 +22,8 @@ import java.util.Set;
  *   <li>{@code @m3:surefire:interpreter:trx} with {@code <results> <reports> <tool> <argument>...} first removes
  *       old TRX files from the results folder, runs the test tool, converts what it wrote, and ends with the
  *       tool's exit status, so failing tests still get their reports, as with surefire;</li>
+ *   <li>{@code @m3:surefire:transpiler:junit} and {@code @m3:surefire:interpreter:junit} do the same for the
+ *       JUnit XML that CTest writes, normalised ({@link JUnitReport});</li>
  *   <li>{@code @m3:surefire:interpreter:libtest} with {@code <reports> <tool> <argument>...} runs the tool (cargo
  *       test), echoes its output and writes one report per test binary ({@link CargoTestReport}); libtest output
  *       is no file, so it has no transpiler form.</li>
@@ -41,7 +43,7 @@ public final class SurefireReportProvider implements M3ToolProvider {
 
     @Override
     public Set<String> languages() {
-        return Set.of(SurefireReportMain.TRX, SurefireReportMain.LIBTEST);
+        return Set.of(SurefireReportMain.TRX, SurefireReportMain.JUNIT, SurefireReportMain.LIBTEST);
     }
 
     @Override
@@ -49,7 +51,7 @@ public final class SurefireReportProvider implements M3ToolProvider {
             TaskManifest.Task task, Path workspace) throws IOException {
         List<String> args = task.arguments();
         boolean run = capability == M3ToolCapability.INTERPRETER;
-        int paths = SurefireReportMain.TRX.equals(language) ? 2 : 1;
+        int paths = SurefireReportMain.LIBTEST.equals(language) ? 1 : 2;
         if ((!run && paths == 1) || (run ? args.size() < paths + 1 : args.size() != paths)) {
             throw new IOException(paths == 1 ? "libtest reports need the interpreter form <reports> <tool> <argument>..."
                     : "surefire reports need <results> <reports>" + (run ? " <tool> <argument>..." : ""));
