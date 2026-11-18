@@ -28,12 +28,37 @@ public final class TaskEngineContractTestMain {
             checksInputsOutputsWithoutSkipping(temp);
             skipsOnlyUnchangedDeclaredInputsWhenIncremental(temp);
             checksInvalidUTF8(temp);
+            fingerprintsLoadedEngineExactlyOncePerRun(temp);
             checksSymlinkRefusal(temp);
             System.out.println("PASS: " + passed + " M3 polyglot contract cases");
         } finally {
             // A temporary directory owned by this test; CI can inspect failures before cleanup.
             erase(temp);
         }
+    }
+
+    /** Snapshot optimization is byte-for-byte compatible with established cache keys. */
+    private static void fingerprintsLoadedEngineExactlyOncePerRun(Path root) throws Exception {
+        Path project = Files.createDirectories(root.resolve("engine-transcript"));
+        Path input = Files.writeString(project.resolve("input.txt"), "alpha", StandardCharsets.UTF_8);
+        String executable = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java").toString();
+        TaskManifest.Task task = new TaskManifest.Task("compile", executable, ".",
+                List.of("-version"), List.of(), List.of("input.txt"), List.of("output.txt"));
+        List<String> command = List.of(executable, "-version");
+        java.util.Map<String, String> env = java.util.Map.of("PATH", "test-path");
+        InputStamps.EngineTranscript engine = InputStamps.captureEngineTranscript();
+        require(engine.size() > 0, "loaded engine transcript is nonempty");
+        String original = InputStamps.stamp(task, project, command, env, java.util.Map.of());
+        String cached = InputStamps.stamp(task, project, command, env, java.util.Map.of(), engine);
+        require(original.equals(cached), "replayed engine identity must not change legacy input keys");
+        String portable = InputStamps.portableStamp(task, project, command, env, java.util.Map.of());
+        String portableCached = InputStamps.portableStamp(task, project, command, env, java.util.Map.of(), engine);
+        require(portable.equals(portableCached), "replayed engine identity must not change portable output keys");
+        Files.writeString(input, "beta", StandardCharsets.UTF_8);
+        require(!original.equals(InputStamps.stamp(task, project, command, env, java.util.Map.of(), engine)),
+                "reusing engine identity never suppresses changed declared source inputs");
+        passed++;
     }
 
     private static void validatesDeterministicGraph(Path workspace) throws Exception {
