@@ -124,11 +124,13 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | MapDB (optional) | `ext-mapdb-v1` | `.m3/module-state-ext-mapdb-v1.db` with transactional MapDB file store; explicitly install `org.mapdb:mapdb`; `DB.commit()` |
 | LMDB (optional) | `ext-lmdb-v1` | `.m3/module-state-ext-lmdb-v1/` with LmdbJava native mapped environment; explicitly install `org.lmdbjava:lmdbjava`; read/write transactions |
 | LevelDB (pure Java, optional) | `ext-leveldb-v1` | `.m3/module-state-ext-leveldb-v1/` with Iq80 LevelDB's Java LSM/WAL engine; explicitly install `org.iq80.leveldb:leveldb:0.12`; synchronous writes |
+| Apache Derby (pure Java, optional) | `ext-derby-v1` | `.m3/module-state-ext-derby-v1/` with embedded JDBC transaction log and one bounded BLOB; install **both** `org.apache.derby:derby:10.16.1.1` and `org.apache.derby:derbytools:10.16.1.1`; releases 10.17+ require Java 21 |
 
 The optional donor engines are *real driver adapters*, not only conceptual
-donors. The four choices cover a native LSM implementation (RocksDB), a
-transactional Java mapped-file store (MapDB), native memory-mapped MVCC
-(LMDB), and a pure-Java LevelDB LSM store. They use the original
+donors. The five optional KV/SQL choices cover a native LSM implementation
+(RocksDB), a transactional Java mapped-file store (MapDB), native memory-mapped
+MVCC (LMDB), a pure-Java LevelDB LSM store, and a pure-Java transactional
+embedded SQL database (Apache Derby 10.16). They use the original
 `M3ModuleDbBackendProvider` with a `ServiceLoader` registration, and keep
 the M3 receipt image format, hashes, module generation and exclusive Maven
 module lease unchanged. RocksDB writes the entire sealed
@@ -168,8 +170,9 @@ mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-portable-engines verify
 ```
 
 That profile adds test-scope RocksDB JNI 11.8.1, MapDB 3.1.0, LmdbJava
-0.9.3, and Iq80 LevelDB 0.12, and executes a **require-all**
-persistence/restart/revocation/backend switch suite. The LMDB adapter targets the actual **LmdbJava 0.9.3** API:
+0.9.3, Iq80 LevelDB 0.12 and Derby 10.16.1.1 (the Derby engine and
+derbytools driver). It requires the actual engines and persistence/restart/
+revocation/backend-switch contracts to pass. The LMDB adapter targets the actual **LmdbJava 0.9.3** API:
 `Env.Builder.open(File, EnvFlags...)`, `Env.openDbi(String, DbiFlags...)`,
 and `Dbi.put(Txn, key, value, PutFlags...)`. These methods differ from the
 unreleased LmdbJava 1.0 builder API, so a different runtime fails compatibility
@@ -184,6 +187,27 @@ compatibility and native crash-recovery qualification are separate from
 Java source compilation.
 
 
+
+**Derby Java 17 admission.** Choose `ext-derby-v1` and install both the Derby
+10.16.1.1 engine and `derbytools` as dependencies in the *same Maven plugin
+realm*. The Java 21-only Derby 10.17 line is intentionally not selected.
+Reads never create a missing database. Writes replace the original sealed
+receipt inside a single SQL transaction; the bounded `BLOB(32M)` prevents
+oversized values and Derby's `shutdown=true` operation releases the embedded
+database lock between independent Maven JVMs. Optional qualification:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-derby verify
+```
+
+Derby also has a **process-global error log** which defaults to `derby.log`
+outside the per-module database directory. Operators should explicitly route
+it with `-Dderby.stream.error.field=java.lang.System.err` before the engine
+boots (or configure `derby.stream.error.file` to a controlled local path).
+The adapter does not silently change a JVM-wide property, including when
+multiple modules build concurrently. Such diagnostic logging is distinct
+from the module's transactional database files. Do not claim fully isolated
+side-effect-free operation without this configuration.
 
 For the recognized **native M3IndexDB blob/ref directory layout**, the `m3db` backend now
 performs bounded, conservative mark-and-sweep compaction under the existing
