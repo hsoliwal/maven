@@ -5,19 +5,18 @@
 package io.synexia.maven.polyglot;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 /**
  * {@code @m3:cargo:interpreter:rust}: cargo test with surefire reports. The task's arguments are cargo's and the
- * first must be {@code test}. The planned command starts {@link CargoTestReport} in a JVM of the running JDK; it runs
- * the original cargo and writes {@code target/surefire-reports/TEST-*.xml} under the workspace (cargo's own target
- * folder, next to target/debug). The v1 SPI has no test kind, so the provider registers as an interpreter: it runs
- * the test programs cargo builds.
+ * first must be {@code test}. The planned command is the {@code libtest} format of {@link SurefireReportMain}, the
+ * same as {@code @m3:surefire:interpreter:libtest}: a JVM of the running JDK runs the original cargo
+ * ({@link CargoTestReport}) and writes {@code target/surefire-reports/TEST-*.xml} under the workspace (cargo's own
+ * target folder, next to target/debug). The v1 SPI has no test kind, so the provider registers as an interpreter:
+ * it runs the test programs cargo builds.
  */
 public final class CargoTestProvider implements M3ToolProvider {
     /** The manifest tool name. */
@@ -49,23 +48,8 @@ public final class CargoTestProvider implements M3ToolProvider {
         if (task.arguments().isEmpty() || !"test".equals(task.arguments().get(0))) {
             throw new IOException("cargo provider runs cargo test: the first argument must be test");
         }
-        String executable = System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java";
-        List<String> argv = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(),
-                "-cp", classes(), CargoTestReport.class.getName(), workspace.resolve(REPORTS).toString(), "cargo"));
-        argv.addAll(task.arguments());
-        return List.copyOf(argv);
-    }
-
-    /** The jar or folder holding this plugin's classes, for the separate JVM. */
-    private static String classes() throws IOException {
-        CodeSource source = CargoTestReport.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null) {
-            throw new IOException("cannot locate the polyglot plugin classes for the cargo test runner");
-        }
-        try {
-            return Path.of(source.getLocation().toURI()).toString();
-        } catch (URISyntaxException | IllegalArgumentException failure) {
-            throw new IOException("cannot locate the polyglot plugin classes for the cargo test runner", failure);
-        }
+        List<String> args = new ArrayList<>(List.of(workspace.resolve(REPORTS).toString(), "cargo"));
+        args.addAll(task.arguments());
+        return SurefireReportProvider.launch(SurefireReportMain.LIBTEST, args);
     }
 }

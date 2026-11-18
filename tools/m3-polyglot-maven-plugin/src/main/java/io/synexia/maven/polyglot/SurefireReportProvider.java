@@ -14,14 +14,19 @@ import java.util.Set;
 
 /**
  * Native test results as surefire reports, for language {@code trx} (Visual Studio TRX, as written by
- * {@code dotnet test --logger trx}). Two forms, both running {@link SurefireReportMain} from this plugin's own
- * jar on the running JDK:
+ * {@code dotnet test --logger trx}) and {@code libtest} (the output of {@code cargo test}). Every form runs
+ * {@link SurefireReportMain} from this plugin's own jar on the running JDK:
  * <ul>
  *   <li>{@code @m3:surefire:transpiler:trx} with arguments {@code <results> <reports>} converts the TRX files of
  *       the results folder (or one TRX file) into {@code TEST-<class>.xml} files in the reports folder;</li>
  *   <li>{@code @m3:surefire:interpreter:trx} with {@code <results> <reports> <tool> <argument>...} first removes
  *       old TRX files from the results folder, runs the test tool, converts what it wrote, and ends with the
- *       tool's exit status, so failing tests still get their reports, as with surefire.</li>
+ *       tool's exit status, so failing tests still get their reports, as with surefire;</li>
+ *   <li>{@code @m3:surefire:transpiler:junit} and {@code @m3:surefire:interpreter:junit} do the same for the
+ *       JUnit XML that CTest writes, normalised ({@link JUnitReport});</li>
+ *   <li>{@code @m3:surefire:interpreter:libtest} with {@code <reports> <tool> <argument>...} runs the tool (cargo
+ *       test), echoes its output and writes one report per test binary ({@link CargoTestReport}); libtest output
+ *       is no file, so it has no transpiler form.</li>
  * </ul>
  * Both paths are relative to the task's working folder and may not leave it.
  */
@@ -38,7 +43,7 @@ public final class SurefireReportProvider implements M3ToolProvider {
 
     @Override
     public Set<String> languages() {
-        return Set.of("trx");
+        return Set.of(SurefireReportMain.TRX, SurefireReportMain.JUNIT, SurefireReportMain.LIBTEST);
     }
 
     @Override
@@ -46,12 +51,19 @@ public final class SurefireReportProvider implements M3ToolProvider {
             TaskManifest.Task task, Path workspace) throws IOException {
         List<String> args = task.arguments();
         boolean run = capability == M3ToolCapability.INTERPRETER;
-        if (!"trx".equals(language) || (run ? args.size() < 3 : args.size() != 2)) {
-            throw new IOException("surefire reports need <results> <reports>" + (run ? " <tool> <argument>..." : ""));
+        int paths = SurefireReportMain.LIBTEST.equals(language) ? 1 : 2;
+        if ((!run && paths == 1) || (run ? args.size() < paths + 1 : args.size() != paths)) {
+            throw new IOException(paths == 1 ? "libtest reports need the interpreter form <reports> <tool> <argument>..."
+                    : "surefire reports need <results> <reports>" + (run ? " <tool> <argument>..." : ""));
         }
-        for (String path : args.subList(0, 2)) relative(path);
+        for (String path : args.subList(0, paths)) relative(path);
+        return launch(language, args);
+    }
+
+    /** The command that runs {@link SurefireReportMain} in a JVM of the running JDK: the format, then its arguments. */
+    static List<String> launch(String format, List<String> args) throws IOException {
         List<String> argv = new ArrayList<>(List.of(EcjCompilerProvider.java(), "-cp", codeSource(),
-                SurefireReportMain.class.getName()));
+                SurefireReportMain.class.getName(), format));
         argv.addAll(args);
         return List.copyOf(argv);
     }

@@ -32,8 +32,10 @@ public final class CargoTestReportContractTestMain {
         try {
             readsRecordedCargoOutput();
             reportsACrashedBinaryAsAnError();
+            aPassingCustomHarnessIsOnePassedCase();
             writesSurefireXml(temp.resolve("reports"));
             plansTheReportRunner(temp.resolve("plan"));
+            plansTheSurefireLibtestFormat(temp.resolve("libtest"));
             runsAMavenizedCrate(temp.resolve("crate"));
             System.out.println("PASS: " + passed + " cargo test report contract cases");
         } finally {
@@ -69,6 +71,19 @@ public final class CargoTestReportContractTestMain {
                 "test first ... ok", "error: test failed, to rerun pass `--test it`", "",
                 "Caused by:", "  process didn't exit successfully: (signal: 11, SIGSEGV: invalid memory reference)");
 
+    /** A [[test]] harness = false binary prints no libtest lines; when it passes it is one passed case. */
+    private static void aPassingCustomHarnessIsOnePassedCase() {
+        List<String> run = List.of("     Running tests/custom.rs (target/debug/deps/custom-0123456789abcdef)",
+                "custom harness ran");
+        TestSuiteReport custom = parse(run).get(0);
+        require(custom.name().equals("custom tests/custom.rs")
+                && custom.summary().equals("Tests run: 1, Failures: 0, Errors: 0, Skipped: 0"),
+                "a passing custom harness is no error: " + custom.summary());
+        require(parse(run, 101).get(0).count(TestSuiteReport.Status.ERRORED) == 1,
+                "cargo failing without naming a binary: the binary without a result line is an error");
+        passed++;
+    }
+
     private static void reportsACrashedBinaryAsAnError() {
         List<TestSuiteReport> suites = parse(CRASHED_RUN);
         require(suites.get(0).name().equals("my_crate src/lib.rs")
@@ -102,14 +117,29 @@ public final class CargoTestReportContractTestMain {
     private static void plansTheReportRunner(Path root) throws Exception {
         Files.createDirectories(root);
         List<String> argv = M3ToolProviders.command(task(CargoTestProvider.TOOL, "test", "--locked"), root);
-        require(Path.of(argv.get(0)).getFileName().toString().startsWith("java") && argv.get(1).equals("-cp")
-                && argv.get(3).equals(CargoTestReport.class.getName()), "a JVM of the running JDK: " + argv);
-        require(Path.of(argv.get(4)).equals(root.toAbsolutePath().normalize().resolve("target/surefire-reports"))
-                && argv.subList(5, argv.size()).equals(List.of("cargo", "test", "--locked")), "argv: " + argv);
+        require(argv.subList(0, 4).equals(List.of(EcjCompilerProvider.java(), "-cp", SurefireReportProvider.codeSource(),
+                SurefireReportMain.class.getName())) && argv.get(4).equals("libtest"),
+                "the surefire report runner's libtest format: " + argv);
+        require(Path.of(argv.get(5)).equals(root.toAbsolutePath().normalize().resolve("target/surefire-reports"))
+                && argv.subList(6, argv.size()).equals(List.of("cargo", "test", "--locked")), "argv: " + argv);
         expectRefused(task(CargoTestProvider.TOOL, "build"), root, "only cargo test");
         expectRefused(task(CargoTestProvider.TOOL), root, "no arguments");
         expectRefused(task("@m3:cargo:compiler:rust", "test"), root, "no compiler role");
         expectRefused(task("@m3:cargo:interpreter:cpp", "test"), root, "Rust only");
+        passed++;
+    }
+
+    /** {@code @m3:surefire:interpreter:libtest <reports> <tool> <argument>...}: the same runner, any libtest tool. */
+    private static void plansTheSurefireLibtestFormat(Path root) throws Exception {
+        Files.createDirectories(root);
+        List<String> argv = M3ToolProviders.command(task("@m3:surefire:interpreter:libtest", "target/r", "cargo", "test"),
+                root);
+        require(argv.subList(3, argv.size()).equals(List.of(SurefireReportMain.class.getName(), "libtest", "target/r",
+                "cargo", "test")), "libtest argv: " + argv);
+        expectRefused(task("@m3:surefire:interpreter:libtest", "target/r"), root, "libtest without a tool");
+        expectRefused(task("@m3:surefire:interpreter:libtest", "../r", "cargo", "test"), root, "a path outside");
+        expectRefused(new TaskManifest.Task("t", "@m3:surefire:transpiler:libtest", ".", List.of("target/r", "target/s"),
+                List.of(), List.of("target/r"), List.of("target/s")), root, "libtest has no file to convert");
         passed++;
     }
 
@@ -168,9 +198,13 @@ public final class CargoTestReportContractTestMain {
     }
 
     private static List<TestSuiteReport> parse(List<String> lines) {
+        return parse(lines, 0);
+    }
+
+    private static List<TestSuiteReport> parse(List<String> lines, int exit) {
         CargoTestOutput parser = new CargoTestOutput();
         lines.forEach(parser::accept);
-        return parser.finish();
+        return parser.finish(exit);
     }
 
     private static List<String> fixture(String name) throws IOException {

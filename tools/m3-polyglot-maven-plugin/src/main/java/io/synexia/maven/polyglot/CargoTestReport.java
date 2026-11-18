@@ -16,19 +16,11 @@ import java.util.List;
 /**
  * Runs {@code cargo test} in the current folder, echoes its merged output, and writes one surefire report per test
  * binary ({@link CargoTestOutput}, {@link SurefireXmlWriter}). The exit status is cargo's, so failing tests still
- * fail the build, after their reports are written. {@link CargoTestProvider} starts it in a separate JVM.
+ * fail the build, after their reports are written. It is the {@code libtest} format of {@link SurefireReportMain},
+ * which {@link CargoTestProvider} and {@code @m3:surefire:interpreter:libtest} start in a separate JVM.
  */
 public final class CargoTestReport {
     private CargoTestReport() {}
-
-    /** Arguments: the reports folder, the cargo executable (a bare name is looked up on PATH), cargo's arguments. */
-    public static void main(String[] args) throws IOException, InterruptedException {
-        if (args.length < 2) {
-            System.err.println("usage: CargoTestReport <reports-folder> <cargo> [argument...]");
-            System.exit(2);
-        }
-        System.exit(run(Path.of(args[0]), List.of(args).subList(1, args.length), System.out));
-    }
 
     /** Runs the command, writes the reports, returns the command's exit status. */
     static int run(Path reports, List<String> command, PrintStream echo) throws IOException, InterruptedException {
@@ -45,7 +37,7 @@ public final class CargoTestReport {
             });
         }
         int exit = process.waitFor();
-        write(parser.finish(), reports, echo);
+        write(parser.finish(exit), reports, echo);
         return exit;
     }
 

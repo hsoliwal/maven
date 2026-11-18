@@ -30,6 +30,9 @@ public final class Mavenizer {
     private static final Pattern SCRIPTS = Pattern.compile("\"scripts\"\\s*:\\s*\\{([^}]*)\\}", Pattern.DOTALL);
     static final String CMAKE_BUILD = "build/cmake";
     static final String CMAKE_CONFIG = "Debug";
+    /** CTest's own JUnit XML, converted by the surefire report runner's junit format. */
+    static final String CTEST_RESULTS = "target/ctest";
+    static final String CTEST_TOOL = "@m3:surefire:interpreter:junit";
     /** clangd's project configuration naming the compile database; cdt-lsp reads and writes the same key. */
     static final String CLANGD = "CompileFlags:\n  CompilationDatabase: " + CMAKE_BUILD + "\n";
 
@@ -245,8 +248,9 @@ public final class Mavenizer {
     /**
      * CMake: configure exports compile_commands.json (Makefile and Ninja generators; a Visual Studio generator
      * ignores it); build and test name the configuration, which a multi-config generator needs (without -C, CTest
-     * reports "Not Run"); CTest writes JUnit XML to the module's target/surefire-reports (a relative
-     * --output-junit is resolved in the test directory).
+     * reports "Not Run"); CTest writes JUnit XML to the module's target/ctest (a relative --output-junit is resolved
+     * in the test directory), which the junit format of the surefire report runner turns into
+     * target/surefire-reports/TEST-ctest.xml: a disabled test skipped, a test CTest could not run an error.
      */
     private static void cmake(Path dir, List<Step> steps) throws IOException {
         if (!has(dir, "CMakeLists.txt")) return;
@@ -254,8 +258,9 @@ public final class Mavenizer {
         add(steps, "compile", "cmake", "--build", CMAKE_BUILD, "--config", CMAKE_CONFIG);
         String text = read(dir, "CMakeLists.txt");
         if (text.contains("enable_testing") || text.contains("add_test")) {
-            add(steps, "test", "ctest", "--test-dir", CMAKE_BUILD, "-C", CMAKE_CONFIG, "--output-on-failure",
-                    "--output-junit", "../../target/surefire-reports/TEST-ctest.xml");
+            steps.add(new Step("test", "ctest-test", CTEST_TOOL, List.of(CTEST_RESULTS, "target/surefire-reports",
+                    "ctest", "--test-dir", CMAKE_BUILD, "-C", CMAKE_CONFIG, "--output-on-failure", "--output-junit",
+                    "../../" + CTEST_RESULTS + "/ctest-junit.xml")));
         }
     }
 
@@ -318,32 +323,40 @@ public final class Mavenizer {
             for (String module : modules) text.append("    <module>").append(xml(module)).append("</module>\n");
             text.append("  </modules>\n");
         }
-        if (!steps.isEmpty()) {
-            // Opt-in profile for stock Maven, which lacks the fork's lifecycle extension.
-            // Merely generating a POM must never execute native tools or download packages.
-            text.append("  <profiles>\n")
-                    .append("    <profile><id>m3-polyglot</id>\n")
-                    .append("      <build><plugins><plugin>\n")
-                    .append("        <groupId>io.synexia</groupId>\n")
-                    .append("        <artifactId>m3-polyglot-maven-plugin</artifactId>\n")
-                    .append("        <version>0.1.0-SNAPSHOT</version>\n")
-                    .append("        <executions>\n");
-            for (String phase : PHASES) {
-                if (steps.stream().noneMatch(step -> phase.equals(step.phase()))) continue;
-                text.append("          <execution>\n")
-                        .append("            <id>m3-polyglot-").append(phase).append("</id>\n")
-                        .append("            <phase>").append(phase).append("</phase>\n")
-                        .append("            <goals><goal>run</goal></goals>\n")
-                        .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
-                        .append("          </execution>\n");
-            }
-            if (DotnetSteps.packs(steps)) attach(text);
-            text.append("        </executions>\n")
-                    .append("      </plugin></plugins></build>\n")
-                    .append("    </profile>\n")
-                    .append("  </profiles>\n");
-        }
+        if (!steps.isEmpty()) profile(text, steps);
         return text.append("</project>\n").toString();
+    }
+
+    /** The opt-in m3-polyglot profile: one run execution per phase with steps, then the attach execution. */
+    private static void profile(StringBuilder text, List<Step> steps) {
+        // Opt-in profile for stock Maven, which lacks the fork's lifecycle extension.
+        // Merely generating a POM must never execute native tools or download packages.
+        text.append("  <profiles>\n")
+                .append("    <profile><id>m3-polyglot</id>\n")
+                .append("      <build><plugins><plugin>\n")
+                .append("        <groupId>io.synexia</groupId>\n")
+                .append("        <artifactId>m3-polyglot-maven-plugin</artifactId>\n")
+                .append("        <version>0.1.0-SNAPSHOT</version>\n")
+                .append("        <executions>\n");
+        runExecutions(text, steps);
+        if (DotnetSteps.packs(steps)) attach(text);
+        text.append("        </executions>\n")
+                .append("      </plugin></plugins></build>\n")
+                .append("    </profile>\n")
+                .append("  </profiles>\n");
+    }
+
+    /** One run execution for each phase that has steps, with the phase as its target. */
+    private static void runExecutions(StringBuilder text, List<Step> steps) {
+        for (String phase : PHASES) {
+            if (steps.stream().noneMatch(step -> phase.equals(step.phase()))) continue;
+            text.append("          <execution>\n")
+                    .append("            <id>m3-polyglot-").append(phase).append("</id>\n")
+                    .append("            <phase>").append(phase).append("</phase>\n")
+                    .append("            <goals><goal>run</goal></goals>\n")
+                    .append("            <configuration><target>").append(phase).append("</target></configuration>\n")
+                    .append("          </execution>\n");
+        }
     }
 
     /** After the package run, attach the packages it wrote (declared later, so it runs later in the phase). */

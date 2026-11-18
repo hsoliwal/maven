@@ -39,12 +39,26 @@ public final class MavenizerContractTestMain {
     }
 
     private static void detectsEachToolFamily(Path root) throws Exception {
+        detectsNodeTools(root);
+        detectsCargo(root);
+        detectsNativeTools(root);
+        detectsPython(root);
+        detectsDotnet(root);
+        attachesOnlyDotnetPackages(root);
+        detectsJvmBuildTools(root);
+        passed++;
+    }
+
+    private static void detectsNodeTools(Path root) throws Exception {
         expect(dir(root, "npm", "package.json", "{\"scripts\": {\"build\": \"tsc\", \"test\": \"vitest\"}}", "package-lock.json", "{}"),
                 "validate npm-validate npm [ci]", "compile npm-compile npm [run, build]", "test npm-test npm [test]");
         expect(dir(root, "npm-placeholder", "package.json",
                 "{\"scripts\": {\"test\": \"echo \\\"Error: no test specified\\\" && exit 1\"}}"),
                 "validate npm-validate npm [install]");
         expect(dir(root, "pnpm", "package.json", "{}", "pnpm-lock.yaml", ""), "validate pnpm-validate pnpm [install]");
+    }
+
+    private static void detectsCargo(Path root) throws Exception {
         expect(dir(root, "cargo", "Cargo.toml", "[package]"),
                 "compile cargo-compile cargo [build]", "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast]",
                 "package cargo-package cargo [build, --release]",
@@ -55,17 +69,24 @@ public final class MavenizerContractTestMain {
                 "compile cargo-compile cargo [build, --locked]",
                 "test cargo-test @m3:cargo:interpreter:rust [test, --no-fail-fast, --locked]",
                 "package cargo-package cargo [build, --release, --locked]");
+    }
+
+    private static void detectsNativeTools(Path root) throws Exception {
         expect(dir(root, "go", "go.mod", "module x"), "compile go-compile go [build, ./...]", "test go-test go [test, ./...]");
         expect(dir(root, "make", "Makefile", "all:\n\tcc x.c\ntest: all\n\t./x\n"), "compile make-compile make []", "test make-test make [test]");
         expect(dir(root, "make-notest", "Makefile", "all:\n\tcc x.c\n"), "compile make-compile make []");
         expect(dir(root, "cmake", "CMakeLists.txt", "project(x)\nenable_testing()\n"),
                 "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]",
-                "test ctest-test ctest [--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
-                        + "../../target/surefire-reports/TEST-ctest.xml]");
+                "test ctest-test @m3:surefire:interpreter:junit [target/ctest, target/surefire-reports, ctest, "
+                        + "--test-dir, build/cmake, -C, Debug, --output-on-failure, --output-junit, "
+                        + "../../target/ctest/ctest-junit.xml]");
         expect(dir(root, "cmake-notest", "CMakeLists.txt", "project(x)\n"),
                 "validate cmake-validate cmake [-S, ., -B, build/cmake, -DCMAKE_EXPORT_COMPILE_COMMANDS=ON]",
                 "compile cmake-compile cmake [--build, build/cmake, --config, Debug]");
+    }
+
+    private static void detectsPython(Path root) throws Exception {
         Path python = dir(root, "python", "pyproject.toml", "[project]\nname='x'\n");
         Files.createDirectories(python.resolve("tests"));
         expect(python, "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
@@ -73,6 +94,9 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "pytest", "pyproject.toml", "[tool.pytest.ini_options]\n"),
                 "compile python-compile python [-m, compileall, -q, -x, (node_modules|venv|build|target), .]",
                 "test python-test python [-m, pytest]");
+    }
+
+    private static void detectsDotnet(Path root) throws Exception {
         String dotnetTest = "test dotnet-test @m3:surefire:interpreter:trx [target/dotnet-test-results, "
                 + "target/surefire-reports, dotnet, test, --logger, trx, --results-directory, target/dotnet-test-results]";
         String dotnetPack = "package dotnet-package dotnet [pack, --output, target/nuget]";
@@ -84,18 +108,24 @@ public final class MavenizerContractTestMain {
         expect(dir(root, "vb", "Old.vbproj", "<Project/>"), "validate dotnet-validate dotnet [restore]",
                 "compile dotnet-compile dotnet [build]", dotnetTest, dotnetPack);
         expect(dir(root, "dotnet-lookalike", "App.csproj.user", "<Project/>"));
+    }
+
+    /** Runs after detectsDotnet and detectsCargo, which create the folders. */
+    private static void attachesOnlyDotnetPackages(Path root) throws Exception {
         List<Mavenizer.Step> dotnet = Mavenizer.steps(root.resolve("dotnet"));
         require(Mavenizer.pom("g", "a", "1", List.of("dotnet"), List.of(), dotnet).contains("<goal>attach</goal>"),
                 "a packing .NET folder attaches its NuGet packages in the generated profile");
         require(!Mavenizer.pom("g", "a", "1", List.of("cargo"), List.of(), Mavenizer.steps(root.resolve("cargo")))
                 .contains("<goal>attach</goal>"), "other tools attach nothing");
+    }
+
+    private static void detectsJvmBuildTools(Path root) throws Exception {
         expect(dir(root, "gradle", "build.gradle.kts", "", "gradlew.bat", ""),
                 "compile gradle-compile gradlew [assemble]", "test gradle-test gradlew [test]");
         expect(dir(root, "ant", "build.xml", "<project><target name=\"test\"/></project>"),
                 "compile ant-compile ant []", "test ant-test ant [test]");
         require(Mavenizer.steps(Files.createDirectories(root.resolve("empty"))).isEmpty(), "no descriptor, no steps");
         require(Mavenizer.artifactId(Path.of("My App+2")).equals("my-app-2"), "artifactId sanitized");
-        passed++;
     }
 
     private static void mavenizesANestedRepositoryWithoutOverwriting(Path root) throws Exception {
@@ -204,12 +234,17 @@ public final class MavenizerContractTestMain {
                 "the .clangd pointer names the configure step's build folder");
         require(Files.readString(root.resolve("kept/.clangd")).equals("CompileFlags:\n  Add: [-Wall]\n"),
                 "an existing .clangd (cdt-lsp writes one too) is never replaced");
+        crateTasksBindToTheirPhases(root);
+        passed++;
+    }
+
+    /** The crate folder mavenized beside the CMake ones: tests through the provider, two package steps. */
+    private static void crateTasksBindToTheirPhases(Path root) throws Exception {
         TaskManifest crate = TaskManifest.load(root.resolve("crate/m3-build.tsv"));
         require(names(crate.order("test")).equals(List.of("cargo-test", "test"))
                 && crate.order("test").get(0).tool().equals(CargoTestProvider.TOOL), "cargo tests run through the provider");
         require(names(crate.order("package")).equals(List.of("cargo-package", "cargo-package-2", "package")),
                 "release build and .crate both bind to package");
-        passed++;
     }
 
     private static void neverSkipsATaskWithoutDeclaredInputs(Path project) throws Exception {

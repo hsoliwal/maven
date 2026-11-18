@@ -351,7 +351,7 @@ class DefaultResourceFilterTest {
     }
 
     @Test
-    void requestDefaultsAndValidation() {
+    void requestDefaults() {
         ResourceFilterRequest request = builder().build();
         assertEquals(ResourceFilterRequest.DEFAULT_DELIMITERS, request.getDelimiters());
         assertEquals(
@@ -362,6 +362,10 @@ class DefaultResourceFilterTest {
         assertFalse(request.isSupportMultiLineFiltering() || request.isFlatten() || request.isIncludeEmptyDirs());
         assertTrue(request.getEscapeString().isEmpty()
                 && request.getOutputDirectory().isEmpty());
+    }
+
+    @Test
+    void requestValidation() {
         assertEquals(List.of("${*}"), builder().delimiters(List.of()).build().getDelimiters());
         assertEquals(
                 List.of("@", "${*}"),
@@ -371,7 +375,7 @@ class DefaultResourceFilterTest {
         assertThrows(
                 NullPointerException.class,
                 () -> ResourceFilterRequest.builder().build());
-        assertThrows(IllegalArgumentException.class, () -> filter.copy(request));
+        assertThrows(IllegalArgumentException.class, () -> filter.copy(builder().build()));
     }
 
     @Test

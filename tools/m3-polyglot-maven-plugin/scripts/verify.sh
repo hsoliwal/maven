@@ -64,7 +64,8 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/DotnetSteps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TrxReport.java \
-  "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireXml.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/JUnitReport.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/CTestReportContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/SurefireReportMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/NugetPackages.java \
@@ -85,6 +86,8 @@ java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.CargoTestReportContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.CTestReportContractTestMain
 if [ -n "${M3_JDBC_DRIVER_CLASSPATH:-}" ]; then
   java -cp "$DEST" io.synexia.maven.polyglot.M3JdbcDbContractTestMain \
     --driver-classpath "$M3_JDBC_DRIVER_CLASSPATH" h2 sqlite
