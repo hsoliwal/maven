@@ -71,9 +71,6 @@ public final class M3EclipseBuilderRegistry {
                 NatureBinding binding = natures.get(i);
                 out.append("{\"position\":").append(binding.position()).append(",\"natureId\":");
                 quote(out, binding.natureId());
-                out.append('}');
-                // Insert the normalized provider list before the closing object delimiter.
-                out.setLength(out.length() - 1);
                 strings(out, "providerIds", binding.providerIds());
                 out.append('}');
             }
