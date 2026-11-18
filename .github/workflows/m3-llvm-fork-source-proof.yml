@@ -9,11 +9,35 @@ on:
       - '.github/workflows/m3-llvm-fork-source-proof.yml'
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh'
       - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_SOURCE_PROOF.md'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py'
+      - 'tools/m3-polyglot-maven-plugin/pom.xml'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolReuseInputs.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskRunner.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskManifest.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/InputStamps.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
   pull_request:
     paths:
       - '.github/workflows/m3-llvm-fork-source-proof.yml'
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-fork.sh'
       - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_SOURCE_PROOF.md'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py'
+      - 'tools/m3-polyglot-maven-plugin/pom.xml'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolReuseInputs.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskRunner.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskManifest.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/InputStamps.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
   workflow_dispatch:
 
 permissions:
@@ -33,6 +57,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Refuse incomplete exact-fork invalidation triggers
+        shell: bash
+        run: python3 tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py
       - name: Fetch exactly pinned LLVM fork source with sparse partial clone
         shell: bash
         run: |
