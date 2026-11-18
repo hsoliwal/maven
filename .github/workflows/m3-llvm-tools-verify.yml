@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   contract-and-plugin:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -39,3 +39,20 @@ jobs:
         run: mvn -B --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
       - name: Packaged optional provider and ServiceLoader contract
         run: mvn -B --no-transfer-progress -f tools/m3-llvm-tools-provider/pom.xml verify
+      - name: Install explicit Ubuntu LLVM 18 IR tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends llvm-18 llvm-18-tools
+          test -x /usr/lib/llvm-18/bin/opt
+          test -x /usr/lib/llvm-18/bin/llvm-as
+          test -x /usr/lib/llvm-18/bin/llvm-link
+      - name: Required real LLVM opt / assembler / bitcode linker integration
+        shell: bash
+        env:
+          M3_LLVM_PIPELINE_HOME: /usr/lib/llvm-18
+        run: |
+          set -euo pipefail
+          java -cp "tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/classes:tools/m3-polyglot-maven-plugin/target/classes" \
+            io.synexia.maven.llvm.LlvmNativePipelineIntegrationTestMain --required
