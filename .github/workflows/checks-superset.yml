@@ -506,6 +506,33 @@ jobs:
           grep -F 'Loaded compilation database from' target/m3-llvm/clangd-check.log
           grep -F '/target/m3-llvm/compile_commands.json' target/m3-llvm/clangd-check.log
           grep -F 'All checks completed, 0 errors' target/m3-llvm/clangd-check.log
+      - name: Verify original Clang joined output, depfile and JSON-fragment semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd tools/m3-polyglot-maven-plugin/examples/llvm
+          clang -std=c17 -c native/hello.c \
+            -otarget/m3-llvm/joined.o \
+            -MD -MFtarget/m3-llvm/joined.d \
+            -MJtarget/m3-llvm/joined.json
+          test -s target/m3-llvm/joined.o
+          test -s target/m3-llvm/joined.d
+          test -s target/m3-llvm/joined.json
+          grep -F 'native/message.h' target/m3-llvm/joined.d
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path.cwd()
+          fragment = (root / "target/m3-llvm/joined.json").read_text(encoding="utf-8").strip()
+          # Clang -MJ emits a standalone object followed by a trailing comma
+          # for concatenation into a JSON compilation database.
+          entry = json.loads(fragment.removesuffix(","))
+          assert entry["file"] == "native/hello.c", entry
+          assert entry["output"] == "target/m3-llvm/joined.o", entry
+          assert Path(entry["directory"]) == root
+          assert entry["arguments"] and entry["arguments"][0]
+          print("PASS: original Clang joined -o/-MF/-MJ emitted and tracked 3 native products")
+          PY
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes
