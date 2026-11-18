@@ -503,7 +503,11 @@ jobs:
           test -s "$module/target/m3-llvm/compile_commands.json"
           LLVM_ROOT="$(dirname "$(dirname "$(command -v clang)")")"
           db="$(realpath "$module/target/m3-llvm/compile_commands.json")"
+          test -s "$module/target/hello.o"
           before="$(sha256sum "$db" | awk '{print $1}')"
+          before_stamp="$(stat -c '%y' "$db")"
+          object_before="$(sha256sum "$module/target/hello.o" | awk '{print $1}')"
+          object_stamp="$(stat -c '%y' "$module/target/hello.o")"
           result="$(M3_LLVM_HOME="$LLVM_ROOT" java -cp "$plugin" \
             io.synexia.maven.polyglot.PolyglotCli llvm-compile-db \
             "$module" "$module/m3-build.tsv" all)"
@@ -511,7 +515,9 @@ jobs:
           test "$(printf '%s\n' "$result" | sed -n '2p')" = "$(printf 'file\t%s' "$db")"
           after="$(sha256sum "$db" | awk '{print $1}')"
           test "$before" = "$after"
-          test ! -e "$module/target/hello.o" || test -s "$module/target/hello.o"
+          test "$before_stamp" = "$(stat -c '%y' "$db")"
+          test "$object_before" = "$(sha256sum "$module/target/hello.o" | awk '{print $1}')"
+          test "$object_stamp" = "$(stat -c '%y' "$module/target/hello.o")"
           echo 'PASS: packaged Maven PolyglotCli retained identical Clang compilation database'
       - name: Qualify real clangd consumption of Maven-owned compile_commands.json
         shell: bash
