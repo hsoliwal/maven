@@ -86,7 +86,9 @@ reviewed standard plugin versions; other versions keep their original behavior.
 | `m3.lifecycle.backend=file` | Bounded sealed atomic file image through the same M3 transaction owner |
 | `m3.lifecycle.backend=sqlite` | Transactional SQLite image in `.m3/module-state.sqlite`; requires an authentic SQLite JDBC driver on the extension classpath |
 | `m3.lifecycle.backend=h2` | Transactional H2 image in `.m3/module-state.mv.db`; requires an authentic H2 JDBC driver on the extension classpath |
+| `m3.lifecycle.backend=hsqldb` | HSQLDB 2.7.4 file database in `.m3/module-state-hsqldb.*`, synchronized log commits and strict recovery; requires `org.hsqldb.jdbc.JDBCDriver` on the extension classpath |
 | `m3.lifecycle.backend=ext-<id>` | Local backend registered through `M3ModuleDbBackendProvider`; preserves the original `id/read/write` service contract |
+| `m3.lifecycle.backend=ext-derby-v1` | Optional Derby 10.16.1.1 embedded JDBC backend with `derby` + `derbytools` supplied to this core extension's realm. Uses the original M3 sealed image and shuts down the file database between sessions |
 | `m3.lifecycle.backend=m3db` or `native` | Explicit native artifact store under `.m3/maven-build-db/`; binds current M3JDK `jdk.m3.db.M3DB` first, legacy `jdk.m3.indexdb.M3IndexDB` next, or an installed MIndexDB donor; never falls back to the library copy |
 | `m3.lifecycle.backend=legacy` | Accepted compatibility alias for embedded; old per-task stamps do not authorize reuse |
 | `m3.lifecycle.inputs` | Comma-separated extra file/directory inputs, absolute or relative to the module |

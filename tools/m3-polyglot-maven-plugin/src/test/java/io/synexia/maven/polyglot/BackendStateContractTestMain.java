@@ -160,7 +160,9 @@ public final class BackendStateContractTestMain {
 
     private static void preservesOptionalPortableBackendSelection(Path temporary) throws Exception {
         for (String[] option : List.of(new String[] {"sqlite", "org.sqlite.JDBC"},
-                new String[] {"h2", "org.h2.Driver"}, new String[] {"ext-unavailable-contract-v1", ""})) {
+                new String[] {"h2", "org.h2.Driver"},
+                new String[] {"hsqldb", "org.hsqldb.jdbc.JDBCDriver"},
+                new String[] {"ext-unavailable-contract-v1", ""})) {
             String backend = option[0];
             Path project = project(temporary, "portable-" + backend);
             List<String> plan = TaskRunner.run(TaskManifest.load(project.resolve("m3-build.tsv")), project,

@@ -2,41 +2,54 @@
   "schema": "M3_PROVIDER_REUSE_RESULT_ONLY_PROVENANCE_V1",
   "canonical": {
     "repository": "hsoliwal/com.synexia",
-    "task_revision": "ed3e02ecec7ad8251a1ff8ed8e8e2a06316990ba",
-    "task_revision_parent": "d2686277cd47f1da00b4bdbb1b833383430db4ca",
-    "crate": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118",
-    "recipe_id": "com.synexia.m3.MavenProviderReusePublicationForward20261118",
+    "task_revision": "911ff95dcd4e25bbd4b7bbf26d38618f9628ba52",
+    "task_revision_parent": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "crate": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118",
+    "recipe_id": "com.synexia.m3.MavenProviderReuseOwnerTestAdmission20261118",
     "qualification_summary": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/QUALIFICATION.md",
-      "sha256": "11405bec022e6fe0bcd86cae63779d751fab87977e2a73fd8406b315556c5bd5"
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/QUALIFICATION.md",
+      "sha256": "3d64af71fde20410cf7685957dc4a8cfbd212b39394d807fdae87682986cb1ec"
     },
     "source_custody": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/FINAL_SOURCE_CUSTODY.json",
-      "sha256": "ebc1543d61105e7d81d266af943841f7c19b785375b7a18ec933f6d47fc249bd"
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/FINAL_SOURCE_CUSTODY.json",
+      "sha256": "f469965a3ac6a80a2e926b4562f328e0e48e9ec08fd6673664f9e8661b5762be"
     },
     "native_evidence": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/qualification/native/maven-final-summary/MAVEN_VERIFICATION_SUMMARY.json",
-      "sha256": "682ed529e5723b8f6be51c7aad1be9f45a663b87657e0aad73cba75e17459e04"
-    },
-    "historical_owner_inspection_revision": "e8d771387b0d26333ef24497ac2fcb9aded1177f",
-    "prior_source_authority": "8d0f142abfc70f7ac55dd7c56e8f4877594bdb81",
-    "prior_metadata_authority": "d2686277cd47f1da00b4bdbb1b833383430db4ca",
-    "effective_owner_revision": "3b3cb9271eb9c2400b1542b09e25fee1bae7f09d",
-    "current_targeted_native_evidence": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-maven/files/SUMMARY.json",
-      "sha256": "7ad3fdf612b4230c6f73e1935c6a028c5f615d2590c95513e8f152a252790192"
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-continuity/files/FINAL_OWNER_NATIVE_SUMMARY.json",
+      "sha256": "0b6ef607c83dd0387a2e81be7324eb11cb1e73b09d58c29da76dd7a139e3c650"
     },
     "independent_owner_merged_gradle_evidence": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-gradle-owner-merge/files/GRADLE_MERGED_VERIFICATION_SUMMARY.json",
-      "sha256": "a539ffb0f9ffa6ede7d9568360f77165410be790fee2928a51c60a6ca4f604f5"
-    }
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-gradle-current-engine/files/GRADLE_CURRENT609_ENGINE_VERIFICATION_SUMMARY.json",
+      "sha256": "94a2986a5de18aa1a9e866a7f85671bf93f794a0199626ba36775b677a2f9d0f"
+    },
+    "prior_source_authority": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "prior_metadata_authority": "15a7b87b8ef39817366c2616dd1be845ba121394",
+    "effective_owner_revision": "3b3cb9271eb9c2400b1542b09e25fee1bae7f09d",
+    "historical_owner_inspection_revision": "e8d771387b0d26333ef24497ac2fcb9aded1177f",
+    "runtime_source_authority": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "retained_runtime_native_evidence": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/MAVEN_CURRENT609_VERIFICATION_SUMMARY.json",
+      "sha256": "972df517e96233bc31ce854dcb97296a58466fdee1f462974f8766fbd834ef45"
+    },
+    "owner_source_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+    "historical_internal_metadata_execution": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/metadata/qualification/METADATA_RECEIVE_CUSTODY.json",
+      "sha256": "f63b99eded53f1fe170558034e31b20c9d9c86ad6141408001ec8f0570b2a125"
+    },
+    "historical_internal_metadata_was_published_to_maven": false
   },
   "target": {
     "repository": "hsoliwal/maven",
-    "publication_base_revision": "7ab679616db6d2ab5fa52c7bd4fae9228327bbcb",
-    "qualified_upstream_context": "7ab679616db6d2ab5fa52c7bd4fae9228327bbcb",
-    "source_output_count": 19,
-    "prior_published_head": "7a6fd3471084a6d370d712a765f77faa00364328"
+    "publication_base_revision": "609f4506ca9b48ce36e2014526dc04be321355ca",
+    "qualified_upstream_context": "609f4506ca9b48ce36e2014526dc04be321355ca",
+    "prior_published_head": "6230ae140634f971dee18b949d27518e70f3e775",
+    "source_output_count": 21,
+    "upstream_module_tree": "97a8b236575dbbb9cb830b0ae4b8654281ff5743",
+    "verified_upstream_module_files": 145,
+    "untouched_upstream_files_preserved": 132,
+    "context_scope": "Exact qualified609 production context plus admitted owner6230 tests/document; not a claim about later master revisions.",
+    "qualified_runtime_source_authority": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "owner_test_document_source_revision": "6230ae140634f971dee18b949d27518e70f3e775"
   },
   "contract": {
     "provider_reuse_default": false,
@@ -45,7 +58,7 @@
     "cache_scope": "same-workspace only",
     "portable_downstream_generation": false,
     "shared_existing_state_cache_and_scheduler": true,
-    "gradle_engine_artifact_sha256": "f14b6e11b0b70e4d0b539aa6d37d66702c78281711ec9f51b143085343a15cfb",
+    "gradle_engine_artifact_sha256": "2d94a466d71dc5fbf8323b24494d92f2ce8b64ba62d9db24c7a9be1ccc8e2cfe",
     "declined_reuse_contract_or_unavailable_input_fingerprint": "ordinary execution",
     "malformed_contract_or_unavailable_provider_implementation_identity": "IOException"
   },
@@ -173,15 +186,101 @@
         }
       ],
       "receiver_fixed_point_changes": 0
+    },
+    {
+      "stage": "maven-db-publication-forward-source-sdk-01",
+      "recipe": "com.synexia.m3.MavenProviderReuseDbPublicationForward20261118",
+      "dataset": "maven",
+      "baseline_revision": "609f4506ca9b48ce36e2014526dc04be321355ca",
+      "baseline_kind": "GIT_COMMIT",
+      "source_outputs": 6,
+      "java_outputs": 3,
+      "text_outputs": 3,
+      "tests": 5,
+      "test_status": "PASS_ZERO_FAILURES_ERRORS_SKIPS",
+      "test_seconds": 33.143,
+      "sdk_inputs": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/sdk-01/crate/target/maven/candidate/SDK_INPUTS.tsv",
+        "sha256": "eda357f794c605b939346559d2750376bb7c62dda941aa4bbdd59b3a3b345132"
+      },
+      "sdk_results": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/sdk-01/crate/target/maven/candidate/SDK_RESULTS.tsv",
+        "sha256": "4e6d8494442afcc508e5aab76198e32d7770539d81fd5c9b6b1d5016300aac45"
+      },
+      "surefire_report": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/sdk-01/crate/target/maven/surefire-reports/TEST-com.synexia.rewrite.M3TaskRecipeTest.xml",
+        "sha256": "fb715a34eb9531c525de9ec414080317c7e0bbf7f5fb6664f3c666a7c0cf2b26"
+      },
+      "manifests": [
+        {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/sdk-01/crate/datasets/maven/resources/com/synexia/rewrite/hash-pinned-java/m3-polyglot-maven-db-publication-forward-20261118-maven/manifest.tsv",
+          "sha256": "d33f5954462568c035192171e5cd0c7a4061acf2214e8e93e8bb1c21d243e9f6"
+        },
+        {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/sdk-01/crate/datasets/maven/resources/com/synexia/rewrite/hash-pinned-text/m3-polyglot-maven-db-publication-forward-20261118-maven/manifest.tsv",
+          "sha256": "3ab746d36b22e058febb89e825f09d480e357f99a68082a9731096ac96fb9a6b"
+        }
+      ],
+      "independent_archived_input_bindings_verified": 103,
+      "receiver_fixed_point_changes": 0
+    },
+    {
+      "stage": "maven-owner-test-admission-sdk-01",
+      "recipe": "com.synexia.m3.MavenProviderReuseOwnerTestAdmission20261118",
+      "dataset": "maven",
+      "baseline_revision": null,
+      "baseline_kind": "SDK_OUTPUT_SNAPSHOT",
+      "baseline_source_authority": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+      "owner_postimage_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+      "source_outputs": 3,
+      "java_outputs": 2,
+      "text_outputs": 1,
+      "tests": 5,
+      "test_status": "PASS_ZERO_FAILURES_ERRORS_SKIPS",
+      "test_seconds": 36.153,
+      "sdk_inputs": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/sdk-01/crate/target/maven/candidate/SDK_INPUTS.tsv",
+        "sha256": "bafe71b62993a9af8c1212e19c1715582e9a2e3b74542ca2a712040240ed016c"
+      },
+      "sdk_results": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/sdk-01/crate/target/maven/candidate/SDK_RESULTS.tsv",
+        "sha256": "e0c881e3276d29f272bcd50f003cbe4d595b9088c5ef0b281ad94c6fb991644f"
+      },
+      "surefire_report": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/sdk-01/crate/target/maven/surefire-reports/TEST-com.synexia.rewrite.M3TaskRecipeTest.xml",
+        "sha256": "79bef1f32f3be07f659ed2ccceabafd9061217c245ed0f0053788e7198593b2a"
+      },
+      "manifests": [
+        {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/sdk-01/crate/datasets/maven/resources/com/synexia/rewrite/hash-pinned-java/m3-polyglot-maven-owner-test-admission-20261118-maven/manifest.tsv",
+          "sha256": "5124a867840747f9956d07cacfb14320d38aab08d29fe61d35e7aaca6869cd1c"
+        },
+        {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/sdk-01/crate/datasets/maven/resources/com/synexia/rewrite/hash-pinned-text/m3-polyglot-maven-owner-test-admission-20261118-maven/manifest.tsv",
+          "sha256": "135b7df5eee0d35e1051bc8b158029cdf788d13e0e4e7d37bf22ac5328485934"
+        }
+      ],
+      "independent_archived_input_bindings_verified": 45,
+      "receiver_fixed_point_changes": 0
     }
   ],
   "outputs": [
     {
       "path": "tools/m3-polyglot-maven-plugin/README.md",
-      "before_sha256": "3e14168aa6fcdefbb1a8ee5e761bdd04e3bd068992a1c6d4b513f27254e32621",
-      "after_sha256": "b6972d9d676ddccccb49c003e73c0dc08f0598db42c77dc1a083b95707d0f0dd",
+      "before_sha256": "f2919f408dae90675666389160d2f251fa03b2701ab2e456964ae87f5129d4d1",
+      "after_sha256": "9bed11ce08c2ee0d2fd0462d42f94b03e47088503d029552d8c0d04d615a8821",
       "mode": "100644",
-      "authority": "maven-publication-forward-source-sdk-01"
+      "authority": "maven-db-publication-forward-source-sdk-01"
+    },
+    {
+      "path": "tools/m3-polyglot-maven-plugin/docs/LLVM-PROVIDER-REUSE-NEGATIVE-CONTRACT.md",
+      "before_sha256": "ABSENT",
+      "after_sha256": "27d2f8e17dee92ef9ac3cbceaa88dfaf875bd2dbef0d2d6ae095cd3af56add33",
+      "mode": "100644",
+      "authority": "maven-owner-test-admission-sdk-01",
+      "admission_preimage_sha256": "ABSENT",
+      "owner_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+      "owner_git_blob": "cc11526bae6e95a8dbcee6c3263ec8434db7baf3"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/examples/provider-reuse/empty-classpath/README.txt",
@@ -206,17 +305,17 @@
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/pom.xml",
-      "before_sha256": "8d09d8739880bd3b38e9c41d75d980398c374231e352ec32989b51140b3043be",
-      "after_sha256": "c63ae1bfc2660c820821fb7244a1f192f040d1633bd91cb23c0321e2b3f9cb12",
+      "before_sha256": "0ba22f929d9b53def8aaa748486b2bbf9d1ca76f60f31132829e93ded2c150c2",
+      "after_sha256": "34842bbdb0141f65957c63c9c3e1fe864bd0aa6b1179aee8597a375ca867ef71",
       "mode": "100644",
-      "authority": "forward-reconciliation-sdk01"
+      "authority": "maven-db-publication-forward-source-sdk-01"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/scripts/verify.sh",
-      "before_sha256": "242cd6ba3e8ec2eae898da34686d050bb5567b81d3fd6f60147c451066ec8a5b",
-      "after_sha256": "acb9813bcbe7f80d58c763b6d63cfebe854a5ba04415ca30f6f5231c06a9f2cd",
+      "before_sha256": "3d3d05f9142b953e77ee269a060d193053c88f2e03dbad8d6ee4fe99691d55ae",
+      "after_sha256": "d93eb39d46824c721c6eac2a400a6037b5c6fb00ca94c69b7dcb6008b3524224",
       "mode": "100644",
-      "authority": "forward-reconciliation-sdk01"
+      "authority": "maven-db-publication-forward-source-sdk-01"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java",
@@ -269,24 +368,24 @@
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/PolyglotCli.java",
-      "before_sha256": "8c81011c7aa0a2d796bf9284248cb2b7f3b4d0c1f4e8d7834d497ad456c7e15c",
-      "after_sha256": "e5683dca11cab7ce07d4c563ae888438ac098327b297483832fbf8b6eef49376",
+      "before_sha256": "ae086ff4aab5a3bcee892d6f243c22163c7dd48f451e1c22425881521e480434",
+      "after_sha256": "6cdd3fef1a980c66f4f01ca595b98884285e548101d3db1c077462df01a903fb",
       "mode": "100644",
-      "authority": "primary-sdk02"
+      "authority": "maven-db-publication-forward-source-sdk-01"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/RunMojo.java",
-      "before_sha256": "598c5ee87545d679361204f2eeae732adb43c9fcc0a9c824c0385db0a20ca1db",
-      "after_sha256": "ada488415bf2cd5c0923acd9a0a58dbecd2ea4304aa0b53ca12add28b345787f",
+      "before_sha256": "e505f9ad8eb25035dff432cdf3421b60b7e2dca86632cf7b7a26ded27163a8f1",
+      "after_sha256": "4fad738ca453779202214942a02fcb62b73c5ea7be720ead8030723fea1000ce",
       "mode": "100644",
-      "authority": "primary-sdk02"
+      "authority": "maven-db-publication-forward-source-sdk-01"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskRunner.java",
-      "before_sha256": "020a4709d6177a59395a56b875b4bab03df6a751324f1ffa3c225173dda36e63",
-      "after_sha256": "3573915a3b691c7f8e19270564a92cf2c954e52feb5c60178a6563cff02bbab1",
+      "before_sha256": "ca1858e37a8652261a5b661ec2596fcdc5e7fdf178b9a3910eb512e6d6f94ba0",
+      "after_sha256": "abd787b81abba64bba4d092861dbc954159a3c24d9ebf6d5d871c20e76e85b10",
       "mode": "100644",
-      "authority": "primary-sdk02"
+      "authority": "maven-db-publication-forward-source-sdk-01"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java",
@@ -296,11 +395,24 @@
       "authority": "maven-publication-forward-source-sdk-01"
     },
     {
+      "path": "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java",
+      "before_sha256": "1de6d44c4a87a6baf327ee9b1e627651c5b8ba01eaaf3094394fc14e8b87c7d4",
+      "after_sha256": "f9565822356bbfec1e5ca20f34dd0d7d24abe98fe87a2f80f9b69ae267f6feba",
+      "mode": "100644",
+      "authority": "maven-owner-test-admission-sdk-01",
+      "admission_preimage_sha256": "1de6d44c4a87a6baf327ee9b1e627651c5b8ba01eaaf3094394fc14e8b87c7d4",
+      "owner_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+      "owner_git_blob": "cea4dc60a45a4b1b109ce3aa14b48415e5915b4a"
+    },
+    {
       "path": "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/M3ToolReuseInputsContractTestMain.java",
       "before_sha256": "ABSENT",
-      "after_sha256": "bb45d3a5d1a1f99ba2e9a3e96f21c850a0a89c903905b08d596c9326fdacf36a",
+      "after_sha256": "b2f93f3b77342a8733c483b1e9d437a03dabbffea108ab740ee5b298820f9044",
       "mode": "100644",
-      "authority": "primary-sdk02"
+      "authority": "maven-owner-test-admission-sdk-01",
+      "admission_preimage_sha256": "bb45d3a5d1a1f99ba2e9a3e96f21c850a0a89c903905b08d596c9326fdacf36a",
+      "owner_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+      "owner_git_blob": "4ce0ce8f1d3bbdbaf1ed1dc039a3ef1adb758075"
     },
     {
       "path": "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java",
@@ -312,90 +424,373 @@
   ],
   "native_qualification": {
     "status": "PASS",
+    "authority_commit": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "qualified_upstream_context": "609f4506ca9b48ce36e2014526dc04be321355ca",
+    "scope": "C5 strict compilation/full focused module install/installed consumer ran on the original qualified609 integration. All83 production source/resource files, POM, verifier and exact2d94 engine remain identical after owner test/document admission; the two changed test mains are independently qualified below.",
     "maven": "3.9.11",
+    "install_plugin": "3.1.2",
     "java_runtime": 21,
     "java_release_target": 17,
-    "default_offline_maven_install": "PASS",
-    "install_plugin": "3.1.2",
-    "strict_verifier": "PASS",
-    "provider_admission_assertions": 77,
-    "provider_execution_checks": 53,
-    "index_store_checks": 30,
-    "installed_run_mojo": [
-      "CACHED",
-      "UP-TO-DATE",
-      "FROM-CACHE"
-    ],
-    "original_provider_binary": "PASS",
-    "input_symlink_output_symlink_and_javac_mtime_replays": "PASS",
-    "packaged_runtime_class_continuity": 129,
+    "actual_java17_runtime_executed": false,
+    "strict_compile": {
+      "status": "PASS",
+      "source_count": 106,
+      "flags": [
+        "--release",
+        "17",
+        "-encoding",
+        "UTF-8",
+        "-Xlint:all",
+        "-Werror"
+      ],
+      "duration_seconds": 7.312,
+      "tests_executed": false,
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/strict-compile/EVIDENCE.json",
+        "sha256": "b1275fdb4efc642fcfd24ca17c50bf7610036f74a24a2d8107d2001f3829a6e7"
+      }
+    },
+    "default_offline_maven_install": {
+      "status": "PASS",
+      "invocations": 1,
+      "offline": true,
+      "maven": "3.9.11",
+      "install_plugin": "3.1.2",
+      "exit_code": 0,
+      "duration_seconds": 140.246,
+      "pass_result_groups": 34,
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/maven-install/EVIDENCE.json",
+        "sha256": "f4058e85173047f222fc11b2b8254516c9f7e70b4922cdd34a6c1cbf55f64ce3"
+      },
+      "log": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/maven-install/run.log",
+        "sha256": "1f62865981d8e43e570403fe063c8e63930c2c75670784ddaba58e5fdad28968"
+      }
+    },
+    "counts": {
+      "provider_contract_assertions": 77,
+      "provider_execution_checks": 53,
+      "index_store_checks": 30,
+      "portable_optional_backend_contracts": 23,
+      "real_optional_backend_engines": 0,
+      "hsqldb_offline_admission_and_safety_checks": 12,
+      "derby_offline_spi_and_path_checks": 10,
+      "module_state_facade_compatibility_assertions": 94,
+      "backend_integration_contract_checks": 104
+    },
+    "installed_run_mojo": {
+      "status": "PASS",
+      "runs": 3,
+      "observed": [
+        "CACHED compile",
+        "UP-TO-DATE compile",
+        "FROM-CACHE compile"
+      ],
+      "property": "m3.polyglot.providerReuse",
+      "default_value": "false",
+      "installed_artifact_equals_qualified_jar": true,
+      "same_output_bytes_for_all_runs": true,
+      "warm_run_preserves_output_mtime": true,
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/packaged-consumer/EVIDENCE.json",
+        "sha256": "8747c35a9eb0905b285b9158156e4508af878992382ef7f512cc524bdd4a0f14"
+      }
+    },
+    "packaged_runtime_classes": 131,
+    "packaged_classes_equal_executed_classes": true,
+    "runtime_class_identities": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-maven/files/RUNTIME_CLASS_IDENTITIES.json",
+      "sha256": "e2bc9175c61e14f59bed2af8a38fb76c60fa20ebd3923f50e50756494b30e970"
+    },
+    "old_provider_binary": {
+      "status": "RETAINED_BY_EXACT_CLASS_IDENTITY",
+      "fresh_binary_execution": false,
+      "historical_evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/qualification/native/maven-final/files/old-binary/EVIDENCE.json",
+        "sha256": "582663ee6da14999952b1a81f2f6fa11a2ac5e0092455897e2b94f623e9fc437"
+      },
+      "historical_evidence_sha256": "582663ee6da14999952b1a81f2f6fa11a2ac5e0092455897e2b94f623e9fc437",
+      "recorded_historical_new_class_hashes_equal_current": true,
+      "explanation": "The original successful old-provider linkage proof is retained only for the identical SPI/capability/manifest/reuse class bytes; current runtime acceptance is the fresh focused module install above."
+    },
+    "correction_regressions": {
+      "status": "PASS_IN_CURRENT_53_CHECK_GATE",
+      "current_test_source_sha256": "0ac2482497aab1d0e6177ff722affb409800ffc6c84876a845aa37bdc70af65f",
+      "methods": [
+        "unavailableInputProofStillExecutes",
+        "damagedOutputTreeRebuilds",
+        "sourcePreferenceIgnoresTimestampChanges"
+      ],
+      "external_historical_scripts_rerun": false,
+      "historical_scripts_scope": "The frozen C1 external before/after symlink and mtime oracles remain historical; equivalent permanent regressions executed in the current single install."
+    },
     "not_run": [
       "NOT_RUN ext-rocksdb-v1 (optional donor runtime unavailable)",
       "NOT_RUN ext-mapdb-v1 (optional donor runtime unavailable)",
       "NOT_RUN ext-lmdb-v1 (optional donor runtime unavailable)",
       "NOT_RUN ext-leveldb-v1 (optional donor runtime unavailable)",
+      "NOT_RUN ext-derby-v1 (optional donor runtime unavailable)",
+      "NOT_RUN: real HSQLDB JDBC I/O (driver not installed)",
+      "NOT_RUN: real Derby 10.16.1.1 engine not installed",
       "NOT_RUN: LLVM native integration (set M3_POLYGLOT_LLVM_TEST_HOME or install clang and clang++)",
       "PASS: 3 ECJ provider contract cases; live ECJ compile NOT_RUN (set -Dm3.polyglot.ecj.jar=<ecj.jar>)",
       "PASS: 5 LLVM provider contract assertions; native NOT_RUN (set -Dm3.polyglot.llvm.test.home=<LLVM installation>)",
-      "Positive H2/SQLite driver integration (M3_JDBC_DRIVER_CLASSPATH not supplied)",
-      "Full Maven reactor",
-      "Actual Java 17 runtime",
+      "Positive H2/SQLite JDBC profile lanes were not enabled.",
+      "The full Maven repository reactor was not run; the complete focused polyglot plugin module install was run.",
+      "Java 17 compatibility was compiled and bytecode-checked on JDK 21; no Java 17 runtime was executed.",
+      "No performance benchmark or cross-workspace provider cache portability is claimed.",
       "Windows",
       "macOS",
-      "Hosted CI",
-      "Performance measurements"
+      "Hosted CI"
     ],
-    "authority_commit": "8d0f142abfc70f7ac55dd7c56e8f4877594bdb81",
-    "qualified_upstream_context": "0249d0fd050ac89c89f7a0f8af1328cb944f076c",
-    "scope": "Retained full C1 native acceptance for byte-identical runtime sources and executable JAR; not a repeated full install on the newer integration.",
-    "continuity": {
-      "production_source_resource_files": 82,
-      "packaged_runtime_classes": 129,
-      "engine_jar_unchanged": true
+    "source_changes_during_native_gates": [],
+    "evidence_mode": "RETAINED_C5_ACCEPTANCE_BY_EXACT_RUNTIME_AND_BUILD_IDENTITY",
+    "executed_before_owner_test_admission": true,
+    "rerun_after_owner_test_admission": false,
+    "counts_scope": "The retained C5 execution, including its original provider counter77; not the later owner counter98.",
+    "runtime_identity_continuity": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-continuity/files/SDK_NATIVE_CONTINUITY.json",
+      "sha256": "74c4ce86131432c6b8f86307b0d64f5bfe37a261f8ca47fe1c46066bee8156a4"
     }
   },
-  "engine_jar_sha256": "f14b6e11b0b70e4d0b539aa6d37d66702c78281711ec9f51b143085343a15cfb",
+  "engine_jar_sha256": "2d94a466d71dc5fbf8323b24494d92f2ce8b64ba62d9db24c7a9be1ccc8e2cfe",
   "performance": "NOT_MEASURED",
   "passive_receipt": {
     "path": "tools/m3-polyglot-maven-plugin/docs/M3-PROVIDER-REUSE-PROVENANCE.json",
-    "packet": "m3-polyglot-maven-publication-metadata-20261118",
+    "packet": "m3-polyglot-maven-owner-test-metadata-20261118",
     "self_hash_included": false,
-    "authority": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/metadata/qualification/sdk-01/crate/target/maven/candidate/SDK_RESULTS.tsv",
+    "preimage_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+    "preimage_sha256": "dd8ef5d863ff43dd87df5a27d556fc4ddec7aae4deeeaf92f08d0d9a048b16ed",
+    "authority": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/metadata/qualification/sdk-01/crate/target/maven/candidate/SDK_RESULTS.tsv",
     "authority_revision": "Canonical metadata followup to task_revision; exact commit is recorded in the delivery PR.",
     "executable_recipe_included": false
   },
-  "current_targeted_native_qualification": {
-    "kind": "MAVEN_PUBLICATION_FORWARD_TARGETED_NATIVE_SUMMARY",
-    "status": "PASS",
-    "upstream_revision": "7ab679616db6d2ab5fa52c7bd4fae9228327bbcb",
-    "evidence": {
-      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-maven/files/EVIDENCE.json",
-      "sha256": "1fcfa849e0af0904ad7fa0b129a02f0ae70f954b5e368c67fdae5d0ec564e25f"
+  "historical_native_qualifications": [
+    {
+      "label": "C1 full Maven qualification",
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/qualification/native/maven-final-summary/MAVEN_VERIFICATION_SUMMARY.json",
+        "sha256": "682ed529e5723b8f6be51c7aad1be9f45a663b87657e0aad73cba75e17459e04"
+      },
+      "qualification": {
+        "status": "PASS",
+        "maven": "3.9.11",
+        "java_runtime": 21,
+        "java_release_target": 17,
+        "default_offline_maven_install": "PASS",
+        "install_plugin": "3.1.2",
+        "strict_verifier": "PASS",
+        "provider_admission_assertions": 77,
+        "provider_execution_checks": 53,
+        "index_store_checks": 30,
+        "installed_run_mojo": [
+          "CACHED",
+          "UP-TO-DATE",
+          "FROM-CACHE"
+        ],
+        "original_provider_binary": "PASS",
+        "input_symlink_output_symlink_and_javac_mtime_replays": "PASS",
+        "packaged_runtime_class_continuity": 129,
+        "not_run": [
+          "NOT_RUN ext-rocksdb-v1 (optional donor runtime unavailable)",
+          "NOT_RUN ext-mapdb-v1 (optional donor runtime unavailable)",
+          "NOT_RUN ext-lmdb-v1 (optional donor runtime unavailable)",
+          "NOT_RUN ext-leveldb-v1 (optional donor runtime unavailable)",
+          "NOT_RUN: LLVM native integration (set M3_POLYGLOT_LLVM_TEST_HOME or install clang and clang++)",
+          "PASS: 3 ECJ provider contract cases; live ECJ compile NOT_RUN (set -Dm3.polyglot.ecj.jar=<ecj.jar>)",
+          "PASS: 5 LLVM provider contract assertions; native NOT_RUN (set -Dm3.polyglot.llvm.test.home=<LLVM installation>)",
+          "Positive H2/SQLite driver integration (M3_JDBC_DRIVER_CLASSPATH not supplied)",
+          "Full Maven reactor",
+          "Actual Java 17 runtime",
+          "Windows",
+          "macOS",
+          "Hosted CI",
+          "Performance measurements"
+        ],
+        "authority_commit": "8d0f142abfc70f7ac55dd7c56e8f4877594bdb81",
+        "qualified_upstream_context": "0249d0fd050ac89c89f7a0f8af1328cb944f076c",
+        "scope": "Retained full C1 native acceptance for byte-identical runtime sources and executable JAR; not a repeated full install on the newer integration.",
+        "continuity": {
+          "production_source_resource_files": 82,
+          "packaged_runtime_classes": 129,
+          "engine_jar_unchanged": true
+        }
+      },
+      "scope": "Historical original 0249 integration and f14 artifact only; not current 609 acceptance."
     },
-    "evidence_sha256": "1fcfa849e0af0904ad7fa0b129a02f0ae70f954b5e368c67fdae5d0ec564e25f",
-    "strict_release": 17,
-    "runtime_java": 21,
-    "compiled_source_files": 5,
-    "index_store_checks": 30,
+    {
+      "label": "C3 focused Maven qualification",
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-maven/files/SUMMARY.json",
+        "sha256": "7ad3fdf612b4230c6f73e1935c6a028c5f615d2590c95513e8f152a252790192"
+      },
+      "qualification": {
+        "kind": "MAVEN_PUBLICATION_FORWARD_TARGETED_NATIVE_SUMMARY",
+        "status": "PASS",
+        "upstream_revision": "7ab679616db6d2ab5fa52c7bd4fae9228327bbcb",
+        "evidence": {
+          "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-maven/files/EVIDENCE.json",
+          "sha256": "1fcfa849e0af0904ad7fa0b129a02f0ae70f954b5e368c67fdae5d0ec564e25f"
+        },
+        "evidence_sha256": "1fcfa849e0af0904ad7fa0b129a02f0ae70f954b5e368c67fdae5d0ec564e25f",
+        "strict_release": 17,
+        "runtime_java": 21,
+        "compiled_source_files": 5,
+        "index_store_checks": 30,
+        "llvm_offline_assertions": 11,
+        "new_upstream_objcpp_assertions": 5,
+        "optional_not_run": [
+          "NOT_RUN: LLVM native integration (set M3_POLYGLOT_LLVM_TEST_HOME or install clang and clang++)"
+        ],
+        "production_sources_and_resources_unchanged": 82,
+        "packaged_runtime_classes_unchanged": 129,
+        "engine_jar_sha256": "f14b6e11b0b70e4d0b539aa6d37d66702c78281711ec9f51b143085343a15cfb",
+        "source_changes": [],
+        "original_receiver_unchanged": true,
+        "not_rerun": [
+          "Full Maven install",
+          "Provider admission 77 assertions",
+          "Provider execution 53 checks",
+          "Gradle real-engine fixture"
+        ],
+        "duration_seconds": 12.63,
+        "authority_commit": "ed3e02ecec7ad8251a1ff8ed8e8e2a06316990ba",
+        "scope": "Actual emitted current7ab composition: five strict test/fixture compilations, IndexStore30 and LLVM11 offline checks.",
+        "not_rerun_scope": "This Maven-only focused gate; independent owner-merged Gradle26 acceptance is separately archived in the canonical source packet."
+      },
+      "scope": "Historical 7ab integration and f14 artifact only; not current 609 acceptance."
+    },
+    {
+      "label": "C3 owner-merged Gradle with historical engine",
+      "evidence": {
+        "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-publication-forward-20261118/qualification/native-gradle-owner-merge/files/GRADLE_MERGED_VERIFICATION_SUMMARY.json",
+        "sha256": "a539ffb0f9ffa6ede7d9568360f77165410be790fee2928a51c60a6ca4f604f5"
+      },
+      "engine_jar_sha256": "f14b6e11b0b70e4d0b539aa6d37d66702c78281711ec9f51b143085343a15cfb",
+      "scope": "Earlier fixed7eb Gradle run with f14 engine; repeated current-engine acceptance is separate below."
+    }
+  ],
+  "gradle_qualification": {
+    "status": "PASS",
+    "authority_commit": "8be5e9856d5a8b846903bfaa4c886f66f3c6a75f",
+    "source_commit": "7eb8d513fa522663699e2f29fad2385b73f34939",
+    "source_module_tree": "cfb4a00f1f107322982255a3e73316ea61cc32bf",
+    "source_files_verified": 112,
+    "engine_jar_sha256": "2d94a466d71dc5fbf8323b24494d92f2ce8b64ba62d9db24c7a9be1ccc8e2cfe",
+    "targeted_tests": 26,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed_seconds": 70.97,
+    "source_and_engine_unchanged": true,
+    "summary": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-gradle-current-engine/files/GRADLE_CURRENT609_ENGINE_VERIFICATION_SUMMARY.json",
+      "sha256": "94a2986a5de18aa1a9e866a7f85671bf93f794a0199626ba36775b677a2f9d0f"
+    },
+    "result": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-db-publication-forward-20261118/qualification/native-gradle-current-engine/files/result.json",
+      "sha256": "33235856cb28196b8cf4755d05e37066d79bfba7d5c6b6179d197a3e68143a02"
+    },
+    "not_run": [
+      "Full Gradle core build",
+      "Entire quality-bridge test suite",
+      "New upstream LLVM/projectDB integration test execution",
+      "Replayed original task binary and argv gates (their owner files are unchanged)",
+      "Hosted CI"
+    ],
+    "rerun_after_owner_test_admission": false,
+    "scope": "Retained exact Gradle7eb/engine2d94 targeted26 acceptance. Neither Gradle source nor the production JAR changed in owner test/document admission."
+  },
+  "owner_test_qualification": {
+    "status": "PASS_BOUNDED_NATIVE_GATES_AND_ACTUAL_RECEIVED_SOURCE_IDENTITY",
+    "authority_commit": "911ff95dcd4e25bbd4b7bbf26d38618f9628ba52",
+    "owner_revision": "6230ae140634f971dee18b949d27518e70f3e775",
+    "summary": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-continuity/files/FINAL_OWNER_NATIVE_SUMMARY.json",
+      "sha256": "0b6ef607c83dd0387a2e81be7324eb11cb1e73b09d58c29da76dd7a139e3c650"
+    },
+    "original_execution_summary": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-owner-before-admission/files/OWNER_TEST_NATIVE_SUMMARY.json",
+      "sha256": "3c8737f10e89672429d78576ee2ba1c314bcea92951da83f3fb6e340bebceeac"
+    },
+    "original_execution": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-owner-before-admission/files/EVIDENCE.json",
+      "sha256": "6da959c6b3736e32c639f60d494aae5584d201960a5cad13ebef27e027318c0e"
+    },
+    "received_source_continuity": {
+      "path": "synexia-openrewrite-recipes/recipe-crates/m3-polyglot-forks-20261117/followup-provider-reuse-20261118/maven-owner-test-admission-20261118/qualification/native-continuity/files/SDK_NATIVE_CONTINUITY.json",
+      "sha256": "74c4ce86131432c6b8f86307b0d64f5bfe37a261f8ca47fe1c46066bee8156a4"
+    },
+    "strict_compile_sources": 2,
+    "strict_compile_seconds": 4.263,
+    "java_runtime": 21,
+    "java_release_target": 17,
+    "native_main_executions_before_admission": 2,
+    "native_main_executions_after_admission": 0,
+    "provider_reported_counter": 98,
+    "previous_reported_counter": 77,
+    "new_explicit_condition_checks": 14,
+    "extra_completion_counter_increments": 7,
+    "counter_scope": "The reported98 includes seven completion increments; it is not described as98 distinct condition assertions.",
+    "language_ids": [
+      "c",
+      "cpp",
+      "objc",
+      "objcpp",
+      "objc++",
+      "fortran",
+      "llvm-ir"
+    ],
+    "provider_proof_scope": "Actual production provider classes from qualified2d94 JAR perform command planning and negative reuse admission with a deliberately noninstalled compiler path. No compiler process is executed; the earlier owner PR-comment harness alone was stub-based.",
     "llvm_offline_assertions": 11,
-    "new_upstream_objcpp_assertions": 5,
-    "optional_not_run": [
-      "NOT_RUN: LLVM native integration (set M3_POLYGLOT_LLVM_TEST_HOME or install clang and clang++)"
+    "llvm_native_execution": "NOT_RUN",
+    "new_native_helper_overload": "Strictly compiled against actual unchanged runtime; live native cache-exclusion execution was not run.",
+    "unchanged_runtime_production_sources_resources": 83,
+    "unchanged_runtime_classes": 131,
+    "engine_jar_sha256": "2d94a466d71dc5fbf8323b24494d92f2ce8b64ba62d9db24c7a9be1ccc8e2cfe",
+    "identical_nonreceipt_module_files": 153,
+    "passive_document_difference_at_execution": {
+      "kind": "INITIAL_WHOLE_MODULE_EQUALITY_DIAGNOSTIC",
+      "initial_check": "all154 source hashes equal the executed owner overlay",
+      "initial_result": "FAIL_ONE_NONEXECUTABLE_PASSIVE_RECEIPT_DIFFERENCE",
+      "path": "tools/m3-polyglot-maven-plugin/docs/M3-PROVIDER-REUSE-PROVENANCE.json",
+      "executed_overlay_sha256": "bfc1558414192e9f2a41acf94fbff76fbd951ce48f65c15ed1345f57f1134432",
+      "actual_sdk_receiver_sha256": "dd8ef5d863ff43dd87df5a27d556fc4ddec7aae4deeeaf92f08d0d9a048b16ed",
+      "scope": "Only the passive provenance document differs. It is outside compiled sources, runtime resources and both executed test inputs. All153 other module source files are identical. Final receipt refresh is a separate metadata recipe.",
+      "product_correction": false,
+      "native_tests_rerun": false
+    },
+    "execution_order": "Exact immutable owner Git postimages were strictly compiled and both main classes executed first; the unchanged owner bytes were subsequently emitted by the original five-test SDK and its receiver. This read-only equality proof binds that existing native execution to the actual SDK output without rerunning tests.",
+    "not_run": [
+      "Live native LLVM integration",
+      "Actual Java17 runtime",
+      "Source-built LLVM fork revision qualification",
+      "Hosted CI",
+      "Windows/macOS",
+      "Full Maven reactor"
     ],
-    "production_sources_and_resources_unchanged": 82,
-    "packaged_runtime_classes_unchanged": 129,
-    "engine_jar_sha256": "f14b6e11b0b70e4d0b539aa6d37d66702c78281711ec9f51b143085343a15cfb",
-    "source_changes": [],
-    "original_receiver_unchanged": true,
     "not_rerun": [
-      "Full Maven install",
-      "Provider admission 77 assertions",
-      "Provider execution 53 checks",
-      "Gradle real-engine fixture"
+      "Full focused Maven install",
+      "Installed Maven consumer",
+      "Gradle acceptance",
+      "Provider execution53 main",
+      "Historical original-binary and external correction scripts"
+    ]
+  },
+  "current_integration_acceptance": {
+    "status": "PASS",
+    "canonical_source_authority": "911ff95dcd4e25bbd4b7bbf26d38618f9628ba52",
+    "source_output_count": 21,
+    "source_recipe_stages": 6,
+    "owner_admission_sdk_tests": 5,
+    "owner_receive_check_apply_fixedpoint": [
+      3,
+      3,
+      0
     ],
-    "duration_seconds": 12.63,
-    "authority_commit": "ed3e02ecec7ad8251a1ff8ed8e8e2a06316990ba",
-    "scope": "Actual emitted current7ab composition: five strict test/fixture compilations, IndexStore30 and LLVM11 offline checks.",
-    "not_rerun_scope": "This Maven-only focused gate; independent owner-merged Gradle26 acceptance is separately archived in the canonical source packet."
+    "retained_runtime_acceptance": "EXACT_UNCHANGED_PRODUCTION_BUILD_RESOURCE_AND_JAR_IDENTITY",
+    "added_test_obligations": "TWO_CHANGED_MAINS_PASSED_BEFORE_RECEIVE_AND_BOUND_BY_EXACT_SOURCE_CLASSPATH_IDENTITY",
+    "new_production_changes_from_owner_admission": 0
   }
 }

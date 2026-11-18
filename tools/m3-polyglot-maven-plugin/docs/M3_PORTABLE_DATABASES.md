@@ -34,6 +34,7 @@ cannot mark work cacheable, invent source identity, infer dependencies or bypass
 | LMDB | Module-scoped single-writer coordination and consistent reads | Whole-run file lock; no LMDB source/native code copied |
 | RocksDB / LevelDB | Crash recovery, WAL and explicit compaction policy | Backend SPI for separately qualified providers; no vendor JAR |
 | MapDB | Pluggable Java serializer/storage abstraction | Explicit backend SPI, canonical sealed-image payload |
+| Apache Derby 10.16 | Embedded pure-Java ACID SQL and redo recovery | `ext-derby-v1` module-local database and bounded `BLOB(32M)` under existing sealed image owner; Java17 pinned test-only driver |
 | DuckDB | Vectorized analytical indexing | Reserved for offline analysis, not hot build-state lookup |
 | Maven Build Cache Extension | Lifecycle-oriented module cache and output restore | Separate existing extension; the bounded M3 strategy has its own opt-in goal admission and does not claim its full functionality |
 
@@ -50,7 +51,7 @@ One module root owns one store:
 - `m3db`: `.m3/maven-build-db/`
 - `sqlite`: `.m3/module-state.sqlite`
 - `h2`: `.m3/module-state.mv.db` (and engine-managed transient files)
-- `ext-*`: explicitly qualified module-local backend
+- `ext-*`: explicitly qualified module-local backend (RocksDB, LMDB, MapDB, LevelDB and Derby implementations are opt-in; runtime proof is separate from source compilation)
 
 A separate `.m3/module-state.run.lock` is held across lookup, fingerprinting, tool
 execution and committed publication. A second cooperating process for the same module
@@ -78,6 +79,12 @@ ctime/file-key memoization is conditional, not universal proof of content immuta
 
 Driver and provider ids are fixed or validated; unknown/missing drivers fail explicitly.
 No arbitrary JDBC URL, credentials, remote host, model-selected path or root/home writes.
+Derby's embedded system has a separate process-wide diagnostic log (default `derby.log`),
+which is **not** module-local unless redirected by the operator before Derby boots.
+Prefer `-Dderby.stream.error.field=java.lang.System.err` for a non-file log.
+This configuration is JVM-global; the M3 provider must not mutate it on behalf
+of one module. Derby 10.16.1.1 is pinned for the Java 17 baseline, whereas
+10.17 requires Java 21.
 Use strict module-local paths, no symlinks for state/locks, bounded images and atomic
 transactions. The SQLite adapter requests DELETE journal and synchronous EXTRA; H2 requests WRITE_DELAY=0. H2 and
 SQLite must be independently qualified with their real runtime drivers; JDK-only unit

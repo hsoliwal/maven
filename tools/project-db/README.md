@@ -176,7 +176,11 @@ to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
 
 ~~~sh
 ./gradlew --no-daemon --stacktrace --console=plain \
-    -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+    -p m3/quality-bridge test \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+    --rerun-tasks
 ~~~
 
 ### Executed JUnit receipt admission
@@ -198,7 +202,8 @@ and runs `M3GradleTestKitReceiptMain.java` on the **consumer JDK** using
 original JUnit XML with Java's built-in DOM API. DTDs and external XML
 entities are disabled. The parser validates the **six named required
 testcases**, three exact suites, zero skips/errors/failures and no extra
-project-DB suites after `test --tests '*M3ProjectDb*'`. It refuses
+project-DB suites after running those **three explicitly selected**
+test classes. It refuses
 missing, symlinked or oversized suite XML files, duplicated testcase IDs,
 and a swapped classname or noncanonical testcase count.
 
@@ -214,6 +219,14 @@ deliberately altered reports were refused: missing or extra suite,
 nonzero skip/failure count, changed or duplicated testcase name,
 an invalid test count, forged XML comments and a DTD. It is **not** a full Gradle distribution, native toolchain,
 M3JDK21 platform or Windows/macOS qualification.
+
+The wildcard `*M3ProjectDb*` is intentionally **not** used here.
+Gradle subsequently added `M3ProjectDbPrunedSymlinkRealEngineTest` for
+Maven #208's separate pruning/symlink qualification. This original
+six-case gate remains pinned to the three reviewed suites and will not
+accidentally include a fourth suite when updating the Gradle checkout.
+The symlink test must be explicitly qualified in its own lane; this
+does not remove, skip, or substitute its acceptance authority.
 
 This runs Gradle's original TestKit cases for an actual source-pinned
 Maven engine, including ingestion of a **Gradle-only** JUnit failure
@@ -235,6 +248,50 @@ Gradle bridge source revision requires an explicit pin-update and
 fresh JDK 17/21 acceptance. Maven's own project-DB tests, Gradle's
 normal build cache, and Gradle TestKit are separate authorities; no
 cross-fork test automatically grants build-skip or release permission.
+
+## Separate source-pinned Gradle #208 symlink/parity lane
+
+Maven #208 preserves legacy module discovery for a symlinked *regular*
+Gradle descriptor while pruning `build`, `target`, `.git`,
+`node_modules` and other excluded subtrees **before** traversal.
+The Gradle fork introduced its original integration case
+`M3ProjectDbPrunedSymlinkRealEngineTest` in merged Gradle #52,
+at immutable merge commit
+`7c3d37575002b9c54ff8fa9c8648373aaffa1690`.
+
+The Maven cross-fork CI now qualifies this **one additional case
+separately** after the original six-case report verifier finishes.
+It checks out the reviewed Gradle #52 revision into a second sparse
+workspace, but **reuses exactly the same Maven JDK lane's
+SHA-256/source/JDK-verified** `project-db.jar` and `polyglot.jar`.
+No Maven compilation is repeated and no Gradle source is copied into
+Maven.
+
+The exact class is selected using:
+
+~~~sh
+./gradlew --no-daemon --stacktrace --console=plain \
+  -p m3/quality-bridge test \
+  --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
+  --rerun-tasks
+~~~
+
+It must run with `M3_PRUNED_PROJECT_DB_JAR` and
+`M3_PRUNED_POLYGLOT_JAR` pointing to those original JAR bytes.
+An absent JAR would otherwise cause JUnit to **skip** the test.
+The same source-owned Java 17 JUnit XML verifier accepts the
+strict `pruned-symlink` mode, expecting exactly this one
+unskipped, successful case in its own isolated report directory.
+Malformed XML, missing reports, an unexpected suite, a duplicate
+testcase, skipped test, wrong class name or failure cause refusal.
+
+This lane is not allowed to weaken the earlier six-case gate:
+the original Gradle source pin remains
+`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`.
+The symlink suite is pinned independently and its test results have
+their own Actions artifact. Its hosted execution is **pending** until
+the JDK 17/21 consumer job actually finishes; a local synthetic
+one-case XML proof does not establish Maven/Gradle integration.
 
 ## Attribution
 

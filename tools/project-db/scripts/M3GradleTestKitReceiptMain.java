@@ -31,23 +31,32 @@ public final class M3GradleTestKitReceiptMain {
                     "queryRequiresPriorIngestWithoutCreatingAnEmptyDatabase()",
                     "refusesOutOfProjectStoreAndEmptyQuery()"));
 
+    private static final Map<String, List<String>> PRUNED_SYMLINK = Map.of(
+            "M3ProjectDbPrunedSymlinkRealEngineTest",
+            List.of("sourcePinnedMavenRecognizesLinkedGradleModuleAndIgnoresVendorOutputs()"));
+
     private M3GradleTestKitReceiptMain() {}
 
     public static void main(String[] arguments) throws Exception {
-        if (arguments.length != 1) throw new IllegalArgumentException("one JUnit test-results directory required");
+        boolean symlink = arguments.length == 2 && "pruned-symlink".equals(arguments[1]);
+        if (arguments.length != 1 && !symlink) {
+            throw new IllegalArgumentException("JUnit directory and optional pruned-symlink mode required");
+        }
+        Map<String, List<String>> suites = symlink ? PRUNED_SYMLINK : REQUIRED;
         Path directory = Path.of(arguments[0]).toAbsolutePath().normalize();
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("missing original Gradle TestKit results: " + directory);
         }
-        for (Map.Entry<String, List<String>> suite : REQUIRED.entrySet()) {
+        for (Map.Entry<String, List<String>> suite : suites.entrySet()) {
             verify(directory.resolve(FILE_PREFIX + suite.getKey() + ".xml"), suite.getKey(), suite.getValue());
         }
         try (Stream<Path> files = Files.list(directory)) {
             long count = files.filter(path -> path.getFileName().toString().startsWith(FILE_PREFIX + "M3ProjectDb"))
                     .filter(path -> path.getFileName().toString().endsWith(".xml")).count();
-            if (count != REQUIRED.size()) throw new IOException("unexpected Gradle project-DB suite count " + count);
+            if (count != suites.size()) throw new IOException("unexpected Gradle project-DB suite count " + count);
         }
-        System.out.println("PASS: six original Gradle project-DB TestKit cases, zero skips/failures/errors");
+        System.out.println(symlink ? "PASS: source-pinned Gradle symlink/pruning TestKit case, no skips"
+                : "PASS: six original Gradle project-DB TestKit cases, zero skips/failures/errors");
     }
 
     private static void verify(Path path, String name, List<String> expected) throws Exception {

@@ -42,6 +42,7 @@ public final class ModuleStateDb implements AutoCloseable {
     public static final String NATIVE_DIRECTORY = M3DbModuleStore.NATIVE_DIRECTORY;
     public static final String SQLITE_FILE = M3ModuleJdbcStorage.SQLITE_FILE;
     public static final String H2_FILE = M3ModuleJdbcStorage.H2_FILE;
+    public static final String HSQLDB_FILE = M3ModuleJdbcStorage.HSQLDB_FILE;
     public static final String LOCK = M3DbModuleStore.LOCK;
     public static final String MARKER = M3DbModuleStore.MARKER;
     private static final int MAX_ENTRIES = 250_000;
