@@ -144,6 +144,17 @@ public final class ModuleStateDb implements AutoCloseable {
         record(key, input, output);
     }
 
+    /** Stage one verified task success, without exposing it to a later process. */
+    public synchronized void stage(String key, String input, String output) throws IOException {
+        if (fileCount != 0) store.auxiliary(encodeFiles());
+        store.stage(key, input, output);
+    }
+
+    /** Commit the successful module DAG once, or discard it by closing without commit. */
+    public synchronized void commitStaged() throws IOException {
+        store.commitStaged();
+    }
+
     public synchronized int digestedFiles() { return digestedFiles; }
 
     @Override public synchronized void close() throws IOException { store.close(); }
