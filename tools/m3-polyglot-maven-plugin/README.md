@@ -822,3 +822,31 @@ H2 and SQLite gate described in the [portable database contract](docs/M3_PORTABL
 and runs those default suites in separate JVMs with their complete test classpath.
 Real CodeQL extraction, real OpenRewrite application, full Maven reactor execution and m2e/PDE
 behavior have separate runtime acceptance gates.
+
+## LLVM compiler provider
+
+`@m3:llvm:compiler:<language>` runs the original installed LLVM compiler driver:
+`clang` for `c`, `objc` and `llvm-ir`; `clang++` for `cpp` and `objc++`; and `flang`
+for `fortran`. The language identifier selects the driver. Compiler flags and
+argument boundaries remain the build's responsibility. No LLVM binary is bundled
+or downloaded, and no LLVM implementation is copied into the Maven plugin.
+
+Select an installation with `-Dm3.polyglot.llvm.home=/work/llvm-install`,
+`LLVM_HOME`, or a per-task `--m3-llvm-home=<installation>` argument. A per-task
+selection takes precedence over the system property, which takes precedence over
+the environment. Otherwise the existing task-directory/PATH lookup applies.
+An optional task argument `--m3-llvm-sha256=<64 hex characters>` pins the selected
+executable's bytes. These metadata arguments are stripped before the compiler
+is invoked; the first `--` and all later arguments pass through unchanged.
+
+LLVM provider tasks always execute under the existing `@m3` provider rule, even
+with incremental reuse or output caching enabled. The executable digest does
+not identify the whole SDK, linker or runtime installation. Dependency files
+produced through explicit `-MD -MF` flags are preserved as declared outputs; this
+provider does not consume them to skip compilation. The existing M3 module
+database and cache eligibility rules retain their ownership.
+
+See [LLVM toolchain setup and manifest examples](docs/LLVM_TOOLCHAIN.md) for
+installation precedence, digest limitations, failure handling, the pinned
+`hsoliwal/llvm-project` source reference, CMake/Ninja build instructions and the
+existing `code-clustering-clang` handoff through `compile_commands.json`.

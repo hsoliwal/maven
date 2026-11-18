@@ -59,6 +59,9 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestOutput.java \
@@ -125,3 +128,6 @@ java ${M3_POLYGLOT_ECJ_JAR:+-Dm3.polyglot.ecj.jar="$M3_POLYGLOT_ECJ_JAR"} \
   -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.DotnetReportsContractTestMain
+# LLVM command planning always runs; native cases explicitly report NOT_RUN if no toolchain is available.
+java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain

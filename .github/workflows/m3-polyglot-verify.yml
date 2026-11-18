@@ -25,3 +25,11 @@ jobs:
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
       - name: Maven plugin descriptor, compile and contract verification
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml verify
+      - name: Required LLVM C and C++ native execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v clang
+          command -v clang++
+          java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes \
+            io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required
