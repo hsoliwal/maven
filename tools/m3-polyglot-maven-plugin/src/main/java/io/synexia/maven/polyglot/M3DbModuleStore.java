@@ -251,6 +251,20 @@ final class M3DbModuleStore implements AutoCloseable {
         return at < 0 ? null : new String[] {hexAt(inputs, at), hexAt(outputs, at)};
     }
 
+    /** Hot-path admission: compare 32-byte input SHA without hex String allocation. */
+    synchronized boolean matchesInput(String task, String input) {
+        ensureOpen();
+        int at = Arrays.binarySearch(names, 0, size, taskName(task));
+        return at >= 0 && matchesHex(inputs, at, input);
+    }
+
+    /** Full content-evidence check against the compact input/output SHA lanes. */
+    synchronized boolean matches(String task, String input, String output) {
+        ensureOpen();
+        int at = Arrays.binarySearch(names, 0, size, taskName(task));
+        return at >= 0 && matchesHex(inputs, at, input) && matchesHex(outputs, at, output);
+    }
+
     synchronized void invalidate(String task) throws IOException {
         invalidate(List.of(taskName(task)));
     }
@@ -753,12 +767,33 @@ final class M3DbModuleStore implements AutoCloseable {
         return HexFormat.of().formatHex(column, start, start + SHA256_BYTES);
     }
 
+    private static boolean matchesHex(byte[] column, int slot, String hex) {
+        if (hex == null || hex.length() != SHA256_BYTES * 2) return false;
+        int offset = slot * SHA256_BYTES;
+        for (int i = 0; i < SHA256_BYTES; i++) {
+            int pair = i << 1;
+            int hi = nibble(hex.charAt(pair));
+            int lo = nibble(hex.charAt(pair + 1));
+            if (hi < 0 || lo < 0 || column[offset + i] != (byte) (hi << 4 | lo)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** ASCII-only lowercase SHA-256 hex, matching the previous String.equals contract. */
+    private static int nibble(char value) {
+        if (value >= '0' && value <= '9') return value - '0';
+        if (value >= 'a' && value <= 'f') return 10 + value - 'a';
+        return -1;
+    }
+
     private static void putHex(byte[] column, int slot, String hex) {
         int offset = slot * SHA256_BYTES;
         for (int i = 0; i < SHA256_BYTES; i++) {
             int pair = i << 1;
-            int high = Character.digit(hex.charAt(pair), 16);
-            int low = Character.digit(hex.charAt(pair + 1), 16);
+            int high = nibble(hex.charAt(pair));
+            int low = nibble(hex.charAt(pair + 1));
             if (high < 0 || low < 0) throw new IllegalArgumentException("invalid SHA-256");
             column[offset + i] = (byte) (high << 4 | low);
         }
