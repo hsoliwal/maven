@@ -29,6 +29,7 @@ public final class M3ToolReuseInputsContractTestMain {
             Path toolchain = fakeToolchain(root.resolve("toolchain"));
             immutableBoundedContract(root);
             defaultProviderStillRuns(root);
+            llvmDeclinesReuseEvenWhenRequested(root);
             qualifiesExplicitJdkInputs(root, toolchain);
             rejectsUnmodelledCompilerState(root, toolchain);
             rejectsUnmodelledPaths(root, toolchain);
@@ -86,6 +87,23 @@ public final class M3ToolReuseInputsContractTestMain {
         require(planned.reuseInputs().isEmpty(), "existing command path never requests reuse");
         require(planned.command().equals(M3ToolProviders.command(task(arguments()), root)), "original argv preserved");
         require(planned.command().contains("jdk.compiler/com.sun.tools.javac.Main"), "original compiler owner preserved");
+    }
+
+    /** LLVM's original driver commands never grant an implicit native cache hit. */
+    private static void llvmDeclinesReuseEvenWhenRequested(Path root) throws Exception {
+        for (String language : List.of("c", "cpp", "objc", "objcpp", "objc++", "fortran", "llvm-ir")) {
+            var task = new TaskManifest.Task("compile", "@m3:llvm:compiler:" + language, ".",
+                    List.of("--m3-llvm-bin=not-installed/bin", "-c", "source.c", "-o", "output.o"),
+                    List.of(), List.of("source.c"), List.of("output.o"));
+            var original = M3ToolProviders.plan(task, root, false);
+            var requested = M3ToolProviders.plan(task, root, true);
+            require(original.reuseInputs().isEmpty() && requested.reuseInputs().isEmpty(),
+                    "unqualified LLVM provider must not produce native reuse evidence: " + language);
+            require(original.command().equals(requested.command())
+                    && requested.command().equals(M3ToolProviders.command(task, root)),
+                    "provider reuse opt-in must preserve original LLVM argv: " + language);
+            passed++;
+        }
     }
 
     private static void qualifiesExplicitJdkInputs(Path root, Path home) throws Exception {
