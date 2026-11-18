@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -189,8 +190,8 @@ public final class EclipseProjectModel {
         Document cdt = xml(root, ".cproject", "cproject", false, digests);
         Document pydev = xml(root, ".pydevproject", "pydev_project", false, digests);
         for (String path : DESCRIPTORS.subList(4, DESCRIPTORS.size())) {
-            byte[] data = bytes(root.resolve(path), false);
-            if (data != null) digests.put(path, sha256(data));
+            HashStat data = hashFile(root.resolve(path), false);
+            if (data != null) digests.put(path, data.sha256());
         }
         discoverLanguageSettings(root, digests);
         discoverBuildDescriptors(root, digests);
@@ -295,12 +296,12 @@ public final class EclipseProjectModel {
             if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) continue;
             String relative = ".settings/" + file.getFileName();
             if (digests.containsKey(relative)) continue;
-            byte[] content = bytes(file, true);
-            total += content.length;
+            HashStat content = hashFile(file, true);
+            total += content.size();
             if (total > MAX_LANGUAGE_SETTINGS_BYTES) {
                 throw new IOException("Eclipse language settings byte budget exceeded");
             }
-            digests.put(relative, sha256(content));
+            digests.put(relative, content.sha256());
         }
     }
 
@@ -317,13 +318,13 @@ public final class EclipseProjectModel {
     private static void discoverBuildDescriptors(Path root, Map<String, String> digests) throws IOException {
         long total = 0;
         for (String relative : ROOT_BUILD_DESCRIPTORS) {
-            byte[] data = authoringBytes(root, relative);
+            HashStat data = authoringHash(root, relative);
             if (data == null) continue;
-            total += data.length;
+            total += data.size();
             if (total > MAX_ROOT_DESCRIPTOR_BYTES) {
                 throw new IOException("Eclipse build descriptor byte budget exceeded");
             }
-            digests.put(relative, sha256(data));
+            digests.put(relative, data.sha256());
         }
         List<Path> dynamic;
         try (Stream<Path> list = Files.list(root)) {
@@ -337,17 +338,17 @@ public final class EclipseProjectModel {
         }
         for (Path candidate : dynamic.stream().sorted().toList()) {
             String relative = candidate.getFileName().toString();
-            byte[] data = authoringBytes(root, relative);
+            HashStat data = authoringHash(root, relative);
             if (data == null) continue;
-            total += data.length;
+            total += data.size();
             if (total > MAX_ROOT_DESCRIPTOR_BYTES) {
                 throw new IOException("Eclipse target/product descriptor byte budget exceeded");
             }
-            digests.put(relative, sha256(data));
+            digests.put(relative, data.sha256());
         }
     }
 
-    private static byte[] authoringBytes(Path root, String relative) throws IOException {
+    private static HashStat authoringHash(Path root, String relative) throws IOException {
         Path file = root.resolve(relative).normalize();
         if (!file.startsWith(root)) {
             throw new IOException("Eclipse build metadata outside project");
@@ -358,7 +359,48 @@ public final class EclipseProjectModel {
                 throw new IOException("symlinked Eclipse build metadata directory: " + relative);
             }
         }
-        return bytes(file, false);
+        return hashFile(file, false);
+    }
+
+    private record HashStat(String sha256, long size) { }
+
+    /**
+     * Hash bounded authoring metadata in 64 KiB chunks instead of materializing
+     * a full 8 MiB byte array per file. The input is a genuine regular file
+     * opened without following symbolic links. A matching file length is not
+     * an atomic source snapshot or proof of compiler input completeness.
+     */
+    private static HashStat hashFile(Path file, boolean required) throws IOException {
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            if (!required) return null;
+            throw new IOException("missing Eclipse language descriptor: " + file);
+        }
+        long expectedSize = Files.size(file);
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                || expectedSize > MAX_DESCRIPTOR_BYTES) {
+            throw new IOException("Eclipse language descriptor must be a regular file under 8 MiB: " + file);
+        }
+        final MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+        long count = 0;
+        byte[] buffer = new byte[65_536];
+        try (InputStream input = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            for (int n = input.read(buffer); n >= 0; n = input.read(buffer)) {
+                count += n;
+                if (count > MAX_DESCRIPTOR_BYTES) {
+                    throw new IOException("Eclipse language descriptor grew beyond its byte budget");
+                }
+                digest.update(buffer, 0, n);
+            }
+        }
+        if (count != expectedSize || Files.size(file) != count) {
+            throw new IOException("Eclipse language descriptor length changed while hashing: " + file);
+        }
+        return new HashStat(HexFormat.of().formatHex(digest.digest()), count);
     }
 
     private static Document xml(Path root, String name, String expectedRoot, boolean required,
