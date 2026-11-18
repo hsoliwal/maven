@@ -187,12 +187,21 @@ and Objective-C++ (including `objcpp` and `objc++`). Each JSON
 record preserves the original compiler executable/flags and absolute
 working directory, never a reconstructed shell command. To avoid implying
 complete compiler output ownership, an eligible task must have a real
-`-c` compile mode, exactly one tracked source, an explicit `-o` matching
-a declared M3 output, and any `-MF`, `-MJ` or
-`-serialize-diagnostics` sidecars separately declared. `-MD`/
-`-MMD` without an explicit `-MF`, dangling compiler options,
-preprocess-only/syntax-only flags, and response-file arguments
-(including those passed via `-Xclang`) are refused.
+`-c` compile mode, exactly one tracked source, and `-o` matching
+a declared M3 output, plus any `-MF`, `-MJ` or
+`-serialize-diagnostics` sidecars separately declared.
+The original Clang **joined spellings** `-ofoo.o`, `-MFfoo.d` and
+`-MJfoo.json` are supported without rewriting argv; the emitted paths
+must still be declared. `-MD`/`-MMD` without an explicit `-MF`,
+dangling/duplicated compiler options and preprocess-only/syntax-only
+modes are refused. Known implicit-output modes including
+`-save-temps`, `-ftime-trace`, split DWARF,
+coverage/profiling/optimization-record output and module caches are
+not qualified for this bounded export, because they can create
+additional compiler-derived files outside the declared outputs.
+Opaque `-Xclang`, `-Xpreprocessor`, `-Xassembler`, `-Xlinker`
+forwarding and `@response` operands are also refused. This avoids
+presenting an incompletely accounted command as fully owned by M3.
 Link steps,
 Flang and LLVM IR are not misidentified as source compiles. Untracked
 or ambiguous source operands, missing sources, and response-file
@@ -204,6 +213,35 @@ that the installed tools came from the pinned LLVM source SHA,
 or that any native output is cacheable. Complete header, negative
 include, generated input, library/pass-plugin/sysroot, ABI and
 source-provenance evidence remain independent native build gates.
+
+### Portable CLI for Gradle and Eclipse
+
+The same Maven-owned exporter is also exposed through the original
+`PolyglotCli` bridge, **without launching a Maven goal**:
+
+```sh
+M3_LLVM_HOME=/path/to/llvm-install java \
+  -cp /path/to/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar \
+  io.synexia.maven.polyglot.PolyglotCli \
+  llvm-compile-db /work/module /work/module/m3-build.tsv all
+```
+
+The command returns the two-row, tab-delimited protocol:
+
+```text
+M3-LLVM-COMPILE-DB-V1
+file<TAB>/work/module/target/m3-llvm/compile_commands.json
+```
+
+Gradle and Eclipse invoke **this original Maven implementation**, not
+a copied JSON formatter or another task scheduler. Only the selected
+target closure is projected. The CLI refuses unrelated `plan`/`run`
+flags (`--incremental`, `--provider-reuse`, `--build-cache`) and
+validates workspace paths before output creation. Repeating the same
+export preserves output timestamps; the portable command performs no
+native compiler execution and does not open M3DB or alter M3DB
+receipts. The binary provider resolution and compilation database
+constraints remain exactly those of the Maven goal.
 
 ## Qualification gates
 

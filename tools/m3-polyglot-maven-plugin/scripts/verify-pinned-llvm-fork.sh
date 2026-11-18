@@ -52,13 +52,43 @@ grep -Eq 'set\(LLVM_VERSION_MAJOR 24\)' "$SOURCE/cmake/Modules/LLVMVersion.cmake
 # a non-fresh build appear source-qualified. Do not reuse occupied directories.
 # This runs only after the exact clean pinned source has passed validation and
 # before touching either output. Pre-created empty output directories are valid.
+# Check the nearest existing ancestor of *both* output roots first. A
+# permission-denied ancestor makes a non-existent child look absent to -e;
+# mkdir -p can then create the other receipt root before reporting failure.
 for owned in "$BUILD" "$EVIDENCE"; do
-  if [[ -e "$owned" ]] && {
-       [[ ! -d "$owned" ]] ||
-       [[ -n "$(find "$owned" -mindepth 1 -maxdepth 1 -print -quit)" ]];
-     }; then
-    printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
-    exit 65
+  candidate="$owned"
+  while :; do
+    if [[ -e "$candidate" || -L "$candidate" ]]; then
+      if [[ ! -d "$candidate" || ! -x "$candidate" || ! -w "$candidate" ]]; then
+        printf 'LLVM proof cannot inspect output directory: %s\n' "$owned" >&2
+        exit 65
+      fi
+      break
+    fi
+    if [[ "$candidate" == / ]]; then
+      printf 'LLVM proof cannot inspect output directory: %s\n' "$owned" >&2
+      exit 65
+    fi
+    candidate="$(dirname "$candidate")"
+  done
+done
+
+for owned in "$BUILD" "$EVIDENCE"; do
+  # A directory listing failure is not an empty directory. Keep the find exit
+  # status instead of discarding it inside a [[ -n $(...) ]] expression.
+  if [[ -e "$owned" || -L "$owned" ]]; then
+    if [[ ! -d "$owned" || -L "$owned" ]]; then
+      printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
+      exit 65
+    fi
+    if ! entries="$(find "$owned" -mindepth 1 -maxdepth 1 -print -quit 2>&1)"; then
+      printf 'LLVM proof cannot inspect output directory: %s\n' "$owned" >&2
+      exit 65
+    fi
+    if [[ -n "$entries" ]]; then
+      printf 'LLVM proof output must be absent or empty: %s\n' "$owned" >&2
+      exit 65
+    fi
   fi
 done
 # Publish no build/evidence directories until the source revision, clean state,

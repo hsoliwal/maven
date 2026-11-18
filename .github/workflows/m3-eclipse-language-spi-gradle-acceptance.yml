@@ -56,7 +56,7 @@ jobs:
         with:
           repository: hsoliwal/gradle
           # Exact reviewed generic language SPI draft head, never floating master.
-          ref: 3ee1fcf02dfe355fc7b3ccd0218bc2cce9114806
+          ref: 28d0e87f830b3fc1e13a93170d1dfd64168d9f6e
           path: consumer-gradle
           persist-credentials: false
           sparse-checkout: |

@@ -32,6 +32,24 @@ public final class PolyglotCli {
             }
             return providers.stream().map(M3ToolProviders.Descriptor::id).toList();
         }
+        if (args != null && args.length > 0 && "llvm-compile-db".equals(args[0])) {
+            // The same bounded, side-effect-safe exporter owned by the Maven
+            // llvm-compile-db goal. Gradle and Eclipse invoke this exact CLI;
+            // no parallel JSON parser, build graph or native scheduler.
+            if (args.length != 4) throw usage();
+            TaskManifest manifest = TaskManifest.load(Path.of(args[2]));
+            Path root = Path.of(args[1]).toAbsolutePath().normalize();
+            // A malformed TSV response path must be rejected *before* any
+            // compilation-database output is published.
+            if (root.toString().chars().anyMatch(Character::isISOControl)) {
+                throw new java.io.IOException("LLVM compilation database path cannot use control characters");
+            }
+            Path db = LlvmCompilationDatabase.publish(manifest, root, args[3]);
+            String file = db.toString();
+            output.accept("M3-LLVM-COMPILE-DB-V1");
+            output.accept("file\t" + file);
+            return List.of(file);
+        }
         if (args == null || args.length < 4 || !("plan".equals(args[0]) || "run".equals(args[0]))) {
             throw usage();
         }
@@ -94,7 +112,7 @@ public final class PolyglotCli {
     }
 
     private static IllegalArgumentException usage() {
-        return new IllegalArgumentException("usage: providers | plan|run <workspace> <manifest.tsv> <target>"
+        return new IllegalArgumentException("usage: providers | llvm-compile-db <workspace> <manifest.tsv> <target> | plan|run <workspace> <manifest.tsv> <target>"
                 + " [--timeout-seconds 1..43200] [--incremental] [--state-backend embedded|legacy|file|m3db|native|sqlite|h2|hsqldb|ext-id] [--approve-rewrite-apply]"
                 + " [--build-cache <dir>] [--provider-reuse]"
                 + " (incremental, build-cache, provider-reuse and approval require run;"
