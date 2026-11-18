@@ -566,6 +566,46 @@ receipt, or a goal-skip instruction. Maven and Gradle must bind independently
 verified toolchain, dependency, generation, source-root, output and ABI facts
 before trusting any incremental optimization.
 
+### One Eclipse invocation: original delta + selected build configuration
+
+The portable Java 17 \`M3EclipseBuildHandoffWire\` reads the **single packet**
+produced by \`hsoliwal/m2e-core\`'s
+\`M3EclipseBuildHandoff\`. The existing opt-in original m2e builder captures
+the actual \`IBuildConfiguration\` and its original \`IResourceDelta\` within
+one invocation; no Eclipse runner, JDT or CDT compiler is embedded in Maven.
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli handoff \
+  /project/root/target/ide/build-handoff.ide
+\`\`\`
+
+A successful decoding result has schema \`m3-eclipse-build-handoff-v1\` and
+includes source-owner/project/invocation IDs, selected and active
+configuration names, the original declared configuration/builder/nature
+lists, build kind, delta completeness and array-backed change records.
+The file is read once with \`NOFOLLOW_LINKS\` and bounded to 12 MiB.
+Malformed UTF-8, ambiguous Base64URL, noncanonical UUID, unknown change
+kind, duplicate/unsorted paths, configuration contradictions, false
+full/clean completeness and oversized inputs fail closed.
+
+\`Snapshot.scopeSha256(workspaceOwnerId)\` provides a stable **advisory**
+configuration scope for caller-selected, uniquely identified workspaces:
+the digest frames provider, workspace ID, project and selected
+configuration. It deliberately excludes the invocation UUID so repeated
+builds of the *same configuration* have the same scope, while Debug and
+Release or separate workspaces do not collide. It is **not** a cache key.
+Never use it to skip Maven goals or restore outputs without separately
+verified source, dependency graph, toolchain, environment, ABI and output
+completeness.
+
+The Maven plugin maintains the original \`EclipseModelCli owners\` and
+\`context\` entry points; the new \`handoff\` subcommand is opt-in and
+returns diagnostics only. The original m2e class writes packets explicitly;
+nothing automatically uploads Eclipse project contents or starts build
+processes. The same Maven JAR is consumed by Gradle's
+\`m3EclipseBuildHandoff\` task without copying this decoder.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
