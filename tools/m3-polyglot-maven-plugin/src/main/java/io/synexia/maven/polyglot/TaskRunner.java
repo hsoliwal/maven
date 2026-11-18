@@ -224,10 +224,10 @@ public final class TaskRunner {
             String cacheStamp = candidate && cache != null
                     && task.prerequisites().stream().allMatch(portableGenerations::containsKey)
                     ? InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine) : null;
-            String[] prior = !incremental || input == null ? null : store.lookup(stateKey(task.name()));
-            if (prior != null && input.equals(prior[0])) {
+            String receiptKey = stateKey(task.name());
+            if (incremental && input != null && store.matchesInput(receiptKey, input)) {
                 String output = existingOutputs(task, root);
-                if (prior[1].equals(output)) {
+                if (store.hit(receiptKey, input, output)) {
                     generations.put(task.name(), InputStamps.combine(List.of(input, output)));
                     if (cacheStamp != null) {
                         portableGenerations.put(task.name(), InputStamps.combine(List.of(cacheStamp, output)));
