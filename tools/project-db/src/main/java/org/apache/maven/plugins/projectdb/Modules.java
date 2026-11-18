@@ -58,7 +58,8 @@ final class Modules {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                if (attributes.isRegularFile() && descriptor(file)) modules.add(file.getParent());
+                // The legacy Files.walk filter followed a symlink when checking a regular descriptor.
+                if (descriptor(file) && Files.isRegularFile(file)) modules.add(file.getParent());
                 return FileVisitResult.CONTINUE;
             }
         };
