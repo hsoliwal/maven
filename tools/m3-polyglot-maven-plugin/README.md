@@ -92,9 +92,11 @@ mvn -f tools/m3-polyglot-maven-plugin/pom.xml -Pm3-hsqldb verify
 ```
 
 This profile adds `org.hsqldb:hsqldb:2.7.4` with test scope and runs a
-require-driver contract. Without the profile, the offline test confirms the
-explicit missing-driver behavior and path constraints, then reports NOT_RUN
-for native HSQLDB persistence.
+require-driver contract. The existing `-Pm3-portable-engines` profile also
+includes HSQLDB and requires all four optional key/value database engines
+alongside this fifth JDBC database contract. Without either profile, the
+offline test confirms the explicit missing-driver behavior and path
+constraints, then reports NOT_RUN for real HSQLDB persistence.
 
 
 
