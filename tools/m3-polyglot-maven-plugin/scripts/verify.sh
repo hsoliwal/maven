@@ -51,6 +51,10 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuilderProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistry.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildContextWire.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildHandoffWire.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildReconciliation.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildReconciliationContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildHandoffWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildContextWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistryContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EclipseProjectModelContractTestMain.java \
@@ -73,6 +77,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PackedReceiptContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ReceiptArrayModelTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DirectoryVacuumTest.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java \
@@ -99,6 +104,7 @@ java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3PackedReceiptContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3ReceiptArrayModelTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DirectoryVacuumTest
 java -cp "$DEST" io.synexia.maven.polyglot.IndexStoreContractTestMain
@@ -112,6 +118,8 @@ java -cp "$DEST" io.synexia.maven.polyglot.EclipseProjectModelContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3EclipseBuilderRegistryContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3EclipseBuildContextWireContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildHandoffWireContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildReconciliationContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain

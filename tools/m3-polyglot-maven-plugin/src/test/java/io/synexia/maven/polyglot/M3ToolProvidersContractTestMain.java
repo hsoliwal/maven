@@ -43,6 +43,7 @@ public final class M3ToolProvidersContractTestMain {
             validatesEveryOperation(root);
             refusesUnknownAndOverlappingOperations(root);
             forwardsCompilerToSelectedJdk(root);
+            plansLlvmCompilerDrivers(root);
             System.out.println("PASS: " + passed + " M3 tool-provider SPI contract cases");
         } finally {
             try (var paths = Files.walk(root)) {
@@ -56,13 +57,13 @@ public final class M3ToolProvidersContractTestMain {
     private static void supportsDeterministicCapabilityInventory() throws Exception {
         var descriptions = M3ToolProviders.available();
         require(descriptions.size() == 6, "built-in providers + test provider must all be loaded");
-        builtInCompilersAndCargo(descriptions);
+        builtInCargoEcjAndJdk(descriptions);
         probeAndSurefire(descriptions);
         portableInventory();
         passed++;
     }
 
-    private static void builtInCompilersAndCargo(List<M3ToolProviders.Descriptor> descriptions) {
+    private static void builtInCargoEcjAndJdk(List<M3ToolProviders.Descriptor> descriptions) {
         require(descriptions.get(0).id().equals("cargo"), "sorted built-in cargo test provider");
         require(descriptions.get(0).capabilities().equals(List.of("interpreter"))
                 && descriptions.get(0).languages().equals(List.of("rust")), "cargo runs Rust tests only");
@@ -71,10 +72,10 @@ public final class M3ToolProvidersContractTestMain {
                 && descriptions.get(1).languages().equals(List.of("java")), "ecj compiles Java only");
         require(descriptions.get(2).id().equals("jdk"), "sorted built-in provider");
         require(descriptions.get(2).capabilities().equals(List.of("compiler")), "jdk compiler only");
-        require(descriptions.get(3).id().equals("llvm")
-                && descriptions.get(3).capabilities().equals(List.of("compiler"))
+        require(descriptions.get(3).id().equals("llvm"), "LLVM provider registered");
+        require(descriptions.get(3).capabilities().equals(List.of("compiler"))
                 && descriptions.get(3).languages().equals(List.of("c", "cpp", "fortran", "llvm-ir", "objc", "objcpp")),
-                "LLVM compiles its C-family, Fortran and IR languages only");
+                "LLVM original C-family, Fortran and IR compiler drivers");
     }
 
     private static void probeAndSurefire(List<M3ToolProviders.Descriptor> descriptions) {
@@ -185,6 +186,63 @@ public final class M3ToolProvidersContractTestMain {
         require(!oldTime.equals(Files.getLastModifiedTime(generated)),
                 "provider executes again even with unchanged inputs and present outputs");
         passed++;
+    }
+
+
+    private static void plansLlvmCompilerDrivers(Path root) throws Exception {
+        String suffix = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+        String[][] languages = {
+            {"c", "clang"}, {"cpp", "clang++"}, {"objc", "clang"},
+            {"objcpp", "clang++"}, {"fortran", "flang"}, {"llvm-ir", "llc"}
+        };
+        for (String[] language : languages) {
+            var task = llvmTask(language[0], List.of("-c", "src/hello.c", "-o", "target/hello.o"));
+            List<String> command = M3ToolProviders.command(task, root);
+            require(command.equals(List.of(language[1] + suffix, "-c", "src/hello.c",
+                    "-o", "target/hello.o")), "LLVM original compiler argv: " + language[0]);
+            passed++;
+        }
+        var selected = llvmTask("c", List.of("--m3-llvm-bin=llvm installation/bin",
+                "-c", "src/hello.c", "-o", "target/hello.o"));
+        List<String> argv = M3ToolProviders.command(selected, root);
+        require(argv.get(0).equals(root.resolve("llvm installation/bin")
+                .resolve("clang" + suffix).toString()), "workspace-relative LLVM toolchain selector");
+        require(argv.subList(1, argv.size()).equals(List.of("-c", "src/hello.c",
+                "-o", "target/hello.o")), "provider consumes selector and preserves all compiler flags");
+        passed++;
+
+        refuses(() -> M3ToolProviders.command(llvmTask("c",
+                List.of("--m3-llvm-bin=", "-c", "src/hello.c")), root), "empty LLVM bin directory");
+        refuses(() -> M3ToolProviders.command(llvmTask("c",
+                List.of("--m3-llvm-bin=a", "--m3-llvm-bin=b", "-c", "src/hello.c")), root),
+                "duplicate LLVM bin directory");
+        refuses(() -> M3ToolProviders.command(llvmTask("c", List.of()), root),
+                "missing compiler arguments");
+        refuses(() -> M3ToolProviders.command(
+                new TaskManifest.Task("llvm", "@m3:llvm:transpiler:c", ".", List.of("-c", "src/hello.c"),
+                        List.of(), List.of("src/hello.c"), List.of("target/hello.o")), root),
+                "LLVM compiler cannot pretend to be a transpiler");
+        passed += 4;
+
+        Path manifest = root.resolve("llvm-plan.tsv");
+        Files.writeString(manifest, TaskManifest.MAGIC + "\n"
+                + "task\tcompile\t@m3:llvm:compiler:c\t.\n"
+                + "arg\tcompile\t-c\n"
+                + "arg\tcompile\tsrc/hello.c\n"
+                + "arg\tcompile\t-o\n"
+                + "arg\tcompile\ttarget/hello.o\n"
+                + "input\tcompile\tsrc/hello.c\n"
+                + "output\tcompile\ttarget/hello.o\n", StandardCharsets.UTF_8);
+        require(TaskRunner.run(TaskManifest.load(manifest), root, "compile", true,
+                Duration.ofSeconds(10), ignored -> {}).equals(List.of("compile")),
+                "LLVM dry run validates command without needing clang installed");
+        require(!Files.exists(root.resolve("target/hello.o")), "LLVM planning creates no native output");
+        passed++;
+    }
+
+    private static TaskManifest.Task llvmTask(String language, List<String> arguments) {
+        return new TaskManifest.Task("llvm", "@m3:llvm:compiler:" + language, ".",
+                arguments, List.of(), List.of("src/hello.c"), List.of("target/hello.o"));
     }
 
     private static TaskManifest.Task task(String name, String tool, List<String> inputs, List<String> outputs) {

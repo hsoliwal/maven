@@ -15,17 +15,23 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Opt-in adapter for an operator-built LLVM toolchain, including the hsoliwal/llvm-project fork.
- * LLVM owns compilation and LLVM IR code generation; Maven owns only the task graph and evidence.
- * This adapter never downloads, bundles, loads native libraries or substitutes another compiler.
+ * Opt-in adapter for original LLVM command-line compilers, including the hsoliwal/llvm-project
+ * fork. LLVM owns compilation and IR code generation; Maven owns the task graph and evidence.
+ * This adapter never downloads, bundles, loads native libraries or rewrites sources.
  *
- * <p>Supply a toolchain root with {@code bin/clang}, {@code bin/clang++}, {@code bin/flang},
- * and/or {@code bin/llc} via {@code --m3-llvm-home=}, {@code -Dm3.llvm.home=}, or
- * {@code M3_LLVM_HOME}. To seal a task against a changed compiler executable, pass
- * {@code --m3-llvm-sha256=<64 hexadecimal digits>}. These two adapter directives are
- * consumed during planning, not sent to the original LLVM driver.</p>
+ * <p>For existing manifests, {@code --m3-llvm-bin=<directory>} selects a bin directory,
+ * relative to the module workspace or absolute; without any selection, the driver is looked
+ * up on PATH. Alternatively select a toolchain root via {@code --m3-llvm-home=},
+ * {@code -Dm3.llvm.home=}, or {@code M3_LLVM_HOME}. An explicit bin selector takes
+ * precedence over a global home. Explicit home and bin selectors are mutually exclusive.
+ * To verify the selected executable's bytes, use {@code --m3-llvm-sha256=<64 hex digits>}.
+ * All selector directives are removed from the original compiler arguments.</p>
+ *
+ * <p>M3 provider invocations are excluded from incremental/cache skips until native headers,
+ * sysroots, libraries, toolchain and generated-input evidence is complete.</p>
  */
 public final class LlvmCompilerProvider implements M3ToolProvider {
+    static final String BIN_ARGUMENT = "--m3-llvm-bin=";
     static final String HOME_ARGUMENT = "--m3-llvm-home=";
     static final String SHA256_ARGUMENT = "--m3-llvm-sha256=";
     static final String HOME_PROPERTY = "m3.llvm.home";
@@ -51,9 +57,10 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
     public List<String> command(M3ToolCapability capability, String language,
             TaskManifest.Task task, Path workspace) throws IOException {
         if (capability != M3ToolCapability.COMPILER || !LANGUAGES.contains(language)) {
-            throw new IOException("LLVM provider cannot compile language: " + language);
+            throw new IOException("LLVM provider does not compile " + language + " as " + capability);
         }
         String home = null;
+        String bin = null;
         String expectedSha256 = null;
         var arguments = new ArrayList<String>();
         for (String argument : task.arguments()) {
@@ -62,6 +69,10 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
                     throw new IOException("duplicate or empty " + HOME_ARGUMENT);
                 }
                 home = argument.substring(HOME_ARGUMENT.length());
+            } else if (argument.startsWith(BIN_ARGUMENT)) {
+                if (bin != null) throw new IOException("LLVM bin directory must be specified only once");
+                bin = argument.substring(BIN_ARGUMENT.length());
+                if (bin.isBlank()) throw new IOException("LLVM bin directory must not be empty");
             } else if (argument.startsWith(SHA256_ARGUMENT)) {
                 if (expectedSha256 != null) throw new IOException("duplicate " + SHA256_ARGUMENT);
                 expectedSha256 = argument.substring(SHA256_ARGUMENT.length());
@@ -74,23 +85,39 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
                 arguments.add(argument);
             }
         }
-        if (arguments.isEmpty()) throw new IOException("LLVM compiler requires original compiler arguments");
-        if (home == null) home = configuredHome();
-        if (home == null || home.isBlank()) {
-            throw new IOException("LLVM toolchain not configured: set " + HOME_ARGUMENT + "<root>, -D"
-                    + HOME_PROPERTY + "=<root>, or " + HOME_ENVIRONMENT);
+        if (arguments.isEmpty()) throw new IOException("LLVM compilation requires explicit compiler arguments");
+        if (home != null && bin != null) {
+            throw new IOException("LLVM home and bin selectors cannot both be set on one task");
         }
-        Path executable = resolve(home, driver(language), workspace);
-        if (expectedSha256 != null && !expectedSha256.toLowerCase(Locale.ROOT)
-                .equals(InputStamps.fileSha256(executable.toRealPath()))) {
-            throw new IOException("LLVM compiler SHA-256 mismatch: " + executable);
+        String driver = driver(language) + executableSuffix();
+        Path executable = null;
+        if (bin != null) {
+            try {
+                Path selected = Path.of(bin);
+                executable = (selected.isAbsolute() ? selected : workspace.resolve(selected))
+                        .toAbsolutePath().normalize().resolve(driver);
+            } catch (InvalidPathException invalid) {
+                throw new IOException("invalid LLVM bin directory", invalid);
+            }
+        } else {
+            if (home == null) home = configuredHome();
+            if (home != null && !home.isBlank()) {
+                executable = resolve(home, driver(language), workspace);
+            }
         }
-        var command = new ArrayList<String>(arguments.size() + 3);
-        command.add(executable.toString());
-        if ("objc".equals(language) || "objcpp".equals(language)) {
-            command.add("-x");
-            command.add("objc".equals(language) ? "objective-c" : "objective-c++");
+        // Legacy PATH selection is deliberately preserved, but a digest cannot be verified
+        // against an unresolved executable name; opt into a directory for a sealed task.
+        if (expectedSha256 != null) {
+            if (executable == null) {
+                throw new IOException("LLVM SHA-256 pin requires a selected home or bin directory");
+            }
+            if (!expectedSha256.toLowerCase(Locale.ROOT)
+                    .equals(InputStamps.fileSha256(executable.toRealPath()))) {
+                throw new IOException("LLVM compiler SHA-256 mismatch: " + executable);
+            }
         }
+        var command = new ArrayList<String>(arguments.size() + 1);
+        command.add(executable == null ? driver : executable.toString());
         command.addAll(arguments);
         return List.copyOf(command);
     }
@@ -110,11 +137,15 @@ public final class LlvmCompilerProvider implements M3ToolProvider {
         };
     }
 
+    private static String executableSuffix() {
+        return System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+    }
+
     /** Resolve a real driver under the explicit toolchain, never an unrelated PATH executable. */
     static Path resolve(String home, String driver, Path workspace) throws IOException {
         try {
             Path root = workspace.resolve(home).normalize();
-            String extension = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
+            String extension = executableSuffix();
             Path executable = root.resolve("bin").resolve(driver + extension);
             if ("flang".equals(driver) && !Files.isRegularFile(executable)) {
                 executable = root.resolve("bin").resolve("flang-new" + extension);

@@ -1,0 +1,18 @@
+M3-POLYGLOT-TASKS-V1
+# Optional per-task: arg<TAB>compile<TAB>--m3-llvm-bin=<your-llvm-build-bin>
+task	compile	@m3:llvm:compiler:c	.
+arg	compile	-S
+arg	compile	-emit-llvm
+arg	compile	hello.c
+arg	compile	-o
+arg	compile	hello.ll
+input	compile	hello.c
+output	compile	hello.ll
+task	codegen	@m3:llvm:compiler:llvm-ir	.
+dep	codegen	compile
+arg	codegen	-filetype=asm
+arg	codegen	-o
+arg	codegen	hello.s
+arg	codegen	hello.ll
+input	codegen	hello.ll
+output	codegen	hello.s

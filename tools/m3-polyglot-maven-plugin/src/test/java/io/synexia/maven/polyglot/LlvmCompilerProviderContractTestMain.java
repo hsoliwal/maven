@@ -28,6 +28,7 @@ public final class LlvmCompilerProviderContractTestMain {
             }
             correctDriverAndArgumentBoundary(root);
             configuredHomeAndFlangFallback(root);
+            preservesLegacyBinSelection(root);
             preservesDriverSymlinkName(root);
             pinsSelectedExecutable(root);
             refusesBadConfigurations(root);
@@ -51,15 +52,40 @@ public final class LlvmCompilerProviderContractTestMain {
             };
             check(argv.get(0).equals(root.resolve("toolchain/bin/" + name(expected)).toRealPath().toString()),
                     "uses the declared LLVM driver for " + language);
-            check(argv.subList(argv.size() - 3, argv.size()).equals(List.of("-O2", "-c", "src/file")),
+            check(argv.subList(1, argv.size()).equals(List.of("-O2", "-c", "src/file")),
                     "passes compiler argv unchanged for " + language);
             check(argv.stream().noneMatch(s -> s.startsWith("--m3-llvm-")), "consumes adapter directives");
-            if ("objc".equals(language) || "objcpp".equals(language)) {
-                check(argv.subList(1, 3).equals(List.of("-x", "objc".equals(language)
-                        ? "objective-c" : "objective-c++")), "explicit Objective-C language mode");
-            }
             passed++;
         }
+    }
+
+    private static void preservesLegacyBinSelection(Path root) throws Exception {
+        var relative = command(root, "cpp", List.of("--m3-llvm-bin=toolchain/bin", "-c", "src/file"));
+        check(relative.equals(List.of(root.resolve("toolchain/bin/" + name("clang++")).toString(),
+                "-c", "src/file")), "previous --m3-llvm-bin selector preserves original argv");
+        passed++;
+
+        String previous = System.getProperty(LlvmCompilerProvider.HOME_PROPERTY);
+        try {
+            System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, "nonexistent-llvm-home");
+            var explicit = command(root, "objc", List.of("--m3-llvm-bin=toolchain/bin",
+                    "-x", "objective-c", "-c", "src/file"));
+            check(explicit.subList(1, explicit.size()).equals(List.of("-x", "objective-c", "-c", "src/file")),
+                    "caller owns Objective-C flags and explicit bin takes precedence over global home");
+            passed++;
+        } finally {
+            if (previous == null) System.clearProperty(LlvmCompilerProvider.HOME_PROPERTY);
+            else System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, previous);
+        }
+
+        String digest = InputStamps.fileSha256(root.resolve("toolchain/bin/" + name("clang")));
+        var pinned = command(root, "c", List.of("--m3-llvm-bin=toolchain/bin",
+                "--m3-llvm-sha256=" + digest, "-c", "src/file"));
+        check(pinned.size() == 3, "new SHA selector also works with existing bin selector");
+        passed++;
+        refuses(() -> command(root, "c", List.of("--m3-llvm-bin=toolchain/bin",
+                "--m3-llvm-home=toolchain", "-c", "src/file")), "conflicting explicit selectors");
+        passed++;
     }
 
     private static void pinsSelectedExecutable(Path root) throws Exception {
