@@ -1078,8 +1078,11 @@ M3 graph/provider selection. The goal neither invokes Clang nor overwrites
 CMake's `build/cmake/compile_commands.json`. Only materialized,
 declared, unambiguous single-source compiles with an explicit
 declared `-o` output are exported. Clang `-MF` depfiles, `-MJ`
-fragments and diagnostic sidecars must also be declared; opaque response
-files, implicit depfile names and untracked sources fail closed. See
+fragments and diagnostic sidecars must also be declared, including
+joined `-o...`, `-MF...` and `-MJ...` spellings. Opaque compiler
+forwarding, response files, implicit depfile/output side effects
+(e.g. `-save-temps`, `-ftime-trace`, split DWARF and module caches),
+and untracked sources fail closed. See
 [LLVM toolchain / compilation database](docs/LLVM_TOOLCHAIN.md).
 
 ### LLVM fork compiler toolchain
