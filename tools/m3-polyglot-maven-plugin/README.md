@@ -846,6 +846,44 @@ processor side effects, compiler outputs, or build-cache eligibility.
 Original m2e source:
 `hsoliwal/m2e-core/org.eclipse.m2e.jdt`.
 
+### Original CDT scanner and native build-configuration evidence
+
+The CDT fork's source-owner `M3CdtCompilerFacts` captures the
+explicitly selected `ICConfigurationDescription` from the original
+read-only CDT project model. It does **not** infer CDT's configuration ID
+from an Eclipse `IBuildConfiguration`, nor equate the selected CDT ID
+with CDT's active ID.
+
+Maven's pure Java 17 `M3CdtCompilerFactsWire` validates the strict
+`M3-CDT-COMPILER-FACTS-V1` packet against the original, separate
+`M3-ECLIPSE-BUILD-HANDOFF-V1` source owner. The exact project,
+original invocation UUID and selected Eclipse configuration must agree.
+The native CDT configuration ID/name, independently active CDT ID,
+build-system ID, source roots, language scanner settings and build
+output digests remain unchanged.
+
+```sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli cdt-facts \
+  /project/root/target/ide/cdt-compiler-facts.ide \
+  /project/root/target/ide/build-handoff.ide
+```
+
+Output `m3-cdt-compiler-facts-v1` is an advisory JSON report. The
+reader rejects unknown versions, row changes, incorrect field order,
+non-UTF-8/noncanonical Base64URL, uppercase SHA-256, mismatched
+invocation/project/Eclipse selection, oversized counts, symlinked
+files and unrecognized producers. Source-owned scanner/source/build
+digests do not establish the compiler binary, toolchain ABI,
+macro/include file contents or source-generation completeness.
+`authorizesBuildSkipping=false` always.
+
+A shared golden v1 packet in CDT and Maven tests keeps the wire
+byte-identical without copying CDT's settings model into Maven. Gradle
+consumes this same Maven receiver through its independently pinned
+`m3EclipseCdtFacts` task. Native CDT builds, progress/cancellation,
+scanner discovery and C/C++ compile/link decisions remain with CDT.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
