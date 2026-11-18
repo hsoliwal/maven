@@ -30,6 +30,7 @@ or explicitly bind the normal M3 polyglot lifecycle as usual.
 | `cpp` | `clang++` | Clang |
 | `objc` | `clang` | Clang, with the caller's source-language flags |
 | `objcpp` | `clang++` | Clang, with the caller's source-language flags |
+| `objc++` | `clang++` | Additive alias; identical compiler and argument handling to `objcpp` |
 | `fortran` | `flang` | LLVM Flang (including separately built Flang-RT when linking) |
 | `llvm-ir` | `llc` | LLVM IR code generation |
 
@@ -139,6 +140,22 @@ depfile import, module dependency graphs, and reproducible native artifact/toolc
 receipts. Those are **not implemented by this compiler provider**. OpenRewrite remains the
 recipe mutation authority, and M3 AST atomization/patternization is a
 separate contract-preserving pass.
+
+### Required native CI verification
+
+The Linux Java 17 and Java 21 matrix explicitly requires installed
+`clang` and `clang++` and runs the existing
+`LlvmCompilerIntegrationTestMain --required` native regression suite.
+It then executes the packaged Maven plugin's separate `examples/llvm`
+consumer (C17 compile, dependency file, native link and executable result)
+against the runner's installed Clang. The normal contract suites continue
+to report `NOT_RUN` for optional `llc` or Flang lanes when absent.
+
+Passing those tests qualifies the **host compiler and Maven integration**,
+not binaries built from the pinned `hsoliwal/llvm-project` revision. The
+full LLVM fork source/build/ABI and Windows/macOS gates remain separate.
+The additional `objc++` spelling does not replace or reinterpret
+`objcpp`; both call the original `clang++` driver.
 
 ## Qualification gates
 
