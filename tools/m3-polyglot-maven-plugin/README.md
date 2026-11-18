@@ -1030,6 +1030,66 @@ package closure, OSGi wiring, fragments, p2 filters, generated outputs
 or successful compilation. \`authorizesBuildSkipping=false\` always.
 Tycho and Eclipse retain native build and lifecycle authority.
 
+### Generic source-owned Eclipse language evidence providers (SPI v1)
+
+The existing \`M3EclipseBuilderProvider\` inventories arbitrary Eclipse
+builders and natures. The additive **separate** Java 17
+\`M3EclipseLanguageEvidenceProvider\` is the long-term entrypoint
+for source-owned compiler/configuration evidence from any installed
+Eclipse language plugin, without adding a new hard-coded Maven or
+Gradle handler every time.
+
+A provider is installed by an explicit, trusted JAR in the **selected
+polyglot engine classpath** using Java \`ServiceLoader\`:
+
+\`\`\`text
+META-INF/services/io.synexia.maven.polyglot.M3EclipseLanguageEvidenceProvider
+\`\`\`
+
+The SPI declares a stable provider ID, original exact Eclipse builder IDs
+and/or nature IDs, an API version (currently 1), and a read-only
+\`decode(byte[] originalSourcePacket)\` implementation. Each original
+language plugin decides its own **versioned packet schema**, validates
+its native facts and returns a detached \`Evidence\` containing exact
+project, original Eclipse build invocation UUID, selected configuration,
+bounded observed item count and domain-specific SHA-256. It cannot
+request compilation or Maven/Gradle cache admission.
+
+The Maven host \`M3EclipseLanguageEvidenceService\`:
+- fails on unsupported or duplicate provider IDs/SPI versions;
+- requires the provider's exact builder/nature ID to match the original
+  \`M3-ECLIPSE-BUILD-HANDOFF-V1\`, including nature-only plugins;
+- requires matching original project/configuration/invocation;
+- reads a project-owned, non-symlink input packet **once**, bounded to
+  1 MiB, and independently computes its exact original byte SHA-256;
+- emits versioned \`m3-eclipse-language-facts-v1\` JSON with
+  \`authorizesBuildSkipping=false\` unconditionally.
+
+\`\`\`sh
+java -cp '/approved/m3-polyglot-maven-plugin.jar:/approved/language-provider.jar' \
+  io.synexia.maven.polyglot.M3EclipseLanguageEvidenceCli \
+  provider.id /project/target/ide/language-facts.ide \
+  /project/target/ide/build-handoff.ide
+\`\`\`
+
+On Windows, replace the JVM classpath separator \`:\` with \`;\`.
+The corresponding Gradle \`m3EclipseLanguageFacts\` task already
+validates separate SHA-256 pins for **each** installed provider JAR.
+
+A synthetic nature-only \`test.pydev\` provider exercises the SPI in
+the offline Java 17 and Maven plugin \`verify\` suites; it is test-only,
+does **not** implement PyDev interpreter, environment, LSP, or compiler
+functionality, and must never be represented as operational PyDev
+support. The original JDT, CDT, Corrosion/Cargo and Tycho native
+readers remain intact. Other language owners can supply future
+provider implementations as separately licensed/approved modules.
+
+The SPI uses trusted Java code, **not** a security sandbox. Passing
+the review only shows internal consistency of the source-owner
+claims, not authenticated files, a successful compiler result,
+complete dependency graph, ABI or generated output. Do not skip
+builds or restore M3DB cached outputs based on this report.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17

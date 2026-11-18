@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Eclipse generic language evidence Maven-Gradle SPI acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - '.github/workflows/m3-eclipse-language-spi-gradle-acceptance.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - '.github/workflows/m3-eclipse-language-spi-gradle-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-eclipse-language-spi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: tools/m3-polyglot-maven-plugin/pom.xml
+      - name: Verify original Maven Java17 source-owned language evidence SPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+          mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/pom.xml verify
+          jar=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s "$jar"
+          test -s tools/m3-polyglot-maven-plugin/target/test-classes/io/synexia/maven/polyglot/M3TestPyDevEvidenceProvider.class
+          # Assemble test-only ServiceLoader fixture (NOT a production provider).
+          jar --create --file m3-synthetic-language-provider.jar \
+            -C tools/m3-polyglot-maven-plugin/target/test-classes \
+                io/synexia/maven/polyglot/M3TestPyDevEvidenceProvider.class \
+            -C tools/m3-polyglot-maven-plugin/src/test/resources \
+                META-INF/services/io.synexia.maven.polyglot.M3EclipseLanguageEvidenceProvider
+          test -s m3-synthetic-language-provider.jar
+          sha256sum "$jar" m3-synthetic-language-provider.jar \
+            | tee m3-language-spi-artifact-sha256.txt
+      - name: Checkout immutable Gradle generic language consumer candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: hsoliwal/gradle
+          # Exact reviewed generic language SPI draft head, never floating master.
+          ref: 28d0e87f830b3fc1e13a93170d1dfd64168d9f6e
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Install Gradle with dependency cache
+        uses: gradle/actions/setup-gradle@v4
+      - name: Verify Maven engine and installed source-owner adapter from real Gradle TestKit
+        shell: bash
+        env:
+          M3_POLYGLOT_JAR: ${{ github.workspace }}/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          M3_LANGUAGE_PROVIDER_JAR: ${{ github.workspace }}/m3-synthetic-language-provider.jar
+        run: |
+          set -euo pipefail
+          sha256sum -c m3-language-spi-artifact-sha256.txt
+          chmod +x consumer-gradle/gradlew
+          cd consumer-gradle
+          attempt=1
+          log="$RUNNER_TEMP/language-spi-jdk-${{ matrix.java }}.log"
+          while :; do
+            if ./gradlew --no-daemon --stacktrace --console=plain \
+                -p m3/quality-bridge test \
+                --tests 'io.synexia.gradle.quality.M3EclipseLanguageRealEngineTest' \
+                --rerun-tasks > "$log" 2>&1; then
+              cat "$log"
+              break
+            else
+              status=$?
+              cat "$log"
+              # Only a documented Maven Central 429 may be retried.
+              if [ "$attempt" -ge 3 ] \
+                  || ! grep -Fq 'Received status code 429 from server: Too Many Requests' "$log" \
+                  || ! grep -Fq 'https://repo.maven.apache.org/maven2/' "$log"; then
+                exit "$status"
+              fi
+              sleep $((attempt * 20))
+              attempt=$((attempt + 1))
+            fi
+          done
+      - name: Require the real original-provider case, with zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c m3-language-spi-artifact-sha256.txt
+          report=consumer-gradle/m3/quality-bridge/build/test-results/test/TEST-io.synexia.gradle.quality.M3EclipseLanguageRealEngineTest.xml
+          test -s "$report"
+          grep -Eq 'tests="1"' "$report"
+          grep -Eq 'skipped="0"' "$report"
+          grep -Eq 'failures="0"' "$report"
+          grep -Eq 'errors="0"' "$report"
+          grep -Eq '<testcase ' "$report"
+      - name: Retain Maven/Gradle provider JAR custody and tests
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-generic-language-spi-jdk-${{ matrix.java }}
+          path: |
+            m3-language-spi-artifact-sha256.txt
+            consumer-gradle/m3/quality-bridge/build/test-results/test/**
+            consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 14

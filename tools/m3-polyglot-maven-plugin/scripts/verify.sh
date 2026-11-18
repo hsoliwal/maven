@@ -67,6 +67,11 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3CargoBuildEvidenceWire.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3TychoFinalP2FactsWire.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3TychoFinalP2FactsWireContractTestMain.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceService.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceCli.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3TestPyDevEvidenceProvider.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceServiceContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3CargoBuildEvidenceWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3CdtCompilerFactsWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdtCompilerFactsWireContractTestMain.java \
@@ -155,6 +160,7 @@ java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBui
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3JdtCompilerFactsWireContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3CdtCompilerFactsWireContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3CargoBuildEvidenceWireContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseLanguageEvidenceServiceContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3TychoFinalP2FactsWireContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildReconciliationContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
