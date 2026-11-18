@@ -67,6 +67,11 @@ public final class M3EclipseBuilderRegistryContractTestMain {
             require(registered.builders().get(0).providerId().equals("test.jdt"), "exact JDT builder binding");
             require(registered.builders().get(1).providerId() == null, "CDT owner is not assumed installed");
             require(registered.builders().get(2).providerId() == null, "future plugin stays unbound");
+            require(registered.natures().size() == 4, "original Eclipse nature order retained");
+            require(registered.natures().get(2).providerIds().equals(List.of("test.rust")),
+                    "nature-only Rust provider is represented without claiming a builder");
+            require(registered.natures().get(1).providerIds().isEmpty(),
+                    "CDT remains an unbound nature until its exact adapter is installed");
             require(registered.unboundNatures().equals(List.of(
                     "org.eclipse.cdt.core.cnature", "vendor.future.nature")), "nature-only Rust recognized");
             require(registered.providers().equals(List.of("test.jdt", "test.rust")), "sorted installed adapters");
