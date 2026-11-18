@@ -127,7 +127,8 @@ jobs:
             else
               status=$?
               cat "$log_file"
-              if [ "$attempt" -ge 3 ] || ! grep -Eq                 'Received status code 429|HTTP 429|Too Many Requests' "$log_file"; then
+              if [ "$attempt" -ge 3 ] || ! grep -Fq 'Received status code 429 from server: Too Many Requests' "$log_file" \
+                  || ! grep -Fq 'https://repo.maven.apache.org/maven2/' "$log_file"; then
                 exit "$status"
               fi
               echo "Maven Central rate-limited dependency resolution; retry $attempt of 2" >&2
