@@ -30,10 +30,12 @@ under the License.
   <packaging>pom</packaging>
 
   <name>Maven Inline Plugins</name>
-  <description>Aggregates the plugin repositories imported with full history under plugins/. Built only with
-    -Pplugins. Each imported reactor keeps its upstream parent and build; this POM only lists them.</description>
+  <description>Aggregates the plugin repositories imported with full history under plugins/ and the shared
+    libraries imported under plugins/shared/. Built only with -Pplugins. Each imported reactor keeps its upstream
+    parent and build; this POM only lists them.</description>
 
-  <!-- Batch 1: the default-lifecycle plugins. The version of each is the fork reactor version. -->
+  <!-- Batch 1: the default-lifecycle plugins. Wave 2a: the shared libraries those plugins load at run time.
+       The version of each is the fork reactor version. -->
   <modules>
     <module>maven-clean-plugin</module>
     <module>maven-resources-plugin</module>
@@ -42,6 +44,21 @@ under the License.
     <module>maven-install-plugin</module>
     <module>maven-deploy-plugin</module>
     <module>maven-surefire</module>
+
+    <module>shared/maven-shared-utils</module>
+    <module>shared/plexus-utils</module>
+    <module>shared/plexus-xml</module>
+    <module>shared/maven-filtering</module>
+    <module>shared/plexus-interpolation</module>
+    <module>shared/plexus-build-api</module>
+    <module>shared/maven-archiver</module>
+    <module>shared/plexus-archiver</module>
+    <module>shared/plexus-io</module>
+    <module>shared/maven-file-management</module>
+    <module>shared/plexus-compiler</module>
+    <module>shared/plexus-languages</module>
+    <module>shared/maven-shared-incremental</module>
+    <module>shared/maven-common-artifact-filters</module>
   </modules>
 
   <properties>
