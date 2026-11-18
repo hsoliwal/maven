@@ -533,6 +533,19 @@ jobs:
           assert entry["arguments"] and entry["arguments"][0]
           print("PASS: original Clang joined -o/-MF/-MJ emitted and tracked 3 native products")
           PY
+          mkdir -p target/m3-llvm/implicit-smoke
+          cp native/hello.c native/message.h target/m3-llvm/implicit-smoke/
+          (
+            cd target/m3-llvm/implicit-smoke
+            clang -c hello.c -save-temps=obj -o temps.o
+            test -s temps.o
+            test -s hello.i
+            test -s hello.s
+            clang -c hello.c -ftime-trace -o traced.o
+            test -s traced.o
+            test -s traced.json
+          )
+          echo 'PASS: original Clang implicitly generated additional .i, .s and timing JSON files'
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes
