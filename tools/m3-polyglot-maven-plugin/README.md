@@ -453,6 +453,49 @@ The opt-in OpenRewrite registration recipe `io.synexia.maven.recipe.EnableEclips
 plugin to a consuming POM; it does not bind goals, modify IDE metadata or install toolchains. Test full m2e/PDE,
 JDT, CDT and PyDev round trips independently before treating any live workspace behavior as supported.
 
+## Eclipse language-plugin build owner registry (v1)
+
+The Maven-owned `M3EclipseBuilderProvider` is an additive, read-only
+`ServiceLoader` SPI for **arbitrary** Eclipse language plugins: JDT/ECJ,
+CDT, RustDT/Corrosion, PyDev, DLTK, Scala, Groovy, PDE, LSP4E and vendor
+builders. An Eclipse extension ID is matched exactly; registering a
+project nature never means that a compatible compiler or builder is installed.
+
+An installed Eclipse adapter advertises its `id()`, `builderIds()` and
+`natureIds()` through
+`META-INF/services/io.synexia.maven.polyglot.M3EclipseBuilderProvider`.
+Nature-only providers (such as LSP adapters) are supported. Unknown builders
+remain `providerId:null`; ambiguous builder owners and incompatible SPI
+versions fail closed. Adapters may be supplied as separately pinned JARs on
+the **selected engine classpath**. The built-in Maven polyglot plugin contains
+no Eclipse runtime, CDT native compiler or RustDT implementation.
+
+```sh
+# Standard model output remains m3-eclipse-project-v1:
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli /project/with/.project
+
+# New, read-only builder-owner report (m3-eclipse-builder-owners-v1):
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli owners /project/with/.project
+```
+
+Both reports retain original builder order, natures and descriptor SHA-256
+identities. The model scanner now also hashes immediate regular files under
+`.settings/`, including arbitrary language-specific preferences, with bounded
+entry/byte budgets and no symlink traversal. It does **not** claim to resolve
+OSGi extension registries, active build configurations or Eclipse's internal
+incremental-builder state. Nested language configuration directories are opaque.
+
+The matching Gradle task, `m3EclipseBuilders`, delegates to this same CLI and
+requires the engine and each optional provider JAR to be pinned by SHA-256.
+Neither task executes a language compiler, starts LSP servers, downloads tools
+or skips goals. Live `IncrementalProjectBuilder`, `IResourceDelta`,
+`IBuildConfiguration`, workspace markers, scheduling, progress and cancellation
+must remain in Eclipse and its installed native bridge. A future qualified
+m2e/PDE/CDT/Corrosion integration can exchange owner-produced facts through
+the existing M3 IDE-delta API; the report by itself is not a build receipt.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
