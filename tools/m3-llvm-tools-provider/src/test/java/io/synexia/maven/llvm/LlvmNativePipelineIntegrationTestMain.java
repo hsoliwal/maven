@@ -158,7 +158,7 @@ public final class LlvmNativePipelineIntegrationTestMain {
             String language, String home, List<String> argv,
             List<String> dependencies, List<String> inputs, List<String> outputs) {
         manifest.append("task\t").append(name).append("\t@m3:llvm-tools:")
-                .append(capability).append('\t').append(language).append("\t.\n");
+                .append(capability).append(':').append(language).append("\t.\n");
         if (home != null) manifest.append("arg\t").append(name)
                 .append("\t--m3-llvm-home=").append(home).append('\n');
         for (String arg : argv) manifest.append("arg\t").append(name).append('\t').append(arg).append('\n');
