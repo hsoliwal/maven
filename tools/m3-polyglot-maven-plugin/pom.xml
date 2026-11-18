@@ -322,6 +322,15 @@
             </configuration>
           </execution>
           <execution>
+            <id>llvm-provider-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
             <id>dotnet-reports-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>

@@ -87,6 +87,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/BuildCacheStateContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/QualityProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjCompilerProvider.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
@@ -134,3 +135,7 @@ java ${M3_POLYGLOT_ECJ_JAR:+-Dm3.polyglot.ecj.jar="$M3_POLYGLOT_ECJ_JAR"} \
   -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.DotnetReportsContractTestMain
+# Select an installed toolchain for native LLVM cases; absence is reported as NOT_RUN.
+java "-Dm3.polyglot.llvm.test.home=${M3_POLYGLOT_LLVM_TEST_HOME:-}" \
+  -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
+  io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain
