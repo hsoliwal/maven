@@ -151,7 +151,7 @@ CMake configuration contracts. The separately merged
 `LlvmCompilerProviderContractTestMain` covers raw original flags, dry-run
 purity and optional real native/cache-invalidating compilation.
 
-To execute both native qualification gates, select an installed toolchain explicitly:
+To execute all three native qualification gates, select an installed toolchain explicitly:
 
 ```sh
 mvn -f tools/m3-polyglot-maven-plugin/pom.xml \
@@ -167,6 +167,23 @@ installation root containing `bin` and exercises the existing
 selects the six-language, executable-digest-pinned Maven `TaskRunner` gate;
 it also runs through Maven `verify` when configured. Neither test variable
 changes the production provider's home/bin/PATH selection rules.
+
+The additional `LlvmCompilerIntegrationTestMain` uses that test installation
+to exercise real C17/C++20 **compile, link and run** through the Maven DAG,
+two separately configured outputs, Clang depfiles, header changes, a newly
+appearing `__has_include` header absent from the prior depfile, deleted output
+recovery, native compiler failure/recovery, and provider cache exclusion.
+It checks a task working directory and paths containing spaces. When `llc`
+is installed, a two-task `llvm-ir -> llc object -> clang link` plan runs the
+resulting executable; it never substitutes Clang's `-x ir` for the merged
+`llvm-ir -> llc` contract. Objective-C/Objective-C++ compilation and optional
+Flang execution are also exercised. Use `--required` when invoking this
+test's main class directly to refuse absent host Clang/Clang++; by default an
+unconfigured host without these tools reports `NOT_RUN`.
+
+See the [packaged Maven example](../examples/llvm/README.md) for an explicit
+compile/link task graph and a header/depfile pair, without any automatic
+LLVM installation or lifecycle binding.
 
 The legacy-bin native cases compile C, C++, Objective-C and Objective-C++ to object
 files through `TaskRunner`, verify repeated execution even with incremental

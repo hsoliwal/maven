@@ -253,6 +253,32 @@
             </configuration>
           </execution>
           <execution>
+            <id>llvm-native-integration-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>llvm-packaged-example-plan</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.PolyglotCli</argument>
+                <argument>plan</argument>
+                <argument>${project.basedir}/examples/llvm</argument>
+                <argument>${project.basedir}/examples/llvm/m3-build.tsv</argument>
+                <argument>all</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>mavenizer-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
