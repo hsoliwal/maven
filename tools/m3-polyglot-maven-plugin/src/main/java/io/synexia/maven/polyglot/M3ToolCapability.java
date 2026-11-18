@@ -6,13 +6,16 @@ package io.synexia.maven.polyglot;
 
 import java.io.IOException;
 
-/** Stable v1 operations exposed by an M3 polyglot tool provider. */
+/** Additive, versioned operations supported by M3 polyglot tool providers. */
 public enum M3ToolCapability {
     COMPILER("compiler"),
     INTERPRETER("interpreter"),
     TRANSPILER("transpiler"),
     ATOMIZER("atomizer"),
-    PATTERNIZER("patternizer");
+    PATTERNIZER("patternizer"),
+    LINKER("linker"),
+    OPTIMIZER("optimizer"),
+    ASSEMBLER("assembler");
 
     private final String slug;
 

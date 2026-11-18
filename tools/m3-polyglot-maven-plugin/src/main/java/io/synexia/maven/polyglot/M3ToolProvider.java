@@ -26,7 +26,7 @@ public interface M3ToolProvider {
     /** Must be a stable, lowercase provider identifier (such as {@code jdk}). */
     String id();
 
-    /** The subset of the five operations this provider actually implements. */
+    /** The subset of the supported operations this provider implements. */
     Set<M3ToolCapability> capabilities();
 
     /** Lowercase language identifiers (such as java, cpp, rust or python). */
