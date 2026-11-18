@@ -33,8 +33,17 @@ public final class M3RocksDbBackendProvider implements M3ModuleDbBackendProvider
     @Override public void verifyAvailable(Path root) throws IOException {
         M3PortableDbRuntime.path(root, DIRECTORY, true, false);
         Class<?> rocks = M3PortableDbRuntime.type("org.rocksdb.RocksDB");
-        M3PortableDbRuntime.peer(rocks, "org.rocksdb.Options");
-        M3PortableDbRuntime.peer(rocks, "org.rocksdb.WriteOptions");
+        Class<?> options = M3PortableDbRuntime.peer(rocks, "org.rocksdb.Options");
+        Class<?> write = M3PortableDbRuntime.peer(rocks, "org.rocksdb.WriteOptions");
+        try {
+            rocks.getMethod("open", options, String.class);
+            rocks.getMethod("get", byte[].class, byte[].class);
+            rocks.getMethod("put", write, byte[].class, byte[].class);
+            options.getMethod("setCreateIfMissing", boolean.class);
+            write.getMethod("setSync", boolean.class);
+        } catch (NoSuchMethodException incompatible) {
+            throw new IOException("RocksDB JNI 11.8.1 API is incompatible with M3 state", incompatible);
+        }
         M3PortableDbRuntime.callStatic(rocks, "loadLibrary", NONE);
     }
 
