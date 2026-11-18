@@ -30,9 +30,20 @@ public final class M3MapDbBackendProvider implements M3ModuleDbBackendProvider {
         M3PortableDbRuntime.path(root, FILE, false, false);
         Class<?> maker = M3PortableDbRuntime.type("org.mapdb.DBMaker");
         Class<?> serializer = M3PortableDbRuntime.peer(maker, "org.mapdb.Serializer");
-        M3PortableDbRuntime.peer(maker, "org.mapdb.DB");
+        Class<?> database = M3PortableDbRuntime.peer(maker, "org.mapdb.DB");
         M3PortableDbRuntime.constant(serializer, "STRING");
         M3PortableDbRuntime.constant(serializer, "BYTE_ARRAY");
+        try {
+            Class<?> configured = maker.getMethod("fileDB", File.class).getReturnType();
+            configured.getMethod("transactionEnable");
+            configured.getMethod("make");
+            database.getMethod("commit");
+            database.getMethod("rollback");
+            database.getMethod("hashMap", String.class, serializer, serializer)
+                    .getReturnType().getMethod("createOrOpen");
+        } catch (NoSuchMethodException incompatible) {
+            throw new IOException("MapDB 3.1.0 API is incompatible with M3 state", incompatible);
+        }
     }
 
     @Override public byte[] read(Path root) throws IOException {
