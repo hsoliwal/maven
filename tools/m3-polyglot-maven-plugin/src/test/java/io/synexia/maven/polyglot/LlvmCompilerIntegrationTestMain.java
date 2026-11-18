@@ -248,7 +248,7 @@ public final class LlvmCompilerIntegrationTestMain {
 
     private static void runUncached(TaskManifest plan, Path root, String target, Path cache) throws Exception {
         List<String> log = new ArrayList<>();
-        TaskRunner.run(plan, root, target, false, TIMEOUT, false, true, "embedded", cache, log::add);
+        TaskRunner.run(plan, root, target, false, TIMEOUT, false, true, "embedded", cache, true, log::add);
         check(log.stream().noneMatch(line -> line.startsWith("UP-TO-DATE ")
                         || line.startsWith("FROM-CACHE ") || line.startsWith("CACHED ")),
                 "LLVM compiler tasks execute despite incremental and output-cache opt-ins: " + log);
