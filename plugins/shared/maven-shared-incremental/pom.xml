@@ -120,6 +120,15 @@
   <build>
     <plugins>
       <plugin>
+        <!-- maven-parent 23 sets source/target 1.5, which javac 17+ rejects; 8 is the oldest it accepts. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>8</source>
+          <target>8</target>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>org.codehaus.plexus</groupId>
         <artifactId>plexus-component-metadata</artifactId>
         <executions>
