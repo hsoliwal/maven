@@ -91,6 +91,23 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |
 | External portable storage | `ext-*` | Preserves the public `M3ModuleDbBackendProvider` SPI; the selected trusted provider must be installed and independently qualified |
 
+For the recognized **native M3IndexDB blob/ref directory layout**, the `m3db` backend now
+performs bounded, conservative mark-and-sweep compaction under the existing
+module-wide lease. Replacing a successful-build artifact may leave the old
+content-addressed blob unreachable; maintenance inventories *all* refs, verifies
+that their artifact names, digests, sizes and live blob SHA-256 values agree,
+and deletes only unreachable blobs. The pre-publish pass also reclaims orphaned
+blobs from a previous interrupted update, before evaluating the native store
+size budget. The post-publish pass runs only after independent artifact readback
+confirms the new state. No deletion occurs if a ref is corrupt, a symbolic link
+is encountered, or a future/unrecognized native layout is detected. This
+does **not** implement compaction for an unknown platform/donor storage format,
+nor does it change the pinned original M3IndexDB engine. If a filesystem does
+not durably persist a directory deletion, an orphan may reappear after power
+loss but the live reference remains intact. The isolated JDK17 test checks
+orphan reclamation, several live refs, idempotence, corruption refusal and
+12 consecutive real library-backed native updates.
+
 One owner holds the module state: `M3DbModuleStore` keeps the receipt codec, lease, generation marker and
 revocation; every backend is an implementation of the one `ModuleStateBackend` interface. The built-in
 backends store through the one storage layer `IndexStore` (M3IndexDB: the platform form on M3jdk21, the
