@@ -31,6 +31,7 @@ public final class LlvmNativeToolsContractTestMain {
             Path bin = Files.createDirectories(root.resolve("llvm install/bin"));
             matrix(root, bin);
             optionsAndPins(root, bin);
+            evidenceAdmission(root, bin);
             registryAndDeclarationGate(root, bin);
             sharedProperties(root, bin);
             System.out.println("PASS: " + passed + " LLVM tools provider contract assertions");
@@ -117,6 +118,55 @@ public final class LlvmNativeToolsContractTestMain {
         var direct = provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
                 task("optimizer", "llvm-ir", List.of("--m3-llvm-bin=llvm install/bin", "--help")), root);
         require(direct.get(0).equals(opt.toString()), "explicit pin never falls back to PATH");
+        passed++;
+    }
+
+    private static void evidenceAdmission(Path root, Path bin) throws Exception {
+        var provider = new LlvmNativeToolsProvider();
+        Path home = root.resolve("llvm install");
+        Path binary = fakeExecutable(bin, "opt");
+        byte[] before = Files.readAllBytes(binary);
+        Path evidence = root.resolve("selected-llvm-evidence.tsv");
+        LlvmToolchainEvidence.write(home, evidence, List.of("opt"));
+        List<String> chosen = List.of("--m3-llvm-home=llvm install",
+                "--m3-llvm-evidence=selected-llvm-evidence.tsv", "--version");
+        List<String> command = provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", chosen), root);
+        require(command.equals(List.of(binary.toString(), "--version")),
+                "selected toolchain manifest verified and selector stripped");
+        passed++;
+        expectIOException(() -> provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", List.of("--m3-llvm-evidence=selected-llvm-evidence.tsv",
+                        "--version")), root), "evidence without pinned toolchain selection");
+        passed++;
+        expectIOException(() -> provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", List.of("--m3-llvm-home=llvm install",
+                        "--m3-llvm-evidence=missing-manifest.tsv", "--version")), root),
+                "missing evidence manifest");
+        passed++;
+        expectIOException(() -> provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", List.of("--m3-llvm-home=llvm install",
+                        "--m3-llvm-evidence=selected-llvm-evidence.tsv",
+                        "--m3-llvm-evidence=selected-llvm-evidence.tsv", "--version")), root),
+                "duplicate evidence selector");
+        passed++;
+        LlvmToolchainEvidence.write(home, root.resolve("other-evidence.tsv"), List.of("llvm-as"));
+        expectIOException(() -> provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", List.of("--m3-llvm-home=llvm install",
+                        "--m3-llvm-evidence=other-evidence.tsv", "--version")), root),
+                "evidence omits the actually selected driver");
+        passed++;
+        Files.writeString(binary, "changed tool contents", StandardCharsets.UTF_8);
+        try {
+            expectIOException(() -> provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                    task("optimizer", "llvm-ir", chosen), root), "changed tool bytes");
+            passed++;
+        } finally {
+            Files.write(binary, before);
+        }
+        require(provider.command(M3ToolCapability.OPTIMIZER, "llvm-ir",
+                task("optimizer", "llvm-ir", chosen), root).get(0).equals(binary.toString()),
+                "restored original tool bytes pass exact evidence");
         passed++;
     }
 
