@@ -70,6 +70,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3PortableDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3JdbcDbContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DbModuleStoreContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ReceiptArrayModelTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3DirectoryVacuumTest.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/IndexStoreContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/ModuleStateContractTestMain.java \
@@ -93,6 +94,7 @@ java -cp "$DEST" io.synexia.maven.polyglot.TaskEngineContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3PortableDbContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DbModuleStoreContractTestMain
+java -cp "$DEST" io.synexia.maven.polyglot.M3ReceiptArrayModelTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3DirectoryVacuumTest
 java -cp "$DEST" io.synexia.maven.polyglot.IndexStoreContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.ModuleStateContractTestMain

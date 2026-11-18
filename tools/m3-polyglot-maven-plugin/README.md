@@ -108,6 +108,21 @@ loss but the live reference remains intact. The isolated JDK17 test checks
 orphan reclamation, several live refs, idempotence, corruption refusal and
 12 consecutive real library-backed native updates.
 
+**Scalable M3 array-lane index.** Module receipts now grow from 16 logical
+slots to a hard ceiling of 65,536 entries (previously 256), all stored as
+sorted parallel arrays rather than retained per-entry node/entry objects.
+Updates of already-sorted task batches use a linear merge analogous to an
+LSM sorted-run merge; a task's successful replacement wins over its previous
+receipt. Revocation of large dependency sets and namespace prefixes uses a
+single in-place compaction pass instead of one array shift per key. The
+published binary receipt schema, seal, generation, existing `record` behavior,
+and all backend-specific persistence APIs are unchanged. Near the hard
+capacity boundary, the original deterministic eviction semantics are
+retained; the 32-MiB sealed-image budget independently guards large payloads.
+Tests cover 4,096 simultaneously retained tasks, the 65,536-entry limit,
+immediate/transactional writes, restart persistence and a deterministic
+`TreeMap` oracle (test-only).
+
 One owner holds the module state: `M3DbModuleStore` keeps the receipt codec, lease, generation marker and
 revocation; every backend is an implementation of the one `ModuleStateBackend` interface. The built-in
 backends store through the one storage layer `IndexStore` (M3IndexDB: the platform form on M3jdk21, the
