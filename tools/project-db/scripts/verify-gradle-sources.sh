@@ -17,5 +17,6 @@ fi
 compile -d "$DEST" \
   "$SOURCE/Source.java" "$SOURCE/Sources.java" "$SOURCE/Modules.java" \
   "$SOURCE/Chunk.java" "$SOURCE/Text.java" "$SOURCE/SurefireParser.java" \
-  "$TEST/GradleSourceDiscoveryContractMain.java"
+  "$TEST/GradleSourceDiscoveryContractMain.java" "$TEST/ModulesPruneContractMain.java"
 java -cp "$DEST" org.apache.maven.plugins.projectdb.GradleSourceDiscoveryContractMain
+java -cp "$DEST" org.apache.maven.plugins.projectdb.ModulesPruneContractMain

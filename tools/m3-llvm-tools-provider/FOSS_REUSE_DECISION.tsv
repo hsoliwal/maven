@@ -1,0 +1,3 @@
+source	version	license	reuse_type	owner	requirement
+https://github.com/hsoliwal/llvm-project	591f3d1edf0a9ee718d17a0ee70dd013b3c01908	Apache-2.0 WITH LLVM-exception	external executable only	LLVM Clang LLD MLIR lit	Do not vendor code binaries or relicense; preserve LLVM notice when distributing LLVM
+tools/m3-polyglot-maven-plugin	0.1.0-SNAPSHOT	Apache-2.0	original public M3ToolProvider SPI	Maven fork	Reuse ServiceLoader DAG and M3DB owners; no competing cache

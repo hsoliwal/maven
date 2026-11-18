@@ -128,29 +128,65 @@ argument, not a global Maven installation setting.
 - `docs/M3-EXTERNAL-BUILD-BRIDGE.md` retains the original external
   build-owner delta/reconciliation contract. IDE input is advisory, not
   authorization to skip the native compiler.
+- `tools/m3-llvm-tools-provider` is the separately installed SPI JAR for
+  `opt`, `mlir-opt`, `mlir-translate`, `llvm-as`, `llvm-link`, LLD and LLVM
+  test runners. It reuses this same Maven DAG and does not turn compiler
+  tasks into an implicit pipeline.
 
-The next stages should add explicit, separately tested tooling for Clang
-diagnostics, LLD linking, `opt` pass pipelines, MLIR transforms, LLVM
-`lit`/FileCheck evidence, target triples/sysroots, depfile import,
-module dependency graphs, and reproducible native artifact/toolchain receipts.
-They are **not implemented by this provider**. OpenRewrite remains the
+The next stages should qualify Clang diagnostics, linker target ABIs,
+MLIR dialects/passes, LLVM `lit`/FileCheck evidence, target triples/sysroots,
+depfile import, module dependency graphs, and reproducible native artifact/toolchain
+receipts. Those are **not implemented by this compiler provider**. OpenRewrite remains the
 recipe mutation authority, and M3 AST atomization/patternization is a
 separate contract-preserving pass.
 
 ## Qualification gates
 
-The Java 17/21 contract suites verify ServiceLoader inventory, command
-selection, both selector forms, SHA pinning, invalid/duplicate inputs, and
-side-effect-free dry-run planning **without assuming LLVM is installed**.
-The optional `M3_LLVM_REAL_TEST_HOME=<root> sh
-tools/m3-polyglot-maven-plugin/scripts/verify.sh` gate compiles C, C++,
-Objective-C, Objective-C++, Fortran and LLVM IR into real object files through
-the Maven task runner. If no real toolchain is supplied, this gate reports
-`NOT RUN` rather than a pass. Independent release qualification still requires
-the Maven 17/21 CI matrix, Windows paths, cross-compilation,
-exit codes/cancellation, diagnostics, CMake/Ninja/CTest integration,
-and toolchain/source/ABI provenance differential checks. Do not report
-those real-tool checks as passed until they execute.
+The Java 17/21 offline contract suites verify ServiceLoader inventory,
+compiler selection, both bin/home selectors, SHA pinning, invalid/duplicate
+inputs, literal argv preservation, and side-effect-free incremental dry-run
+planning **without assuming LLVM is installed**. The
+`LlvmCompilerSelectionContractTestMain` covers fork-home, symlink, SHA and
+CMake configuration contracts. The separately merged
+`LlvmCompilerProviderContractTestMain` covers raw original flags, dry-run
+purity and optional real native/cache-invalidating compilation.
+
+To execute both native qualification gates, select an installed toolchain explicitly:
+
+```sh
+mvn -f tools/m3-polyglot-maven-plugin/pom.xml \
+  -Dm3.polyglot.llvm.test.home=/opt/llvm verify
+M3_POLYGLOT_LLVM_TEST_HOME=/opt/llvm M3_LLVM_REAL_TEST_HOME=/opt/llvm \
+  sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+```
+
+The test-only `m3.polyglot.llvm.test.home` property (or
+`M3_POLYGLOT_LLVM_TEST_HOME` for the standalone verifier) points to the
+installation root containing `bin` and exercises the existing
+`--m3-llvm-bin` selector. The separate `M3_LLVM_REAL_TEST_HOME` environment
+selects the six-language, executable-digest-pinned Maven `TaskRunner` gate;
+it also runs through Maven `verify` when configured. Neither test variable
+changes the production provider's home/bin/PATH selection rules.
+
+The legacy-bin native cases compile C, C++, Objective-C and Objective-C++ to object
+files through `TaskRunner`, verify repeated execution even with incremental
+state and artifact caching enabled, observe an included header changing
+object bytes, and require a real invalid-C failure to reach the caller.
+Optional LLVM IR and Fortran cases use the actual `llc` and `flang` drivers.
+Missing optional tools are reported as `NOT_RUN`; a present but unusable
+configured tool fails. If no test installation is selected, all native
+cases report `NOT_RUN`. The separate strict six-language gate compiles C,
+C++, Objective-C, Objective-C++, Fortran and LLVM IR to nonempty object files
+with SHA-256 pins, and reports `NOT RUN` if not configured. Expected invalid-C
+diagnostics are part of the passing failure-propagation case.
+
+Passing these tests qualifies only the selected installed compiler and
+host. It does not prove that the executable was built from the pinned
+LLVM fork revision. Independent release qualification still includes the
+Maven 17/21 CI matrix, Windows/macOS, cross-compilation, cancellation,
+CMake/Ninja/CTest integration, and toolchain/source/ABI provenance checks.
+Report each real-tool case from its actual result; planning a `flang` or
+`llc` command does not count as executing that compiler.
 
 References: [LLVM CMake](https://llvm.org/docs/CMake.html),
 [LLVM getting started](https://llvm.org/docs/GettingStarted.html),

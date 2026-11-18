@@ -73,9 +73,11 @@ Every store directory gets a `.gitignore` of `*`, so it is never committed; this
 The standalone ProjectDbCli now discovers project and module directories with
 `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, or
 `settings.gradle.kts` (without requiring a POM). It skips the build,
-target, .gradle, .m3 and VCS/output directories, de-duplicates modules with
-multiple descriptors, and reads original Gradle TEST-*.xml artifacts directly
-from each test task under build/test-results. It never starts Gradle or
+target, .gradle, .m3 and VCS/output directories **before descending into
+them**, de-duplicates modules with multiple descriptors, and reads original
+Gradle TEST-*.xml artifacts directly from each test task under
+build/test-results. This bounded FileVisitor traversal avoids enumerating
+large build trees or node_modules in order to reject their descriptors. It never starts Gradle or
 reprocesses unchanged report bytes; the original ProjectDb/IndexStore and
 SurefireParser remain the only data and parsing owners.
 

@@ -220,13 +220,13 @@
             </configuration>
           </execution>
           <execution>
-            <id>llvm-provider-contract</id>
+            <id>llvm-selection-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
             <configuration>
               <arguments>
                 <argument>-classpath</argument><classpath/>
-                <argument>io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain</argument>
+                <argument>io.synexia.maven.polyglot.LlvmCompilerSelectionContractTestMain</argument>
               </arguments>
             </configuration>
           </execution>
@@ -340,6 +340,15 @@
             <goals><goal>java</goal></goals>
             <configuration>
               <mainClass>io.synexia.maven.polyglot.EcjCompilerProviderContractTestMain</mainClass>
+              <classpathScope>test</classpathScope>
+            </configuration>
+          </execution>
+          <execution>
+            <id>llvm-provider-contract</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain</mainClass>
               <classpathScope>test</classpathScope>
             </configuration>
           </execution>
