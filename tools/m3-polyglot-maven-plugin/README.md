@@ -1057,6 +1057,9 @@ request compilation or Maven/Gradle cache admission.
 
 The Maven host \`M3EclipseLanguageEvidenceService\`:
 - fails on unsupported or duplicate provider IDs/SPI versions;
+- bounds discovery to 128 installed providers and 4,096 builder/nature IDs per provider;
+- rejects ambiguous ownership when two providers claim the same exact Eclipse
+  incremental builder ID; nature-only observers may share a nature ID;
 - requires the provider's exact builder/nature ID to match the original
   \`M3-ECLIPSE-BUILD-HANDOFF-V1\`, including nature-only plugins;
 - requires matching original project/configuration/invocation;

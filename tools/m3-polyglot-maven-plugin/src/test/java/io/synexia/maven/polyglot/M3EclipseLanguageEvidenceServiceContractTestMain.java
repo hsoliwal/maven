@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -54,6 +55,25 @@ public final class M3EclipseLanguageEvidenceServiceContractTestMain {
             refuses(() -> M3EclipseLanguageEvidenceService.inspect("test.pydev", packet,
                     owner, List.of(new M3TestPyDevEvidenceProvider(), new M3TestPyDevEvidenceProvider())),
                     "duplicate SPI provider ID");
+            refuses(() -> M3EclipseLanguageEvidenceService.inspect("test.builder.one", packet,
+                    owner, List.of(declaring("test.builder.one", "vendor.sameBuilder", null),
+                            declaring("test.builder.two", "vendor.sameBuilder", null))),
+                    "two installed providers cannot claim one Eclipse incremental builder");
+
+            var sharing = M3EclipseLanguageEvidenceService.inspect("test.pydev", packet,
+                    owner, List.of(new M3TestPyDevEvidenceProvider(),
+                            declaring("test.secondary", null, M3TestPyDevEvidenceProvider.NATURE)));
+            require(sharing.toJson().equals(fixed.toJson()),
+                    "nature-only language observers may share original Eclipse nature IDs");
+
+            List<M3EclipseLanguageEvidenceProvider> excessive = new ArrayList<>();
+            for (int index = 0; index <= M3EclipseLanguageEvidenceService.MAX_INSTALLED_PROVIDERS; index++) {
+                excessive.add(declaring("test.provider" + index,
+                        "vendor.example.builder" + index, null));
+            }
+            refuses(() -> M3EclipseLanguageEvidenceService.inspect("test.provider0",
+                    packet, owner, excessive), "unbounded installed source-owner providers");
+
             refuses(() -> M3EclipseLanguageEvidenceService.inspect("test.pydev", packet,
                     M3EclipseBuildHandoffWire.decode(handoff("PyProject", UUID, "Debug",
                             "vendor.otherNature").getBytes(StandardCharsets.UTF_8)),
@@ -131,6 +151,22 @@ public final class M3EclipseLanguageEvidenceServiceContractTestMain {
     private static String b64(String raw) {
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static M3EclipseLanguageEvidenceProvider declaring(
+            String id, String builder, String nature) {
+        return new M3EclipseLanguageEvidenceProvider() {
+            @Override public String id() { return id; }
+            @Override public Set<String> builderIds() {
+                return builder == null ? Set.of() : Set.of(builder);
+            }
+            @Override public Set<String> natureIds() {
+                return nature == null ? Set.of() : Set.of(nature);
+            }
+            @Override public Evidence decode(byte[] bytes) throws IOException {
+                throw new IOException("unselected test provider must not decode source facts");
+            }
+        };
     }
 
     @FunctionalInterface private interface Checked { void run() throws Exception; }
