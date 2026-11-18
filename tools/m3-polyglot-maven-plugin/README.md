@@ -554,6 +554,30 @@ The opt-in OpenRewrite registration recipe `io.synexia.maven.recipe.EnableEclips
 plugin to a consuming POM; it does not bind goals, modify IDE metadata or install toolchains. Test full m2e/PDE,
 JDT, CDT and PyDev round trips independently before treating any live workspace behavior as supported.
 
+## Universal Eclipse language descriptor facts (additive)
+
+The existing `EclipseProjectModel` now fingerprints additional build
+**authoring descriptors** for native, interpreted, JVM and Eclipse PDE
+languages. It recognizes project-local `META-INF/MANIFEST.MF`,
+`plugin.xml`, `fragment.xml`, `feature.xml`, `build.properties`,
+`category.xml`, `*.target`, `*.product`, CMake/Make/Meson files,
+Cargo lockfiles, Go module files, Swift packages, Python project metadata,
+Node/TypeScript manifests, and Maven/Gradle project declarations.
+
+The source belongs to its original language/Eclipse plugin. The Maven
+model records SHA-256 hashes of bounded, explicitly selected files only,
+without running parsers for foreign languages, visiting build output trees,
+following symlinks or installing SDKs. Dynamic target/product documents
+are limited to 128 immediate project files, and added root descriptors have
+a combined 32 MiB byte budget. Pre-existing `m3-eclipse-project-v1` JSON
+fields and the existing `m3EclipseModel` Gradle proxy remain compatible;
+only new entries appear in `descriptorSha256` when these files exist.
+
+These hashes are **not** a complete fingerprint of CDT effective flags,
+JDT classpaths, Rust feature resolutions, PDE/Tycho p2 target contents,
+annotation processors or generated outputs. Build-cache admission still
+requires independent facts from the native source owners and M3File/M3DB.
+
 ## Eclipse language-plugin build owner registry (v1)
 
 The Maven-owned `M3EclipseBuilderProvider` is an additive, read-only
