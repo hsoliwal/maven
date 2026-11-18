@@ -52,6 +52,8 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistry.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildContextWire.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildHandoffWire.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3EclipseBuildReconciliation.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildReconciliationContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildHandoffWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuildContextWireContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3EclipseBuilderRegistryContractTestMain.java \
@@ -115,6 +117,7 @@ java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3EclipseBuilderRegistryContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.M3EclipseBuildContextWireContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildHandoffWireContractTestMain
+java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildReconciliationContractTestMain
 java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
