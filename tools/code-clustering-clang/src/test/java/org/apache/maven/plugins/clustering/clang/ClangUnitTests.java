@@ -57,6 +57,7 @@ public final class ClangUnitTests {
         databases(dir);
         settingsAndFallback(dir);
         stubs(dir);
+        parallelOutcomes(dir);
         differences();
         CHECKS.end("ClangUnitTests");
     }
@@ -298,6 +299,29 @@ public final class ClangUnitTests {
         outcomes.clear();
         new ClangFrontEnd(noFlags, outcomes::add).atoms(dir.resolve("fb"), List.of(src));
         check("no database and no flags: NO_COMMAND", outcomes.get(0).status() == ClangRun.Status.NO_COMMAND);
+    }
+
+    /** Parallel workers must not lose or reorder outcomes sent to a non-thread-safe caller. */
+    private static void parallelOutcomes(Path dir) throws Exception {
+        Path root = dir.resolve("parallel-outcomes");
+        List<Path> sources = new ArrayList<>();
+        for (int i = 0; i < 128; i++) {
+            sources.add(Checks.write(root, "file" + i + ".c",
+                    "int file" + i + "(void) { return " + i + "; }\n"));
+        }
+        ClangSettings noCommand = new ClangSettings(Optional.empty(), List.of(), List.of(), Optional.empty(),
+                12, Duration.ofSeconds(30), false);
+        for (int pass = 0; pass < 4; pass++) {
+            List<ClangFrontEnd.Outcome> seen = new ArrayList<>();
+            List<Atom> atoms = new ClangFrontEnd(noCommand, seen::add).atoms(root, sources);
+            boolean exact = seen.size() == sources.size() && atoms.size() == sources.size();
+            for (int i = 0; exact && i < sources.size(); i++) {
+                exact = seen.get(i).file().equals(sources.get(i))
+                        && seen.get(i).status() == ClangRun.Status.NO_COMMAND
+                        && atoms.get(i).symbol().startsWith("file" + i + "(");
+            }
+            check("parallel clang outcomes and atoms preserve source order, pass " + pass, exact);
+        }
     }
 
     private static void stubs(Path dir) throws Exception {
