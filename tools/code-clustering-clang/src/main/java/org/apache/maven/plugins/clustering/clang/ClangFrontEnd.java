@@ -86,9 +86,19 @@ public final class ClangFrontEnd implements AtomFrontEnd {
                 task -> new Thread(null, task, "clang-ast", STACK));
         try {
             List<Future<List<Atom>>> results = new ArrayList<>();
-            files.forEach(file -> results.add(pool.submit(() -> atomize(root, file))));
+            // Workers write only their own slots. Publish after every future succeeds.
+            Outcome[] completed = new Outcome[files.size()];
+            for (int i = 0; i < files.size(); i++) {
+                final int index = i;
+                Path file = files.get(i);
+                results.add(pool.submit(() -> atomize(root, file, outcome -> completed[index] = outcome)));
+            }
             List<Atom> atoms = new ArrayList<>();
             for (Future<List<Atom>> result : results) atoms.addAll(get(result));
+            for (int i = 0; i < completed.length; i++) {
+                if (completed[i] == null) throw new IOException("missing clang outcome: " + files.get(i));
+            }
+            for (Outcome outcome : completed) outcomes.accept(outcome);
             return atoms;
         } finally {
             pool.shutdownNow();
@@ -108,15 +118,19 @@ public final class ClangFrontEnd implements AtomFrontEnd {
 
     /** One file: clang's atoms, or the lexical front end's when clang cannot read it. */
     List<Atom> atomize(Path root, Path file) {
+        return atomize(root, file, outcomes);
+    }
+
+    private List<Atom> atomize(Path root, Path file, Consumer<Outcome> sink) {
         Optional<CompileCommand> command = databases.forFile(file).or(() -> settings.defaults(file));
         Result result = command.map(c -> attempts(c, root, file))
                 .orElse(new Result(Status.NO_COMMAND, List.of(), "no compile_commands.json entry", ""));
         if (result.status() == Status.AST) {
-            outcomes.accept(new Outcome(file, Status.AST, result.atoms().size(), result.detail()));
+            sink.accept(new Outcome(file, Status.AST, result.atoms().size(), result.detail()));
             return result.atoms();
         }
         List<Atom> lexical = lexical(root, file);
-        outcomes.accept(new Outcome(file, result.status(), lexical.size(), result.detail()));
+        sink.accept(new Outcome(file, result.status(), lexical.size(), result.detail()));
         return lexical;
     }
 
