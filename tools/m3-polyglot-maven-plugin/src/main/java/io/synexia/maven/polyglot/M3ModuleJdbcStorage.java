@@ -20,38 +20,48 @@ import java.util.Properties;
 
 /**
  * Optional local JDBC storage for the canonical sealed ModuleStateDb image.
- * No driver is bundled. SQLite/H2 handle their own transaction journaling.
+ * No driver is bundled. SQLite, H2 and HSQLDB own their own transaction logs.
  * The common M3 module lease and generation marker surround these image commits.
  */
 final class M3ModuleJdbcStorage {
     static final String SQLITE_FILE = ".m3/module-state.sqlite";
     static final String H2_FILE = ".m3/module-state.mv.db";
+    static final String HSQLDB_FILE = ".m3/module-state-hsqldb.properties";
     private static final int MAX_IMAGE = 32 * 1024 * 1024;
     private static final String TABLE = "M3_MODULE_SNAPSHOT";
     private final Path file;
     private final String url;
     private final boolean sqlite;
+    private final boolean hsqldb;
     private final Driver driver;
 
     M3ModuleJdbcStorage(Path moduleRoot, String backend) throws IOException {
         Objects.requireNonNull(moduleRoot, "moduleRoot");
         Path root = moduleRoot.toAbsolutePath().normalize();
         sqlite = "sqlite".equals(backend);
-        if (!sqlite && !"h2".equals(backend)) {
+        hsqldb = "hsqldb".equals(backend);
+        if (!sqlite && !hsqldb && !"h2".equals(backend)) {
             throw new IllegalArgumentException("unsupported JDBC module backend: " + backend);
         }
-        file = root.resolve(sqlite ? SQLITE_FILE : H2_FILE);
-        Path base = root.resolve(".m3/module-state");
+        file = root.resolve(sqlite ? SQLITE_FILE : hsqldb ? HSQLDB_FILE : H2_FILE);
+        Path base = root.resolve(hsqldb ? ".m3/module-state-hsqldb" : ".m3/module-state");
         String location = (sqlite ? file : base).toString().replace('\\', '/');
         // Embedded database URL parsers treat these as parameters, not filename characters.
         if (location.indexOf(';') >= 0 || location.indexOf('?') >= 0
                 || location.indexOf('#') >= 0 || location.chars().anyMatch(Character::isISOControl)) {
             throw new IOException("unsafe character in embedded JDBC module path");
         }
-        // H2 otherwise permits a delay between commit and forcing its transaction log.
-        url = sqlite ? "jdbc:sqlite:" + location : "jdbc:h2:file:" + location + ";WRITE_DELAY=0";
+        // H2 and HSQLDB default to deferred log synchronization. Both must
+        // force transaction-log persistence at every completed module commit.
+        // HSQLDB shutdown=true makes the last close release in-process state
+        // (essential for Maven child-process crash/reopen verification).
+        url = sqlite ? "jdbc:sqlite:" + location
+                : hsqldb ? "jdbc:hsqldb:file:" + location
+                        + ";shutdown=true;hsqldb.write_delay=false;hsqldb.full_log_replay=true"
+                : "jdbc:h2:file:" + location + ";WRITE_DELAY=0";
         checkPaths();
-        driver = loadDriver(backend, sqlite ? "org.sqlite.JDBC" : "org.h2.Driver");
+        driver = loadDriver(backend, sqlite ? "org.sqlite.JDBC"
+                : hsqldb ? "org.hsqldb.jdbc.JDBCDriver" : "org.h2.Driver");
     }
 
     byte[] read() throws IOException {
@@ -106,6 +116,13 @@ final class M3ModuleJdbcStorage {
                             throw new SQLException("SQLite did not enable synchronous EXTRA");
                         }
                     }
+                }
+            }
+            if (hsqldb) {
+                // A delayed HSQLDB WAL fsync is not a durable pre-task
+                // revocation. Apply this before beginning the write transaction.
+                try (Statement policy = connection.createStatement()) {
+                    policy.execute("SET FILES WRITE DELAY FALSE");
                 }
             }
             try (Statement setup = connection.createStatement()) {
@@ -166,6 +183,7 @@ final class M3ModuleJdbcStorage {
         String name = relative.replace('\\', '/');
         return name.equals(SQLITE_FILE) || name.startsWith(SQLITE_FILE + "-")
                 || name.equals(H2_FILE) || name.startsWith(H2_FILE + ".")
+                || name.startsWith(".m3/module-state-hsqldb.")
                 || name.equals(".m3/module-state.lock.db") || name.equals(".m3/module-state.trace.db")
                 || name.equals(".m3/module-state.temp.db") || name.startsWith(".m3/module-state.temp.db.")
                 || name.equals(".m3/module-state.h2.db") || name.equals(".m3/module-state.lobs.db");
