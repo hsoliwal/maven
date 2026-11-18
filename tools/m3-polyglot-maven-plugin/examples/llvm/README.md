@@ -16,6 +16,20 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
 ./target/hello
 ```
 
+Export this example's original Clang compile command for clangd,
+Eclipse CDT or the existing Clang AST atomizer **without invoking Clang**:
+
+```sh
+mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:llvm-compile-db \
+    -Dm3.llvm.home=/work/llvm-install
+```
+
+The output is `target/m3-llvm/compile_commands.json`; it is not the
+CMake `build/cmake/compile_commands.json`. The `arguments` array is
+taken from the existing `@m3:llvm:compiler:c` task, with the original
+native source path and working directory. No new build receipt or
+incremental compiler cache admission is implied.
+
 The native executable prints `Maven built this with LLVM`. The manifest keeps
 compilation and linking as separate dependency-ordered tasks, with declared
 object, dependency-file and executable outputs. Change `native/message.h` and
