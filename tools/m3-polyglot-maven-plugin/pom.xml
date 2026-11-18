@@ -88,6 +88,17 @@
             </configuration>
           </execution>
           <execution>
+            <id>hsqldb-offline-and-optional-real-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.M3HsqlDbContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>module-state-db-contract</id>
             <phase>verify</phase>
             <goals><goal>exec</goal></goals>
@@ -453,6 +464,41 @@
                     <argument>-classpath</argument><classpath/>
                     <argument>io.synexia.maven.polyglot.M3PortableEngineConformanceTestMain</argument>
                     <argument>--require-all</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- HSQLDB is test-only unless the consuming Maven module explicitly selects it. -->
+    <profile>
+      <id>m3-hsqldb</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.hsqldb</groupId><artifactId>hsqldb</artifactId>
+          <version>2.7.4</version><scope>test</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions>
+              <execution>
+                <id>hsqldb-real-driver-contract</id>
+                <phase>verify</phase>
+                <goals><goal>exec</goal></goals>
+                <configuration>
+                  <executable>${java.home}/bin/java</executable>
+                  <classpathScope>test</classpathScope>
+                  <arguments>
+                    <argument>-classpath</argument><classpath/>
+                    <argument>io.synexia.maven.polyglot.M3HsqlDbContractTestMain</argument>
+                    <argument>--require-driver</argument>
                   </arguments>
                 </configuration>
               </execution>
