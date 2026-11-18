@@ -48,7 +48,7 @@ drift. A failure blocks that CI run, not the original Maven build or normal
 IDE/Gradle consumers.
 
 This is a source-provenance *invalidation trigger*, not a native-cache
-admission rule. Both LLVM compiler providers continue to execute normally
+admission rule. The LLVM compiler and optional LLVM tools providers continue executing normally
 unless independently qualified; an executable SHA-256 alone cannot authorize
 artifact restoration. The opt-in compilation-database exporter has a separate
 CI owner because it does not participate in the exact-fork TaskRunner test.
