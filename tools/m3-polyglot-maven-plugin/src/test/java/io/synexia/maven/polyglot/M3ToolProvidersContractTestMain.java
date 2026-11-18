@@ -74,7 +74,7 @@ public final class M3ToolProvidersContractTestMain {
         require(descriptions.get(2).capabilities().equals(List.of("compiler")), "jdk compiler only");
         require(descriptions.get(3).id().equals("llvm"), "LLVM provider registered");
         require(descriptions.get(3).capabilities().equals(List.of("compiler"))
-                && descriptions.get(3).languages().equals(List.of("c", "cpp", "fortran", "llvm-ir", "objc", "objcpp")),
+                && descriptions.get(3).languages().equals(List.of("c", "cpp", "fortran", "llvm-ir", "objc", "objc++", "objcpp")),
                 "LLVM original C-family, Fortran and IR compiler drivers");
     }
 
@@ -193,7 +193,7 @@ public final class M3ToolProvidersContractTestMain {
         String suffix = System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "";
         String[][] languages = {
             {"c", "clang"}, {"cpp", "clang++"}, {"objc", "clang"},
-            {"objcpp", "clang++"}, {"fortran", "flang"}, {"llvm-ir", "llc"}
+            {"objcpp", "clang++"}, {"objc++", "clang++"}, {"fortran", "flang"}, {"llvm-ir", "llc"}
         };
         for (String[] language : languages) {
             var task = llvmTask(language[0], List.of("-c", "src/hello.c", "-o", "target/hello.o"));
