@@ -322,6 +322,7 @@ public final class M3DbModuleStoreContractTestMain {
                     "4,096 successful task receipts coexist without eviction");
             store.stage("task-01024", OUTPUT, INPUT);
             store.stage("task-03500", OUTPUT, INPUT);
+            store.stage("task-04095", OUTPUT, INPUT);
             store.commitStaged();
             check(Arrays.equals(store.lookup("task-01024"), new String[] {OUTPUT, INPUT}),
                     "sorted array merge replaces existing key with staged values");
@@ -346,8 +347,10 @@ public final class M3DbModuleStoreContractTestMain {
             check(store.lookup("task-00000") == null && store.lookup("task-03000") == null,
                     "large bulk/prefix revocations survive clean reopen");
             check(Arrays.equals(store.lookup("task-01025"), new String[] {INPUT, OUTPUT})
-                            && Arrays.equals(store.lookup("task-03500"), new String[] {OUTPUT, INPUT}),
+                            && Arrays.equals(store.lookup("task-04095"), new String[] {OUTPUT, INPUT}),
                     "unaffected and newly merged success receipts are durably restored");
+            check(store.lookup("task-03500") == null && store.lookup("task-01024") == null,
+                    "revocation wins over earlier staged updates after reopen");
         }
     }
 
