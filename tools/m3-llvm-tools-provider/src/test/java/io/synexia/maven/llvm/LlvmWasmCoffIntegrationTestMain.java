@@ -188,8 +188,16 @@ public final class LlvmWasmCoffIntegrationTestMain {
     }
 
     private static void verify(Path workspace) throws Exception {
-        for (String name : List.of("target/m3.wasm.o", "target/m3.wasm",
-                "target/m3.obj", "target/m3.dll", "target/m3.lib")) {
+        // Enforce complete output ownership, not just the existence of the
+        // principal DLL/WASM. Native linkers can emit undeclared sidecars.
+        List<String> outputs = List.of("target/m3.wasm.o", "target/m3.wasm",
+                "target/m3.obj", "target/m3.dll", "target/m3.lib");
+        try (Stream<Path> target = Files.list(workspace.resolve("target"))) {
+            Set<String> observed = Set.copyOf(target.map(p -> "target/" + p.getFileName()).toList());
+            require(observed.equals(Set.copyOf(outputs)),
+                    "every compiler/linker target byproduct must have an output owner: " + observed);
+        }
+        for (String name : outputs) {
             Path file = workspace.resolve(name);
             require(Files.isRegularFile(file) && Files.size(file) > 0,
                     "LLVM produced nonempty declared output " + name);
