@@ -29,6 +29,7 @@ expect_count "run: mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml install
 expect_count "run: mvn -B -ntp -f tools/project-db/pom.xml verify" 1
 expect_count "  gradle-consumer-real-testkit:" 1
 expect_count "    needs: project-db-native-gradle" 1
+expect_count "uses: actions/upload-artifact@v4" 2
 expect_count "uses: actions/download-artifact@v4" 1
 expect_count "name: qualified-maven-jars-jdk-" 2
 expect_count "sha256sum -c SHA256SUMS" 2
