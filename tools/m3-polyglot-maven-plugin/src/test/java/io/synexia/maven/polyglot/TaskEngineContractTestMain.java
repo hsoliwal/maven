@@ -49,6 +49,13 @@ public final class TaskEngineContractTestMain {
         java.util.Map<String, String> env = java.util.Map.of("PATH", "test-path");
         InputStamps.EngineTranscript engine = InputStamps.captureEngineTranscript();
         require(engine.size() > 0, "loaded engine transcript is nonempty");
+        // A live checkout/IDE class directory can change while Maven builds;
+        // never reuse its captured engine transcript for skip admission.
+        var codeSource = InputStamps.class.getProtectionDomain().getCodeSource();
+        if (codeSource != null && Files.isDirectory(Path.of(codeSource.getLocation().toURI()))) {
+            require(InputStamps.captureStableEngineTranscript() == null,
+                    "mutable source class directories retain per-task engine rehash");
+        }
         String original = InputStamps.stamp(task, project, command, env, java.util.Map.of());
         String cached = InputStamps.stamp(task, project, command, env, java.util.Map.of(), engine);
         require(original.equals(cached), "replayed engine identity must not change legacy input keys");
