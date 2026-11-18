@@ -1,0 +1,14 @@
+name: Release Drafter Master
+on:
+  push:
+    branches:
+      - master
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v7.10.0
+        with:
+          config-name: 'release-drafter-master.yml' # located in .github/ in default branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
