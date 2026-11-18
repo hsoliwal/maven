@@ -24,7 +24,30 @@ jobs:
       - name: Source contract and provider argv tests
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
       - name: Maven plugin descriptor, compile and contract verification
-        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml verify
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml install
+      - name: LLVM tools provider Java 17 source contracts
+        run: sh tools/m3-llvm-tools-provider/scripts/verify.sh
+      - name: LLVM tools provider Maven packaging and contracts
+        run: mvn --batch-mode --no-transfer-progress -f tools/m3-llvm-tools-provider/pom.xml verify
+      - name: Packaged LLVM tools ServiceLoader discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          main=tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          provider=tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar
+          test -s "$main"
+          test -s "$provider"
+          rows="$(java -cp "$main:$provider" io.synexia.maven.polyglot.PolyglotCli providers)"
+          test "$(printf '%s\n' "$rows" | grep -Fxc 'M3-POLYGLOT-PROVIDERS-V1')" -eq 1
+          test "$(printf '%s\n' "$rows" | grep -Fc       - name: Required real Clang C and C++ native regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v clang
+          command -v clang++
+          java -cp tools/m3-polyglot-maven-plugin/target/test-classes:tools/m3-polyglot-maven-plugin/target/classes \
+            io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required
+provider\tllvm-tools\t')" -eq 1
       - name: Required real Clang C and C++ native regression
         shell: bash
         run: |
