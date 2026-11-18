@@ -929,6 +929,18 @@ owners. The `io.synexia.maven.recipe.EnableM3ToolProviderSPI` OpenRewrite
 recipe opt-in registers this Maven plugin in a consuming POM without binding
 any goal to the default lifecycle.
 
+### LLVM Clang compilation database export
+
+The opt-in `llvm-compile-db` Maven goal emits standard, argv-based
+`target/m3-llvm/compile_commands.json` for existing
+`@m3:llvm:compiler` C/C++/Objective-C compile tasks, using the original
+M3 task graph and provider selection. This is for clangd, Eclipse CDT and
+`code-clustering-clang`; it never executes a compiler and never overwrites
+CMake's `build/cmake/compile_commands.json`. Only materialized, declared,
+unambiguous single-source compiles are exported; the goal fails closed
+on unknown response-file operands or undeclared sources. See
+[LLVM toolchain / compilation database](docs/LLVM_TOOLCHAIN.md).
+
 ### LLVM fork compiler toolchain
 
 The built-in `llvm` provider delegates to installed LLVM executables; it does **not** copy LLVM sources into Maven,
