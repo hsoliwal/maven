@@ -47,7 +47,7 @@ jobs:
           mkdir -p qualified-maven-jars
           install -m 0644 tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/polyglot.jar
           install -m 0644 tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar qualified-maven-jars/project-db.jar
-          printf 'M3-PROJECTDB-JARS-V1\\t%s\\t%s\\n' "$GITHUB_SHA" '${{ matrix.java }}' > qualified-maven-jars/SOURCE_RECEIPT.tsv
+          printf 'M3-PROJECTDB-JARS-V1\t%s\t%s\n' "$GITHUB_SHA" '${{ matrix.java }}' > qualified-maven-jars/SOURCE_RECEIPT.tsv
           (cd qualified-maven-jars && sha256sum polyglot.jar project-db.jar SOURCE_RECEIPT.tsv > SHA256SUMS && sha256sum -c SHA256SUMS)
       - name: Publish qualified Maven JAR bytes and SHA-256 receipt
         uses: actions/upload-artifact@v4
@@ -82,7 +82,7 @@ jobs:
       - name: Verify original Maven JAR SHA-256 receipt before Gradle consumption
         run: |
           (cd qualified-maven-jars && sha256sum -c SHA256SUMS)
-          expected_receipt=$(printf 'M3-PROJECTDB-JARS-V1\\t%s\\t%s' "$GITHUB_SHA" '${{ matrix.java }}')
+          expected_receipt=$(printf 'M3-PROJECTDB-JARS-V1\t%s\t%s' "$GITHUB_SHA" '${{ matrix.java }}')
           actual_receipt=$(cat qualified-maven-jars/SOURCE_RECEIPT.tsv)
           test "$actual_receipt" = "$expected_receipt" || { echo "wrong Maven source SHA or JDK lane" >&2; exit 1; }
           test -s qualified-maven-jars/polyglot.jar
