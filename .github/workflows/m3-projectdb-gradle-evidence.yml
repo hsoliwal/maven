@@ -15,6 +15,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+
+# New commits to the same PR supersede earlier reviews. Default-branch
+# evidence and manual runs on master have a unique run ID and never cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.ref == 'refs/heads/master' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   project-db-native-gradle:
     runs-on: ubuntu-24.04
