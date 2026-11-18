@@ -17,9 +17,13 @@ public final class EclipseModelCli {
         } else if (args != null && args.length == 2 && "owners".equals(args[0])) {
             // Deliberately read-only: no Eclipse builder, Gradle task or Maven goal is executed.
             System.out.println(M3EclipseBuilderRegistry.inspect(Path.of(args[1])).toJson());
+        } else if (args != null && args.length == 2 && "context".equals(args[0])) {
+            // Original Eclipse host writes this packet. It is not a cache or build success receipt.
+            System.out.println(M3EclipseBuildContextWire.read(Path.of(args[1])).toJson());
         } else {
             throw new IllegalArgumentException(
-                    "usage: EclipseModelCli [owners] <existing-eclipse-project-directory>");
+                    "usage: EclipseModelCli <project-directory> | owners <project-directory>"
+                            + " | context <Eclipse-owner-packet>");
         }
     }
 }
