@@ -253,6 +253,48 @@ pipeline nor the result format is reimplemented in Java. For the pinned
 `hsoliwal/llvm-project` fork, set `M3_LLVM_PIPELINE_HOME` to a separately
 built matching installation and record its binary evidence first.
 
+## MLIR-to-LLVMIR and native ELF linking qualification
+
+The additive `LlvmMlirLldIntegrationTestMain` verifies two independent
+native workflows **through the original M3 polyglot task runner**:
+
+- LLVM-dialect `value.mlir` → `mlir-opt --canonicalize` →
+  `mlir-translate --mlir-to-llvmir` → `llvm-as` → binary LLVM bitcode.
+- `native.c` → original `clang -std=c17 -fPIC -c` →
+  original `ld.lld -shared` → an ELF shared library.
+
+Both are nodes in the **same six-task declarative DAG** with separate source
+and output ownership. The test checks dry-run side effects, actual nonempty
+outputs, the LLVM IR function/return value, the ELF header, and a changed
+shared-library SHA-256 after a source edit. It also checks that malformed
+MLIR fails the original tool and that subsequent repaired input succeeds.
+Across repeated runs, no unqualified `@m3:llvm-tools` or `@m3:llvm`
+compilation/linking task may emit an `UP-TO-DATE`, `FROM-CACHE` or
+`CACHED` decision even if M3DB incremental and artifact cache flags
+are enabled.
+
+This is **native execution verification**, not native cache admission.
+It exercises the present Linux ELF ABI only; COFF/Mach-O/WASM,
+cross-sysroot and JNI ABI conformance remain separate qualification gates.
+
+The optional test is invoked by `mvn -f tools/m3-llvm-tools-provider/pom.xml verify`.
+For an explicit source-built LLVM installation with the required binaries,
+or to run independently from the two packaged JARs:
+
+```sh
+M3_LLVM_PIPELINE_HOME=/path/to/llvm-install java \
+  -cp 'tools/m3-llvm-tools-provider/target/test-classes:tools/m3-llvm-tools-provider/target/m3-llvm-tools-provider-0.1.0-SNAPSHOT.jar:tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar' \
+  io.synexia.maven.llvm.LlvmMlirLldIntegrationTestMain --required
+```
+
+The existing Ubuntu 24.04 Java 17/21 workflow installs `mlir-18-tools`,
+`clang-18`, `lld-18` alongside its LLVM 18 tests, and makes this real
+test **mandatory** after packaged ServiceLoader validation. The CI's LLVM
+18 binaries are distribution binaries, **not** an asserted build of
+`hsoliwal/llvm-project` at the pinned source revision. A missing explicit
+installation fails; a missing optional host installation reports
+`NOT_RUN` with no native output claimed.
+
 ## Testing and release gate
 
 `sh tools/m3-llvm-tools-provider/scripts/verify.sh` runs Java 17 source
