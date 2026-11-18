@@ -162,6 +162,21 @@ all take `--store DIR` and `--persistent`.
   rather than a silent skip; on other filesystems the subcase reports
   an explicit SKIP if symlinks cannot be created.
 
+## Source-qualified CI concurrency
+
+The project-DB Actions workflow uses **pull-request-only supersession**.
+A newer commit to the *same* PR cancels obsolete runs under a stable
+workflow/PR-number group; other pull requests have distinct groups.
+Each `master` push and each manual `workflow_dispatch` receives its own
+ref/run-ID group and cannot cancel another source-owner qualification
+run. No test stages, Gradle checkout pins, Maven artifacts, JDK matrices,
+SHA-256 receipts or acceptance gates are omitted by this policy.
+
+This reduces stale pending PR reviews when many additive M3 branches
+arrive together. It is only a scheduler policy: canceled historical
+PR runs are **not passed tests**, and the completed Maven and Gradle
+JDK17/21 evidence must still be checked for the *exact* source revision.
+
 ## Real Gradle consumer TestKit in Maven's CI
 
 The project database's cross-fork workflow retains two JDK 17/21
