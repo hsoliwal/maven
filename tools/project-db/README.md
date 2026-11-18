@@ -176,7 +176,11 @@ to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
 
 ~~~sh
 ./gradlew --no-daemon --stacktrace --console=plain \
-    -p m3/quality-bridge test --tests '*M3ProjectDb*' --rerun-tasks
+    -p m3/quality-bridge test \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+    --rerun-tasks
 ~~~
 
 ### Executed JUnit receipt admission
@@ -198,7 +202,8 @@ and runs `M3GradleTestKitReceiptMain.java` on the **consumer JDK** using
 original JUnit XML with Java's built-in DOM API. DTDs and external XML
 entities are disabled. The parser validates the **six named required
 testcases**, three exact suites, zero skips/errors/failures and no extra
-project-DB suites after `test --tests '*M3ProjectDb*'`. It refuses
+project-DB suites after running those **three explicitly selected**
+test classes. It refuses
 missing, symlinked or oversized suite XML files, duplicated testcase IDs,
 and a swapped classname or noncanonical testcase count.
 
@@ -214,6 +219,14 @@ deliberately altered reports were refused: missing or extra suite,
 nonzero skip/failure count, changed or duplicated testcase name,
 an invalid test count, forged XML comments and a DTD. It is **not** a full Gradle distribution, native toolchain,
 M3JDK21 platform or Windows/macOS qualification.
+
+The wildcard `*M3ProjectDb*` is intentionally **not** used here.
+Gradle subsequently added `M3ProjectDbPrunedSymlinkRealEngineTest` for
+Maven #208's separate pruning/symlink qualification. This original
+six-case gate remains pinned to the three reviewed suites and will not
+accidentally include a fourth suite when updating the Gradle checkout.
+The symlink test must be explicitly qualified in its own lane; this
+does not remove, skip, or substitute its acceptance authority.
 
 This runs Gradle's original TestKit cases for an actual source-pinned
 Maven engine, including ingestion of a **Gradle-only** JUnit failure
