@@ -46,7 +46,10 @@ final class M3DbModuleStore implements AutoCloseable {
     private static final String MARKER_MAGIC = "M3-MODULE-STATE-2";
     static final int VERSION = 2;
     private static final int MAGIC = 0x4d334d44; // M3MD
-    private static final int MAX_TASKS = 256;
+    // Bounded by the 32-MiB sealed image, but large polyglot modules should not
+    // discard a successful task merely because they exceed 256 steps.
+    private static final int MAX_TASKS = 65_536;
+    private static final int INITIAL_TASK_CAPACITY = 16;
     static final int MAX_PAYLOAD = 32 * 1024 * 1024;
     static final int MAX_ARCHIVE = MAX_PAYLOAD + 128 * 1024;
     static final int MAX_REF = 4096;
@@ -70,16 +73,17 @@ final class M3DbModuleStore implements AutoCloseable {
     private final Consumer<String> log;
     private final String backend;
     private final ModuleStateBackend storage;
-    private final String[] names = new String[MAX_TASKS];
-    private final String[] inputs = new String[MAX_TASKS];
-    private final String[] outputs = new String[MAX_TASKS];
+    // Sparse logical slots over compact parallel arrays; grow only with the module.
+    private String[] names = new String[INITIAL_TASK_CAPACITY];
+    private String[] inputs = new String[INITIAL_TASK_CAPACITY];
+    private String[] outputs = new String[INITIAL_TASK_CAPACITY];
 
     // WriteBatch-style task receipts: staged results never enter the on-disk image
     // until the complete selected task graph succeeds. Array-backed to retain the
     // existing M3 compact-slot invariant and avoid per-receipt object graphs.
-    private final String[] pendingNames = new String[MAX_TASKS];
-    private final String[] pendingInputs = new String[MAX_TASKS];
-    private final String[] pendingOutputs = new String[MAX_TASKS];
+    private String[] pendingNames = new String[INITIAL_TASK_CAPACITY];
+    private String[] pendingInputs = new String[INITIAL_TASK_CAPACITY];
+    private String[] pendingOutputs = new String[INITIAL_TASK_CAPACITY];
     private int pendingSize;
     private String generation;
     private byte[] auxiliary = new byte[0];
@@ -248,24 +252,21 @@ final class M3DbModuleStore implements AutoCloseable {
         invalidate(List.of(taskName(task)));
     }
 
-    /** One atomic replacement revokes the entire affected dependency set. */
+    /**
+     * One durable revocation for an arbitrary dependency closure. Sorted
+     * ephemeral names + a single compaction pass avoid quadratic slot shifting
+     * when the graph contains thousands of affected downstream tasks.
+     */
     synchronized void invalidate(Collection<String> tasks) throws IOException {
         ensureOpen();
         Objects.requireNonNull(tasks, "tasks");
-        for (String task : tasks) taskName(task);
-        for (String task : tasks) {
-            int staged = Arrays.binarySearch(pendingNames, 0, pendingSize, task);
-            if (staged >= 0) removePending(staged);
-        }
-        boolean changed = needsReset;
-        for (String task : tasks) {
-            int at = Arrays.binarySearch(names, 0, size, task);
-            if (at >= 0) {
-                remove(at);
-                changed = true;
-            }
-        }
-        if (changed) publish();
+        String[] excluded = tasks.toArray(new String[0]);
+        for (String task : excluded) taskName(task);
+        Arrays.sort(excluded);
+        pendingSize = retainOutside(pendingNames, pendingInputs, pendingOutputs, pendingSize, excluded);
+        int previous = size;
+        size = retainOutside(names, inputs, outputs, size, excluded);
+        if (previous != size || needsReset) publish();
     }
 
     synchronized void invalidateAll() throws IOException {
@@ -276,21 +277,51 @@ final class M3DbModuleStore implements AutoCloseable {
         publish();
     }
 
-    /** Revoke one owner namespace without discarding independently validated tasks. */
+    /** Revoke one owner namespace without touching other receipt families. */
     synchronized void invalidatePrefix(String prefix) throws IOException {
         ensureOpen();
         taskName(prefix);
-        for (int i = pendingSize - 1; i >= 0; i--) {
-            if (pendingNames[i].startsWith(prefix)) removePending(i);
-        }
-        boolean changed = needsReset;
-        for (int i = size - 1; i >= 0; i--) {
-            if (names[i].startsWith(prefix)) {
-                remove(i);
-                changed = true;
+        pendingSize = retainWithoutPrefix(pendingNames, pendingInputs, pendingOutputs, pendingSize, prefix);
+        int previous = size;
+        size = retainWithoutPrefix(names, inputs, outputs, size, prefix);
+        if (previous != size || needsReset) publish();
+    }
+
+    /** In-place linear compaction of primitive-array logical slots. */
+    private static int retainOutside(String[] keys, String[] ins, String[] outs,
+            int count, String[] excluded) {
+        int kept = 0;
+        for (int i = 0; i < count; i++) {
+            if (Arrays.binarySearch(excluded, keys[i]) >= 0) continue;
+            if (kept != i) {
+                keys[kept] = keys[i];
+                ins[kept] = ins[i];
+                outs[kept] = outs[i];
             }
+            kept++;
         }
-        if (changed) publish();
+        Arrays.fill(keys, kept, count, null);
+        Arrays.fill(ins, kept, count, null);
+        Arrays.fill(outs, kept, count, null);
+        return kept;
+    }
+
+    private static int retainWithoutPrefix(String[] keys, String[] ins, String[] outs,
+            int count, String prefix) {
+        int kept = 0;
+        for (int i = 0; i < count; i++) {
+            if (keys[i].startsWith(prefix)) continue;
+            if (kept != i) {
+                keys[kept] = keys[i];
+                ins[kept] = ins[i];
+                outs[kept] = outs[i];
+            }
+            kept++;
+        }
+        Arrays.fill(keys, kept, count, null);
+        Arrays.fill(ins, kept, count, null);
+        Arrays.fill(outs, kept, count, null);
+        return kept;
     }
 
     /** Preserve the original immediate record/commit semantics for lifecycle owners. */
@@ -320,6 +351,7 @@ final class M3DbModuleStore implements AutoCloseable {
         int at = Arrays.binarySearch(pendingNames, 0, pendingSize, task);
         if (at < 0) {
             if (pendingSize == MAX_TASKS) throw new IOException("M3DB staged task capacity exceeded");
+            ensurePendingCapacity(pendingSize + 1);
             at = -at - 1;
             System.arraycopy(pendingNames, at, pendingNames, at + 1, pendingSize - at);
             System.arraycopy(pendingInputs, at, pendingInputs, at + 1, pendingSize - at);
@@ -331,15 +363,54 @@ final class M3DbModuleStore implements AutoCloseable {
         pendingOutputs[at] = output;
     }
 
-    /** Publish all staged successes in one sealed module generation. */
+    /**
+     * Commit a complete successful DAG in one sealed image.
+     *
+     * <p>The common case uses a linear merge of two already sorted arrays,
+     * with staged keys winning over older keys. If the combined row budget
+     * would overflow, fall back to the original per-insertion eviction order
+     * to preserve legacy bounded-cache retention semantics.
+     */
     synchronized void commitStaged() throws IOException {
         ensureOpen();
         if (pendingSize == 0) return;
-        for (int index = 0; index < pendingSize; index++) {
-            upsert(pendingNames[index], pendingInputs[index], pendingOutputs[index]);
+        if ((long) size + pendingSize <= MAX_TASKS) {
+            mergeStaged();
+        } else {
+            for (int i = 0; i < pendingSize; i++) {
+                upsert(pendingNames[i], pendingInputs[i], pendingOutputs[i]);
+            }
         }
         publish();
         clearPending();
+    }
+
+    private void mergeStaged() {
+        int capacity = expandedCapacity(0, size + pendingSize);
+        String[] nextNames = new String[capacity];
+        String[] nextInputs = new String[capacity];
+        String[] nextOutputs = new String[capacity];
+        int old = 0, staged = 0, at = 0;
+        while (old < size || staged < pendingSize) {
+            boolean useStaged;
+            if (old == size) {
+                useStaged = true;
+            } else if (staged == pendingSize) {
+                useStaged = false;
+            } else {
+                int comparison = names[old].compareTo(pendingNames[staged]);
+                useStaged = comparison >= 0;
+                if (comparison == 0) old++;
+            }
+            nextNames[at] = useStaged ? pendingNames[staged] : names[old];
+            nextInputs[at] = useStaged ? pendingInputs[staged] : inputs[old];
+            nextOutputs[at] = useStaged ? pendingOutputs[staged++] : outputs[old++];
+            at++;
+        }
+        names = nextNames;
+        inputs = nextInputs;
+        outputs = nextOutputs;
+        size = at;
     }
 
     private void upsert(String task, String input, String output) {
@@ -350,6 +421,7 @@ final class M3DbModuleStore implements AutoCloseable {
             at = Arrays.binarySearch(names, 0, size, task);
         }
         if (at < 0) {
+            ensureCapacity(size + 1);
             at = -at - 1;
             System.arraycopy(names, at, names, at + 1, size - at);
             System.arraycopy(inputs, at, inputs, at + 1, size - at);
@@ -359,6 +431,29 @@ final class M3DbModuleStore implements AutoCloseable {
         names[at] = task;
         inputs[at] = input;
         outputs[at] = output;
+    }
+
+    private void ensureCapacity(int wanted) {
+        if (wanted <= names.length) return;
+        int cap = expandedCapacity(names.length, wanted);
+        names = Arrays.copyOf(names, cap);
+        inputs = Arrays.copyOf(inputs, cap);
+        outputs = Arrays.copyOf(outputs, cap);
+    }
+
+    private void ensurePendingCapacity(int wanted) {
+        if (wanted <= pendingNames.length) return;
+        int cap = expandedCapacity(pendingNames.length, wanted);
+        pendingNames = Arrays.copyOf(pendingNames, cap);
+        pendingInputs = Arrays.copyOf(pendingInputs, cap);
+        pendingOutputs = Arrays.copyOf(pendingOutputs, cap);
+    }
+
+    private static int expandedCapacity(int current, int wanted) {
+        if (wanted < 0 || wanted > MAX_TASKS) throw new IllegalArgumentException("M3DB receipt capacity");
+        int cap = Math.max(INITIAL_TASK_CAPACITY, current);
+        while (cap < wanted) cap = Math.min(MAX_TASKS, cap * 2);
+        return cap;
     }
 
     private void removePending(int at) {
@@ -495,9 +590,12 @@ final class M3DbModuleStore implements AutoCloseable {
             byte[] nextAuxiliary = new byte[length];
             in.readFully(nextAuxiliary);
             if (in.read() != -1) throw new IOException("trailing module receipt bytes");
-            System.arraycopy(nextNames, 0, names, 0, count);
-            System.arraycopy(nextInputs, 0, inputs, 0, count);
-            System.arraycopy(nextOutputs, 0, outputs, 0, count);
+            // The entire validated snapshot is published to memory at once.
+            // Decode of legacy v2 images retains the identical binary schema.
+            int capacity = expandedCapacity(0, count);
+            names = Arrays.copyOf(nextNames, capacity);
+            inputs = Arrays.copyOf(nextInputs, capacity);
+            outputs = Arrays.copyOf(nextOutputs, capacity);
             auxiliary = nextAuxiliary;
             size = count;
         }
@@ -546,9 +644,9 @@ final class M3DbModuleStore implements AutoCloseable {
     }
 
     private void clear() {
-        Arrays.fill(names, null);
-        Arrays.fill(inputs, null);
-        Arrays.fill(outputs, null);
+        Arrays.fill(names, 0, size, null);
+        Arrays.fill(inputs, 0, size, null);
+        Arrays.fill(outputs, 0, size, null);
         size = 0;
         auxiliary = new byte[0];
     }
