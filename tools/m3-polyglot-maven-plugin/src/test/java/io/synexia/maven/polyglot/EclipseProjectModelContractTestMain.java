@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -216,12 +218,21 @@ public final class EclipseProjectModelContractTestMain {
         }
         require(!result.descriptorSha256().containsKey("target/generated.txt"),
                 "generated files must not be mistaken for authoring metadata");
+        String reference = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
+                Files.readAllBytes(root.resolve("META-INF/MANIFEST.MF"))));
+        require(reference.equals(result.descriptorSha256().get("META-INF/MANIFEST.MF")),
+                "streamed metadata hashing must equal Java's canonical SHA-256");
         require(result.toJson().equals(EclipseProjectModel.inspect(root).toJson()),
                 "multi-language project model must be deterministic");
         String oldTarget = result.descriptorSha256().get("universal.target");
         put(root, "universal.target", "<target name=\\\"new\\\"/>");
         String newTarget = EclipseProjectModel.inspect(root).descriptorSha256().get("universal.target");
         require(!oldTarget.equals(newTarget), "PDE target changes must have distinct digests");
+        String cmakeBefore = result.descriptorSha256().get("CMakeLists.txt");
+        put(root, "CMakeLists.txt", "project(different)");
+        String cmakeAfter = EclipseProjectModel.inspect(root).descriptorSha256().get("CMakeLists.txt");
+        require(!cmakeBefore.equals(cmakeAfter),
+                "original CDT/CMake build changes must produce different content digests");
         require(result.descriptorSha256().get("Cargo.lock").equals(
                 EclipseProjectModel.inspect(root).descriptorSha256().get("Cargo.lock")),
                 "unmodified Rust dependency metadata retains its digest");
