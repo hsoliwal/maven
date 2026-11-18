@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** Planned steps survive a round trip through the polyglot manifest loader unchanged, isolated and chained. */
+/** Planned steps survive a round trip through the polyglot manifest loader unchanged. */
 final class TaskFileContract {
     private TaskFileContract() {}
 
@@ -38,13 +38,12 @@ final class TaskFileContract {
                 new NativeStep(NativePhase.INSTALL, "cmake", ".", List.of("--install", "target/native/x"), List.of("src"),
                         List.of("target/native/stage/x")));
         isolated(c, steps);
-        chained(c, steps);
         rejected(c);
     }
 
     private static void isolated(Checks c, List<NativeStep> steps) throws Exception {
         Path file = c.dir("taskfile", Map.of()).resolve("tasks.tsv");
-        TaskFileWriter.write(file, TaskFileWriter.render(steps, false));
+        TaskFileWriter.write(file, TaskFileWriter.render(steps));
         List<PolyglotEngine.TaskView> loaded = PolyglotEngine.load(file);
         Map<String, PolyglotEngine.TaskView> byName = loaded.stream()
                 .collect(Collectors.toMap(PolyglotEngine.TaskView::name, t -> t));
@@ -52,30 +51,19 @@ final class TaskFileContract {
         steps.forEach(s -> c.equal("round trip " + s.name(), List.of(s.tool(), s.workingDir(), s.arguments(), s.inputs(),
                 s.outputs(), List.of()), view(byName.get(s.name()))));
         c.check("rewriting identical content is a no-op",
-                !TaskFileWriter.write(file, TaskFileWriter.render(steps, false)));
-    }
-
-    private static void chained(Checks c, List<NativeStep> steps) throws Exception {
-        Path file = c.dir("taskfile-chained", Map.of()).resolve("m3-build.tsv");
-        TaskFileWriter.write(file, TaskFileWriter.render(steps, true));
-        Map<String, List<String>> deps = PolyglotEngine.load(file).stream()
-                .collect(Collectors.toMap(PolyglotEngine.TaskView::name, PolyglotEngine.TaskView::prerequisites));
-        c.equal("chained prerequisites", Map.of("native-configure", List.of(), "native-build",
-                List.of("native-configure"), "native-test", List.of("native-build"), "native-install",
-                List.of("native-test"), "compile", List.of("native-build"), "test", List.of("native-test"),
-                "package", List.of("native-install")), deps);
+                !TaskFileWriter.write(file, TaskFileWriter.render(steps)));
     }
 
     private static void rejected(Checks c) {
         NativeStep tab = new NativeStep(NativePhase.BUILD, "make", ".", List.of("a\tb"), List.of(), List.of());
         c.fails("tab in an argument", IllegalArgumentException.class,
-                () -> TaskFileWriter.render(List.of(tab), false));
+                () -> TaskFileWriter.render(List.of(tab)));
         NativeStep empty = new NativeStep(NativePhase.BUILD, "make", ".", List.of(""), List.of(), List.of());
-        c.fails("empty argument", IllegalArgumentException.class, () -> TaskFileWriter.render(List.of(empty), false));
+        c.fails("empty argument", IllegalArgumentException.class, () -> TaskFileWriter.render(List.of(empty)));
         NativeStep newline = new NativeStep(NativePhase.BUILD, "make", ".", List.of("x\nrm -rf /"), List.of(),
                 List.of());
         c.fails("line break in an argument", IllegalArgumentException.class,
-                () -> TaskFileWriter.render(List.of(newline), false));
+                () -> TaskFileWriter.render(List.of(newline)));
     }
 
     private static List<Object> view(PolyglotEngine.TaskView t) {

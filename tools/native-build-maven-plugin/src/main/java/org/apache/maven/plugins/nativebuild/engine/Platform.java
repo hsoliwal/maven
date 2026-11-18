@@ -19,11 +19,15 @@
 package org.apache.maven.plugins.nativebuild.engine;
 
 import java.util.Locale;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Operating system and processor in the os-maven-plugin vocabulary (windows, linux, osx; x86_64, aarch_64, ...), the
- * names native classifiers on Maven Central already use. On Windows the classifier also names the C runtime family,
- * {@code -msvc} or {@code -mingw}, because their libraries and import libraries do not mix.
+ * names native classifiers on Maven Central already use: {@code os-arch} is os-maven-plugin's
+ * {@code os.detected.classifier}. On Windows the classifier also names the C runtime family, {@code -msvc} or
+ * {@code -mingw}, because their libraries and import libraries do not mix; it is read from the configured build (see
+ * {@link RuntimeDetector}), with {@link #runtime} only as the guess before configure.
  *
  * @param os normalized operating system name
  * @param arch normalized processor name
@@ -69,6 +73,21 @@ public record Platform(String os, String arch) {
             return MSVC;
         }
         return cc.isEmpty() && visualStudioInstalled ? MSVC : MINGW;
+    }
+
+    /**
+     * The build directory name: {@code os-arch} (or a configured classifier), then the CMake generator and the
+     * configured compiler when given, so switching either never reuses a build tree configured for the other.
+     */
+    public String buildKey(String classifier, String generator, String compiler) {
+        String base = classifier == null || classifier.isBlank() ? os + "-" + arch : classifier;
+        return Stream.of(base, slug(generator), slug(WindowsPaths.stem(compiler == null ? "" : compiler)))
+                .filter(s -> !s.isEmpty()).collect(Collectors.joining("-"));
+    }
+
+    private static String slug(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
     }
 
     static String normalizeOs(String raw) {

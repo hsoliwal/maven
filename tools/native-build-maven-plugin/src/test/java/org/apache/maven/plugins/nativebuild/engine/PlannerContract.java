@@ -70,8 +70,8 @@ final class PlannerContract {
                 argv(steps.get(1)));
         c.equal("ctest argv", List.of(CTEST, "--test-dir", BUILD, "-C", "Release", "--output-on-failure",
                 "--output-junit", ctx.layout().mixed(BUILD + "/ctest-junit.xml")), argv(steps.get(2)));
-        c.equal("cmake install argv", List.of(CMAKE, "--install", BUILD, "--prefix", ctx.layout().mixed(STAGE),
-                "--config", "Release"), argv(steps.get(3)));
+        c.equal("cmake install argv (prefix under DESTDIR=<stage>)", List.of(CMAKE, "--install", BUILD, "--prefix",
+                "/usr/local", "--config", "Release"), argv(steps.get(3)));
         c.check("cmake: no shell command", PlanFixtures.noShellCommand(steps));
     }
 
@@ -87,7 +87,8 @@ final class PlannerContract {
         c.equal("build inputs: source set (no target, no hidden) and cache", List.of("CMakeLists.txt", "include", "src",
                 BUILD + "/CMakeCache.txt"), steps.get(1).inputs());
         c.equal("build outputs: declared", List.of(BUILD + "/x"), steps.get(1).outputs());
-        c.equal("test inputs: declared outputs", List.of(BUILD + "/x"), steps.get(2).inputs());
+        c.equal("test inputs: declared outputs and the existing chain (fingerprint)", List.of(BUILD + "/x",
+                BUILD + "/toolchain.properties"), steps.get(2).inputs());
         unstamped(c, base);
     }
 
@@ -100,7 +101,7 @@ final class PlannerContract {
     private static void presets(Checks c) throws Exception {
         String presets = "{\"version\":6,\"configurePresets\":[{\"name\":\"native\",\"generator\":\"Ninja\","
                 + "\"binaryDir\":\"${sourceDir}/target/native/preset-${presetName}\"},{\"name\":\"inherits\","
-                + "\"inherits\":\"native\"}]}";
+                + "\"inherits\":\"native\"}],\"buildPresets\":[{\"name\":\"native\",\"configurePreset\":\"native\"}]}";
         Path base = c.dir("plan-presets", Map.of("CMakeLists.txt", "project(x C)\n", "CMakePresets.json", presets));
         PlanContext ctx = context(base, BuildSystem.CMAKE_PRESETS, "CMakePresets.json", LINUX,
                 options().cmake("", "native").build(), Map.of(), path("cmake", CMAKE));
@@ -110,7 +111,8 @@ final class PlannerContract {
         c.equal("preset build argv", List.of(CMAKE, "--build", "--preset", "native"), argv(steps.get(1)));
         PlanContext inherited = context(base, BuildSystem.CMAKE_PRESETS, "CMakePresets.json", LINUX,
                 options().cmake("", "inherits").build(), Map.of(), path("cmake", CMAKE));
-        c.equal("inherited binaryDir: no configure stamp", List.of(), new CMakePlanner().plan(inherited).get(0).outputs());
+        c.equal("inherited binaryDir is followed, with the child's name", List.of(
+                "target/native/preset-inherits/CMakeCache.txt"), new CMakePlanner().plan(inherited).get(0).outputs());
     }
 
     private static void meson(Checks c) throws Exception {

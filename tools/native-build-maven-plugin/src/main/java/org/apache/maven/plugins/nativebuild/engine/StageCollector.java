@@ -61,14 +61,42 @@ public final class StageCollector {
 
     private StageCollector() {}
 
-    /** The stage root: {@code stage/<prefix>} when an install wrote under DESTDIR, else the stage itself. */
-    public static Path root(Path stage, String prefix) {
+    /**
+     * The stage root: {@code stage/<prefix>} when an install wrote under DESTDIR, else the stage itself. A prefix that
+     * leads out of the stage, by {@code ..} or through a link, fails.
+     */
+    public static Path root(Path stage, String prefix) throws IOException {
         String relative = prefix.replace('\\', '/').replaceFirst("^[A-Za-z]:", "").replaceAll("^/+", "");
-        Path prefixed = relative.isEmpty() ? stage : stage.resolve(relative);
-        return Files.isDirectory(prefixed) ? prefixed : stage;
+        Path base = stage.toAbsolutePath().normalize();
+        Path prefixed = relative.isEmpty() ? base : base.resolve(relative).normalize();
+        if (!prefixed.startsWith(base)) {
+            throw new IllegalArgumentException("refused prefix " + prefix + ": " + prefixed + " leaves the stage "
+                    + base);
+        }
+        if (!Files.isDirectory(prefixed)) {
+            return stage;
+        }
+        if (!prefixed.toRealPath().startsWith(base.toRealPath())) {
+            throw new IOException("refused prefix " + prefix + ": " + prefixed + " links outside the stage " + base);
+        }
+        return prefixed;
     }
 
-    /** Classifies every regular file under {@code root}; an absent root holds nothing. */
+    /**
+     * Files the install put into the stage outside {@code root} (an absolute install destination, which DESTDIR keeps
+     * inside the stage); they are not attached. Stage-relative, sorted.
+     */
+    public static List<String> outsideRoot(Path stage, Path root) throws IOException {
+        Path base = stage.toAbsolutePath().normalize();
+        Path prefixed = root.toAbsolutePath().normalize();
+        if (prefixed.equals(base)) {
+            return List.of();
+        }
+        String inside = WindowsPaths.relative(base, prefixed) + "/";
+        return FileTrees.regularFiles(base).stream().filter(f -> !f.startsWith(inside)).toList();
+    }
+
+    /** Classifies every regular file under {@code root}; an absent root holds nothing, a link out of it fails. */
     public static Staged classify(Path root) throws IOException {
         List<String> files = files(root);
         Set<String> dllStems = files.stream().filter(f -> f.toLowerCase(Locale.ROOT).endsWith(".dll"))
@@ -89,7 +117,7 @@ public final class StageCollector {
     public static List<String> copyOutputs(Path basedir, List<String> outputs, Path stage) throws IOException {
         List<String> staged = new ArrayList<>();
         for (String output : outputs) {
-            Path source = basedir.resolve(output).normalize();
+            Path source = confinedOutput(basedir, output);
             if (Files.isRegularFile(source)) {
                 String name = source.getFileName().toString();
                 String folder = HEADER.matcher(name).matches() ? "include" : isLibrary(name) ? "lib" : "bin";
@@ -100,6 +128,18 @@ public final class StageCollector {
             }
         }
         return staged;
+    }
+
+    /** A declared output, which must lie inside the project, also after following links. */
+    private static Path confinedOutput(Path basedir, String output) throws IOException {
+        Path base = basedir.toAbsolutePath().normalize();
+        Path source = base.resolve(output).normalize();
+        boolean inside = source.startsWith(base) && (!Files.exists(source) || source.toRealPath()
+                .startsWith(base.toRealPath()));
+        if (!inside) {
+            throw new IllegalArgumentException("refused output " + output + ": it lies outside the project " + base);
+        }
+        return source;
     }
 
     private static int kind(Path root, String file, Set<String> dllStems) {
@@ -114,6 +154,18 @@ public final class StageCollector {
             return 0;
         }
         return name.endsWith(".exe") || file.startsWith("bin/") || binary(root.resolve(file)) ? 2 : 4;
+    }
+
+    /**
+     * True for a file that runs or is loaded: a program (.exe, a file in bin, an ELF or Mach-O binary, a file with
+     * the executable bit) or a shared library; it gets mode 0755 in an archive.
+     */
+    public static boolean executable(Path root, String file) {
+        Path path = root.resolve(file);
+        String name = WindowsPaths.name(file).toLowerCase(Locale.ROOT);
+        boolean posixBit = !Platform.current().windows() && Files.isExecutable(path);
+        boolean shared = SHARED.matcher(name).matches() && !name.endsWith(".dll.a");
+        return posixBit || shared || name.endsWith(".exe") || file.startsWith("bin/") || binary(path);
     }
 
     private static boolean isLibrary(String name) {
@@ -133,12 +185,8 @@ public final class StageCollector {
         }
     }
 
+    /** The regular files below the root; a link that leaves it fails (see {@link FileTrees#regularFiles}). */
     private static List<String> files(Path root) throws IOException {
-        if (!Files.isDirectory(root)) {
-            return List.of();
-        }
-        try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(Files::isRegularFile).map(p -> WindowsPaths.relative(root, p)).sorted().toList();
-        }
+        return FileTrees.regularFiles(root);
     }
 }

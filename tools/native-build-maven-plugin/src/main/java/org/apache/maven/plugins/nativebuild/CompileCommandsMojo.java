@@ -23,18 +23,23 @@ import java.io.IOException;
 import java.nio.file.Path;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.nativebuild.engine.CompileCommandsPublisher;
 import org.apache.maven.plugins.nativebuild.engine.CompileDbSource;
+import org.apache.maven.plugins.nativebuild.engine.GeneratedFiles;
 import org.apache.maven.plugins.nativebuild.engine.PlanContext;
 import org.apache.maven.plugins.nativebuild.engine.WindowsPaths;
 
 /**
  * Produces compile_commands.json (CMake, Meson, ninja -t compdb, Bear, or a make dry run) and publishes it for clangd
  * and other language servers: a copy at the project root by default, a {@code .clangd} pointer with
- * {@code publish=clangd-config}. A file the plugin did not write is kept.
+ * {@code publish=clangd-config}. A file the plugin did not write is kept; what it wrote is recorded in
+ * {@code .m3/native-build}, which {@code mvn clean} keeps, so a later build still updates it and the clean goal
+ * removes it.
  */
-@Mojo(name = "compile-commands", defaultPhase = LifecyclePhase.COMPILE, threadSafe = true)
+@Mojo(name = "compile-commands", defaultPhase = LifecyclePhase.COMPILE, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class CompileCommandsMojo extends AbstractNativeMojo {
     /** auto, cmake, meson, ninja, make-dry-run, bear or none. */
     @Parameter(property = "native.compileCommands", defaultValue = "auto")
@@ -50,7 +55,7 @@ public final class CompileCommandsMojo extends AbstractNativeMojo {
 
     @Override
     protected void runNative() throws IOException, InterruptedException {
-        NativeSession session = open(false);
+        NativeSession session = open(NativeSession.Use.RUN);
         if (!session.found()) {
             return;
         }
@@ -71,7 +76,7 @@ public final class CompileCommandsMojo extends AbstractNativeMojo {
         Path basedir = c.layout().basedir();
         Path target = path != null ? path.toPath() : basedir.resolve(
                 how == CompileCommandsPublisher.Publish.CLANGD_CONFIG ? ".clangd" : "compile_commands.json");
-        Path ownership = buildDirectory.toPath().resolve(target.getFileName() + ".sha256");
+        Path ownership = basedir.resolve(GeneratedFiles.RECORDS).resolve(target.getFileName() + ".sha256");
         CompileCommandsPublisher.Outcome outcome = CompileCommandsPublisher.publish(how, database, target, ownership,
                 WindowsPaths.relative(basedir, database.getParent()));
         getLog().info("COMPILE-COMMANDS " + mode + " " + database + " -> " + target + " " + outcome + " ("

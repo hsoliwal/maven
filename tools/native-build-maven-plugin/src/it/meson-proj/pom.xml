@@ -47,6 +47,7 @@ A Meson project: meson setup, compile, test (JUnit), install with destdir.
               <goal>test</goal>
               <goal>stage</goal>
               <goal>attach</goal>
+              <goal>clean</goal>
             </goals>
           </execution>
         </executions>

@@ -29,8 +29,9 @@ import java.util.Optional;
 /**
  * Where a build's compile_commands.json comes from: CMake ({@code CMAKE_EXPORT_COMPILE_COMMANDS}, not written by the
  * Visual Studio and Xcode generators) and Meson write one; for build.ninja it is {@code ninja -t compdb} filtered to
- * sources; for Make and Autotools, Bear when it is on PATH (an external GPL tool, only run), otherwise a
- * {@code make -nwB} dry run with the generated Autotools files held old so configure does not run again.
+ * sources; for Make and Autotools a {@code make -nwB} dry run with the generated Autotools files held old so configure
+ * does not run again, or Bear when asked for ({@code compileCommands=bear}; an external GPL tool, only run, around a
+ * forced rebuild with the same files held old).
  */
 public final class CompileDbSource {
     /** The configured source. */
@@ -66,7 +67,7 @@ public final class CompileDbSource {
 
     private CompileDbSource() {}
 
-    /** The mode to use: AUTO resolved by build system, Bear only when it was found. */
+    /** The mode to use: AUTO resolved by build system; Bear only when configured (it rebuilds everything). */
     public static Mode effective(Mode configured, BuildSystem system, boolean bear) {
         if (configured != Mode.AUTO) {
             return configured;
@@ -75,7 +76,7 @@ public final class CompileDbSource {
             case CMAKE, CMAKE_PRESETS -> Mode.CMAKE;
             case MESON -> Mode.MESON;
             case NINJA -> Mode.NINJA;
-            case AUTOTOOLS, AUTOTOOLS_BOOTSTRAP, MAKE -> bear ? Mode.BEAR : Mode.MAKE_DRY_RUN;
+            case AUTOTOOLS, AUTOTOOLS_BOOTSTRAP, MAKE -> Mode.MAKE_DRY_RUN;
             case NOTHING -> Mode.NONE;
         };
     }
@@ -119,12 +120,17 @@ public final class CompileDbSource {
 
     private static Result bear(PlanContext c, Path generated, Duration timeout)
             throws IOException, InterruptedException {
-        boolean autotools = c.system() != BuildSystem.MAKE;
-        List<String> make = autotools ? Steps.list(c.tool("make"), "-C", c.layout().build(), "-B")
-                : Steps.list(c.tool("make"), "-f", MakePlanner.makefile(c), "-B", Steps.compilerAssignments(c));
-        capture(c, Steps.list(c.tool("bear"), "--output", WindowsPaths.mixed(generated), "--", make),
-                autotools ? "." : c.layout().source(), timeout);
+        capture(c, bearCommand(c, generated), c.system() != BuildSystem.MAKE ? "." : c.layout().source(), timeout);
         return existing(generated);
+    }
+
+    /** Bear around a forced make; for Autotools with the generated files held old, so configure never re-runs. */
+    static List<String> bearCommand(PlanContext c, Path generated) {
+        boolean autotools = c.system() != BuildSystem.MAKE;
+        List<String> make = autotools ? Steps.list(c.tool("make"), "-C", c.layout().build(), "-B",
+                AutotoolsPlanner.held(c)) : Steps.list(c.tool("make"), "-f", MakePlanner.makefile(c), "-B",
+                Steps.makeShell(c), Steps.compilerAssignments(c));
+        return Steps.list(c.tool("bear"), "--output", WindowsPaths.mixed(generated), "--", make);
     }
 
     private static CapturedProcess.Result capture(PlanContext c, List<String> command, String directory,

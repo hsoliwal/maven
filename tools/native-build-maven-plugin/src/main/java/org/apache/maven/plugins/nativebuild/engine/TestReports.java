@@ -23,13 +23,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Collects the results of a native test step into one suite: CTest or Meson JUnit, Automake .trs files, or the exit
  * status when the tool writes nothing readable. A failed step whose results show no failure gets an error case, so
- * a tool that did not start or crashed is never reported as green.
+ * a tool that did not start or crashed is never reported as green; a tool that could not be started is an error,
+ * not a test failure. A JUnit file without cases from a passing step (CTest found no tests) is reported as no tests,
+ * not as one passing case; {@code --no-tests=error} in testArgs makes CTest fail instead.
  */
 public final class TestReports {
+    /** Failed cases named in Maven's error. */
+    public static final int SHOWN_CASES = 10;
+
+    private static final int SHOWN_LINES = 3;
+    private static final int MAX_LINE = 400;
+
     private TestReports() {}
 
     /** The suite name: {@code native.<system>.<classifier>}. */
@@ -53,6 +63,9 @@ public final class TestReports {
         TestSuiteReport report;
         if (Files.isRegularFile(junit)) {
             report = JUnitReport.read(junit, suite);
+            if (report.cases().isEmpty() && failure.isEmpty()) {
+                return report;
+            }
         } else if (c.system() == BuildSystem.AUTOTOOLS || c.system() == BuildSystem.AUTOTOOLS_BOOTSTRAP) {
             report = AutomakeTrsReport.read(c.layout().path(c.layout().build()), suite);
         } else {
@@ -60,6 +73,32 @@ public final class TestReports {
         }
         return report.cases().isEmpty() ? ExitStatusReport.of(suite, c.system().family() + " test step", failure,
                 seconds) : withFailure(report, failure);
+    }
+
+    /**
+     * What Maven's error shows for failed native tests, as surefire does: each failed or errored case (at most
+     * {@value #SHOWN_CASES}) with the first lines of its message and output, then the test step's own failure,
+     * which ends with the last lines of the tool's output. Empty when nothing failed and the step passed.
+     */
+    public static String failureDetails(TestSuiteReport report, String failure) {
+        List<TestSuiteReport.Case> bad = report.cases().stream().filter(TestReports::failed).toList();
+        Stream<String> cases = bad.stream().limit(SHOWN_CASES).map(TestReports::caseLine);
+        Stream<String> more = bad.size() > SHOWN_CASES ? Stream.of("  ... and " + (bad.size() - SHOWN_CASES)
+                + " more") : Stream.empty();
+        Stream<String> step = failure.isBlank() ? Stream.empty() : Stream.of("test step: " + failure);
+        return Stream.of(cases, more, step).flatMap(s -> s).collect(Collectors.joining(System.lineSeparator()));
+    }
+
+    private static boolean failed(TestSuiteReport.Case c) {
+        return c.status() == TestSuiteReport.Status.FAILED || c.status() == TestSuiteReport.Status.ERRORED;
+    }
+
+    private static String caseLine(TestSuiteReport.Case c) {
+        String text = c.message() + "\n" + c.output();
+        String first = text.lines().map(String::strip).filter(l -> !l.isEmpty()).limit(SHOWN_LINES)
+                .collect(Collectors.joining(" | "));
+        String line = "  " + c.status() + " " + c.name() + (first.isEmpty() ? "" : ": " + first);
+        return line.length() > MAX_LINE ? line.substring(0, MAX_LINE) + " ..." : line;
     }
 
     private static TestSuiteReport withFailure(TestSuiteReport report, String failure) {

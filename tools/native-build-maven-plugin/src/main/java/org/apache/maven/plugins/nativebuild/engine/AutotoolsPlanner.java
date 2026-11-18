@@ -24,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Autotools, out of tree: {@code autoreconf -fi} in the source directory only when configure is missing (it has no
@@ -46,9 +48,17 @@ final class AutotoolsPlanner implements StepPlanner {
                 Steps.buildInputs(c, statusFile(c)), c.options().outputs()));
         steps.add(make(c, NativePhase.TEST, Steps.list("-j" + c.options().jobs(), testTarget(c)),
                 Steps.afterBuildInputs(c, statusFile(c)), testOutputs(c)));
-        steps.add(make(c, NativePhase.INSTALL, Steps.list("install", "DESTDIR=" + c.layout().mixed(c.layout().stage())),
-                Steps.afterBuildInputs(c, statusFile(c)), List.of(c.layout().stage())));
+        if (Steps.unsafeStage(c).isEmpty()) {
+            steps.add(make(c, NativePhase.INSTALL, Steps.list("install", "DESTDIR=" + c.layout().mixed(c.layout().stage())),
+                    Steps.afterBuildInputs(c, statusFile(c)), List.of(c.layout().stage())));
+        }
         return steps;
+    }
+
+    /** Why install is not run: the stage path holds characters make passes unquoted to the shell. */
+    @Override
+    public Optional<String> installRefusal(PlanContext c) {
+        return Steps.unsafeStage(c);
     }
 
     /** True when autoreconf runs: configure is missing (mode auto) or mode always. */
@@ -66,12 +76,15 @@ final class AutotoolsPlanner implements StepPlanner {
      * configure: {@code -B} considers all targets out of date, and {@code -o} holds the generated files old.
      */
     static List<String> dryRunArguments(PlanContext c) {
+        return Steps.list("-C", c.layout().build(), "-nwB", held(c));
+    }
+
+    /** {@code -o <file>} for each generated file, so a forced make never re-runs configure or automake. */
+    static List<String> held(PlanContext c) {
         String up = relativeSource(c);
-        List<String> held = List.of("Makefile", "config.status", "config.h", Layout.join(up, "configure"),
-                Layout.join(up, "Makefile.in"), Layout.join(up, "aclocal.m4"), Layout.join(up, "config.h.in"));
-        List<String> args = Steps.list("-C", c.layout().build(), "-nwB");
-        held.forEach(file -> args.addAll(List.of("-o", file)));
-        return args;
+        return Stream.of("Makefile", "config.status", "config.h", Layout.join(up, "configure"),
+                Layout.join(up, "Makefile.in"), Layout.join(up, "aclocal.m4"), Layout.join(up, "config.h.in"))
+                .flatMap(file -> Stream.of("-o", file)).toList();
     }
 
     private static NativeStep bootstrapStep(PlanContext c) {
@@ -85,17 +98,19 @@ final class AutotoolsPlanner implements StepPlanner {
 
     private static NativeStep configure(PlanContext c) {
         NativeOptions o = c.options();
+        List<String> deps = Steps.dependencyEnvironment(c).entrySet().stream()
+                .filter(e -> !e.getKey().startsWith("CMAKE")).map(e -> e.getKey() + "=" + e.getValue()).sorted().toList();
         List<String> args = Steps.list(Layout.join(relativeSource(c), "configure"), "--prefix=" + o.prefix(),
-                Steps.compilerAssignments(c), o.args(NativePhase.CONFIGURE));
+                Steps.compilerAssignments(c), deps, o.args(NativePhase.CONFIGURE));
         List<String> inputs = Steps.list(Layout.join(c.layout().source(), "configure"), Steps.configureInputs(c));
         return new NativeStep(NativePhase.CONFIGURE, c.tool("sh"), c.layout().build(), args, inputs,
-                List.of(statusFile(c)));
+                List.of(statusFile(c)), Steps.shellPath(c));
     }
 
     private static NativeStep make(PlanContext c, NativePhase phase, List<String> what, List<String> inputs,
             List<String> outputs) {
         List<String> args = Steps.list("-C", c.layout().build(), what, Steps.makeShell(c), c.options().args(phase));
-        return new NativeStep(phase, c.tool("make"), ".", args, inputs, outputs);
+        return new NativeStep(phase, c.tool("make"), ".", args, inputs, outputs, Steps.shellPath(c));
     }
 
     private static String testTarget(PlanContext c) {

@@ -25,16 +25,22 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Runs a tool by argument list (no shell) and captures what it prints, for the work the polyglot runner does not do
- * because it passes output through: {@code --version} probes, vswhere, {@code ninja -t compdb} and the make dry run.
- * Output goes to temporary files, so a chatty tool cannot block on a full pipe.
+ * The plugin's one process launcher: runs a tool by argument list (no shell; on Windows each argument quoted by the
+ * runtime's rules, see {@link WindowsArgs}) and captures what it prints. The polyglot runner owns the task graph,
+ * timeouts and content stamps but starts tools with inherited output and no environment, so native steps run
+ * through {@link StepShim}, which uses {@link #append}; probes ({@code --version}, vswhere, {@code ninja -t compdb},
+ * the make dry run) use {@link #run}. Output goes to files, so a chatty tool cannot block on a full pipe. When the
+ * core ProcessLauncher service (hsoliwal/maven branch core/process-launcher) lands, this class adapts to it.
  */
 public final class CapturedProcess {
     private static final System.Logger LOG = System.getLogger(CapturedProcess.class.getName());
     private static final long MAX_BYTES = 64L << 20;
+    private static final java.util.regex.Pattern REFERENCE =
+            java.util.regex.Pattern.compile("\\$\\{([A-Za-z_]\\w*)\\}");
 
     /**
      * What the tool did.
@@ -55,18 +61,62 @@ public final class CapturedProcess {
     /** Runs {@code command} in {@code directory}; a timeout stops the tool and its children and fails. */
     public static Result run(List<String> command, Path directory, Duration timeout)
             throws IOException, InterruptedException {
+        return run(command, Map.of(), directory, timeout);
+    }
+
+    /**
+     * Runs {@code command} in {@code directory} with {@code environment} added (each {@code ${NAME}} expanded from this
+     * process's environment); a timeout stops the tool and its children and fails.
+     */
+    public static Result run(List<String> command, Map<String, String> environment, Path directory, Duration timeout)
+            throws IOException, InterruptedException {
         LOG.log(Level.DEBUG, () -> "capture " + String.join(" ", command) + " in " + directory);
         Path out = Files.createTempFile("native-out", ".txt");
         Path err = Files.createTempFile("native-err", ".txt");
         try {
-            Process process = new ProcessBuilder(command).directory(directory.toFile())
-                    .redirectOutput(out.toFile()).redirectError(err.toFile()).start();
+            ProcessBuilder builder = builder(command, directory).redirectOutput(out.toFile()).redirectError(err.toFile());
+            environment.forEach((name, value) -> builder.environment().put(name, expand(value)));
+            Process process = builder.start();
             int exit = await(process, timeout, command);
             return new Result(exit, read(out), read(err));
         } finally {
             Files.deleteIfExists(out);
             Files.deleteIfExists(err);
         }
+    }
+
+    /**
+     * Runs {@code command} in {@code directory} with {@code environment} added to this process's environment, both
+     * output streams appended to {@code log}; returns the exit status. The caller owns the timeout.
+     */
+    public static int append(List<String> command, Map<String, String> environment, Path directory, Path log)
+            throws IOException, InterruptedException {
+        ProcessBuilder builder = builder(command, directory).redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
+        environment.forEach((name, value) -> builder.environment().put(name, expand(value)));
+        Process process = builder.start();
+        try {
+            return process.waitFor();
+        } catch (InterruptedException interrupt) {
+            stop(process);
+            throw interrupt;
+        }
+    }
+
+    /**
+     * An environment value with each {@code ${NAME}} replaced by this process's {@code NAME} (empty when unset), so a
+     * step can extend a variable, such as {@code PATH=<folder>;${PATH}}, without recording the whole inherited value.
+     */
+    static String expand(String value) {
+        Map<String, String> inherited = PlanContext.environment(System.getenv());
+        return REFERENCE.matcher(value).replaceAll(m -> java.util.regex.Matcher.quoteReplacement(
+                inherited.getOrDefault(m.group(1), "")));
+    }
+
+    /** A process builder whose argument list survives Windows command-line splitting. */
+    static ProcessBuilder builder(List<String> command, Path directory) {
+        boolean windows = System.getProperty("os.name", "").startsWith("Windows");
+        return new ProcessBuilder(windows ? WindowsArgs.encode(command) : command).directory(directory.toFile());
     }
 
     private static int await(Process process, Duration timeout, List<String> command)

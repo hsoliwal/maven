@@ -44,10 +44,10 @@ final class MesonPlanner implements StepPlanner {
         return List.of(configure(c, build),
                 step(c, NativePhase.BUILD, Steps.list("compile", "-C", build, "-j", String.valueOf(o.jobs()),
                         o.targets()), Steps.buildInputs(c, l.inBuild("build.ninja")), o.outputs()),
-                step(c, NativePhase.TEST, Steps.list("test", "-C", build), Steps.afterBuildInputs(c),
+                step(c, NativePhase.TEST, Steps.list("test", "-C", build), Steps.afterBuildInputs(c, state(c)),
                         List.of(l.inBuild(JUNIT))),
                 step(c, NativePhase.INSTALL, Steps.list("install", "-C", build, "--destdir", l.mixed(l.stage())),
-                        Steps.afterBuildInputs(c), List.of(l.stage())));
+                        Steps.afterBuildInputs(c, state(c)), List.of(l.stage())));
     }
 
     @Override
@@ -71,12 +71,19 @@ final class MesonPlanner implements StepPlanner {
         boolean configured = Files.exists(l.path(l.inBuild("meson-private/coredata.dat")));
         List<String> nativeFile = nativeFile(c).isPresent()
                 ? List.of("--native-file", l.mixed(l.inBuild(NATIVE_FILE))) : List.of();
+        List<String> deps = c.dependencies().isEmpty() ? List.of() : List.of("-Dpkg_config_path="
+                + Steps.joined(c, "lib/pkgconfig", ","), "-Dcmake_prefix_path=" + Steps.joined(c, "", ","));
         List<String> args = Steps.list("setup", configured ? "--reconfigure" : "", build,
-                "--buildtype=" + buildType(c.options().buildType()), nativeFile, c.options().args(NativePhase.CONFIGURE));
+                "--buildtype=" + buildType(c.options().buildType()), nativeFile, deps,
+                c.options().args(NativePhase.CONFIGURE));
         List<String> inputs = Steps.configureInputs(c, Layout.join(l.source(), "meson.build"),
                 Layout.join(l.source(), "meson.options"), Layout.join(l.source(), "meson_options.txt"));
         return new NativeStep(NativePhase.CONFIGURE, c.tool("meson"), l.source(), args, inputs,
                 List.of(l.inBuild("build.ninja")));
+    }
+
+    private static String state(PlanContext c) {
+        return c.layout().inBuild("meson-private/coredata.dat");
     }
 
     private static NativeStep step(PlanContext c, NativePhase phase, List<String> args, List<String> inputs,

@@ -51,13 +51,16 @@ public final class NativeBuildContracts {
         CompileDbContract.run(checks);
         ToolchainsContract.run(checks);
         StageContract.run(checks);
+        ReviewRegressionContract.run(checks);
+        ReviewFixContract.run(checks);
+        Round3Contract.run(checks);
     }
 
     private static void empty(Path scratch) throws Exception {
         if (Files.exists(scratch)) {
             try (Stream<Path> walk = Files.walk(scratch)) {
                 for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
-                    Files.delete(path);
+                    Files.deleteIfExists(path);
                 }
             }
         }

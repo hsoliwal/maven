@@ -25,15 +25,21 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
  * A hand-written makefile, built in place: {@code make -f <file> -jN}, the test target ({@code make.testTarget}, else
  * {@code check} or {@code test} when the makefile declares it) and {@code make install DESTDIR=<stage>} when it
- * declares install. Configured compilers are passed as {@code CC=} and {@code CXX=} arguments. nmake runs only with
- * an explicit {@code make.tool=nmake} inside a Visual Studio developer environment.
+ * declares install and its text uses {@code $(DESTDIR)}: an install rule that ignores DESTDIR would write outside the
+ * project, so it is not run. Configured compilers are passed as {@code CC=} and {@code CXX=} arguments; native
+ * dependencies as {@code CPPFLAGS}, {@code LDFLAGS}, {@code PKG_CONFIG_PATH} and {@code CMAKE_PREFIX_PATH} added to
+ * the environment (the makefile's own assignments win). nmake runs only with an explicit {@code make.tool=nmake}
+ * inside a Visual Studio developer environment.
  */
 final class MakePlanner implements StepPlanner {
+    private static final Pattern DESTDIR = Pattern.compile("\\$[({]DESTDIR[)}]");
+
     @Override
     public List<NativeStep> plan(PlanContext c) throws IOException {
         String text = makefileText(c);
@@ -44,7 +50,7 @@ final class MakePlanner implements StepPlanner {
         if (!test.isEmpty()) {
             steps.add(step(c, NativePhase.TEST, List.of(test), Steps.afterBuildInputs(c), List.of()));
         }
-        if (!nmake(c) && !declared(text, "install").isEmpty()) {
+        if (!nmake(c) && !declared(text, "install").isEmpty() && installRefusal(c).isEmpty()) {
             steps.add(step(c, NativePhase.INSTALL, List.of("install", "DESTDIR=" + c.layout().mixed(c.layout().stage())),
                     Steps.afterBuildInputs(c), List.of(c.layout().stage())));
         }
@@ -54,6 +60,26 @@ final class MakePlanner implements StepPlanner {
     @Override
     public String buildDirectory(PlanContext c) {
         return c.layout().source();
+    }
+
+    /**
+     * Why the makefile's install target is not run: it ignores DESTDIR, or the stage path holds characters make
+     * passes unquoted to the shell. Empty when install runs or there is no install target. "Ignores DESTDIR" is a
+     * heuristic: the makefile text, without comments, must use {@code $(DESTDIR)} or {@code ${DESTDIR}} somewhere; an
+     * install rule that uses it for some files but not for others still writes those outside, so DESTDIR must be used
+     * throughout the rule (or outputs declared instead).
+     */
+    @Override
+    public Optional<String> installRefusal(PlanContext c) throws IOException {
+        String text = makefileText(c);
+        if (nmake(c) || declared(text, "install").isEmpty()) {
+            return Optional.empty();
+        }
+        if (!DESTDIR.matcher(text.replaceAll("(?m)#.*$", "")).find()) {
+            return Optional.of(makefile(c) + "'s install target ignores DESTDIR, so it would install outside the "
+                    + "project; use $(DESTDIR) in its install rule, or declare outputs to stage instead");
+        }
+        return Steps.unsafeStage(c);
     }
 
     /** {@code make -n} arguments that print every compile command of the makefile without running it. */
@@ -87,7 +113,8 @@ final class MakePlanner implements StepPlanner {
         List<String> args = nmake(c) ? Steps.list("/NOLOGO", "/F", makefile(c), what, c.options().args(phase))
                 : Steps.list("-f", makefile(c), what, Steps.makeShell(c), Steps.compilerAssignments(c),
                         c.options().args(phase));
-        return new NativeStep(phase, c.tool("make"), c.layout().source(), args, inputs, outputs);
+        return new NativeStep(phase, c.tool("make"), c.layout().source(), args, inputs, outputs,
+                Steps.makeEnvironment(c));
     }
 
     private static boolean nmake(PlanContext c) {

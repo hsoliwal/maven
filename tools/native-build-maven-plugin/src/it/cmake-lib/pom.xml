@@ -48,6 +48,7 @@ clang-cl + Ninja (neither needs vcvars). Linux: CMake's default generator and co
               <goal>test</goal>
               <goal>stage</goal>
               <goal>attach</goal>
+              <goal>clean</goal>
             </goals>
           </execution>
         </executions>

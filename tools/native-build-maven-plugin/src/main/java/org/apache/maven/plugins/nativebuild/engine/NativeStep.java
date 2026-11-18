@@ -19,6 +19,7 @@
 package org.apache.maven.plugins.nativebuild.engine;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * One planned tool invocation: an executable and its argument list (never a shell command line), the
@@ -31,6 +32,8 @@ import java.util.List;
  * @param arguments the argument list
  * @param inputs project-relative declared inputs
  * @param outputs project-relative declared outputs
+ * @param environment variables added to the inherited environment for this step only (native dependency paths
+ *     for Make), part of the step's content stamp
  */
 public record NativeStep(
         NativePhase phase,
@@ -38,12 +41,20 @@ public record NativeStep(
         String workingDir,
         List<String> arguments,
         List<String> inputs,
-        List<String> outputs) {
+        List<String> outputs,
+        Map<String, String> environment) {
     /** Copies the lists. */
     public NativeStep {
         arguments = List.copyOf(arguments);
         inputs = List.copyOf(inputs);
         outputs = List.copyOf(outputs);
+        environment = Map.copyOf(environment);
+    }
+
+    /** A step without environment additions. */
+    public NativeStep(NativePhase phase, String tool, String workingDir, List<String> arguments, List<String> inputs,
+            List<String> outputs) {
+        this(phase, tool, workingDir, arguments, inputs, outputs, Map.of());
     }
 
     /** The polyglot task name. */

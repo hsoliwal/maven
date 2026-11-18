@@ -26,6 +26,7 @@ import java.nio.file.StandardCopyOption;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.nativebuild.engine.NativePhase;
 import org.apache.maven.plugins.nativebuild.engine.SurefireXmlWriter;
@@ -37,7 +38,8 @@ import org.apache.maven.plugins.nativebuild.engine.TestSuiteReport;
  * results as {@code TEST-native-<system>-<classifier>.xml} in the surefire format into the reports directory, copied
  * to target/surefire-reports by default. Honours skipTests, maven.test.skip and maven.test.failure.ignore.
  */
-@Mojo(name = "test", defaultPhase = LifecyclePhase.TEST, threadSafe = true)
+@Mojo(name = "test", defaultPhase = LifecyclePhase.TEST, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class TestMojo extends AbstractNativeMojo {
     /** Skips the native tests (also skips Java tests in surefire). */
     @Parameter(property = "skipTests", defaultValue = "false")
@@ -65,15 +67,15 @@ public final class TestMojo extends AbstractNativeMojo {
             getLog().info("native tests skipped");
             return;
         }
-        NativeSession session = open(false);
+        NativeSession session = open(NativeSession.Use.RUN);
         if (session.found() && session.step(NativePhase.TEST).isEmpty()) {
             getLog().info("no native test step for " + session.context().system().id());
         } else if (session.found()) {
-            verdict(test(session));
+            test(session);
         }
     }
 
-    private TestSuiteReport test(NativeSession session) throws IOException, InterruptedException {
+    private void test(NativeSession session) throws IOException, InterruptedException, MojoFailureException {
         Path junit = TestReports.junitFile(session.context(), session.planner());
         if (!incremental) {
             Files.deleteIfExists(junit);
@@ -82,7 +84,9 @@ public final class TestMojo extends AbstractNativeMojo {
         String failure = runTests(session);
         double seconds = (System.nanoTime() - start) / 1e9;
         String suite = TestReports.suite(session.context(), session.classifier());
-        return write(TestReports.collect(session.context(), session.planner(), suite, failure, seconds));
+        TestSuiteReport report = write(TestReports.collect(session.context(), session.planner(), suite, failure,
+                seconds));
+        verdict(report, failure);
     }
 
     /** Runs the test step; returns its failure message, empty when it passed. */
@@ -97,22 +101,24 @@ public final class TestMojo extends AbstractNativeMojo {
 
     private TestSuiteReport write(TestSuiteReport report) throws IOException {
         Path file = SurefireXmlWriter.write(report, reportsDirectory.toPath());
-        getLog().info("REPORT " + file + " (" + report.summary() + ")");
+        info("REPORT " + file + " (" + report.summary() + ")");
         if (surefireCopy) {
             Path copy = surefireReportsDirectory.toPath().resolve(file.getFileName());
             Files.createDirectories(copy.getParent());
             Files.copy(file, copy, StandardCopyOption.REPLACE_EXISTING);
-            getLog().info("REPORT copied to " + copy);
+            info("REPORT copied to " + copy);
         }
         return report;
     }
 
-    private void verdict(TestSuiteReport report) throws MojoFailureException {
+    /** Fails with the failed cases' names, their first lines and the test step's tail, as surefire does. */
+    private void verdict(TestSuiteReport report, String failure) throws MojoFailureException {
         long bad = report.count(TestSuiteReport.Status.FAILED) + report.count(TestSuiteReport.Status.ERRORED);
         if (bad == 0) {
             return;
         }
-        String message = "native tests failed: " + report.summary() + "; see " + reportsDirectory;
+        String message = "native tests failed: " + report.summary() + "; see " + reportsDirectory
+                + System.lineSeparator() + TestReports.failureDetails(report, failure);
         if (testFailureIgnore) {
             getLog().warn(message + " (maven.test.failure.ignore)");
         } else {

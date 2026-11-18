@@ -19,79 +19,75 @@
 package org.apache.maven.plugins.nativebuild;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
+import java.util.Set;
+import java.util.function.Consumer;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.nativebuild.engine.BuildDetector;
-import org.apache.maven.plugins.nativebuild.engine.BuildSystem;
+import org.apache.maven.plugins.nativebuild.engine.BuildDigest;
 import org.apache.maven.plugins.nativebuild.engine.Detection;
+import org.apache.maven.plugins.nativebuild.engine.GeneratedFiles;
+import org.apache.maven.plugins.nativebuild.engine.InstallManifest;
 import org.apache.maven.plugins.nativebuild.engine.Layout;
-import org.apache.maven.plugins.nativebuild.engine.MsvcLocator;
-import org.apache.maven.plugins.nativebuild.engine.NativeOptions;
+import org.apache.maven.plugins.nativebuild.engine.NativeNames;
 import org.apache.maven.plugins.nativebuild.engine.NativePhase;
 import org.apache.maven.plugins.nativebuild.engine.NativeStep;
+import org.apache.maven.plugins.nativebuild.engine.OwnerCheck;
 import org.apache.maven.plugins.nativebuild.engine.PlanContext;
-import org.apache.maven.plugins.nativebuild.engine.Platform;
 import org.apache.maven.plugins.nativebuild.engine.PolyglotEngine;
+import org.apache.maven.plugins.nativebuild.engine.RuntimeDetector;
+import org.apache.maven.plugins.nativebuild.engine.StepExecutor;
 import org.apache.maven.plugins.nativebuild.engine.StepPlanner;
-import org.apache.maven.plugins.nativebuild.engine.TaskFileWriter;
-import org.apache.maven.plugins.nativebuild.engine.ToolResolver;
-import org.apache.maven.plugins.nativebuild.engine.ToolSet;
-import org.apache.maven.plugins.nativebuild.engine.ToolchainFingerprint;
 
 /**
- * One goal's view of the native build: detection, resolved tools, classifier, layout and the planned steps, and
- * running steps through the polyglot engine from an isolated {@code target/native/<classifier>/tasks.tsv}.
+ * One goal's view of the native build: detection, resolved tools, layout and the planned steps, and running steps
+ * through the polyglot engine (see {@link StepExecutor}) with their output in Maven's log.
  */
 final class NativeSession {
+    /** What a goal does with the session. */
+    enum Use {
+        /** Prints the plan: provisions nothing, writes nothing, reports a competing root manifest. */
+        DETECT,
+        /** Configures: writes the toolchain fingerprint and unpacks native dependencies. */
+        CONFIGURE,
+        /** Runs planned steps. */
+        RUN,
+        /** Plans the clean goal after target is gone: provisions nothing, writes nothing. */
+        CLEAN
+    }
+
     private final AbstractNativeMojo mojo;
     private final Detection detection;
     private final PlanContext context;
-    private final String classifier;
     private final List<NativeStep> steps;
 
-    private NativeSession(AbstractNativeMojo mojo, Detection detection, PlanContext context, String classifier,
-            List<NativeStep> steps) {
+    private NativeSession(AbstractNativeMojo mojo, Detection detection, PlanContext context, List<NativeStep> steps) {
         this.mojo = mojo;
         this.detection = detection;
         this.context = context;
-        this.classifier = classifier;
         this.steps = steps;
     }
 
-    /** Detects and plans; {@code chained} plans for a root manifest (no fingerprint input). */
-    static NativeSession open(AbstractNativeMojo m, boolean fingerprint, boolean chained) throws IOException {
-        if (m.timeoutSeconds < 1 || m.timeoutSeconds > 43_200) {
-            throw new IllegalArgumentException("native.timeoutSeconds must be between 1 and 43200");
-        }
+    /** Detects and plans for {@code use}. */
+    static NativeSession open(AbstractNativeMojo m, Use use) throws IOException {
+        m.checkTimeout();
         Detection detection = BuildDetector.detect(m.sourceDirectory.toPath(), m.buildSystem);
-        if (fingerprint || !detection.found()) {
+        if (use == Use.CONFIGURE || use == Use.DETECT || !detection.found()) {
             m.getLog().info(detection.line());
         } else {
             m.getLog().debug(detection.line());
         }
-        return detection.found() ? planned(m, detection, fingerprint, chained)
-                : new NativeSession(m, detection, null, "", List.of());
-    }
-
-    private static NativeSession planned(AbstractNativeMojo m, Detection detection, boolean fingerprint,
-            boolean chained) throws IOException {
-        Platform platform = Platform.current();
-        ToolSet tools = tools(m, detection.system(), platform);
-        String classifier = classifier(m, detection.system(), platform, tools);
-        PlanContext context = context(m, detection, tools, platform, classifier, !chained);
-        if (fingerprint) {
-            writeFingerprint(m.getLog(), context);
+        if (!detection.found()) {
+            return new NativeSession(m, detection, null, List.of());
         }
-        return new NativeSession(m, detection, context, classifier, StepPlanner.forSystem(detection.system()).plan(context));
+        if (use == Use.CONFIGURE || use == Use.RUN) {
+            OwnerCheck.require(m.project.getBasedir().toPath(), PolyglotManifests.of(m));
+        }
+        PlanContext context = SessionSetup.context(m, detection, use);
+        return new NativeSession(m, detection, context, StepPlanner.forSystem(detection.system()).plan(context));
     }
 
     boolean found() {
@@ -104,10 +100,6 @@ final class NativeSession {
 
     PlanContext context() {
         return context;
-    }
-
-    String classifier() {
-        return classifier;
     }
 
     List<NativeStep> steps() {
@@ -130,91 +122,71 @@ final class NativeSession {
         return steps.stream().filter(s -> s.phase() == phase).findFirst();
     }
 
+    /**
+     * The attached artifacts' classifier: the configured one, else {@code os-arch} plus, on Windows, the runtime the
+     * configured build really uses ({@link RuntimeDetector}), guessed from the parameters only before configure.
+     */
+    String classifier() throws IOException {
+        if (mojo.classifier != null && !mojo.classifier.isBlank()) {
+            return NativeNames.classifier(mojo.classifier.trim());
+        }
+        String runtime = RuntimeDetector.runtime(context, planner()).orElseGet(() -> SessionSetup.guessRuntime(mojo,
+                context));
+        return context.platform().classifier(runtime);
+    }
+
     /** Runs the planned steps of the given phases, in plan order; true when there was any. */
     boolean run(NativePhase... phases) throws IOException, InterruptedException {
-        Path tasks = prepare();
         List<NativeStep> selected = steps.stream().filter(s -> Arrays.asList(phases).contains(s.phase())).toList();
+        StepExecutor executor = new StepExecutor(context.layout(), mojo.incremental, timeout(), output(),
+                line -> log().debug(line));
+        executor.prepare(steps);
         for (NativeStep step : selected) {
-            log().info(step.name() + ": " + step.display());
-            PolyglotEngine.run(tasks, context.layout().basedir(), step.name(), mojo.incremental, timeout(),
-                    line -> log().info(line));
+            run(executor, step);
         }
         return !selected.isEmpty();
     }
 
-    /** Deletes a project-relative directory tree (the stage before a fresh install). */
-    void clean(String relative) throws IOException {
-        Path root = context.layout().path(relative);
-        if (Files.isDirectory(root)) {
-            try (Stream<Path> walk = Files.walk(root)) {
-                for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
-                    Files.delete(path);
-                }
-            }
-        }
-    }
-
-    private Path prepare() throws IOException {
+    private void run(StepExecutor executor, NativeStep step) throws IOException, InterruptedException {
         Layout layout = context.layout();
-        for (NativeStep step : steps) {
-            Files.createDirectories(layout.path(step.workingDir()));
+        mojo.info(step.name() + ": " + step.display());
+        Set<String> before = step.phase() == NativePhase.BOOTSTRAP ? GeneratedFiles.list(layout) : Set.of();
+        if (cmakeInstall(step)) {
+            InstallManifest.refusePlanned(layout, planner().buildDirectory(context), context.options().prefix());
         }
-        Files.createDirectories(layout.path(layout.build()));
-        for (Map.Entry<String, String> file : planner().files(context).entrySet()) {
-            TaskFileWriter.write(layout.path(file.getKey()), file.getValue());
+        executor.run(step);
+        if (step.phase() == NativePhase.BOOTSTRAP) {
+            GeneratedFiles.record(layout, before);
         }
-        Path tasks = layout.path(layout.inBuild("tasks.tsv"));
-        TaskFileWriter.write(tasks, TaskFileWriter.render(steps, false));
-        return tasks;
+        after(step);
     }
 
-    private static ToolSet tools(AbstractNativeMojo m, BuildSystem system, Platform platform) throws IOException {
-        Map<String, String> explicit = new HashMap<>(m.tools == null ? Map.of() : m.tools);
-        if (m.makeTool != null && !m.makeTool.isBlank()) {
-            explicit.putIfAbsent("make", m.makeTool.trim());
+    /** After a step: the build's product digest, the CMake install's manifest check. */
+    private void after(NativeStep step) throws IOException {
+        if (step.phase() == NativePhase.BUILD) {
+            BuildDigest.write(context.layout(), planner().buildDirectory(context));
         }
-        Map<String, String> provisioned = m.cmakeProvision ? CMakeProvisioner.provision(m, platform) : Map.of();
-        Map<String, String> requirements = m.toolchainRequirements == null ? Map.of() : m.toolchainRequirements;
-        ToolSet tools = new ToolResolver(explicit, MavenToolchains.entries(m), requirements, provisioned, platform,
-                System.getenv()).resolveAll(StepPlanner.toolNames(system));
-        StepPlanner.toolNames(system).stream().filter(n -> explicit.containsKey(n) && !tools.has(n))
-                .forEach(n -> m.getLog().warn("configured tool " + n + "=" + explicit.get(n) + " was not found"));
-        return tools;
-    }
-
-    private static String classifier(AbstractNativeMojo m, BuildSystem system, Platform platform, ToolSet tools) {
-        if (m.classifier != null && !m.classifier.isBlank()) {
-            return m.classifier.trim();
+        if (cmakeInstall(step)) {
+            checkInstall(step);
         }
-        String cc = tools.configured("cc").orElse("");
-        String generator = m.cmakeGenerator == null ? "" : m.cmakeGenerator;
-        boolean asksVisualStudio = platform.windows() && cc.isEmpty() && generator.isEmpty()
-                && (system == BuildSystem.CMAKE || system == BuildSystem.CMAKE_PRESETS || system == BuildSystem.MESON);
-        boolean installed = asksVisualStudio && MsvcLocator.installation(platform, System.getenv()).isPresent();
-        return platform.classifier(platform.runtime(generator, cc, installed));
     }
 
-    private static PlanContext context(AbstractNativeMojo m, Detection detection, ToolSet tools, Platform platform,
-            String classifier, boolean fingerprintInput) {
-        Path build = m.buildDirectory.toPath();
-        Layout layout = Layout.of(m.project.getBasedir().toPath(), m.sourceDirectory.toPath(), build.resolve(classifier),
-                build.resolve("stage").resolve(classifier), m.reportsDirectory.toPath());
-        return new PlanContext(detection, layout, options(m), tools, platform, System.getenv(), fingerprintInput);
+    private boolean cmakeInstall(NativeStep step) {
+        return step.phase() == NativePhase.INSTALL && context.system().family().equals("cmake");
     }
 
-    private static NativeOptions options(AbstractNativeMojo m) {
-        return NativeOptions.builder().buildType(m.buildType).jobs(m.jobs).cmake(m.cmakeGenerator, m.cmakePreset)
-                .make(m.makeTool, m.makeFile, m.makeTargets, m.makeTestTarget).autotools(m.autoreconf, m.prefix)
-                .args(NativePhase.CONFIGURE, m.configureArgs).args(NativePhase.BUILD, m.buildArgs)
-                .args(NativePhase.TEST, m.testArgs).args(NativePhase.INSTALL, m.installArgs).outputs(m.outputs).build();
+    /** Fails a CMake install that wrote outside the stage; the install then runs again next time. */
+    private void checkInstall(NativeStep step) throws IOException {
+        try {
+            InstallManifest.check(context.layout(), planner().buildDirectory(context));
+        } catch (IOException escaped) {
+            PolyglotEngine.forget(context.layout().basedir(), step.name());
+            throw escaped;
+        }
     }
 
-    private static void writeFingerprint(Log log, PlanContext context) throws IOException {
-        Path file = context.layout().path(context.layout().inBuild(PlanContext.FINGERPRINT));
-        Path directory = context.layout().basedir();
-        String text = ToolchainFingerprint.render(context.platform(), context.tools(),
-                tool -> ToolchainFingerprint.versionLine(tool, directory), context.environment());
-        boolean wrote = ToolchainFingerprint.write(file, text);
-        log.info((wrote ? "FINGERPRINT written " : "FINGERPRINT unchanged ") + file);
+    /** Tool output into Maven's log; under {@code -T} each line names its module. */
+    private Consumer<String> output() {
+        return mojo::info;
     }
 }

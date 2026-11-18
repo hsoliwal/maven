@@ -23,38 +23,25 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Writes planned steps as a polyglot task manifest (one tab-separated fact per line, LF line ends, no shell text).
- * Isolated manifests, for the plugin's own goals, have no prerequisites: Maven's phases order the steps. Chained
- * manifests, for a root {@code m3-build.tsv}, link each step to the previous one and add the aggregation targets
- * compile, test and package.
+ * The manifests have no prerequisites: Maven's phases order the steps, one goal per phase. A root
+ * {@code m3-build.tsv} for the polyglot lifecycle participant is the polyglot Mavenizer's, never this plugin's: one
+ * owner per build descriptor (see {@link OwnerCheck}).
  */
 public final class TaskFileWriter {
-    private static final Map<String, NativePhase> AGGREGATES =
-            Map.of("compile", NativePhase.BUILD, "test", NativePhase.TEST, "package", NativePhase.INSTALL);
-
     private TaskFileWriter() {}
 
     /** The manifest text. Every argument stays one fact; one with a tab, line break or other control fails. */
-    public static String render(List<NativeStep> steps, boolean chained) {
-        StringBuilder out = new StringBuilder(PolyglotEngine.MAGIC).append('\n');
-        for (int i = 0; i < steps.size(); i++) {
-            out.append(facts(steps.get(i), chained && i > 0 ? steps.get(i - 1).name() : ""));
-        }
-        if (chained) {
-            Stream.of("compile", "test", "package").forEach(a -> out.append(aggregate(steps, a)));
-        }
-        return out.toString();
+    public static String render(List<NativeStep> steps) {
+        return PolyglotEngine.MAGIC + "\n" + steps.stream().map(TaskFileWriter::facts).collect(Collectors.joining());
     }
 
-    private static String facts(NativeStep step, String previous) {
+    private static String facts(NativeStep step) {
         StringBuilder out = new StringBuilder(fact("task", step.name(), step.tool(), step.workingDir()));
-        if (!previous.isEmpty()) {
-            out.append(fact("dep", step.name(), previous));
-        }
         step.arguments().forEach(a -> out.append(fact("arg", step.name(), a)));
         step.inputs().forEach(p -> out.append(fact("input", step.name(), p)));
         step.outputs().forEach(p -> out.append(fact("output", step.name(), p)));
@@ -70,13 +57,6 @@ public final class TaskFileWriter {
         Files.createDirectories(file.toAbsolutePath().getParent());
         Files.write(file, bytes);
         return true;
-    }
-
-    private static String aggregate(List<NativeStep> steps, String name) {
-        int last = AGGREGATES.get(name).ordinal();
-        String prerequisite = steps.stream().filter(s -> s.phase().ordinal() <= last).map(NativeStep::name)
-                .reduce((first, second) -> second).orElse("");
-        return fact("task", name, "-", ".") + (prerequisite.isEmpty() ? "" : fact("dep", name, prerequisite));
     }
 
     private static String fact(String kind, String... values) {

@@ -21,6 +21,7 @@ package org.apache.maven.plugins.nativebuild.engine;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /** Turns a detected build system and the user settings into argument-list steps, one planner per system. */
 public interface StepPlanner {
@@ -35,6 +36,11 @@ public interface StepPlanner {
     /** The directory that holds the build tree, the compile database and test output. */
     default String buildDirectory(PlanContext context) throws IOException {
         return context.layout().build();
+    }
+
+    /** Why an install step that the build files declare is not planned (it could write outside the stage). */
+    default Optional<String> installRefusal(PlanContext context) throws IOException {
+        return Optional.empty();
     }
 
     /** The planner of one build system. */

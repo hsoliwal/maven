@@ -51,7 +51,7 @@ tools are ignored inside the IDE.
           <goal>test</goal>
           <goal>stage</goal>
           <goal>attach</goal>
-          <goal>polyglot-tasks</goal>
+          <goal>clean</goal>
         </goals>
       </pluginExecutionFilter>
       <action>

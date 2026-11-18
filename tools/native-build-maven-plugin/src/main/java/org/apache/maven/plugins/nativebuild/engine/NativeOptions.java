@@ -59,14 +59,40 @@ public record NativeOptions(
         if (!List.of("auto", "always", "never").contains(autoreconf)) {
             throw new IllegalArgumentException("native.autotools.autoreconf must be auto, always or never");
         }
+        checkNames(buildType, generator, preset, makeTool, makeFile, targets, testTarget, prefix);
         targets = List.copyOf(targets);
         extraArgs = Map.copyOf(extraArgs);
         outputs = List.copyOf(outputs);
     }
 
+    /** Refuses values that a native tool would read as code, options or paths (see {@link NativeNames}). */
+    private static void checkNames(String buildType, String generator, String preset, String makeTool,
+            String makeFile, List<String> targets, String testTarget, String prefix) {
+        NativeNames.buildType(buildType);
+        NativeNames.generator(generator);
+        NativeNames.preset(preset);
+        NativeNames.relative(makeFile, "native.make.file");
+        NativeNames.prefix(prefix);
+        targets.forEach(NativeNames::target);
+        if (!testTarget.isEmpty()) {
+            NativeNames.target(testTarget);
+        }
+        if (makeTool.startsWith("-")) {
+            throw new IllegalArgumentException("refused native.make.tool '" + makeTool + "'");
+        }
+    }
+
     /** User arguments for one step, empty when none. */
     public List<String> args(NativePhase phase) {
         return extraArgs.getOrDefault(phase, List.of());
+    }
+
+    /**
+     * The default parallel jobs of one module's native build: the processors divided by the reactor's threads
+     * ({@code mvn -T}), at least 1, so a parallel reactor does not run every module with one job per processor.
+     */
+    public static int defaultJobs(int processors, int reactorThreads) {
+        return Math.max(1, processors / Math.max(1, reactorThreads));
     }
 
     /** Settings with defaults: Release, one job per processor, autoreconf auto, prefix /usr/local. */

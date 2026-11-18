@@ -27,9 +27,14 @@ import java.util.List;
 public final class ExitStatusReport {
     private ExitStatusReport() {}
 
-    /** One case named after the step; failed with {@code failure} as message when it is not empty. */
+    /**
+     * One case named after the step: failed with {@code failure} as message when it is not empty, an error when the
+     * message reports that the tool could not be started.
+     */
     public static TestSuiteReport of(String suite, String caseName, String failure, double seconds) {
-        TestSuiteReport.Status status = failure.isEmpty() ? TestSuiteReport.Status.PASSED : TestSuiteReport.Status.FAILED;
+        TestSuiteReport.Status status = failure.isEmpty() ? TestSuiteReport.Status.PASSED
+                : failure.contains(StepShim.CANNOT_START) ? TestSuiteReport.Status.ERRORED
+                : TestSuiteReport.Status.FAILED;
         return new TestSuiteReport(suite, List.of(new TestSuiteReport.Case(suite, caseName, seconds, status, failure,
                 "")));
     }

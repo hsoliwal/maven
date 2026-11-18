@@ -77,7 +77,7 @@ final class IncrementalContract {
         NativeStep step = new NativeStep(NativePhase.CONFIGURE, java, ".", List.of("-cp", classes,
                 TouchMain.class.getName(), output), List.of("in.txt", FINGERPRINT), outputs);
         Path file = ws.resolve("tasks-" + output.replace('/', '-') + ".tsv");
-        TaskFileWriter.write(file, TaskFileWriter.render(List.of(step), false));
+        TaskFileWriter.write(file, TaskFileWriter.render(List.of(step)));
         return file;
     }
 

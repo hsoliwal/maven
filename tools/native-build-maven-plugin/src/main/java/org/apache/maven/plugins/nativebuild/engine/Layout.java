@@ -57,6 +57,24 @@ public record Layout(Path basedir, String source, String build, String stage, St
         return join(build, child);
     }
 
+    /**
+     * True when the stage may be emptied: it lies strictly inside the project directory and holds neither the
+     * sources nor the build directory.
+     */
+    public boolean stageDisposable() {
+        Path stagePath = path(stage);
+        return FileTrees.strictlyBelow(stagePath, basedir) && !path(source).startsWith(stagePath)
+                && !path(build).startsWith(stagePath);
+    }
+
+    /**
+     * Fails unless {@code directory} lies inside the project directory; checked for the build directory before
+     * anything (provisioning, dependency unpacking) writes below it.
+     */
+    public static String requireInside(Path basedir, Path directory) {
+        return inside(basedir.toAbsolutePath().normalize(), directory);
+    }
+
     private static String inside(Path base, Path directory) {
         Path absolute = directory.toAbsolutePath().normalize();
         if (!absolute.startsWith(base)) {

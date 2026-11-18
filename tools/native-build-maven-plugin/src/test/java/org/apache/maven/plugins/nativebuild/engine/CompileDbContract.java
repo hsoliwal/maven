@@ -97,7 +97,8 @@ final class CompileDbContract {
     }
 
     private static void sources(Checks c) throws Exception {
-        c.equal("auto modes", List.of(CompileDbSource.Mode.CMAKE, CompileDbSource.Mode.NINJA, CompileDbSource.Mode.BEAR,
+        c.equal("auto modes (Bear only when configured)", List.of(CompileDbSource.Mode.CMAKE, CompileDbSource.Mode.NINJA,
+                CompileDbSource.Mode.MAKE_DRY_RUN,
                 CompileDbSource.Mode.MAKE_DRY_RUN, CompileDbSource.Mode.MESON), List.of(
                 CompileDbSource.effective(CompileDbSource.Mode.AUTO, BuildSystem.CMAKE_PRESETS, true),
                 CompileDbSource.effective(CompileDbSource.Mode.AUTO, BuildSystem.NINJA, false),

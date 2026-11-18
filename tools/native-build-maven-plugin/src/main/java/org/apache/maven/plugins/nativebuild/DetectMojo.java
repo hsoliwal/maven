@@ -21,35 +21,42 @@ package org.apache.maven.plugins.nativebuild;
 import java.io.IOException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.nativebuild.engine.Layout;
 import org.apache.maven.plugins.nativebuild.engine.MsvcLocator;
+import org.apache.maven.plugins.nativebuild.engine.OwnerCheck;
 import org.apache.maven.plugins.nativebuild.engine.PlanContext;
 import org.apache.maven.plugins.nativebuild.engine.StepPlanner;
 
 /**
- * Prints what the other goals would do, and runs nothing: the detected build system, classifier, directories, each
- * resolved tool with its origin, and every planned step's Maven phase and argument list.
+ * Prints what the other goals would do, and runs, downloads and unpacks nothing: the detected build system,
+ * classifier, directories, each resolved tool with its origin, every planned step's Maven phase and argument list,
+ * an install the plugin refuses, and a root {@code m3-build.tsv} that would also build the descriptors.
  */
-@Mojo(name = "detect", defaultPhase = LifecyclePhase.INITIALIZE, threadSafe = true)
+@Mojo(name = "detect", defaultPhase = LifecyclePhase.INITIALIZE, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class DetectMojo extends AbstractNativeMojo {
     @Override
     protected void runNative() throws IOException {
-        NativeSession session = open(false);
+        NativeSession session = open(NativeSession.Use.DETECT);
         if (session.found()) {
             printLayout(session);
             printTools(session.context());
             session.steps().forEach(s -> getLog().info("PLAN " + s.phase().mavenPhase() + " " + s.name() + " ["
                     + s.workingDir() + "] " + s.display()));
+            session.planner().installRefusal(session.context()).ifPresent(r -> getLog().warn("NO INSTALL: " + r));
+            OwnerCheck.competing(PolyglotManifests.of(this))
+                    .forEach(row -> getLog().warn("COMPETING polyglot task " + row));
             printMsvc(session.context());
         }
     }
 
-    private void printLayout(NativeSession session) {
+    private void printLayout(NativeSession session) throws IOException {
         PlanContext c = session.context();
         Layout l = c.layout();
         getLog().info(session.detection().line());
         getLog().info("CLASSIFIER " + session.classifier() + " (platform " + c.platform().os() + "-"
-                + c.platform().arch() + ")");
+                + c.platform().arch() + "; on Windows the runtime is read from the configured build)");
         getLog().info("LAYOUT source=" + l.source() + " build=" + l.build() + " stage=" + l.stage() + " reports="
                 + l.reports());
     }

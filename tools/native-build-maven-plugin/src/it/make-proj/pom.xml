@@ -49,6 +49,7 @@ A hand-written Makefile (static library, program, check, install with DESTDIR) b
               <goal>test</goal>
               <goal>stage</goal>
               <goal>attach</goal>
+              <goal>clean</goal>
             </goals>
           </execution>
         </executions>

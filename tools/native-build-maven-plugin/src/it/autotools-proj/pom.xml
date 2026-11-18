@@ -48,6 +48,7 @@ An Autotools project without a configure script: autoreconf, out-of-tree configu
               <goal>test</goal>
               <goal>stage</goal>
               <goal>attach</goal>
+              <goal>clean</goal>
             </goals>
           </execution>
         </executions>

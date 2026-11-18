@@ -21,14 +21,16 @@ package org.apache.maven.plugins.nativebuild;
 import java.io.IOException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.nativebuild.engine.NativePhase;
 
 /** Builds in compile: cmake --build, make, ninja or meson compile. */
-@Mojo(name = "build", defaultPhase = LifecyclePhase.COMPILE, threadSafe = true)
+@Mojo(name = "build", defaultPhase = LifecyclePhase.COMPILE, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class BuildMojo extends AbstractNativeMojo {
     @Override
     protected void runNative() throws IOException, InterruptedException {
-        NativeSession session = open(false);
+        NativeSession session = open(NativeSession.Use.RUN);
         if (session.found()) {
             session.run(NativePhase.BUILD);
         }

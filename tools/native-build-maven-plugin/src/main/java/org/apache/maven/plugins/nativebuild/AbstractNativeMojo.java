@@ -57,7 +57,10 @@ public abstract class AbstractNativeMojo extends AbstractMojo {
     @Parameter(property = "native.buildSystem")
     String buildSystem;
 
-    /** The attached artifacts' classifier; empty for os-arch (plus -msvc or -mingw on Windows). */
+    /**
+     * The attached artifacts' classifier; empty for os-arch in the os-maven-plugin vocabulary (plus the runtime the
+     * configured build uses on Windows, -msvc or -mingw). Letters, digits, '_', '.' and '-' only.
+     */
     @Parameter(property = "native.classifier")
     String classifier;
 
@@ -65,15 +68,18 @@ public abstract class AbstractNativeMojo extends AbstractMojo {
     @Parameter(property = "native.buildType", defaultValue = "Release")
     String buildType;
 
-    /** Parallel jobs; 0 for one per processor. */
+    /** Parallel jobs; 0 for the processors divided by the reactor's threads ({@code -T}). */
     @Parameter(property = "native.jobs", defaultValue = "0")
     int jobs;
 
-    /** Timeout of each native step, 1 to 43200 seconds. */
-    @Parameter(property = "native.timeoutSeconds", defaultValue = "900")
+    /** Timeout of each native step, 1 to 43200 seconds (default 4 hours). */
+    @Parameter(property = "native.timeoutSeconds", defaultValue = "14400")
     int timeoutSeconds;
 
-    /** Skips steps whose declared inputs are unchanged (polyglot content stamps in .m3/polyglot-stamps). */
+    /**
+     * Skips steps whose declared inputs are unchanged (polyglot content stamps in .m3/polyglot-stamps). A run without
+     * it deletes the stamps of the steps it runs, so a later incremental run never trusts a stale one.
+     */
     @Parameter(property = "native.incremental", defaultValue = "false")
     boolean incremental;
 
@@ -120,6 +126,13 @@ public abstract class AbstractNativeMojo extends AbstractMojo {
     /** Version of the provisioned CMake artifact. */
     @Parameter(property = "native.cmake.version", defaultValue = "3.31.5-b1")
     String cmakeVersion;
+
+    /**
+     * SHA-256 the provisioned CMake archive must have; empty for the plugin's pin of the default version. Any other
+     * version needs it: an archive whose hash differs is never unpacked.
+     */
+    @Parameter(property = "native.cmake.sha256")
+    String cmakeSha256;
 
     /** Group of the provisioned CMake artifact (artifactId cmake-binaries, classifier per platform). */
     @Parameter(property = "native.cmake.provisionGroupId", defaultValue = "com.googlecode.cmake-maven-project")
@@ -181,8 +194,27 @@ public abstract class AbstractNativeMojo extends AbstractMojo {
     protected abstract void runNative()
             throws IOException, InterruptedException, MojoExecutionException, MojoFailureException;
 
-    /** Detects, resolves tools and plans; {@code fingerprint} writes the toolchain fingerprint first. */
-    NativeSession open(boolean fingerprint) throws IOException {
-        return NativeSession.open(this, fingerprint, false);
+    /** Detects, resolves tools and plans for {@code use}. */
+    NativeSession open(NativeSession.Use use) throws IOException {
+        return NativeSession.open(this, use);
+    }
+
+    /** Logs at info level; under {@code -T} the line starts with {@code [artifactId]}, like the tool output lines. */
+    void info(String line) {
+        getLog().info(modulePrefix() + line);
+    }
+
+    /** {@code [artifactId] } when the reactor builds modules in parallel, else empty. */
+    String modulePrefix() {
+        boolean parallel = session != null && session.getRequest() != null
+                && session.getRequest().getDegreeOfConcurrency() > 1;
+        return parallel ? "[" + project.getArtifactId() + "] " : "";
+    }
+
+    /** Refuses a timeout outside 1 s to 12 h, the polyglot runner's range. */
+    void checkTimeout() {
+        if (timeoutSeconds < 1 || timeoutSeconds > 43_200) {
+            throw new IllegalArgumentException("native.timeoutSeconds must be between 1 and 43200");
+        }
     }
 }

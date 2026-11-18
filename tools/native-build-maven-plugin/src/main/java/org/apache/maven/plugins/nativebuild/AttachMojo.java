@@ -29,6 +29,7 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.nativebuild.engine.DeterministicZip;
 import org.apache.maven.plugins.nativebuild.engine.Layout;
@@ -40,7 +41,8 @@ import org.apache.maven.project.MavenProjectHelper;
  * {@code -bin} and {@code -headers} with split), so Maven's install and deploy carry it. Entries are sorted and
  * carry {@code project.build.outputTimestamp}, so an unchanged stage gives a byte-identical archive.
  */
-@Mojo(name = "attach", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
+@Mojo(name = "attach", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class AttachMojo extends AbstractNativeMojo {
     @Inject
     MavenProjectHelper projectHelper;
@@ -59,12 +61,14 @@ public final class AttachMojo extends AbstractNativeMojo {
 
     @Override
     protected void runNative() throws IOException {
-        NativeSession session = attach ? open(false) : null;
+        NativeSession session = attach ? open(NativeSession.Use.RUN) : null;
         if (session == null || !session.found()) {
             return;
         }
         Layout layout = session.context().layout();
-        StageCollector.Staged staged = StageCollector.classify(StageCollector.root(layout.path(layout.stage()), prefix));
+        String prefixed = session.context().options().prefix();
+        StageCollector.Staged staged = StageCollector.classify(StageCollector.root(layout.path(layout.stage()),
+                prefixed));
         if (staged.all().isEmpty()) {
             getLog().warn("nothing staged in " + staged.root() + "; the stage goal (prepare-package) fills it");
         } else {
@@ -89,10 +93,21 @@ public final class AttachMojo extends AbstractNativeMojo {
         }
         Path zip = Path.of(project.getBuild().getDirectory(), project.getBuild().getFinalName() + "-" + classifier
                 + ".zip");
-        DeterministicZip.write(zip, staged.root(), files, DeterministicZip.epoch(outputTimestamp));
+        DeterministicZip.write(zip, staged.root(), files, entryTime());
         projectHelper.attachArtifact(project, "zip", classifier, zip.toFile());
-        getLog().info("ATTACHED zip:" + classifier + " " + zip + " (" + files.size() + " files, sha256 " + sha256(zip)
+        info("ATTACHED zip:" + classifier + " " + zip + " (" + files.size() + " files, sha256 " + sha256(zip)
                 + ")");
+    }
+
+    /** The entry time; one outside the zip (DOS) range of 1980 to 2107 is clamped to it, with a warning. */
+    private long entryTime() {
+        long wanted = DeterministicZip.parse(outputTimestamp);
+        long clamped = DeterministicZip.clamp(wanted);
+        if (clamped != wanted) {
+            getLog().warn("outputTimestamp " + outputTimestamp + " lies outside the zip time range 1980-01-01T00:00:02Z"
+                    + " to 2107-12-31T23:59:58Z; entries use " + DeterministicZip.describe(clamped));
+        }
+        return clamped;
     }
 
     private static String sha256(Path file) throws IOException {

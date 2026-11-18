@@ -64,13 +64,24 @@ public final class SurefireXmlWriter {
     }
 
     private static String detail(TestSuiteReport.Case c) {
-        String message = XmlSupport.escape(c.message());
         return switch (c.status()) {
-            case FAILED -> "    <failure message=\"" + message + "\" type=\"native\"/>\n";
-            case ERRORED -> "    <error message=\"" + message + "\" type=\"native\"/>\n";
-            case SKIPPED -> "    <skipped message=\"" + message + "\"/>\n";
+            case FAILED -> problem("failure", c.message());
+            case ERRORED -> problem("error", c.message());
+            case SKIPPED -> "    <skipped message=\"" + XmlSupport.escape(c.message()) + "\"/>\n";
             case PASSED -> "";
         };
+    }
+
+    /**
+     * A failure or error: the first line in the {@code message} attribute and, for a message of several lines, the
+     * whole text as element content, because XML attribute normalization turns line breaks into spaces in every
+     * reader (the surefire schema allows text in both elements).
+     */
+    private static String problem(String element, String message) {
+        String first = message.lines().findFirst().orElse("");
+        String open = "    <" + element + " message=\"" + XmlSupport.escape(first) + "\" type=\"native\"";
+        return message.strip().equals(first.strip()) ? open + "/>\n"
+                : open + ">" + XmlSupport.escape(message) + "</" + element + ">\n";
     }
 
     private static String time(double seconds) {

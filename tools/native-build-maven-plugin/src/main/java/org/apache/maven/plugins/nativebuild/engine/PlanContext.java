@@ -19,6 +19,7 @@
 package org.apache.maven.plugins.nativebuild.engine;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -34,6 +35,8 @@ import java.util.TreeMap;
  * @param environment the environment of the Maven process (read-only)
  * @param fingerprintInput whether configure declares the toolchain fingerprint as an input (goals do; a root
  *     manifest does not, because its fingerprint would be missing after {@code mvn clean})
+ * @param dependencies project-relative folders holding unpacked native dependency zips (each an install prefix with
+ *     include, lib and lib/pkgconfig), in dependency order
  */
 public record PlanContext(
         Detection detection,
@@ -42,13 +45,21 @@ public record PlanContext(
         ToolSet tools,
         Platform platform,
         Map<String, String> environment,
-        boolean fingerprintInput) {
+        boolean fingerprintInput,
+        List<String> dependencies) {
     /** The fingerprint file, project-relative. */
     public static final String FINGERPRINT = "toolchain.properties";
 
     /** Copies the environment. */
     public PlanContext {
         environment = environment(environment);
+        dependencies = List.copyOf(dependencies);
+    }
+
+    /** A context without native dependencies. */
+    public PlanContext(Detection detection, Layout layout, NativeOptions options, ToolSet tools, Platform platform,
+            Map<String, String> environment, boolean fingerprintInput) {
+        this(detection, layout, options, tools, platform, environment, fingerprintInput, List.of());
     }
 
     /** A read-only copy whose keys compare ignoring case, as Windows environment names do. */

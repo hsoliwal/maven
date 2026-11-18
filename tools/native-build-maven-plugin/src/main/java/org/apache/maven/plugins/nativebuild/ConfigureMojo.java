@@ -21,17 +21,19 @@ package org.apache.maven.plugins.nativebuild;
 import java.io.IOException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.plugins.nativebuild.engine.NativePhase;
 
 /**
  * Configures the native build in generate-sources: writes the toolchain fingerprint, then runs autoreconf (only
  * when configure is missing), cmake, configure or meson setup. Make and Ninja projects have no configure step.
  */
-@Mojo(name = "configure", defaultPhase = LifecyclePhase.GENERATE_SOURCES, threadSafe = true)
+@Mojo(name = "configure", defaultPhase = LifecyclePhase.GENERATE_SOURCES, threadSafe = true,
+        requiresDependencyResolution = ResolutionScope.COMPILE)
 public final class ConfigureMojo extends AbstractNativeMojo {
     @Override
     protected void runNative() throws IOException, InterruptedException {
-        NativeSession session = open(true);
+        NativeSession session = open(NativeSession.Use.CONFIGURE);
         if (session.found() && !session.run(NativePhase.BOOTSTRAP, NativePhase.CONFIGURE)) {
             getLog().info("no configure step for " + session.context().system().id());
         }

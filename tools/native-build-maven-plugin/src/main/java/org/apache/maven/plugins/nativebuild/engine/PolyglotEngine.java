@@ -21,6 +21,7 @@ package org.apache.maven.plugins.nativebuild.engine;
 import io.synexia.maven.polyglot.TaskManifest;
 import io.synexia.maven.polyglot.TaskRunner;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -28,8 +29,9 @@ import java.util.function.Consumer;
 
 /**
  * The only class that refers to the polyglot task engine: its manifest loader (validation, dependency order) and its
- * runner (argument-list process start in the declared working directory, per-task timeout, declared output checks,
- * opt-in content stamps in {@code <project>/.m3/polyglot-stamps}). The engine is used unchanged.
+ * runner (process start in the declared working directory, per-task timeout, declared input and output checks,
+ * opt-in content stamps in {@code <project>/.m3/polyglot-stamps}). The engine is used unchanged; the tasks it starts
+ * are {@link StepShim}s, which add what it lacks (Windows argument quoting, environment, captured output).
  */
 public final class PolyglotEngine {
     /** The manifest format line, taken from the engine. */
@@ -50,6 +52,23 @@ public final class PolyglotEngine {
             List<String> prerequisites, List<String> inputs, List<String> outputs) {}
 
     private PolyglotEngine() {}
+
+    /** The engine's stamp folder, relative to the workspace ({@code InputStamps.DIRECTORY}, package-private there). */
+    public static final String STAMPS = ".m3/polyglot-stamps";
+
+    /**
+     * Deletes the content stamp of {@code task}, so the next incremental run executes it. A run without stamps
+     * calls this for every task it runs: the engine neither checks nor records stamps then, and an older stamp would
+     * otherwise describe a build tree the run has changed.
+     */
+    public static void forget(Path workspace, String task) throws IOException {
+        Files.deleteIfExists(stamp(workspace, task));
+    }
+
+    /** The stamp file of {@code task}. */
+    public static Path stamp(Path workspace, String task) {
+        return workspace.resolve(STAMPS).resolve(task + ".sha256");
+    }
 
     /** Loads and validates a manifest, in the engine's dependency order. */
     public static List<TaskView> load(Path manifest) throws IOException {
