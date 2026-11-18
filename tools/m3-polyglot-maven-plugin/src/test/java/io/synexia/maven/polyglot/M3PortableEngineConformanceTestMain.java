@@ -76,6 +76,16 @@ public final class M3PortableEngineConformanceTestMain {
             check(first.hit("task-compile", A, B), backend + " immediate commit visible");
             check(!first.hit("task-compile", B, A), backend + " digest mismatch rejected");
         }
+        check(!Files.exists(module.resolve(ModuleStateDb.EMBEDDED_FILE), LinkOption.NOFOLLOW_LINKS),
+                backend + " never substitutes the default embedded M3IndexDB backend");
+        Path enginePath = module.resolve(".m3").resolve(switch (backend) {
+            case "ext-rocksdb-v1" -> "module-state-ext-rocksdb-v1";
+            case "ext-mapdb-v1" -> "module-state-ext-mapdb-v1.db";
+            case "ext-lmdb-v1" -> "module-state-ext-lmdb-v1";
+            default -> throw new IllegalArgumentException(backend);
+        });
+        check(Files.exists(enginePath, LinkOption.NOFOLLOW_LINKS),
+                backend + " writes only its own module-local database");
         try (ModuleStateDb recovered = ModuleStateDb.open(module, backend)) {
             check(recovered.hit("task-compile", A, B), backend + " committed state survives reopen");
             recovered.stage("task-compile", C, A);
