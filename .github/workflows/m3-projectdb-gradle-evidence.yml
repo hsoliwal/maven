@@ -42,6 +42,8 @@ jobs:
             tools/project-db/pom.xml
       - name: Guard both project DB and M3IndexDB source-owner CI triggers
         run: sh tools/project-db/scripts/verify-crossfork-trigger.sh
+      - name: Verify historical and current-nine Gradle JUnit receipt modes
+        run: sh tools/project-db/scripts/verify-gradle-junit-modes.sh
       - name: Standalone Java 17 native Gradle JUnit parser admission
         run: sh tools/project-db/scripts/verify-gradle-sources.sh
       - name: Install original M3IndexDB-backed polyglot storage owner
