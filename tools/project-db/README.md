@@ -177,147 +177,91 @@ arrive together. It is only a scheduler policy: canceled historical
 PR runs are **not passed tests**, and the completed Maven and Gradle
 JDK17/21 evidence must still be checked for the *exact* source revision.
 
-## Real Gradle consumer TestKit in Maven's CI
+## Current source-qualified Gradle project-DB TestKit in Maven CI
 
-The project database's cross-fork workflow retains two JDK 17/21
-matrices: the source-owned Maven engine/DB contract and the **actual
-Gradle TestKit consumer**. Each JDK Maven owner job builds and verifies
-the original Maven polyglot `IndexStore` and project database **once**.
-Only after those tests succeed does the job stage both original JARs,
-a `SOURCE_RECEIPT.tsv` carrying the **exact GitHub source SHA** and
-**producing JDK lane**, plus a `SHA256SUMS` receipt sealing all three
-files, and upload them together in `qualified-maven-jars-jdk-<java>`.
-The matching Gradle job declares `needs: project-db-native-gradle`,
-downloads its own JDK's qualified artifacts, runs `sha256sum -c SHA256SUMS`,
-and rejects a source SHA or JDK mismatch **before** executing the
-consumer. It no longer reruns Maven `install` and `verify` a second time.
+The cross-fork workflow retains one Maven owner and one Gradle consumer
+job per JDK **17 and 21**. The Maven job builds the existing original
+polyglot IndexStore/M3IndexDB owner and project database JARs **once**,
+runs their original contract suites and prepares a small artifact with
+both JARs, a source-commit/JDK-lane receipt, the secure Java 17 JUnit
+verifier and a SHA-256 manifest sealing every byte. The Gradle job
+declares `needs: project-db-native-gradle`, downloads the *matching
+JDK's* artifact and verifies all digests and the source/JDK identity
+before executing any Gradle task.
 
-The consumer checks out **reviewed immutable Gradle revision**
-`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`, with a sparse
-checkout of only its wrapper and quality-bridge sources. The Gradle
-wrapper pins the 9.9.1 binary distribution by SHA-256.
+The consumer now uses exactly reviewed, immutable Gradle commit
+`c918c9b9dfc3b087987165c43b77dff63cc86fb1`. The original Gradle
+9.9.1 wrapper and `m3/quality-bridge` are sparse-checked out **once**,
+replacing two prior checkouts and two Gradle `test` invocations.
+That version provides all nine original project-DB tests:
 
-The Gradle job sets `M3_POLYGLOT_JAR` and `M3_PROJECT_DB_JAR`
-to the exact downloaded, SHA-256-verified Maven JAR bytes before executing:
+| Source-owned Gradle suite | Cases | What it checks |
+| --- | ---: | --- |
+| `M3ProjectDbRealEngineTest` | 1 | original Maven build-log and provenance query |
+| `M3ProjectDbGradleNativeRealEngineTest` | 1 | no-POM Gradle JUnit evidence and warm reuse |
+| `M3ProjectDbTaskTest` | 6 | SHA-pinned CLI/task refusals, binary ABI, and configuration-cache replay |
+| `M3ProjectDbPrunedSymlinkRealEngineTest` | 1 | Maven #208 module symlink, excluded vendor/output subtrees |
 
-~~~sh
-./gradlew --no-daemon --stacktrace --console=plain \
-    -p m3/quality-bridge test \
-    --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
-    --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
-    --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
-    --rerun-tasks
-~~~
-
-### Executed JUnit receipt admission
-
-The real JDK 17 and 21 Gradle consumer results from GitHub Actions run
-`44237386509` have been inspected as **actual JUnit XML**, not inferred
-from a green Gradle process status. Each JDK emitted these same three
-suites: `M3ProjectDbRealEngineTest` (1 case),
-`M3ProjectDbGradleNativeRealEngineTest` (1 case) and
-`M3ProjectDbTaskTest` (4 cases). Each reported zero failed, errored
-or skipped tests. Both Gradle jobs completed successfully; the *separate
-Maven owner jobs in that historical run failed at a stale workflow guard*.
-Those historical Gradle JUnit facts therefore do not make the whole
-run green.
-
-The source-owned `scripts/verify-gradle-testkit-results.sh` compiles
-and runs `M3GradleTestKitReceiptMain.java` on the **consumer JDK** using
-`javac --release 17 -Xlint:all -Werror`, then securely parses the
-original JUnit XML with Java's built-in DOM API. DTDs and external XML
-entities are disabled. The parser validates the **six named required
-testcases**, three exact suites, zero skips/errors/failures and no extra
-project-DB suites after running those **three explicitly selected**
-test classes. It refuses
-missing, symlinked or oversized suite XML files, duplicated testcase IDs,
-and a swapped classname or noncanonical testcase count.
-
-Both the shell launcher and Java source are included in
-`qualified-maven-jars-jdk-<java>` and sealed alongside the original
-Maven JARs and `SOURCE_RECEIPT.tsv` in `SHA256SUMS`. The consumer
-cannot accept a green Gradle process exit with skipped real-engine tests,
-a missing expected suite or a forged testcase inside an XML comment.
-
-This Java receipt gate was compiled with JDK 21 targeting Java 17 and
-executed against both archived JDK XML reports: **PASS**. Eight
-deliberately altered reports were refused: missing or extra suite,
-nonzero skip/failure count, changed or duplicated testcase name,
-an invalid test count, forged XML comments and a DTD. It is **not** a full Gradle distribution, native toolchain,
-M3JDK21 platform or Windows/macOS qualification.
-
-The wildcard `*M3ProjectDb*` is intentionally **not** used here.
-Gradle subsequently added `M3ProjectDbPrunedSymlinkRealEngineTest` for
-Maven #208's separate pruning/symlink qualification. This original
-six-case gate remains pinned to the three reviewed suites and will not
-accidentally include a fourth suite when updating the Gradle checkout.
-The symlink test must be explicitly qualified in its own lane; this
-does not remove, skip, or substitute its acceptance authority.
-
-This runs Gradle's original TestKit cases for an actual source-pinned
-Maven engine, including ingestion of a **Gradle-only** JUnit failure
-without a POM, source-line/build provenance, and changed/unchanged
-source handling. The wrapper and its plugins still need network access
-on the Actions runner. Failed or successful TestKit XML reports are
-retained as workflow artifacts for review.
-
-The two source-built JAR artifacts and `SHA256SUMS` are retained
-for seven days; Gradle TestKit XML/HTML reports for fourteen days.
-This handoff reduces duplicate Maven build computation without creating
-a new storage owner or allowing the Gradle job to continue after a
-failed Maven owner job. A receipt authenticates the transferred artifact
-bytes; it does not prove a compiler ABI, a native toolchain closure,
-a Gradle build-cache hit, or behavioral equivalence on Windows/macOS.
-
-The immutable Gradle SHA is intentionally not `master`. A newer
-Gradle bridge source revision requires an explicit pin-update and
-fresh JDK 17/21 acceptance. Maven's own project-DB tests, Gradle's
-normal build cache, and Gradle TestKit are separate authorities; no
-cross-fork test automatically grants build-skip or release permission.
-
-## Separate source-pinned Gradle #208 symlink/parity lane
-
-Maven #208 preserves legacy module discovery for a symlinked *regular*
-Gradle descriptor while pruning `build`, `target`, `.git`,
-`node_modules` and other excluded subtrees **before** traversal.
-The Gradle fork introduced its original integration case
-`M3ProjectDbPrunedSymlinkRealEngineTest` in merged Gradle #52,
-at immutable merge commit
-`7c3d37575002b9c54ff8fa9c8648373aaffa1690`.
-
-The Maven cross-fork CI now qualifies this **one additional case
-separately** after the original six-case report verifier finishes.
-It checks out the reviewed Gradle #52 revision into a second sparse
-workspace, but **reuses exactly the same Maven JDK lane's
-SHA-256/source/JDK-verified** `project-db.jar` and `polyglot.jar`.
-No Maven compilation is repeated and no Gradle source is copied into
-Maven.
-
-The exact class is selected using:
+The execution uses `M3_PROJECT_DB_JAR` and
+`M3_PRUNED_PROJECT_DB_JAR` for the **same original Maven project-DB
+JAR**, and likewise `M3_POLYGLOT_JAR` and
+`M3_PRUNED_POLYGLOT_JAR` for the same storage-engine JAR.
+All four case classes run with one bounded Gradle invocation:
 
 ~~~sh
 ./gradlew --no-daemon --stacktrace --console=plain \
   -p m3/quality-bridge test \
+  --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+  --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+  --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
   --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
   --rerun-tasks
+sh qualified-maven-jars/verify-gradle-testkit-results.sh \
+  consumer-gradle/m3/quality-bridge/build/test-results/test current-nine
 ~~~
 
-It must run with `M3_PRUNED_PROJECT_DB_JAR` and
-`M3_PRUNED_POLYGLOT_JAR` pointing to those original JAR bytes.
-An absent JAR would otherwise cause JUnit to **skip** the test.
-The same source-owned Java 17 JUnit XML verifier accepts the
-strict `pruned-symlink` mode, expecting exactly this one
-unskipped, successful case in its own isolated report directory.
-Malformed XML, missing reports, an unexpected suite, a duplicate
-testcase, skipped test, wrong class name or failure cause refusal.
+The `current-nine` acceptance mode requires **nine exact testcase
+names**, exactly four suites, non-skipped real-engine cases, no failures
+or errors, and no unreviewed project-DB suites. The secure Java17 DOM
+reader refuses malicious DTDs and external entities, wrong case
+ownership, duplicate cases and missing or oversized JUnit XML.
+This is a report **admission gate**, not another test runner or parser
+for the Maven database.
 
-This lane is not allowed to weaken the earlier six-case gate:
-the original Gradle source pin remains
-`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6`.
-The symlink suite is pinned independently and its test results have
-their own Actions artifact. Its hosted execution is **pending** until
-the JDK 17/21 consumer job actually finishes; a local synthetic
-one-case XML proof does not establish Maven/Gradle integration.
+### Historical qualification and compatibility
+
+The previously reviewed Gradle commit
+`e8dbf558fcc8a83c580914fbcc4cb10fe4281eb6` executed six real
+TestKit cases on each JDK in Maven Actions run
+[44237386509](https://github.com/hsoliwal/maven/actions/runs/44237386509).
+The downloaded original JUnit artifacts confirmed **6/6, zero skips**
+on JDK17 and again on JDK21. Its Maven-owner jobs failed at an old
+two-matrix workflow count guard, so **the whole historical workflow
+was not green**. A distinct Maven project-DB source-owner run
+[44233563771](https://github.com/hsoliwal/maven/actions/runs/44233563771)
+passed the original Maven JDK17/21 tests.
+
+For reproducibility the same Java 17 verifier still supports the
+default **six-case** historical mode and standalone
+`pruned-symlink` one-case mode. These modes were actually executed
+against the historical JUnit archives and retained test fixtures.
+The new `current-nine` mode compiled with `javac --release 17
+-Xlint:all -Werror` and passed a generated nine-case JUnit fixture;
+nine separate malformed/skipped/missing/duplicated reports were
+refused. **Those synthetic verifier tests do not mean that the new
+nine-case Gradle TestKit has run successfully on GitHub Actions.**
+
+### Limits and provenance
+
+The original Maven JARs and receipts are retained for seven days in
+Actions artifacts; the actual Gradle XML/HTML reports for fourteen
+days. The immutable Gradle source pin is never a mutable `master`
+checkout: future API changes require a reviewed revision and new JDK
+qualification. Maven still owns the store, the project DB, SHA-256
+catalogs and CPU retrieval; Gradle still owns its TestKit/task model.
+No additional compiler ABI, task/cache skip, JNI provider,
+configuration-cache correctness outside these tests, or Windows/macOS
+equivalence is inferred from this integration.
 
 ## Attribution
 
