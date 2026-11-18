@@ -810,6 +810,42 @@ Maven/Gradle goal skip, source transformation authorization, or artifact
 cache admission. A future qualified Eclipse adapter can use the report to
 decide whether to ask the original owner for a full reconciliation.
 
+### Original JDT compiler configuration evidence
+
+The m2e JDT bundle can optionally produce
+`M3-JDT-COMPILER-FACTS-V1` from its original `IJavaProject`.
+The receipt includes owner-produced SHA-256 identities of JDT's
+raw and fully resolved classpaths (including source patterns, access
+rules, test/export flags, attachments and entry attributes), inherited
+compiler options and project output location. It is bound to the
+same Eclipse invocation UUID and selected build configuration as
+the original `M3-ECLIPSE-BUILD-HANDOFF-V1`.
+
+Maven's pure Java 17 `M3JdtCompilerFactsWire` is the **sole parser**
+for the canonical JDT packet; Gradle delegates to it.
+
+```sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli jdt-facts \
+  /project/root/target/ide/jdt-compiler-facts.ide \
+  /project/root/target/ide/build-handoff.ide
+```
+
+The output schema is `m3-jdt-compiler-facts-v1`. The consumer
+refuses wrong project/configuration/invocation IDs, malformed UTF-8,
+noncanonical Base64URL, unknown versions, uppercase SHA values,
+oversized classpath counts, symlinked packet files and invalid row
+boundaries. Output includes original Eclipse build kind and delta
+completeness for diagnostics, but
+`authorizesBuildSkipping=false` unconditionally.
+
+JDT/ECJ remains the sole authority for compiler behavior, and
+neither Maven nor Gradle invents a second JDT classpath resolver.
+The digests do **not** hash actual JAR bytes or prove annotation
+processor side effects, compiler outputs, or build-cache eligibility.
+Original m2e source:
+`hsoliwal/m2e-core/org.eclipse.m2e.jdt`.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17
