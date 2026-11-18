@@ -9,43 +9,28 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Method;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-
-import jdk.m3.indexdb.M3IndexDB;
-import jdk.m3.indexdb.M3IndexDbArtifact;
 
 /**
- * The single module-state publication owner. The embedded backend uses the
- * unchanged M3IndexDB artifact implementation inside a closed ZIP image.
- * The file, native MIndexDB, optional JDBC and explicit SPI backends share its lease, receipt
- * schema, backend generation and incomplete-session recovery protocol.
+ * The single module-state publication owner. Every backend is one implementation of
+ * {@link ModuleStateBackend}: the embedded (legacy) and file images and the m3db directory store
+ * through {@link IndexStore} (M3IndexDB); optional JDBC and explicit SPI backends are external
+ * engines. All share this owner's lease, receipt schema, backend generation and
+ * incomplete-session recovery protocol.
  *
  * <p>A forced dirty marker precedes execution; only a healthy close marks the
  * session clean. An interrupted session or backend switch starts a new
@@ -58,44 +43,33 @@ final class M3DbModuleStore implements AutoCloseable {
     static final String NATIVE_DIRECTORY = ".m3/maven-build-db";
     static final String LOCK = M3ModuleDbRunLock.FILE;
     static final String MARKER = ".m3/module.m3db.state";
-    private static final String ARTIFACT = "successful-tasks";
-    private static final String KIND = "maven.polyglot.module-state";
-    private static final String NATIVE_ARTIFACT = "maven-module-build-state-v1";
     private static final String MARKER_MAGIC = "M3-MODULE-STATE-2";
-    private static final int VERSION = 2;
+    static final int VERSION = 2;
     private static final int MAGIC = 0x4d334d44; // M3MD
     private static final int MAX_TASKS = 256;
-    private static final int MAX_PAYLOAD = 32 * 1024 * 1024;
-    private static final int MAX_ARCHIVE = MAX_PAYLOAD + 128 * 1024;
-    private static final int MAX_REF = 4096;
-    private static final int MAX_ROOT_CHARS = 8192;
-
-    private interface Storage {
-        byte[] read() throws IOException;
-        void write(byte[] bytes) throws IOException;
-    }
+    static final int MAX_PAYLOAD = 32 * 1024 * 1024;
+    static final int MAX_ARCHIVE = MAX_PAYLOAD + 128 * 1024;
+    static final int MAX_REF = 4096;
 
     static class BackendUnavailableException extends IOException {
         private static final long serialVersionUID = 1L;
         BackendUnavailableException(String message, Throwable cause) { super(message, cause); }
     }
 
-    private static final class NativeProviderUnavailableException extends BackendUnavailableException {
-        private static final long serialVersionUID = 1L;
-        NativeProviderUnavailableException(Throwable cause) {
-            super("MIndexDB must be installed on the polyglot plugin classpath", cause);
-        }
-    }
+    /** One verified task receipt: task name, input generation and output tree digests. */
+    record Receipt(String task, String input, String output) {}
+
+    /** The receipts of a module's active backend; {@code backend} is empty when no clean session exists. */
+    record Snapshot(String backend, List<Receipt> receipts) {}
 
     private final Path root;
-    private final Path directory;
-    private final Path lockPath;
+    private final StateFiles files;
     private final Path markerPath;
     private final M3ModuleDbRunLock lease;
     private final boolean recordSuccess;
     private final Consumer<String> log;
     private final String backend;
-    private final Storage storage;
+    private final ModuleStateBackend storage;
     private final String[] names = new String[MAX_TASKS];
     private final String[] inputs = new String[MAX_TASKS];
     private final String[] outputs = new String[MAX_TASKS];
@@ -106,7 +80,6 @@ final class M3DbModuleStore implements AutoCloseable {
     private boolean needsReset;
     private boolean healthy = true;
     private boolean closed;
-    private boolean directorySyncUnavailable;
 
     private M3DbModuleStore(Path root, String backend, M3ModuleDbRunLock lease,
             boolean recordSuccess, Consumer<String> log) throws IOException {
@@ -116,20 +89,13 @@ final class M3DbModuleStore implements AutoCloseable {
     private M3DbModuleStore(Path root, String backend, M3ModuleDbRunLock lease,
             boolean recordSuccess, Consumer<String> log, boolean initializeStorage) throws IOException {
         this.root = root;
-        this.directory = root.resolve(".m3");
-        this.lockPath = root.resolve(LOCK);
+        this.files = new StateFiles(root, LOCK, MARKER);
         this.markerPath = root.resolve(MARKER);
         this.lease = lease;
         this.recordSuccess = recordSuccess;
         this.log = log;
         this.backend = backend;
-        this.storage = !initializeStorage ? null : switch (backend) {
-            case "embedded" -> new EmbeddedStorage(root.resolve(FILE));
-            case "file" -> new FileStorage(root.resolve(FILE_BACKEND));
-            case "m3db" -> new NativeStorage(root.resolve(NATIVE_DIRECTORY));
-            case "sqlite", "h2" -> new JdbcStorage(root, backend);
-            default -> new ExternalStorage(root, backend);
-        };
+        this.storage = initializeStorage ? ModuleStateBackend.of(backend, root, files) : null;
     }
 
     static M3DbModuleStore open(Path root, boolean create, Consumer<String> log) throws IOException {
@@ -205,6 +171,37 @@ final class M3DbModuleStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Reads the receipts of the active backend of a clean session under the common lease, for a project
+     * database to ingest. No state is published, revoked or rotated and no marker is written; the lease may
+     * create its own lock and self-ignore files, as for any session.
+     */
+    static Snapshot snapshot(Path moduleRoot) throws IOException {
+        Path root = Objects.requireNonNull(moduleRoot, "moduleRoot").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(root.resolve(MARKER), LinkOption.NOFOLLOW_LINKS)) return new Snapshot("", List.of());
+        M3ModuleDbRunLock lease = M3ModuleDbRunLock.acquire(root);
+        try {
+            return snapshot(lease);
+        } finally {
+            lease.close();
+        }
+    }
+
+    private static Snapshot snapshot(M3ModuleDbRunLock lease) throws IOException {
+        List<String> marker = readMarker(lease.root().resolve(MARKER));
+        if (marker.isEmpty() || !"clean".equals(marker.get(3))) return new Snapshot("", List.of());
+        M3DbModuleStore store = new M3DbModuleStore(lease.root(), marker.get(1), lease, false, ignored -> {});
+        store.generation = marker.get(2);
+        store.read();
+        return new Snapshot(marker.get(1), store.receipts());
+    }
+
+    private List<Receipt> receipts() {
+        List<Receipt> receipts = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) receipts.add(new Receipt(names[i], inputs[i], outputs[i]));
+        return List.copyOf(receipts);
+    }
+
     static String backend(String value) {
         return switch (Objects.requireNonNull(value, "backend")) {
             case "embedded", "legacy" -> "embedded";
@@ -220,13 +217,14 @@ final class M3DbModuleStore implements AutoCloseable {
         };
     }
 
-    private static boolean externalBackend(String value) {
+    static boolean externalBackend(String value) {
         return value != null && value.matches("ext-[a-z0-9][a-z0-9-]{0,47}");
     }
 
     static boolean statePath(String relative) {
         String name = relative.replace('\\', '/');
         return name.equals(FILE) || name.equals(LOCK) || name.equals(MARKER) || name.equals(FILE_BACKEND)
+                || name.equals(StateFiles.IGNORE)
                 || name.equals(".m3/module-state.lock") || name.equals(".m3/module.m3db.lock")
                 || M3ModuleJdbcStorage.statePath(name) || name.equals(NATIVE_DIRECTORY)
                 || name.startsWith(NATIVE_DIRECTORY + "/") || name.startsWith(".m3/module-state-");
@@ -316,7 +314,7 @@ final class M3DbModuleStore implements AutoCloseable {
     }
 
     private void selectGeneration() throws IOException {
-        checkPaths();
+        files.checkPaths();
         List<String> lines = readMarker(markerPath);
         if (!lines.isEmpty() && backend.equals(lines.get(1)) && "clean".equals(lines.get(3))) {
             generation = lines.get(2);
@@ -328,7 +326,7 @@ final class M3DbModuleStore implements AutoCloseable {
     private static String newGeneration() { return UUID.randomUUID().toString().replace("-", ""); }
 
     private static List<String> readMarker(Path path) throws IOException {
-        checkFile(path);
+        StateFiles.checkFile(path);
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > 256) return List.of();
         List<String> lines;
         try { lines = Files.readAllLines(path, StandardCharsets.US_ASCII); }
@@ -344,7 +342,7 @@ final class M3DbModuleStore implements AutoCloseable {
     private void writeMarker(boolean clean) throws IOException {
         byte[] bytes = (MARKER_MAGIC + "\n" + backend + "\n" + generation + "\n"
                 + (clean ? "clean\n" : "dirty\n")).getBytes(StandardCharsets.US_ASCII);
-        atomicFile(markerPath, bytes);
+        files.atomicFile(markerPath, bytes);
     }
 
     private void read() throws IOException {
@@ -431,323 +429,13 @@ final class M3DbModuleStore implements AutoCloseable {
     private void publish() throws IOException {
         if (!recordSuccess && !hasState) return;
         try {
-            checkPaths();
+            files.checkPaths();
             storage.write(encode());
             hasState = true;
             needsReset = false;
         } catch (IOException | RuntimeException | Error failure) {
             healthy = false;
             throw failure;
-        }
-    }
-
-    /** File contents are forced before atomic replacement; no partial-copy fallback. */
-    private void atomicFile(Path target, byte[] bytes) throws IOException {
-        checkPaths();
-        checkFile(target);
-        Path temporary = Files.createTempFile(directory, "module-state-", ".tmp");
-        Throwable failure = null;
-        try {
-            Files.write(temporary, bytes, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            forceFile(temporary);
-            checkFile(target);
-            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            forceDirectory(directory);
-        } catch (IOException | RuntimeException | Error thrown) {
-            failure = thrown;
-            throw thrown;
-        } finally {
-            try { Files.deleteIfExists(temporary); }
-            catch (IOException cleanup) {
-                if (failure != null) failure.addSuppressed(cleanup);
-                else throw cleanup;
-            }
-        }
-    }
-
-    private static void forceFile(Path file) throws IOException {
-        try (FileChannel data = FileChannel.open(file, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
-            data.force(true);
-        }
-    }
-
-    private void forceDirectory(Path path) throws IOException {
-        // Java has no portable directory-fsync API. Providers that expose directory
-        // channels get ordered rename durability; other providers retain atomic
-        // process-crash recovery, with power-loss durability owned by that provider.
-        if (directorySyncUnavailable) return;
-        try (FileChannel data = FileChannel.open(path, StandardOpenOption.READ)) {
-            data.force(true);
-        } catch (java.nio.file.AccessDeniedException | UnsupportedOperationException unsupported) {
-            directorySyncUnavailable = true;
-        }
-    }
-
-    private final class FileStorage implements Storage {
-        private final Path file;
-        FileStorage(Path file) throws IOException {
-            checkFile(file);
-            this.file = file;
-        }
-        @Override public byte[] read() throws IOException {
-            checkFile(file);
-            if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return null;
-            if (Files.size(file) > MAX_PAYLOAD) throw new IOException("module state image exceeds limit");
-            try (InputStream in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
-                byte[] bytes = in.readNBytes(MAX_PAYLOAD + 1);
-                if (bytes.length > MAX_PAYLOAD) throw new IOException("module state image exceeds limit");
-                return bytes;
-            }
-        }
-        @Override public void write(byte[] bytes) throws IOException { atomicFile(file, bytes); }
-    }
-
-    private final class EmbeddedStorage implements Storage {
-        private final Path file;
-        EmbeddedStorage(Path file) throws IOException {
-            checkFile(file);
-            this.file = file;
-        }
-        @Override public byte[] read() throws IOException {
-            checkFile(file);
-            if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return null;
-            validateArchive(file);
-            try (FileSystem archive = FileSystems.newFileSystem(file, Map.of());
-                    M3IndexDB db = M3IndexDB.open(archive.getPath("/"))) {
-                M3IndexDbArtifact artifact = db.requireArtifact(ARTIFACT);
-                if (!KIND.equals(artifact.kind()) || artifact.formatVersion() != VERSION) {
-                    throw new IOException("unsupported module receipt schema");
-                }
-                return artifact.payload();
-            }
-        }
-        @Override public void write(byte[] bytes) throws IOException {
-            checkFile(file);
-            Path temporaryDirectory = Files.createTempDirectory(directory, "module-state-");
-            Path temporary = temporaryDirectory.resolve("module.m3db");
-            Throwable failure = null;
-            try {
-                try (FileSystem archive = FileSystems.newFileSystem(temporary, Map.of("create", "true"));
-                        M3IndexDB db = M3IndexDB.open(archive.getPath("/"))) {
-                    db.putArtifact(ARTIFACT, KIND, VERSION, bytes);
-                }
-                validateArchive(temporary);
-                forceFile(temporary);
-                checkPaths();
-                checkFile(file);
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                forceDirectory(directory);
-            } catch (IOException | RuntimeException | Error thrown) {
-                failure = thrown;
-                throw thrown;
-            } finally {
-                try {
-                    Files.deleteIfExists(temporary);
-                    Files.deleteIfExists(temporaryDirectory);
-                } catch (IOException cleanup) {
-                    if (failure != null) failure.addSuppressed(cleanup);
-                    else throw cleanup;
-                }
-            }
-        }
-    }
-
-    /** Preserve the existing explicit canonical MIndexDB integration without fallback. */
-    private static final class JdbcStorage implements Storage {
-        private final M3ModuleJdbcStorage jdbc;
-        JdbcStorage(Path root, String backend) throws IOException {
-            jdbc = new M3ModuleJdbcStorage(root, backend);
-        }
-        @Override public byte[] read() throws IOException { return jdbc.read(); }
-        @Override public void write(byte[] image) throws IOException {
-            jdbc.write(image);
-            byte[] published = jdbc.read();
-            if (published == null || !MessageDigest.isEqual(image, published)) {
-                throw new IOException("module JDBC state publication mismatch");
-            }
-        }
-    }
-
-    private static final class ExternalStorage implements Storage {
-        private final Path root;
-        private final M3ModuleDbBackendProvider provider;
-        ExternalStorage(Path root, String backend) throws IOException {
-            this.root = root;
-            ClassLoader own = M3ModuleDbBackendProvider.class.getClassLoader();
-            ClassLoader context = Thread.currentThread().getContextClassLoader();
-            M3ModuleDbBackendProvider selected = findProvider(backend, context == null ? own : context);
-            if (selected == null && context != null && context != own) selected = findProvider(backend, own);
-            if (selected == null) {
-                throw new BackendUnavailableException("requested M3 portable DB provider is absent: " + backend, null);
-            }
-            provider = selected;
-        }
-        private static M3ModuleDbBackendProvider findProvider(String backend, ClassLoader loader) throws IOException {
-            M3ModuleDbBackendProvider selected = null;
-            try {
-                for (M3ModuleDbBackendProvider candidate : ServiceLoader.load(M3ModuleDbBackendProvider.class, loader)) {
-                    String id = candidate.id();
-                    if (!externalBackend(id)) throw new IOException("invalid M3 portable DB provider identity");
-                    if (backend.equals(id)) {
-                        if (selected != null) throw new IOException("duplicate M3 portable DB provider: " + id);
-                        selected = candidate;
-                    }
-                }
-            } catch (ServiceConfigurationError | RuntimeException malformed) {
-                throw new IOException("M3 portable DB provider registration failed", malformed);
-            }
-            return selected;
-        }
-        @Override public byte[] read() throws IOException {
-            byte[] image = provider.read(root);
-            if (image == null) return null;
-            if (image.length > MAX_PAYLOAD) throw new IOException("M3 portable DB image exceeds limit");
-            return image.clone();
-        }
-        @Override public void write(byte[] image) throws IOException {
-            provider.write(root, image.clone());
-            byte[] published = read();
-            if (published == null || !MessageDigest.isEqual(image, published)) {
-                throw new IOException("M3 portable DB publication mismatch");
-            }
-        }
-    }
-
-    private final class NativeStorage implements Storage {
-        private final Path path;
-        private final Method open;
-        private final Method read;
-        private final Method write;
-        NativeStorage(Path path) throws IOException {
-            this.path = path;
-            checkDirectory(path);
-            try {
-                Class<?> type = nativeProviderClass();
-                open = type.getMethod("open", Path.class);
-                read = type.getMethod("findArtifact", CharSequence.class);
-                write = type.getMethod("putArtifact", CharSequence.class, CharSequence.class, int.class, byte[].class);
-            } catch (ReflectiveOperationException | LinkageError missing) {
-                throw new NativeProviderUnavailableException(missing);
-            }
-        }
-
-        private Class<?> nativeProviderClass() throws ClassNotFoundException {
-            String name = "com.synexia.mindex.db.MIndexDB";
-            ClassLoader context = Thread.currentThread().getContextClassLoader();
-            if (context != null) {
-                try { return Class.forName(name, true, context); }
-                catch (ClassNotFoundException absentFromPlugin) {
-                    // The core extension's shared state facade may also own the SDK.
-                }
-            }
-            return Class.forName(name, true, M3DbModuleStore.class.getClassLoader());
-        }
-        @Override public byte[] read() throws IOException {
-            checkNativeDirectory(false);
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return null;
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, path)) {
-                Object value = read.invoke(database, NATIVE_ARTIFACT);
-                if (!(value instanceof Optional<?> result) || result.isEmpty()) return null;
-                Object payload = result.get().getClass().getMethod("payload").invoke(result.get());
-                if (!(payload instanceof byte[] bytes) || bytes.length > MAX_PAYLOAD) {
-                    throw new IOException("invalid MIndexDB module artifact payload");
-                }
-                return bytes;
-            } catch (Exception | LinkageError failure) {
-                throw new IOException("cannot read MIndexDB module artifact", failure);
-            }
-        }
-        @Override public void write(byte[] bytes) throws IOException {
-            checkNativeDirectory(false);
-            try (AutoCloseable database = (AutoCloseable) open.invoke(null, path)) {
-                write.invoke(database, NATIVE_ARTIFACT, "maven-module-state", VERSION, bytes);
-            } catch (Exception | LinkageError failure) {
-                throw new IOException("cannot publish MIndexDB module artifact", failure);
-            }
-            checkNativeDirectory(true);
-            if (!MessageDigest.isEqual(bytes, Objects.requireNonNull(read(), "published native artifact"))) {
-                throw new IOException("MIndexDB module artifact publication mismatch");
-            }
-        }
-        private void checkNativeDirectory(boolean force) throws IOException {
-            checkDirectory(path);
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
-            try (var walk = Files.walk(path)) {
-                var entries = walk.iterator();
-                long bytes = 0;
-                int count = 0;
-                while (entries.hasNext()) {
-                    Path entry = entries.next();
-                    if (++count > 16384) throw new IOException("MIndexDB directory entry limit");
-                    if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) continue;
-                    checkFile(entry);
-                    long length = Files.size(entry);
-                    if (length > MAX_ARCHIVE || (bytes += length) > 4L * MAX_ARCHIVE) {
-                        throw new IOException("MIndexDB directory size limit");
-                    }
-                    if (force) forceFile(entry);
-                }
-            }
-            if (force) forceDirectory(path);
-        }
-    }
-
-    /** Bound compressed and expanded bytes before original database allocation. */
-    private static void validateArchive(Path file) throws IOException {
-        if (Files.size(file) > MAX_ARCHIVE) throw new IOException("M3DB archive exceeds limit");
-        Set<String> seen = new HashSet<>();
-        int blobs = 0, refs = 0;
-        try (ZipFile zip = new ZipFile(file.toFile())) {
-            var entries = zip.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (!seen.add(name) || seen.size() > 4) throw new IOException("M3DB archive entry count");
-                int limit;
-                if (name.equals("blobs/") || name.equals("refs/")) {
-                    if (!entry.isDirectory()) throw new IOException("M3DB archive directory type");
-                    limit = 0;
-                } else if (name.matches("blobs/[0-9a-f]{64}\\.blob")) {
-                    blobs++;
-                    limit = MAX_PAYLOAD;
-                } else if (name.matches("refs/[0-9a-f]{64}\\.ref")) {
-                    refs++;
-                    limit = MAX_REF;
-                } else throw new IOException("unexpected M3DB archive entry");
-                if (entry.getSize() < 0 || entry.getSize() > limit) throw new IOException("M3DB entry exceeds limit");
-                try (InputStream in = zip.getInputStream(entry)) {
-                    byte[] buffer = new byte[8192];
-                    int total = 0;
-                    for (int n; (n = in.read(buffer)) != -1; ) {
-                        if (n > limit - total) throw new IOException("M3DB expanded entry exceeds limit");
-                        total += n;
-                    }
-                    if (total != entry.getSize()) throw new IOException("M3DB expanded size disagrees with metadata");
-                }
-            }
-        }
-        if (blobs != 1 || refs != 1 || !seen.contains("blobs/") || !seen.contains("refs/")) {
-            throw new IOException("M3DB module image must contain one artifact and both directories");
-        }
-    }
-
-    private void checkPaths() throws IOException {
-        checkDirectory(directory);
-        checkFile(lockPath);
-        checkFile(markerPath);
-    }
-
-    private static void checkDirectory(Path path) throws IOException {
-        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)
-                && !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("M3DB state directory is not a directory or is a symlink: " + path);
-        }
-    }
-
-    private static void checkFile(Path path) throws IOException {
-        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)
-                && !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("M3DB state path is not a regular file or is a symlink: " + path);
         }
     }
 

@@ -227,26 +227,13 @@ final class InputStamps {
         return value;
     }
 
-    /** Hash the complete owning JARs or package trees, including anonymous/nested helpers. */
+    /**
+     * Hash the complete owning JARs or package trees, including anonymous/nested helpers. A platform
+     * M3IndexDB (M3jdk21) has no code source of its own; its module and runtime identity stand for it.
+     */
     private static void engine(MessageDigest digest) throws IOException {
-        Map<String, Path> sources = new TreeMap<>();
-        for (Class<?> owner : List.of(InputStamps.class, jdk.m3.indexdb.M3IndexDB.class)) {
-            var source = owner.getProtectionDomain().getCodeSource();
-            if (source == null) throw new IOException("missing task engine code source");
-            final Path location;
-            try {
-                location = Path.of(source.getLocation().toURI()).toRealPath();
-            } catch (URISyntaxException | IllegalArgumentException invalid) {
-                throw new IOException("unsupported task engine code source", invalid);
-            }
-            if (Files.isRegularFile(location, LinkOption.NOFOLLOW_LINKS)) {
-                sources.put(location.toString(), location);
-            } else {
-                Path packageRoot = location.resolve(owner.getPackageName().replace('.', '/'));
-                sources.put(packageRoot.toString(), packageRoot);
-            }
-        }
-        for (Map.Entry<String, Path> source : sources.entrySet()) {
+        update(digest, IndexStores.engineIdentity(ModuleLayer.boot()));
+        for (Map.Entry<String, Path> source : engineSources().entrySet()) {
             update(digest, "engine");
             update(digest, source.getKey());
             Path path = source.getValue();
@@ -255,6 +242,28 @@ final class InputStamps {
             } else {
                 file(digest, path, new Budget());
             }
+        }
+    }
+
+    private static Map<String, Path> engineSources() throws IOException {
+        Map<String, Path> sources = new TreeMap<>();
+        for (Class<?> owner : IndexStores.engineClasses(InputStamps.class, ModuleLayer.boot())) {
+            Path location = codeSource(owner);
+            if (!Files.isRegularFile(location, LinkOption.NOFOLLOW_LINKS)) {
+                location = location.resolve(owner.getPackageName().replace('.', '/'));
+            }
+            sources.put(location.toString(), location);
+        }
+        return sources;
+    }
+
+    private static Path codeSource(Class<?> owner) throws IOException {
+        var source = owner.getProtectionDomain().getCodeSource();
+        if (source == null) throw new IOException("missing task engine code source");
+        try {
+            return Path.of(source.getLocation().toURI()).toRealPath();
+        } catch (URISyntaxException | IllegalArgumentException invalid) {
+            throw new IOException("unsupported task engine code source", invalid);
         }
     }
 

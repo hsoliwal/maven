@@ -84,12 +84,19 @@ for this default. See `src/main/resources/META-INF/M3INDEXDB-PROVENANCE.tsv` for
 | Backend | Selection | Persistent storage and requirements |
 | --- | --- | --- |
 | Embedded original M3IndexDB | `embedded` (default) | One `.m3/module.m3db` archive; implementation is included |
-| Sealed file | `file` | Preserves `.m3/module-state-v1.bin` and atomic SHA-256-sealed publication |
-| Native MIndexDB | `m3db` or `native` | Preserves `.m3/maven-build-db/` and the real reflective `MIndexDB.open`, `findArtifact` and `putArtifact` integration; its runtime must be on the plugin classpath |
+| Sealed file | `file` | Preserves `.m3/module-state-v1.bin` and atomic SHA-256-sealed publication; the file holds the same IndexStore image as `embedded`, so an image written before that change starts cold once |
+| Runtime M3IndexDB | `m3db` or `native` | Preserves `.m3/maven-build-db/`, an IndexStore directory written by the runtime's own engine: the running JDK's `jdk.m3.indexdb` (M3jdk21, module or exported `java.base` package) first, else the reflective `MIndexDB.open`, `findArtifact` and `putArtifact` runtime on the plugin classpath; never the library copy carried by the plugin |
 | Legacy configuration alias | `legacy` | Uses embedded M3IndexDB; old per-task stamps never authorize a skip and the first upgraded build establishes new evidence |
 | SQLite JDBC | `sqlite` | Preserves `.m3/module-state.sqlite` and local transaction sidecars; requires an explicit `org.sqlite.JDBC` runtime dependency |
 | H2 JDBC | `h2` | Preserves `.m3/module-state.mv.db` and H2 sidecars; requires an explicit `org.h2.Driver` runtime dependency |
 | External portable storage | `ext-*` | Preserves the public `M3ModuleDbBackendProvider` SPI; the selected trusted provider must be installed and independently qualified |
+
+One owner holds the module state: `M3DbModuleStore` keeps the receipt codec, lease, generation marker and
+revocation; every backend is an implementation of the one `ModuleStateBackend` interface. The built-in
+backends store through the one storage layer `IndexStore` (M3IndexDB: the platform form on M3jdk21, the
+library form otherwise); JDBC and `ext-*` are explicit external engines verified by read-back.
+`ModuleStateView` reads the active backend's receipts without publishing, revoking or rotating state, for
+`tools/project-db`.
 
 Explicit native, JDBC and SPI selections fail when their required implementation is unavailable.
 They never silently fall back to another backend. Switching backends establishes a new generation so that returning
@@ -154,7 +161,7 @@ mvn io.synexia:m3-polyglot-maven-plugin:0.1.0-SNAPSHOT:run \
 ```
 
 To select preserved file storage, add `-Dm3.polyglot.incrementalState=file`.
-Use `m3db` or `native` only with the native MIndexDB runtime present in the plugin realm.
+Use `m3db` or `native` only on M3jdk21 or with the MIndexDB runtime present in the plugin realm.
 The phase-binding command in the next section additionally requires the smart core extension,
 the installed plugin and phase-named manifest targets. The shipped provider example is a
 reviewable CodeQL/OpenRewrite plan; its providers deliberately do not demonstrate cache hits.
@@ -164,9 +171,10 @@ To adopt this in a consuming POM, run the OpenRewrite recipe `io.synexia.maven.r
 `m3.polyglot.incremental=true` and `m3.polyglot.incrementalState=embedded` and keeps any value the
 POM already sets.
 
-Ignore `.m3/module.m3db`, `.m3/module.m3db.lock`, `.m3/module.m3db.state`,
-`.m3/module-state-v1.bin`, `.m3/module-state-*`, `.m3/module-state.*` and
-`.m3/maven-build-db/` in the consuming project.
+The module lease writes `.m3/.gitignore` (one line, `*`) when it creates `.m3`, so a consuming project
+commits none of `.m3/module.m3db`, its lock and marker, `.m3/module-state-v1.bin`, `.m3/module-state-*`,
+`.m3/module-state.*` or `.m3/maven-build-db/` even without its own ignore entries. An existing
+`.m3/.gitignore` is kept as it is.
 Removing cached state after all builds have stopped forces fresh execution. Never remove or
 replace the lock while a process owns the module.
 

@@ -111,6 +111,8 @@ under the License.
     <module>tools/code-clustering</module>
     <module>tools/code-clustering-lsp</module>
     <module>tools/code-clustering-clang</module>
+    <!-- Per-project build database (one IndexStore/M3IndexDB owner): ingest build data, answer with provenance. -->
+    <module>tools/project-db</module>
     <module>apache-maven</module>
   </modules>
 

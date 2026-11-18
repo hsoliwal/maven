@@ -1,0 +1,10 @@
+M3-POLYGLOT-TASKS-V1
+task	all	-	.
+dep	all	stamp
+task	stamp	java	.
+arg	stamp	src/build/Stamp.java
+arg	stamp	src/build/version.txt
+arg	stamp	target/generated/version.txt
+input	stamp	src/build/Stamp.java
+input	stamp	src/build/version.txt
+output	stamp	target/generated/version.txt
