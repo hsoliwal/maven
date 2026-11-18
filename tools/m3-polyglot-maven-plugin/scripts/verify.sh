@@ -75,6 +75,7 @@ compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/JdkCompilerProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/LlvmCompilationDatabase.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestProvider.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestReport.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/CargoTestOutput.java \
@@ -106,6 +107,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmRealTestsMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilationDatabaseContractTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjCompilerProvider.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/EcjCompilerProviderContractTestMain.java \
@@ -151,6 +153,8 @@ java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.LlvmRealTestsMain
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain
+java -cp "$DEST:$ROOT/src/main/resources" \
+  io.synexia.maven.polyglot.LlvmCompilationDatabaseContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources" \
   io.synexia.maven.polyglot.PolyglotCli plan "$ROOT/examples/llvm" "$ROOT/examples/llvm/m3-build.tsv" all
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
