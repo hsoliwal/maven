@@ -93,6 +93,39 @@ public final class LlvmCompilationDatabaseContractTestMain {
                     load(root, valid.replace("arg\tclang-c\t-c\n",
                             "arg\tclang-c\t-c\narg\tclang-c\t-E\n")),
                     root, "all"), "preprocess-only output cannot appear as an object compile");
+            String depfileAndFragment = valid
+                    .replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\n"
+                            + "arg\tclang-c\t-MD\n"
+                            + "arg\tclang-c\t-MF\n"
+                            + "arg\tclang-c\ttarget/hello.d\n"
+                            + "arg\tclang-c\t-MJ\n"
+                            + "arg\tclang-c\ttarget/hello.json\n")
+                    .replace("output\tclang-c\ttarget/hello.o\n",
+                            "output\tclang-c\ttarget/hello.o\n"
+                            + "output\tclang-c\ttarget/hello.d\n"
+                            + "output\tclang-c\ttarget/hello.json\n");
+            String sidecarJson = LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment), root, "all");
+            check(sidecarJson.contains("\"-MF\",\"target/hello.d\"")
+                            && sidecarJson.contains("\"-MJ\",\"target/hello.json\""),
+                    "declared Clang depfile and -MJ fragment remain exact argv");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\narg\tclang-c\t-MD\n")),
+                    root, "all"), "implicit Clang depfile is not a known M3 output");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment.replace("output\tclang-c\ttarget/hello.d\n", "")),
+                    root, "all"), "Clang depfile must be declared in task outputs");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, depfileAndFragment.replace("output\tclang-c\ttarget/hello.json\n", "")),
+                    root, "all"), "Clang -MJ fragment must be declared in task outputs");
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\n"
+                            + "arg\tclang-c\t-serialize-diagnostics\n"
+                            + "arg\tclang-c\ttarget/hello.dia\n")),
+                    root, "all"), "Clang diagnostic sidecar cannot remain untracked");
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
             Files.delete(root.resolve("src/hello.c"));
