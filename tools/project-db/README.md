@@ -193,7 +193,7 @@ The consumer now uses exactly reviewed, immutable Gradle commit
 `c918c9b9dfc3b087987165c43b77dff63cc86fb1`. The original Gradle
 9.9.1 wrapper and `m3/quality-bridge` are sparse-checked out **once**,
 replacing two prior checkouts and two Gradle `test` invocations.
-That version provides all nine original project-DB tests:
+That version provides all nine source-owned project-DB tests:
 
 | Source-owned Gradle suite | Cases | What it checks |
 | --- | ---: | --- |
@@ -206,16 +206,20 @@ The execution uses `M3_PROJECT_DB_JAR` and
 `M3_PRUNED_PROJECT_DB_JAR` for the **same original Maven project-DB
 JAR**, and likewise `M3_POLYGLOT_JAR` and
 `M3_PRUNED_POLYGLOT_JAR` for the same storage-engine JAR.
-All four case classes run with one bounded Gradle invocation:
+All four test classes run in one Gradle invocation. From the Maven
+Actions workspace after both Maven JARs have been qualified:
 
 ~~~sh
-./gradlew --no-daemon --stacktrace --console=plain \
-  -p m3/quality-bridge test \
-  --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
-  --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
-  --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
-  --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
-  --rerun-tasks
+(
+  cd consumer-gradle
+  ./gradlew --no-daemon --stacktrace --console=plain \
+    -p m3/quality-bridge test \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+    --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
+    --rerun-tasks
+)
 sh qualified-maven-jars/verify-gradle-testkit-results.sh \
   consumer-gradle/m3/quality-bridge/build/test-results/test current-nine
 ~~~
