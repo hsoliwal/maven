@@ -372,6 +372,17 @@
             </configuration>
           </execution>
           <execution>
+            <id>llvm-installation-selection-contract</id>
+            <phase>verify</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <arguments>
+                <argument>-classpath</argument><classpath/>
+                <argument>io.synexia.maven.polyglot.LlvmInstallationSelectionContractTestMain</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
             <id>ecj-provider-contract</id>
             <phase>verify</phase>
             <goals><goal>java</goal></goals>

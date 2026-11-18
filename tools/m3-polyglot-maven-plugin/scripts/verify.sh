@@ -98,6 +98,7 @@ compile -d "$DEST" \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/M3ToolProvidersContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerProviderContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java \
+  "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmRealTestsMain.java \
   "$ROOT"/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/EcjArguments.java \
@@ -161,3 +162,5 @@ java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
 java "-Dm3.polyglot.llvm.test.home=${M3_POLYGLOT_LLVM_TEST_HOME:-}" \
   -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.LlvmCompilerProviderContractTestMain
+# Additional installation-selection contracts reuse the shared LLVM provider.
+java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.LlvmInstallationSelectionContractTestMain

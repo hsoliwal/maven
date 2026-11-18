@@ -225,4 +225,64 @@ Report each real-tool case from its actual result; planning a `flang` or
 References: [LLVM CMake](https://llvm.org/docs/CMake.html),
 [LLVM getting started](https://llvm.org/docs/GettingStarted.html),
 [Flang getting started](https://flang.llvm.org/docs/GettingStarted.html),
-and [LLVM license](https://github.com/hsoliwal/llvm-project/blob/main/LICENSE.TXT).
+and [LLVM license](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/LICENSE.TXT).
+
+## Selection edge cases and planning qualification
+
+The adapter consumes its bin, home and digest directives at every argument
+position, including after `--`; the delimiter and other compiler arguments
+retain their original order. Relative home/bin paths use the module workspace,
+while relative compiler arguments use the task's working directory.
+
+Home-based Fortran selection tries `bin/flang`, then `bin/flang-new` when
+`flang` is not a regular file. Explicit bin and unconfigured PATH selection
+keep the original `flang` spelling. Unpinned legacy bin and default PATH
+commands permit planning before the tools are installed; a digest requires a
+selected directory and locally available executable bytes.
+
+`LlvmInstallationSelectionContractTestMain` supplements the existing suites
+with property/environment precedence, all-position directives, directory-required
+digest pins, legacy planning, symlink and Flang-fallback checks. Its driver and
+literal-argument checks cover both admitted Objective-C++ spellings. These
+planning checks execute no compiler and add no production selection rule.
+
+## Depfile and compilation-database evidence
+
+The packaged consumer declares the output produced by `-MD -MF <file>`. The
+runner checks that declared output exists; it does not parse the depfile to skip
+compilation. A new header earlier in an include-search path, or a changed
+`__has_include` result, can affect compilation without changing a file listed in
+the old depfile. Provider tasks and their unverified dependents therefore retain
+the current execution policy.
+
+For C++ modules, the pinned
+[module documentation](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/StandardCPlusPlusModules.md)
+describes P1689 module ordering separately from companion `-MD -MF` header
+evidence. P1689 scanning needs the compilation database's `output` field. These
+consumer tasks do not add scanner scheduling or native cache eligibility.
+
+Individual Clang tasks may pass `-MJ <fragment-path>` to emit compilation-database
+fragments, with a distinct declared output for each task. Assemble the objects
+into a valid JSON array and remove the final separator before its closing
+bracket; the compiler provider does not perform that aggregation. The pinned
+[database contract](https://github.com/hsoliwal/llvm-project/blob/591f3d1edf0a9ee718d17a0ee70dd013b3c01908/clang/docs/JSONCompilationDatabase.md)
+preserves working directory, source, original argv and multiple configurations
+per source. Prefer unescaped JSON `arguments`; do not split shell-escaped command
+strings on spaces.
+
+After configuring the existing Clang clustering plugin, use the shared toolchain
+and the original native compilation database:
+
+```sh
+mvn code-clustering:cluster \
+    -Dm3.llvm.home=/work/llvm-install \
+    -Dclustering.sourceDirectories=src/main/c,src/main/cpp \
+    -Dclustering.clang.compileCommands=build/cmake/compile_commands.json
+```
+
+An explicit `clustering.clang.executable` or `CLANG` setting takes precedence for
+the front end; choose it consistently with the compilation database. The native
+build continues to own that database and the existing Clang front end owns AST
+evidence. An executable digest alone does not identify Clang's resource directory,
+shared libraries, linkers, runtimes, SDKs, sysroots or plugins; those inputs need
+their own toolchain evidence.
