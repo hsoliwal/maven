@@ -622,6 +622,37 @@ nothing automatically uploads Eclipse project contents or starts build
 processes. The same Maven JAR is consumed by Gradle's
 \`m3EclipseBuildHandoff\` task without copying this decoder.
 
+### Reconcile an Eclipse invocation with the current project model
+
+\`M3EclipseBuildReconciliation\` compares an original Eclipse
+\`M3-ECLIPSE-BUILD-HANDOFF-V1\` packet with the current read-only
+\`EclipseProjectModel\`. It checks the exact Eclipse project identity,
+ordered \`buildSpec\` builder IDs and ordered nature IDs. If the host
+reported a FULL/CLEAN build or an incomplete delta, it also requires
+ordinary reconciliation. The result is **not** a compiler/ABI/cache verdict.
+
+\`\`\`sh
+java -cp /approved/m3-polyglot-maven-plugin.jar \
+  io.synexia.maven.polyglot.EclipseModelCli reconcile \
+  /project/root /project/root/target/ide/build-handoff.ide
+\`\`\`
+
+The output schema \`m3-eclipse-reconciliation-v1\` returns one of
+\`DECLARATIONS_MATCH\` or \`RECONCILE\`, with deterministic reason codes:
+\`FOREIGN_PROJECT\`, \`BUILDERS_CHANGED\`, \`NATURES_CHANGED\`,
+\`FULL_OR_CLEAN\` and \`INCOMPLETE_DELTA\`. The report includes exact
+source-owner invocation and configuration names, original change count,
+the current \`.project\` SHA-256 and the advisory disposition.
+
+A matching declaration does **not** establish an atomic workspace
+generation: builder *arguments*, CDT scanner configurations, JDT
+classpath, annotation processors, Rust/Cargo targets, PDE/OSGi resolution,
+toolchain identity, generated outputs and runtime inputs are still
+language-owner evidence. Never treat \`DECLARATIONS_MATCH\` as a
+Maven/Gradle goal skip, source transformation authorization, or artifact
+cache admission. A future qualified Eclipse adapter can use the report to
+decide whether to ask the original owner for a full reconciliation.
+
 ## Public M3 tool provider SPI (v1)
 
 The Maven-owned polyglot engine exposes one **opt-in, versioned** Java 17

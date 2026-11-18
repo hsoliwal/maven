@@ -24,10 +24,15 @@ public final class EclipseModelCli {
             // Both original facts are bound by the same m2e builder invocation.
             // The detached record cannot authorize a Maven/Gradle cache hit.
             System.out.println(M3EclipseBuildHandoffWire.read(Path.of(args[1])).toJson());
+        } else if (args != null && args.length == 3 && "reconcile".equals(args[0])) {
+            // Compare declarations only; a MATCH does not prove toolchain or output completeness.
+            System.out.println(M3EclipseBuildReconciliation.assess(
+                    Path.of(args[1]), Path.of(args[2])).toJson());
         } else {
             throw new IllegalArgumentException(
                     "usage: EclipseModelCli <project-directory> | owners <project-directory>"
-                            + " | context <Eclipse-context-packet> | handoff <Eclipse-invocation-packet>");
+                            + " | context <Eclipse-context-packet> | handoff <Eclipse-invocation-packet>"
+                            + " | reconcile <project-directory> <Eclipse-invocation-packet>");
         }
     }
 }
