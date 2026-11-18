@@ -74,6 +74,7 @@ public final class M3PortableDbContractTestMain {
             rejectsUnapprovedJdbcBackends(first);
             oneLeaseOwner(root.resolve("one-owner"));
             externalProviders(root.resolve("providers"));
+            stagedTransactions(root.resolve("batch"));
             System.out.println("PASS: " + passed + " M3 portable module DB lease and SPI checks");
         } finally {
             try (var paths = Files.walk(root)) {
@@ -206,6 +207,57 @@ public final class M3PortableDbContractTestMain {
         check(!Files.exists(root.resolve(".m3/module.m3db.lock")), "no second lock protocol is created");
     }
 
+    /** Every selected build publishes one complete sealed image, never partial receipts. */
+    private static void stagedTransactions(Path root) throws Exception {
+        Files.createDirectories(root);
+        Path module = Files.createDirectories(root.resolve("module"));
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader realm = providerRealm(root.resolve("service"), FixtureProvider.class.getName())) {
+            Thread.currentThread().setContextClassLoader(realm);
+            FixtureProvider.committedWrites = 0;
+            try (ModuleStateDb state = ModuleStateDb.open(module, "ext-fixture-v1")) {
+                state.stage("task-alpha", INPUT, OUTPUT);
+                state.stage("task-beta", OUTPUT, INPUT);
+                check(state.lookup("task-alpha") == null, "staged receipt is not yet visible");
+                check(FixtureProvider.committedWrites == 0, "staging does not rewrite database");
+                // Simulate an unsuccessful graph: close without commit.
+            }
+            check(FixtureProvider.committedWrites == 0, "failed graph did not publish staged results");
+            try (ModuleStateDb state = ModuleStateDb.open(module, "ext-fixture-v1")) {
+                check(state.lookup("task-alpha") == null && state.lookup("task-beta") == null,
+                        "uncommitted receipts did not survive restart");
+                state.stage("task-alpha", INPUT, OUTPUT);
+                state.stage("task-beta", OUTPUT, INPUT);
+                state.commitStaged();
+                check(FixtureProvider.committedWrites == 1, "two staged results make one durable DB write");
+                check(state.hit("task-alpha", INPUT, OUTPUT) && state.hit("task-beta", OUTPUT, INPUT),
+                        "committed staged results are visible");
+            }
+            try (ModuleStateDb state = ModuleStateDb.open(module, "ext-fixture-v1")) {
+                check(state.hit("task-alpha", INPUT, OUTPUT) && state.hit("task-beta", OUTPUT, INPUT),
+                        "batched module success survives reopen");
+                state.stage("task-alpha", OUTPUT, INPUT);
+                state.invalidate("task-alpha");
+                state.commitStaged();
+                check(state.lookup("task-alpha") == null,
+                        "pre-execution revocation cannot resurrect an earlier staged task");
+                check(state.hit("task-beta", OUTPUT, INPUT), "unaffected task remains committed");
+                state.stage("task-late", INPUT, OUTPUT);
+                state.invalidateAll();
+                state.commitStaged();
+                check(state.lookup("task-late") == null && state.lookup("task-beta") == null,
+                        "all-module revocation discards pending and persisted entries");
+            }
+            try (ModuleStateDb state = ModuleStateDb.open(module, "ext-fixture-v1")) {
+                check(state.lookup("task-alpha") == null && state.lookup("task-beta") == null,
+                        "revocation persists after restart");
+            }
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+            FixtureProvider.committedWrites = 0;
+        }
+    }
+
     private static void externalProviders(Path root) throws Exception {
         Files.createDirectories(root);
         Path module = Files.createDirectories(root.resolve("module"));
@@ -283,6 +335,7 @@ public final class M3PortableDbContractTestMain {
     public static class FixtureProvider implements M3ModuleDbBackendProvider {
         static final String FILE = ".m3/module-state-ext-fixture-v1.bin";
         static boolean failWrites;
+        static int committedWrites;
         @Override public String id() { return "ext-fixture-v1"; }
         @Override public byte[] read(Path root) throws IOException {
             Path file = root.resolve(FILE);
@@ -304,6 +357,7 @@ public final class M3PortableDbContractTestMain {
                     output.force(true);
                 }
                 Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                committedWrites++;
                 try (FileChannel directory = FileChannel.open(file.getParent(), StandardOpenOption.READ)) {
                     directory.force(true);
                 } catch (java.nio.file.AccessDeniedException | UnsupportedOperationException unsupported) {
