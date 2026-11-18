@@ -15,6 +15,7 @@ fi
 compile -d "$DEST" \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskManifest.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskRunner.java \
+  "$ROOT"/src/main/java/io/synexia/maven/polyglot/TaskInvalidationIndex.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/InputStamps.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/BuildCache.java \
   "$ROOT"/src/main/java/io/synexia/maven/polyglot/ModuleStateDb.java \

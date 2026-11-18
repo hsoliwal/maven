@@ -73,6 +73,14 @@ final class M3DbModuleStore implements AutoCloseable {
     private final String[] names = new String[MAX_TASKS];
     private final String[] inputs = new String[MAX_TASKS];
     private final String[] outputs = new String[MAX_TASKS];
+
+    // WriteBatch-style task receipts: staged results never enter the on-disk image
+    // until the complete selected task graph succeeds. Array-backed to retain the
+    // existing M3 compact-slot invariant and avoid per-receipt object graphs.
+    private final String[] pendingNames = new String[MAX_TASKS];
+    private final String[] pendingInputs = new String[MAX_TASKS];
+    private final String[] pendingOutputs = new String[MAX_TASKS];
+    private int pendingSize;
     private String generation;
     private byte[] auxiliary = new byte[0];
     private int size;
@@ -245,6 +253,10 @@ final class M3DbModuleStore implements AutoCloseable {
         ensureOpen();
         Objects.requireNonNull(tasks, "tasks");
         for (String task : tasks) taskName(task);
+        for (String task : tasks) {
+            int staged = Arrays.binarySearch(pendingNames, 0, pendingSize, task);
+            if (staged >= 0) removePending(staged);
+        }
         boolean changed = needsReset;
         for (String task : tasks) {
             int at = Arrays.binarySearch(names, 0, size, task);
@@ -258,6 +270,7 @@ final class M3DbModuleStore implements AutoCloseable {
 
     synchronized void invalidateAll() throws IOException {
         ensureOpen();
+        clearPending();
         if (size == 0 && !needsReset) return;
         clear();
         publish();
@@ -267,6 +280,9 @@ final class M3DbModuleStore implements AutoCloseable {
     synchronized void invalidatePrefix(String prefix) throws IOException {
         ensureOpen();
         taskName(prefix);
+        for (int i = pendingSize - 1; i >= 0; i--) {
+            if (pendingNames[i].startsWith(prefix)) removePending(i);
+        }
         boolean changed = needsReset;
         for (int i = size - 1; i >= 0; i--) {
             if (names[i].startsWith(prefix)) {
@@ -277,12 +293,56 @@ final class M3DbModuleStore implements AutoCloseable {
         if (changed) publish();
     }
 
+    /** Preserve the original immediate record/commit semantics for lifecycle owners. */
     synchronized void record(String task, String input, String output) throws IOException {
         ensureOpen();
         taskName(task);
         digest(input);
         digest(output);
         if (!recordSuccess) return;
+        int staged = Arrays.binarySearch(pendingNames, 0, pendingSize, task);
+        if (staged >= 0) removePending(staged);
+        upsert(task, input, output);
+        publish();
+    }
+
+    /**
+     * Stage successful task evidence without publishing a partial module build.
+     * A later failed task discards these receipts, while the existing pre-task
+     * invalidation has already durably revoked stale versions.
+     */
+    synchronized void stage(String task, String input, String output) throws IOException {
+        ensureOpen();
+        taskName(task);
+        digest(input);
+        digest(output);
+        if (!recordSuccess) return;
+        int at = Arrays.binarySearch(pendingNames, 0, pendingSize, task);
+        if (at < 0) {
+            if (pendingSize == MAX_TASKS) throw new IOException("M3DB staged task capacity exceeded");
+            at = -at - 1;
+            System.arraycopy(pendingNames, at, pendingNames, at + 1, pendingSize - at);
+            System.arraycopy(pendingInputs, at, pendingInputs, at + 1, pendingSize - at);
+            System.arraycopy(pendingOutputs, at, pendingOutputs, at + 1, pendingSize - at);
+            pendingSize++;
+        }
+        pendingNames[at] = task;
+        pendingInputs[at] = input;
+        pendingOutputs[at] = output;
+    }
+
+    /** Publish all staged successes in one sealed module generation. */
+    synchronized void commitStaged() throws IOException {
+        ensureOpen();
+        if (pendingSize == 0) return;
+        for (int index = 0; index < pendingSize; index++) {
+            upsert(pendingNames[index], pendingInputs[index], pendingOutputs[index]);
+        }
+        publish();
+        clearPending();
+    }
+
+    private void upsert(String task, String input, String output) {
         int at = Arrays.binarySearch(names, 0, size, task);
         if (at < 0 && size == MAX_TASKS) {
             log.accept("M3DB receipt capacity reached; evicting " + names[0]);
@@ -299,7 +359,24 @@ final class M3DbModuleStore implements AutoCloseable {
         names[at] = task;
         inputs[at] = input;
         outputs[at] = output;
-        publish();
+    }
+
+    private void removePending(int at) {
+        int remaining = pendingSize - at - 1;
+        System.arraycopy(pendingNames, at + 1, pendingNames, at, remaining);
+        System.arraycopy(pendingInputs, at + 1, pendingInputs, at, remaining);
+        System.arraycopy(pendingOutputs, at + 1, pendingOutputs, at, remaining);
+        pendingSize--;
+        pendingNames[pendingSize] = null;
+        pendingInputs[pendingSize] = null;
+        pendingOutputs[pendingSize] = null;
+    }
+
+    private void clearPending() {
+        Arrays.fill(pendingNames, 0, pendingSize, null);
+        Arrays.fill(pendingInputs, 0, pendingSize, null);
+        Arrays.fill(pendingOutputs, 0, pendingSize, null);
+        pendingSize = 0;
     }
 
     synchronized byte[] auxiliary() {
@@ -485,6 +562,9 @@ final class M3DbModuleStore implements AutoCloseable {
     public synchronized void close() throws IOException {
         if (closed) return;
         closed = true;
+        // Pending results are deliberately not committed on close: the caller
+        // must explicitly accept the entire graph with commitStaged().
+        clearPending();
         Throwable failure = null;
         if (healthy && !lease.isValid()) {
             failure = new IOException("M3DB module lease lost JVM coordination; state remains incomplete");

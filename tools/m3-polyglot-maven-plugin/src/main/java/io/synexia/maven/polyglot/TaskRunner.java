@@ -11,7 +11,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -171,6 +170,12 @@ public final class TaskRunner {
         Map<String, String> generations = new HashMap<>();
         Map<String, String> portableGenerations = new HashMap<>();
         Set<String> overlappingOutputs = overlappingOutputs(plan);
+        TaskInvalidationIndex reverseGraph = new TaskInvalidationIndex(plan);
+        // One stable engine realm per Maven module run. Replay the exact existing
+        // fingerprint byte transcript instead of rereading the plugin/JDK DB JAR
+        // before and after every task; declared inputs/outputs are still rehashed.
+        InputStamps.EngineTranscript engine = !dryRun && (incremental || cache != null)
+                ? InputStamps.captureEngineTranscript() : null;
         boolean cleared = false;
         for (TaskManifest.Task task : tasks) {
             log.accept((dryRun ? "PLAN " : "TASK ") + task.name() + " tool=" + task.tool()
@@ -215,10 +220,10 @@ public final class TaskRunner {
                             .noneMatch(path -> overlaps(cacheDirectory, root.resolve(path))))
                     && !overlappingOutputs.contains(task.name())
                     && task.prerequisites().stream().allMatch(generations::containsKey);
-            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations) : null;
+            String input = candidate ? InputStamps.stamp(task, root, command, environment, generations, engine) : null;
             String cacheStamp = candidate && cache != null
                     && task.prerequisites().stream().allMatch(portableGenerations::containsKey)
-                    ? InputStamps.portableStamp(task, root, command, environment, portableGenerations) : null;
+                    ? InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine) : null;
             String[] prior = !incremental || input == null ? null : store.lookup(stateKey(task.name()));
             if (prior != null && input.equals(prior[0])) {
                 String output = existingOutputs(task, root);
@@ -238,7 +243,7 @@ public final class TaskRunner {
                 store.invalidateAll();
                 cleared = true;
             } else {
-                invalidateDependents(plan, task.name(), store);
+                invalidateDependents(reverseGraph, task.name(), store);
             }
             boolean restored = cacheStamp != null && cache.restore(task, root, cacheStamp);
             if (!restored) execute(task, builder, timeout);
@@ -253,10 +258,10 @@ public final class TaskRunner {
                 String output = null;
                 try {
                     List<String> afterCommand = ordinaryCommand(task, directory);
-                    after = InputStamps.stamp(task, root, afterCommand, environment, generations);
+                    after = InputStamps.stamp(task, root, afterCommand, environment, generations, engine);
                     if (cacheStamp != null) {
                         portableAfter = InputStamps.portableStamp(
-                                task, root, afterCommand, environment, portableGenerations);
+                                task, root, afterCommand, environment, portableGenerations, engine);
                     }
                     output = InputStamps.outputs(task, root);
                 } catch (IOException changed) {
@@ -269,7 +274,8 @@ public final class TaskRunner {
                     if (!restored && cacheStamp != null) {
                         log.accept((cache.store(task, root, cacheStamp) ? "CACHED " : "NOT-CACHED ") + task.name());
                     }
-                    if (incremental) store.record(stateKey(task.name()), input, output);
+                    // Stage only; one module commit follows a successful full task graph.
+                    if (incremental) store.stage(stateKey(task.name()), input, output);
                     generations.put(task.name(), InputStamps.combine(List.of(input, output)));
                     if (cacheStamp != null) {
                         portableGenerations.put(task.name(), InputStamps.combine(List.of(cacheStamp, output)));
@@ -282,6 +288,9 @@ public final class TaskRunner {
             }
             performed.add(task.name());
         }
+        // A crash or failed later task cannot publish partially successful work.
+        // Earlier cache entries were already revoked before any output mutation.
+        if (incremental) store.commitStaged();
         return List.copyOf(performed);
     }
 
@@ -349,21 +358,10 @@ public final class TaskRunner {
         return overlapping;
     }
 
-    private static void invalidateDependents(TaskManifest plan, String task, ModuleStateDb store) throws IOException {
-        Map<String, List<String>> consumers = new HashMap<>();
-        for (TaskManifest.Task node : plan.orderAll()) {
-            for (String dependency : node.prerequisites()) {
-                consumers.computeIfAbsent(dependency, ignored -> new ArrayList<>()).add(node.name());
-            }
-        }
-        Set<String> invalid = new HashSet<>();
-        ArrayDeque<String> pending = new ArrayDeque<>();
-        pending.add(task);
-        while (!pending.isEmpty()) {
-            String name = pending.removeFirst();
-            if (invalid.add(name)) pending.addAll(consumers.getOrDefault(name, List.of()));
-        }
-        store.invalidate(invalid.stream().map(TaskRunner::stateKey).toList());
+    private static void invalidateDependents(TaskInvalidationIndex graph, String task,
+            ModuleStateDb store) throws IOException {
+        // This closure is computed from the already-built reverse CSR graph.
+        store.invalidate(graph.closure(task).stream().map(TaskRunner::stateKey).toList());
     }
 
     private static void execute(TaskManifest.Task task, ProcessBuilder builder, Duration timeout)
