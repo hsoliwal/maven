@@ -49,9 +49,14 @@ public final class LlvmNativePipelineIntegrationTestMain {
             write(root.resolve("source.ll"), source());
             write(root.resolve("helper.ll"), helper(42));
             String home = home();
-            TaskManifest manifest = TaskManifest.load(write(root.resolve("m3-build.tsv"), manifest(home)));
-            dryRun(manifest, root);
-
+            // Planning without an explicit toolchain remains possible even on
+            // hosts where no LLVM tool is installed. A configured installation
+            // is never silently replaced by PATH binaries.
+            if (home == null || available(home)) {
+                TaskManifest offline = TaskManifest.load(
+                        write(root.resolve("m3-build.tsv"), manifest(null)));
+                dryRun(offline, root);
+            }
             if (!available(home)) {
                 if (required || home != null) {
                     throw new IOException("required or explicitly selected LLVM IR tools are unavailable: "
@@ -61,6 +66,8 @@ public final class LlvmNativePipelineIntegrationTestMain {
                         + "(install LLVM or set M3_LLVM_PIPELINE_HOME); offline plan PASS");
                 return;
             }
+            TaskManifest manifest = TaskManifest.load(
+                    write(root.resolve("m3-build.tsv"), manifest(home)));
             // The installed ServiceLoader implementation, not an independent
             // command builder, decides what the original LLVM tools will run.
             for (TaskManifest.Task task : manifest.order("inspect")) {
@@ -209,7 +216,7 @@ public final class LlvmNativePipelineIntegrationTestMain {
         for (String tool : DRIVERS) {
             String name = tool + (System.getProperty("os.name", "").startsWith("Windows") ? ".exe" : "");
             if (home != null) {
-                if (!Files.isExecutable(Path.of(home, "bin", name))) return false;
+                if (!Files.isRegularFile(Path.of(home, "bin", name)) || !Files.isExecutable(Path.of(home, "bin", name))) return false;
             } else if (!pathExecutable(name)) {
                 return false;
             }
@@ -223,7 +230,8 @@ public final class LlvmNativePipelineIntegrationTestMain {
         for (String directory : value.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
             if (directory.isBlank()) continue;
             try {
-                if (Files.isExecutable(Path.of(directory).resolve(name))) return true;
+                Path candidate = Path.of(directory).resolve(name);
+                if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) return true;
             } catch (java.nio.file.InvalidPathException ignored) {
                 // Ignore a malformed PATH entry, never silently fall back to another toolchain root.
             }
