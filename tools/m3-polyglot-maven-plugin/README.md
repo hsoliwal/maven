@@ -124,6 +124,19 @@ Tests cover 4,096 simultaneously retained tasks, the 65,536-entry limit,
 immediate/transactional writes, restart persistence and a deterministic
 `TreeMap` oracle (test-only).
 
+**Packed SHA-256 lanes.** The committed and staged digest columns now retain
+exactly 32 bytes per input/output receipt in contiguous primitive `byte[]`
+storage, matching M3JDK21 `BuildState`'s array-backed SHA lanes. Only sorted
+task identities remain `String[]` fields. The original lowercase 64-character
+SHA strings are projected at the `ModuleStateDb.lookup`/`ModuleStateView` API
+boundary; no per-receipt digest String objects or entry nodes are retained.
+Bounded array shifts, sorted-run merges, prefix/bulk revocations and receipt
+serialization move 32-byte slices directly. The sealed **v2** receipt format
+remains byte-for-byte unchanged, including the original SHA-256 integrity seal,
+and all backend choices continue to consume the same image. A test-only
+deterministic model with distinct hashes, a structural primitive-array gate,
+and a manually produced v2 envelope guard against layout/format regressions.
+
 One owner holds the module state: `M3DbModuleStore` keeps the receipt codec, lease, generation marker and
 revocation; every backend is an implementation of the one `ModuleStateBackend` interface. The built-in
 backends store through the one storage layer `IndexStore` (M3IndexDB: the platform form on M3jdk21, the
