@@ -37,6 +37,7 @@ import org.apache.maven.api.annotations.Nonnull;
  * these toolchains.</p>
  *
  * @since 4.0.0
+ * @see BuildToolchainPlan
  */
 @Experimental
 public interface ToolchainManager extends Service {
@@ -99,6 +100,28 @@ public interface ToolchainManager extends Service {
         return getToolchains(session, type, criteria).stream()
                 .filter(candidate -> type.equals(candidate.getType()) && candidate.matchesRequirements(criteria))
                 .findFirst();
+    }
+
+    /**
+     * Observes a bounded, dependency-ordered selection of build-stage tools.
+     *
+     * <p>This method delegates exclusively to existing Maven toolchain
+     * selection, and does not execute or skip a configured Mojo. The original
+     * {@link LifecycleExecutor} remains the sole owner of lifecycle execution.
+     * The returned plan can separately observe exact configured Mojo instances
+     * from a {@link org.apache.maven.api.LifecyclePlan LifecyclePlan}.
+     * Missing tools and goals are never reported as successful executions.</p>
+     *
+     * @param session current Maven session
+     * @param stages explicit graph of lint, analysis, compiler, test and packaging roles
+     * @return immutable selection/observation plan, not build success evidence
+     * @throws ToolchainManagerException if an original toolchain provider fails
+     */
+    @Nonnull
+    default BuildToolchainPlan planBuildToolchain(
+            @Nonnull Session session, @Nonnull List<BuildToolchainPlan.Stage> stages)
+            throws ToolchainManagerException {
+        return BuildToolchainPlan.select(this, session, stages);
     }
 
     /**
