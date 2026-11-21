@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 CDT build toolchain and original Maven result qualification
+on:
+  push:
+    branches: ["m3/cdt-build-toolchain-execution-evidence-20261121"]
+    paths:
+      - "api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java"
+      - "api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java"
+      - "api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java"
+      - ".github/workflows/m3-cdt-toolchain-execution-evidence.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java"
+      - "api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java"
+      - "api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java"
+      - ".github/workflows/m3-cdt-toolchain-execution-evidence.yml"
+permissions:
+  contents: read
+jobs:
+  original-maven-reactor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["17", "21"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '${{ matrix.java }}'
+      - name: Verify exact source-owned Java blob identities before invoking Maven
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java)" = "f2f69ca5cf2d3867eccfb701bf38671b22b0085d"
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java)" = "949648140560dbe25a82d924623e0a5ab459e849"
+          test "$(git hash-object api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java)" = "336388124e2ad5b39f8085a9f7656a7c803c08ee"
+          echo "M3_CDT_TOOLCHAIN_SOURCE_BLOBS_3_OF_3_PASS"
+      - name: Execute original Maven 4 API/JUnit reactor and plugin compatibility tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -pl api/maven-api-core -am -DskipTests=false verify
+      - name: Refuse a silently skipped Maven JUnit stage-audit test
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="api/maven-api-core/target/surefire-reports/TEST-org.apache.maven.api.services.BuildToolchainPlanTest.xml"
+          test -s "$REPORT" || { echo "::error::Toolchain Maven JUnit result missing"; exit 1; }
+      - name: Preserve original Maven test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-cdt-toolchain-maven4-jdk${{ matrix.java }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            api/maven-api-core/target/surefire-reports/*
+            api/maven-api-core/target/site/apidocs/*
