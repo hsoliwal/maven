@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+# Temporary formatter qualification only. No write permissions or bot commits.
+name: M3 Maven CDT original Spotless source postimage qualification
+on:
+  push:
+    branches: ["m3/cdt-build-toolchain-execution-evidence-20261121"]
+    paths:
+      - ".github/workflows/m3-cdt-toolchain-original-spotless-replay.yml"
+permissions:
+  contents: read
+jobs:
+  original-maven-spotless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require exact source-generating preimages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java)" = "f2f69ca5cf2d3867eccfb701bf38671b22b0085d"
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java)" = "949648140560dbe25a82d924623e0a5ab459e849"
+          test "$(git hash-object api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java)" = "336388124e2ad5b39f8085a9f7656a7c803c08ee"
+      - name: Apply original Maven Spotless only in disposable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -pl api/maven-api-core spotless:apply
+      - name: Refuse formatter drift outside three sealed Java owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          expected = {
+              "api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java",
+              "api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java",
+              "api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java",
+          }
+          modified = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          if not modified or not modified <= expected or len(modified) != 3:
+              raise SystemExit("M3_SPOTLESS_UNEXPECTED_SOURCE_DIFF:" + repr(sorted(modified)))
+          print("M3_SPOTLESS_EXACT_THREE_FILES_ONLY")
+          PY
+      - name: Emit original Maven formatted source payloads with independent digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, subprocess
+          files = [
+              "api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java",
+              "api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java",
+              "api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java",
+          ]
+          for index, name in enumerate(files, 1):
+              data = Path(name).read_bytes()
+              sha = hashlib.sha256(data).hexdigest()
+              blob = subprocess.check_output(["git", "hash-object", "--", name], text=True).strip()
+              encoded = base64.b64encode(data).decode("ascii")
+              print(f"M3_SPOTLESS_FILE|{index}|{name}|{len(data)}|{blob}|{sha}")
+              for offset in range(0, len(encoded), 2048):
+                  print(f"M3_SPOTLESS_BASE64|{index}|{offset // 2048}|{encoded[offset:offset+2048]}")
+              print(f"M3_SPOTLESS_END|{index}")
+          PY
