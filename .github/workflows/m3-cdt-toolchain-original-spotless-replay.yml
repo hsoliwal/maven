@@ -45,8 +45,8 @@ jobs:
               "api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java",
               "api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java",
           }
-          modified = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
-          if not modified or not modified <= expected or len(modified) != 3:
+          modified = set(subprocess.check_output(["git", "diff", "--ignore-cr-at-eol", "--name-only"], text=True).splitlines())
+          # Git can report CRLF-only changes in unrelated existing MJAR fixtures on checkout.\n          # Ignore only carriage-return at EOL; every substantive diff remains fatal.\n          if not modified or not modified <= expected or len(modified) != 3:
               raise SystemExit("M3_SPOTLESS_UNEXPECTED_SOURCE_DIFF:" + repr(sorted(modified)))
           print("M3_SPOTLESS_EXACT_THREE_FILES_ONLY")
           PY
