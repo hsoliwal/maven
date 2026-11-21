@@ -1,6 +1,20 @@
 /*
- * SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
- * SPDX-License-Identifier: Apache-2.0
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.maven.api.services;
 
@@ -153,8 +167,7 @@ public final class BuildToolchainPlan {
                     || status == ToolStatus.MISSING_TOOLCHAIN && (!requested || hasToolchain || hasCommand)
                     || status == ToolStatus.MISSING_EXECUTABLE
                             && (!requested || !namedCommand || !hasToolchain || hasCommand)
-                    || status == ToolStatus.SELECTED
-                            && (!requested || !hasToolchain || hasCommand != namedCommand)) {
+                    || status == ToolStatus.SELECTED && (!requested || !hasToolchain || hasCommand != namedCommand)) {
                 throw new IllegalArgumentException("inconsistent tool selection state");
             }
         }
@@ -250,15 +263,25 @@ public final class BuildToolchainPlan {
         public ExecutionCoverage {
             stage = Objects.requireNonNull(stage, "stage");
             status = Objects.requireNonNull(status, "status");
-            if (configured < 0 || submitted < 0 || succeeded < 0 || failed < 0 || failed > 1
-                    || submitted > configured || succeeded > submitted || failed > submitted - succeeded) {
+            if (configured < 0
+                    || submitted < 0
+                    || succeeded < 0
+                    || failed < 0
+                    || failed > 1
+                    || submitted > configured
+                    || succeeded > submitted
+                    || failed > submitted - succeeded) {
                 throw new IllegalArgumentException("inconsistent original lifecycle execution counts");
             }
-            ExecutionStatus expected = configured == 0 ? ExecutionStatus.UNCONFIGURED
-                    : failed > 0 ? ExecutionStatus.FAILED
-                    : submitted == 0 ? ExecutionStatus.NOT_SUBMITTED
-                    : submitted == configured && succeeded == configured ? ExecutionStatus.REPORTED_SUCCESS
-                    : ExecutionStatus.INCOMPLETE;
+            ExecutionStatus expected = configured == 0
+                    ? ExecutionStatus.UNCONFIGURED
+                    : failed > 0
+                            ? ExecutionStatus.FAILED
+                            : submitted == 0
+                                    ? ExecutionStatus.NOT_SUBMITTED
+                                    : submitted == configured && succeeded == configured
+                                            ? ExecutionStatus.REPORTED_SUCCESS
+                                            : ExecutionStatus.INCOMPLETE;
             if (status != expected) {
                 throw new IllegalArgumentException("original lifecycle stage status differs from counts");
             }
@@ -282,18 +305,25 @@ public final class BuildToolchainPlan {
      *        success, without any explicit original lifecycle failure
      */
     public record ExecutionObservation(
-            List<ExecutionCoverage> coverage, boolean lifecycleFailed,
-            boolean allSubmittedMojosReportedSuccessful, boolean allRequiredStagesReportedSuccessful) {
+            List<ExecutionCoverage> coverage,
+            boolean lifecycleFailed,
+            boolean allSubmittedMojosReportedSuccessful,
+            boolean allRequiredStagesReportedSuccessful) {
         /** Do not permit contradictory aggregate completion claims. */
         public ExecutionObservation {
             coverage = List.copyOf(Objects.requireNonNull(coverage, "coverage"));
             if (lifecycleFailed && allSubmittedMojosReportedSuccessful) {
-                throw new IllegalArgumentException("failed original Maven lifecycle cannot report all submitted success");
+                throw new IllegalArgumentException(
+                        "failed original Maven lifecycle cannot report all submitted success");
             }
-            boolean requiredPresent = coverage.stream().anyMatch(row -> row.stage().required());
-            boolean reportedSuccess = !lifecycleFailed && allSubmittedMojosReportedSuccessful && requiredPresent
-                    && coverage.stream().allMatch(row -> !row.stage().required()
-                            || row.status() == ExecutionStatus.REPORTED_SUCCESS);
+            boolean requiredPresent =
+                    coverage.stream().anyMatch(row -> row.stage().required());
+            boolean reportedSuccess = !lifecycleFailed
+                    && allSubmittedMojosReportedSuccessful
+                    && requiredPresent
+                    && coverage.stream()
+                            .allMatch(
+                                    row -> !row.stage().required() || row.status() == ExecutionStatus.REPORTED_SUCCESS);
             if (reportedSuccess != allRequiredStagesReportedSuccessful) {
                 throw new IllegalArgumentException("contradictory required-stage lifecycle result");
             }
@@ -394,7 +424,8 @@ public final class BuildToolchainPlan {
                 continue;
             }
             Optional<Toolchain> selected = Objects.requireNonNull(
-                    manager.selectToolchain(session, stage.toolchainType(), stage.requirements()), "toolchain selection");
+                    manager.selectToolchain(session, stage.toolchainType(), stage.requirements()),
+                    "toolchain selection");
             if (selected.isEmpty()) {
                 chosen.add(new Selection(stage, ToolStatus.MISSING_TOOLCHAIN, Optional.empty(), Optional.empty()));
                 continue;
@@ -442,9 +473,10 @@ public final class BuildToolchainPlan {
      * @return whether required tools are selected, NOT whether plugins ran
      */
     public boolean allRequiredToolsSelected() {
-        return selections.stream().allMatch(row -> !row.stage().required()
-                || row.status() == ToolStatus.SELECTED
-                || row.status() == ToolStatus.NOT_REQUESTED);
+        return selections.stream()
+                .allMatch(row -> !row.stage().required()
+                        || row.status() == ToolStatus.SELECTED
+                        || row.status() == ToolStatus.NOT_REQUESTED);
     }
 
     /**
@@ -550,8 +582,7 @@ public final class BuildToolchainPlan {
             throw new IllegalArgumentException("foreign original Maven lifecycle result plan");
         }
         Observation configured = observe(originalPlan, bindings);
-        List<MojoExecution> originalExecutions =
-                Objects.requireNonNull(originalPlan.executions(), "plan.executions");
+        List<MojoExecution> originalExecutions = Objects.requireNonNull(originalPlan.executions(), "plan.executions");
         List<MojoExecution> retained = Objects.requireNonNull(result.executions(), "result.executions");
         List<MojoExecution> completed =
                 Objects.requireNonNull(result.executedSuccessfully(), "result.executedSuccessfully");
@@ -586,8 +617,8 @@ public final class BuildToolchainPlan {
                 throw new IllegalArgumentException("foreign or duplicate successful Maven execution");
             }
         }
-        if (failed.isPresent() && (!selected.containsKey(failed.orElseThrow())
-                || passed.containsKey(failed.orElseThrow()))) {
+        if (failed.isPresent()
+                && (!selected.containsKey(failed.orElseThrow()) || passed.containsKey(failed.orElseThrow()))) {
             throw new IllegalArgumentException("failed Maven Mojo not selected or already successful");
         }
 
@@ -608,13 +639,17 @@ public final class BuildToolchainPlan {
                 }
             }
             int configuredCount = stageCoverage.configuredExecutions().size();
-            ExecutionStatus status = configuredCount == 0 ? ExecutionStatus.UNCONFIGURED
-                    : failedCount > 0 ? ExecutionStatus.FAILED
-                    : requestedCount == 0 ? ExecutionStatus.NOT_SUBMITTED
-                    : requestedCount == configuredCount && successfulCount == configuredCount
-                            ? ExecutionStatus.REPORTED_SUCCESS : ExecutionStatus.INCOMPLETE;
-            rows.add(new ExecutionCoverage(stageCoverage.stage(), status,
-                    configuredCount, requestedCount, successfulCount, failedCount));
+            ExecutionStatus status = configuredCount == 0
+                    ? ExecutionStatus.UNCONFIGURED
+                    : failedCount > 0
+                            ? ExecutionStatus.FAILED
+                            : requestedCount == 0
+                                    ? ExecutionStatus.NOT_SUBMITTED
+                                    : requestedCount == configuredCount && successfulCount == configuredCount
+                                            ? ExecutionStatus.REPORTED_SUCCESS
+                                            : ExecutionStatus.INCOMPLETE;
+            rows.add(new ExecutionCoverage(
+                    stageCoverage.stage(), status, configuredCount, requestedCount, successfulCount, failedCount));
         }
         boolean failedLifecycle = failed.isPresent() || cause.isPresent();
         // A partial result may omit completion of a submitted, unrelated
@@ -622,8 +657,10 @@ public final class BuildToolchainPlan {
         // That must never produce a falsely complete aggregate stage report.
         boolean allSubmittedSuccess = !failedLifecycle && successful.size() == submitted.size();
         boolean requiredPresent = rows.stream().anyMatch(row -> row.stage().required());
-        boolean requiredSuccess = allSubmittedSuccess && requiredPresent && rows.stream()
-                .allMatch(row -> !row.stage().required() || row.status() == ExecutionStatus.REPORTED_SUCCESS);
+        boolean requiredSuccess = allSubmittedSuccess
+                && requiredPresent
+                && rows.stream()
+                        .allMatch(row -> !row.stage().required() || row.status() == ExecutionStatus.REPORTED_SUCCESS);
         return new ExecutionObservation(rows, failedLifecycle, allSubmittedSuccess, requiredSuccess);
     }
 

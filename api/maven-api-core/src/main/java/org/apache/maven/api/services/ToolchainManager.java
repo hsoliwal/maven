@@ -119,8 +119,7 @@ public interface ToolchainManager extends Service {
      */
     @Nonnull
     default BuildToolchainPlan planBuildToolchain(
-            @Nonnull Session session, @Nonnull List<BuildToolchainPlan.Stage> stages)
-            throws ToolchainManagerException {
+            @Nonnull Session session, @Nonnull List<BuildToolchainPlan.Stage> stages) throws ToolchainManagerException {
         return BuildToolchainPlan.select(this, session, stages);
     }
 
