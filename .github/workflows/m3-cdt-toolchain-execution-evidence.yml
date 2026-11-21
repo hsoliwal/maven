@@ -38,9 +38,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java)" = "f2f69ca5cf2d3867eccfb701bf38671b22b0085d"
-          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java)" = "949648140560dbe25a82d924623e0a5ab459e849"
-          test "$(git hash-object api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java)" = "336388124e2ad5b39f8085a9f7656a7c803c08ee"
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/BuildToolchainPlan.java)" = "7f9c4224c77faa82040537959dd13292fb71b03b"
+          test "$(git hash-object api/maven-api-core/src/main/java/org/apache/maven/api/services/ToolchainManager.java)" = "a678d7104248f2b79021705142a1aada2d336d34"
+          test "$(git hash-object api/maven-api-core/src/test/java/org/apache/maven/api/services/BuildToolchainPlanTest.java)" = "60ce226125cc9008db58f4c74269c2caca52cdd8"
           echo "M3_CDT_TOOLCHAIN_SOURCE_BLOBS_3_OF_3_PASS"
       - name: Execute original Maven 4 API/JUnit reactor and plugin compatibility tests
         shell: bash
