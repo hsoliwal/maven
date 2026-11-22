@@ -157,6 +157,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/java_heapdump.hprof
 
       - name: Upload Mimir logs
@@ -274,6 +275,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/java_heapdump.hprof
 
       - name: Upload Mimir logs
@@ -376,6 +378,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/failsafe-reports/*
             ./its/core-it-suite/target/test-classes/**
             **/target/java_heapdump.hprof
