@@ -74,8 +74,8 @@ public final class LlvmCompilerIntegrationTestMain {
 
     private static void plansLlcThenClangWithoutNative(Path root) throws Exception {
         Path home = Files.createDirectories(root.resolve("fake LLVM installation/bin")).getParent();
-        Files.writeString(home.resolve("bin/llc"), "offline-llc-fixture\n", StandardCharsets.UTF_8);
-        Files.writeString(home.resolve("bin/clang"), "offline-clang-fixture\n", StandardCharsets.UTF_8);
+        Files.writeString(home.resolve("bin/llc" + (windows() ? ".exe" : "")), "offline-llc-fixture\n", StandardCharsets.UTF_8);
+        Files.writeString(home.resolve("bin/clang" + (windows() ? ".exe" : "")), "offline-clang-fixture\n", StandardCharsets.UTF_8);
         Files.createDirectories(root.resolve("src with spaces"));
         write(root, "src with spaces/main.ll", "define i32 @main() { ret i32 0 }\n");
         String source = "src with spaces/main.ll";
@@ -105,9 +105,9 @@ public final class LlvmCompilerIntegrationTestMain {
                 "IR codegen must precede its native link task");
         List<String> codegen = M3ToolProviders.command(tasks.get(0), root);
         List<String> link = M3ToolProviders.command(tasks.get(1), root);
-        check(codegen.get(0).equals(home.resolve("bin/llc").toString())
+        check(codegen.get(0).equals(home.resolve("bin/llc" + (windows() ? ".exe" : "")).toString())
                 && codegen.contains("-filetype=obj"), "LLVM IR is dispatched to original llc");
-        check(link.get(0).equals(home.resolve("bin/clang").toString()),
+        check(link.get(0).equals(home.resolve("bin/clang" + (windows() ? ".exe" : "")).toString()),
                 "original clang links llc's declared object in a separate task");
         TaskRunner.run(plan, root, "link", true, TIMEOUT, line -> { });
         check(!Files.exists(root.resolve(object)) && !Files.exists(root.resolve(executable)),
