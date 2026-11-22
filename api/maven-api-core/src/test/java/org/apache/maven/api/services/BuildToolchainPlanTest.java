@@ -175,8 +175,9 @@ class BuildToolchainPlanTest {
         MojoExecution integration = mock(MojoExecution.class);
         MojoExecution pack = mock(MojoExecution.class);
         MojoExecution unbound = mock(MojoExecution.class);
+        List<MojoExecution> originalExecutions = List.of(lint, compile, test, integration, pack, unbound);
         LifecyclePlan original = mock(LifecyclePlan.class);
-        when(original.executions()).thenReturn(List.of(lint, compile, test, integration, pack, unbound));
+        when(original.executions()).thenReturn(originalExecutions);
         var bindings = List.of(
                 new BuildToolchainPlan.MojoBinding("lint", lint),
                 new BuildToolchainPlan.MojoBinding("compile", compile),
@@ -185,8 +186,8 @@ class BuildToolchainPlanTest {
                 new BuildToolchainPlan.MojoBinding("package", pack));
         LifecycleExecutionResult success = mock(LifecycleExecutionResult.class);
         when(success.plan()).thenReturn(original);
-        when(success.executions()).thenReturn(original.executions());
-        when(success.executedSuccessfully()).thenReturn(original.executions());
+        when(success.executions()).thenReturn(originalExecutions);
+        when(success.executedSuccessfully()).thenReturn(originalExecutions);
         when(success.failedExecution()).thenReturn(Optional.empty());
         when(success.failureCause()).thenReturn(Optional.empty());
 
@@ -227,7 +228,7 @@ class BuildToolchainPlanTest {
 
         LifecycleExecutionResult unboundPending = mock(LifecycleExecutionResult.class);
         when(unboundPending.plan()).thenReturn(original);
-        when(unboundPending.executions()).thenReturn(original.executions());
+        when(unboundPending.executions()).thenReturn(originalExecutions);
         when(unboundPending.executedSuccessfully()).thenReturn(List.of(lint, compile, test, integration, pack));
         when(unboundPending.failedExecution()).thenReturn(Optional.empty());
         when(unboundPending.failureCause()).thenReturn(Optional.empty());
@@ -238,7 +239,8 @@ class BuildToolchainPlanTest {
 
         LifecycleExecutionResult foreign = mock(LifecycleExecutionResult.class);
         when(foreign.plan()).thenReturn(original);
-        when(foreign.executions()).thenReturn(List.of(lint, mock(MojoExecution.class)));
+        MojoExecution foreignMojo = mock(MojoExecution.class);
+        when(foreign.executions()).thenReturn(List.of(lint, foreignMojo));
         when(foreign.executedSuccessfully()).thenReturn(List.of(lint));
         when(foreign.failedExecution()).thenReturn(Optional.empty());
         when(foreign.failureCause()).thenReturn(Optional.empty());
