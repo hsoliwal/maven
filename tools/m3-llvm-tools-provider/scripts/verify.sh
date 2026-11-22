@@ -7,6 +7,7 @@ MAVEN=$(CDPATH= cd -- "$ROOT/../m3-polyglot-maven-plugin" && pwd)
 DEST="$ROOT/target/offline-contract"
 mkdir -p "$DEST"
 javac --release 17 -encoding UTF-8 -Xlint:all -Werror -d "$DEST" \
+  -sourcepath "$MAVEN/src/main/java" \
   "$MAVEN"/src/main/java/io/synexia/maven/polyglot/TaskManifest.java \
   "$MAVEN"/src/main/java/io/synexia/maven/polyglot/M3ToolCapability.java \
   "$MAVEN"/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java \
