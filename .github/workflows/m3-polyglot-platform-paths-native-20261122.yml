@@ -37,6 +37,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib
+          import subprocess
           from pathlib import Path
           root = Path('tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot')
           expected = {
@@ -46,11 +47,17 @@ jobs:
                   '832784d123c551199c29d65b7eeea886ab993c97880bfe5ee3f401cd1ace50f3',
           }
           for name, digest in expected.items():
-              body = (root / name).read_bytes()
+              path = root / name
+              # The committed Git blob is the authority, independent of Windows CRLF checkout.
+              body = subprocess.check_output(['git', 'show', 'HEAD:' + path.as_posix()])
               actual = hashlib.sha256(body).hexdigest()
               if actual != digest:
-                  raise SystemExit(f'SOURCE_DRIFT {name}: {actual}')
-          print('PASS: two exact source postimages retained')
+                  raise SystemExit(f'GIT_BLOB_SOURCE_DRIFT {name}: {actual}')
+              # Reject all other checkout byte differences (including BOM or changed code).
+              checked_out = path.read_bytes()
+              if checked_out.replace(b'\r\n', b'\n') != body:
+                  raise SystemExit(f'CHECKOUT_CONTENT_DRIFT {name}')
+          print('PASS: exact Git blobs and LF/CRLF-only checkout transformations')
           PY
       - name: Execute existing Maven plugin module and original contract mains
         shell: bash
