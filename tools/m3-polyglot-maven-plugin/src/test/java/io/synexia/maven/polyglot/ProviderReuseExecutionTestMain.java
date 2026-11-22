@@ -44,7 +44,9 @@ public final class ProviderReuseExecutionTestMain {
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             return;
         }
-        Path temporary = Files.createTempDirectory("m3-provider-reuse-");
+        // macOS /var/folders may traverse the /var -> /private/var symlink.
+        // Use a canonical fixture root; the production scanner still refuses aliases.
+        Path temporary = Files.createTempDirectory("m3-provider-reuse-").toRealPath();
         try {
             rejectsInvalidCliOptions();
             additionalContentIdentities(temporary.resolve("identity"));
