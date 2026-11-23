@@ -358,8 +358,8 @@ final class M3ProjectWatch {
                 }
             }
             for (Path component : root.relativize(path)) {
-                if (component.toString().equals(".m3-watch")
-                        || component.toString().equals(".m3")
+                if (component.toString().equalsIgnoreCase(".m3-watch")
+                        || component.toString().equalsIgnoreCase(".m3")
                         || ignoredNames.contains(component.toString())) {
                     return true;
                 }
@@ -420,7 +420,9 @@ final class M3ProjectWatch {
                 Path relative = options.root.relativize(path);
                 for (Path component : relative) {
                     String name = component.toString();
-                    if (name.equals(".m3-watch") || name.equals(".m3") || options.ignoredNames.contains(name)) {
+                    if (name.equalsIgnoreCase(".m3-watch")
+                            || name.equalsIgnoreCase(".m3")
+                            || options.ignoredNames.contains(name)) {
                         return true;
                     }
                 }

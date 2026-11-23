@@ -186,6 +186,8 @@ class M3ProjectWatchTest {
         Object options = from.invoke(null, original);
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3/module.m3db")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.m3/module.m3db")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3/MODULE.M3DB")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3-WATCH/STATE.BIN")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3-watch/state.bin")));
         assertFalse((Boolean) excludes.invoke(options, root.resolve("src/Watched.java")));
     }
