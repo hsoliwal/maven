@@ -4,7 +4,7 @@
 ## Exact provenance
 
 - **Source owner:** [merged Maven #274](https://github.com/hsoliwal/maven/pull/274), exact merge commit `53d7bd782077968e596a54cb7948ea22810734c3`. The original `InputStamps.pairedStamps` and `TaskRunner` share one **bounded input observation** across two distinct existing cache keys per observation phase, not a new cache format.
-- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
+- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `abb445e9f710bb861e95d5491d0591438dc98257`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
 - **No new engine:** no DB adapter, generic source hash, launcher, native compiler, Maven lifecycle, JNI, Gradle cache key or task dependency is authored in this batch. Existing `EnableM3PolyglotStateBridge` OpenRewrite recipe remains its selected opt-in consumer pathway.
 
 ## Java 17/21 cross-fork acceptance
@@ -22,3 +22,5 @@ A test source and its workflow configuration are **not** execution evidence. Do 
 Also pending: independent OpenRewrite SDK recipe replay fixed point, native Linux/macOS/Windows proofs beyond this Ubuntu runner, license/DCO and reviewer sign-off, and full Git all-ref lost-optimization audit. No user-defined Gradle task may be skipped because these tests pass. Keep source-comparison PRs in draft until those gates are reviewed.
 
 Original Maven's `InputStamps.engineSources()` binds the **absolute code-source JAR path** as part of its engine transcript. The Gradle fixture therefore stages one original Maven engine outside both project checkouts and supplies that same File to both runs; copying an identical JAR into each checkout would correctly produce different keys and is not a valid portable-cache proof.
+
+The same original Maven input stamp must cover the Java fixture's executable bytecode: `MarkerTool.class` is explicitly declared beside `source.txt` in the manifest. A changed compiled fixture class is therefore an input mutation, not an unaudited portable cache reuse. Both checkouts use the same externally pinned Maven JAR code-source path.\n
