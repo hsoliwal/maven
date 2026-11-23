@@ -65,8 +65,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/m3-polyglot-maven-plugin/scripts/test_verify_llvm_fork_source_triggers.py
-          python3 tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py
+          python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_llvm_fork_source_triggers.py
+          python3 -B tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py
       - name: Fetch exactly pinned LLVM fork source with sparse partial clone
         shell: bash
         run: |
