@@ -367,6 +367,36 @@ final class M3ProjectWatch {
             return false;
         }
 
+        private Path watchedPath(String value) throws IOException {
+            if (value == null || value.isBlank()) {
+                throw new IOException("M3 watch cannot monitor a missing source/input declaration");
+            }
+            Path path = Path.of(value);
+            return (path.isAbsolute() ? path : root.resolve(path)).toAbsolutePath().normalize();
+        }
+
+        private boolean isM3StateDirectory(Path path) {
+            if (!path.startsWith(root)) {
+                return false;
+            }
+            for (Path component : root.relativize(path)) {
+                if (component.toString().equalsIgnoreCase(".m3")
+                        || component.toString().equalsIgnoreCase(".m3-watch")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void requireWatchedInput(String declaration, String kind) throws IOException {
+            Path path = watchedPath(declaration);
+            // A project-root resource tree may include excluded Maven state
+            // and generated products even if the root itself is not excluded.
+            if (!path.startsWith(root) || path.equals(root) || excludes(path)) {
+                throw new IOException("M3 watch cannot monitor " + kind + " outside its input inventory: " + path);
+            }
+        }
+
         private void checkProjectPaths(MavenExecutionResult result) throws IOException {
             if (result.getTopologicallySortedProjects() == null) {
                 return;
@@ -375,9 +405,22 @@ final class M3ProjectWatch {
                 List<String> sources = new ArrayList<>(project.getCompileSourceRoots());
                 sources.addAll(project.getTestCompileSourceRoots());
                 for (String source : sources) {
-                    if (!Path.of(source).toAbsolutePath().normalize().startsWith(root)) {
+                    Path path = watchedPath(source);
+                    if (!path.startsWith(root)) {
                         throw new IOException("M3 watch source is outside its root: " + source);
                     }
+                    if (isM3StateDirectory(path) || path.equals(root)) {
+                        throw new IOException("M3 watch cannot monitor source under excluded M3 state: " + path);
+                    }
+                }
+                for (org.apache.maven.model.Resource resource : project.getResources()) {
+                    requireWatchedInput(resource.getDirectory(), "resource root");
+                }
+                for (org.apache.maven.model.Resource resource : project.getTestResources()) {
+                    requireWatchedInput(resource.getDirectory(), "test resource root");
+                }
+                for (String filter : project.getFilters()) {
+                    requireWatchedInput(filter, "resource filter");
                 }
                 if (project.getBuild() != null) {
                     for (String output : Arrays.asList(

@@ -202,6 +202,30 @@ class M3ProjectWatchTest {
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 0, false, false);
     }
 
+    @Test
+    void unwatchedExplicitInputsAreRefusedWithoutInstalledSdk() throws Exception {
+        var request = request(1);
+        Class<?> optionsType = Class.forName("org.apache.maven.M3ProjectWatch$Options");
+        var from = optionsType.getDeclaredMethod("from", MavenExecutionRequest.class);
+        from.setAccessible(true);
+        Object options = from.invoke(null, request);
+        var require = optionsType.getDeclaredMethod("requireWatchedInput", String.class, String.class);
+        require.setAccessible(true);
+        require.invoke(options, root.resolve("src/Watched.java").toString(), "resource filter");
+        for (String path : List.of(
+                root.resolve(".m3/user-config.json").toString(),
+                root.resolve(".M3/MODULE.M3DB").toString(),
+                root.resolve(".m3-watch/state.bin").toString(),
+                root.resolve("target/generated.txt").toString(),
+                root.toString(),
+                root.getParent().resolve("outside-filter.properties").toString())) {
+            InvocationTargetException failure = assertThrows(
+                    InvocationTargetException.class, () -> require.invoke(options, path, "resource filter"));
+            assertTrue(failure.getCause() instanceof IOException,
+                    "unobservable Maven input must fail closed: " + path);
+        }
+    }
+
     @Nested
     @EnabledIfSystemProperty(named = "m3.watch.contract", matches = "true")
     @Timeout(15)
@@ -545,6 +569,47 @@ class M3ProjectWatchTest {
             assertTrue(result.hasExceptions());
             assertTrue(result.getExceptions().toString().contains("outside its root"));
             assertFalse(Files.exists(image()));
+        }
+
+        @Test
+        void excludedM3UserSourceCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                built.getProject().addCompileSourceRoot(root.resolve(".m3/user-src").toString());
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("excluded M3 state"));
+            assertFalse(Files.exists(image()), "an unwatched source cannot have a successful M3File checkpoint");
+        }
+
+        @Test
+        void excludedResourceRootCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                var resource = new org.apache.maven.model.Resource();
+                resource.setDirectory(root.resolve(".m3").toString());
+                built.getProject().getBuild().addResource(resource);
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("resource root outside its input inventory"));
+            assertFalse(Files.exists(image()), "unwatched ordinary .m3 user files require original non-watch mode");
+        }
+
+        @Test
+        void externalResourceFilterCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                built.getProject().getBuild().addFilter(root.getParent().resolve("external-filter.properties").toString());
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("resource filter outside its input inventory"));
+            assertFalse(Files.exists(image()), "filters outside the watch root cannot be silently ignored");
         }
 
         @Test
