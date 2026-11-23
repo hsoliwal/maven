@@ -163,7 +163,7 @@ java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3CargoBuild
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseLanguageEvidenceServiceContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3TychoFinalP2FactsWireContractTestMain
 java -cp "$DEST:$ROOT/src/test/resources" io.synexia.maven.polyglot.M3EclipseBuildReconciliationContractTestMain
-java -cp "$DEST" io.synexia.maven.polyglot.PolyglotCliContractTestMain
+java -cp "$DEST:$ROOT/src/main/resources" io.synexia.maven.polyglot.PolyglotCliContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \
   io.synexia.maven.polyglot.M3ToolProvidersContractTestMain
 java -cp "$DEST:$ROOT/src/main/resources:$ROOT/src/test/resources" \

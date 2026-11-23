@@ -9,7 +9,7 @@ An independent concern remains: *do the three features coexist on the actual mer
 
 ## Immutable heads and original source ownership
 
-- **Maven producer:** `hsoliwal/maven@a589a99cc1b992cfa11e43db86cca35fcae5ef4c` (merged through newer toolchain policy #267 and prior #272).
+- **Maven producer:** `hsoliwal/maven@2cb32473cced0c1ef3570fc481a2dfeb11e92553` (merged through Maven #267/#270/#272 and the standalone LLVM verifier repair #273).
 - **Gradle consumer:** `hsoliwal/gradle@a8ab91be59f414e39245762445f1057a8677fba2` (merged #71–#73 and prior #70).
 - These are source-pinned reviewed Git commits; neither follows a moving branch. All original Gradle toolchain/compiler/build-cache semantics, Maven `TaskRunner`, native M3IndexDB, Derby storage and LLVM Clang command parsing remain in their original owners.
 - The Maven producer verifies the original `tools/m3-polyglot-maven-plugin` including live Derby 10.16.1.1 JDBC/transaction/restart/recovery, and `tools/project-db`; it also runs the original Java 17 JUnit parser negative/mode verifier. No Gradle clone is used to build Maven.

@@ -13,7 +13,7 @@ require() {
 }
 require 'name: M3 Maven to merged Gradle combined JDK17 and JDK21 acceptance'
 require "java: ['17', '21']"
-require 'ref: a589a99cc1b992cfa11e43db86cca35fcae5ef4c'
+require 'ref: 2cb32473cced0c1ef3570fc481a2dfeb11e92553'
 require 'ref: a8ab91be59f414e39245762445f1057a8677fba2'
 require 'M3-MERGED-CROSSFORK-V1'
 require 'verify-gradle-junit-modes.sh'
