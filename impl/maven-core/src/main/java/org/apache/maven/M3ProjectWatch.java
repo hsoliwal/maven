@@ -390,7 +390,9 @@ final class M3ProjectWatch {
 
         private void requireWatchedInput(String declaration, String kind) throws IOException {
             Path path = watchedPath(declaration);
-            if (!path.startsWith(root) || excludes(path)) {
+            // A project-root resource tree may include excluded Maven state
+            // and generated products even if the root itself is not excluded.
+            if (!path.startsWith(root) || path.equals(root) || excludes(path)) {
                 throw new IOException("M3 watch cannot monitor " + kind + " outside its input inventory: " + path);
             }
         }
@@ -407,7 +409,7 @@ final class M3ProjectWatch {
                     if (!path.startsWith(root)) {
                         throw new IOException("M3 watch source is outside its root: " + source);
                     }
-                    if (isM3StateDirectory(path)) {
+                    if (isM3StateDirectory(path) || path.equals(root)) {
                         throw new IOException("M3 watch cannot monitor source under excluded M3 state: " + path);
                     }
                 }

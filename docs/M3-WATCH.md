@@ -124,7 +124,8 @@ contrast, the independent M3DB incremental lifecycle fingerprint can
 content-hash ordinary `.m3/user-config.json` files. To prevent a
 successful-but-unobservable continuous build, watch mode rejects an explicitly
 declared compile source, resource root, test resource root or resource filter
-that falls outside its watched inventory. Use ordinary Maven execution (without
+that falls outside its watched inventory, including a project-root source or
+resource declaration that could encompass excluded build-state directories. Use ordinary Maven execution (without
 `-Dm3.watch=true`) for projects with such inputs until a finer-grained
 M3File owner exclusion protocol is qualified.
 

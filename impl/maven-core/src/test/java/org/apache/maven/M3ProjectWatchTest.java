@@ -217,6 +217,7 @@ class M3ProjectWatchTest {
                 root.resolve(".M3/MODULE.M3DB").toString(),
                 root.resolve(".m3-watch/state.bin").toString(),
                 root.resolve("target/generated.txt").toString(),
+                root.toString(),
                 root.getParent().resolve("outside-filter.properties").toString())) {
             InvocationTargetException failure = assertThrows(
                     InvocationTargetException.class, () -> require.invoke(options, path, "resource filter"));
