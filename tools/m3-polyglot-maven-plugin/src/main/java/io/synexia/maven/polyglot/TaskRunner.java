@@ -264,14 +264,19 @@ public final class TaskRunner {
             String cacheStamp = null;
             try {
                 if (candidate) {
-                    input = InputStamps.stamp(task, root, command, environment, generations, engine);
-                    if (providerIdentity != null) input = providerStamp(input, providerIdentity);
-                    if (cache != null && !portableCache) {
-                        cacheStamp = localProviderCache(input);
-                    } else if (cache != null && task.prerequisites().stream().allMatch(portableGenerations::containsKey)) {
-                        cacheStamp = InputStamps.portableStamp(task, root, command, environment, portableGenerations, engine);
-                        if (providerIdentity != null) cacheStamp = providerStamp(cacheStamp, providerIdentity);
+                    boolean portable = cache != null && portableCache
+                            && task.prerequisites().stream().allMatch(portableGenerations::containsKey);
+                    if (portable) {
+                        InputStamps.StampPair pair = InputStamps.pairedStamps(
+                                task, root, command, environment, generations, portableGenerations, engine);
+                        input = pair.local();
+                        cacheStamp = pair.portable();
+                    } else {
+                        input = InputStamps.stamp(task, root, command, environment, generations, engine);
                     }
+                    if (providerIdentity != null) input = providerStamp(input, providerIdentity);
+                    if (cache != null && !portableCache) cacheStamp = localProviderCache(input);
+                    if (portable && providerIdentity != null) cacheStamp = providerStamp(cacheStamp, providerIdentity);
                 }
             } catch (IOException unavailable) {
                 if (reuse == null) throw unavailable; // Preserve ordinary-task proof failures.
@@ -341,17 +346,21 @@ public final class TaskRunner {
                         validateProviderInputs(task, root, cacheDirectory, afterReuse);
                         afterProviderIdentity = InputStamps.providerIdentity(afterReuse, root);
                     }
-                    after = InputStamps.stamp(task, root, afterCommand, environment, generations, engine);
-                    if (afterProviderIdentity != null) after = providerStamp(after, afterProviderIdentity);
-                    if (cacheStamp != null && !portableCache) {
-                        portableAfter = localProviderCache(after);
-                    } else if (cacheStamp != null) {
-                        portableAfter = InputStamps.portableStamp(
-                                task, root, afterCommand, environment, portableGenerations, engine);
-                        if (afterProviderIdentity != null) {
+                    if (cacheStamp != null && portableCache) {
+                        InputStamps.StampPair pair = InputStamps.pairedStamps(
+                                task, root, afterCommand, environment, generations, portableGenerations, engine);
+                        after = pair.local();
+                        portableAfter = pair.portable();
+                    } else {
+                        after = InputStamps.stamp(task, root, afterCommand, environment, generations, engine);
+                    }
+                    if (afterProviderIdentity != null) {
+                        after = providerStamp(after, afterProviderIdentity);
+                        if (portableAfter != null) {
                             portableAfter = providerStamp(portableAfter, afterProviderIdentity);
                         }
                     }
+                    if (cacheStamp != null && !portableCache) portableAfter = localProviderCache(after);
                     output = InputStamps.outputs(task, root);
                 } catch (IOException changed) {
                     if (restored) throw new IOException("cannot verify restored target " + task.name(), changed);

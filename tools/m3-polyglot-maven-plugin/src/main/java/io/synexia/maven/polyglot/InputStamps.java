@@ -81,6 +81,23 @@ final class InputStamps {
     }
 
     /**
+     * One content-verified input-tree observation supplies both local M3DB and
+     * relocatable artifact-cache keys. Each key retains its exact previous
+     * framing and prerequisite context. This never persists or reuses a file
+     * digest across builds: callers must observe a fresh tree after execution.
+     */
+    record StampPair(String local, String portable) {}
+
+    static StampPair pairedStamps(TaskManifest.Task task, Path root, List<String> command,
+            Map<String, String> environment, Map<String, String> localPrerequisites,
+            Map<String, String> portablePrerequisites, EngineTranscript engine) throws IOException {
+        String observed = paths(task.inputs(), root);
+        return new StampPair(
+                stamp(task, root, command, environment, localPrerequisites, false, engine, observed),
+                stamp(task, root, command, environment, portablePrerequisites, true, engine, observed));
+    }
+
+    /**
      * Bind the actual command, inherited process environment, local Maven configuration,
      * declared inputs and successful prerequisite generations to this module location.
      * Tool libraries, external parents/settings and other hidden inputs remain declarations
@@ -122,6 +139,12 @@ final class InputStamps {
     private static String stamp(TaskManifest.Task task, Path root, List<String> command,
             Map<String, String> environment, Map<String, String> prerequisites,
             boolean portable, EngineTranscript engineTranscript) throws IOException {
+        return stamp(task, root, command, environment, prerequisites, portable, engineTranscript, null);
+    }
+
+    private static String stamp(TaskManifest.Task task, Path root, List<String> command,
+            Map<String, String> environment, Map<String, String> prerequisites,
+            boolean portable, EngineTranscript engineTranscript, String observedInputs) throws IOException {
         MessageDigest digest = sha256();
         update(digest, DOMAIN);
         update(digest, portable ? "relocatable-output-cache-v1" : root.toString());
@@ -162,7 +185,7 @@ final class InputStamps {
         update(digest, portable && tool.startsWith(root) ? "module:" + relative(root, tool) : tool.toString());
         file(digest, tool, new Budget());
         configuration(digest, root, portable);
-        update(digest, paths(task.inputs(), root));
+        update(digest, observedInputs == null ? paths(task.inputs(), root) : observedInputs);
         return hex(digest);
     }
 
