@@ -49,12 +49,14 @@ final class M3ProjectWatch {
             }
         }
         Optional<Module> base = layer.findModule("java.base");
-        if (base.isPresent() && base.get().getPackages().contains("jdk.m3.file")
+        if (base.isPresent()
+                && base.get().getPackages().contains("jdk.m3.file")
                 && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) {
             return base.get();
         }
-        throw new IllegalStateException("m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
-                + " a compatible legacy M3File module, or an exported java.base file owner");
+        throw new IllegalStateException(
+                "m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
+                        + " a compatible legacy M3File module, or an exported java.base file owner");
     }
 
     private static String fileOwnerPackage(Module module) {
