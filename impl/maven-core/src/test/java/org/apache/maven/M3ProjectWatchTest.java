@@ -170,8 +170,8 @@ class M3ProjectWatchTest {
 
     @Test
     void unknownModulesCannotImpersonateTheM3FileOwner() {
-        assertThrows(IllegalStateException.class,
-                () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
+        assertThrows(
+                IllegalStateException.class, () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
     }
 
     @Test
@@ -186,8 +186,20 @@ class M3ProjectWatchTest {
         Object options = from.invoke(null, original);
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3/module.m3db")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.m3/module.m3db")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3/MODULE.M3DB")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3-WATCH/STATE.BIN")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3-watch/state.bin")));
         assertFalse((Boolean) excludes.invoke(options, root.resolve("src/Watched.java")));
+    }
+
+    @Test
+    void boundedWatchCannotHideAnUncommittedSuccessfulGeneration() throws Exception {
+        assertThrows(
+                IOException.class, () -> M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, true);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, true, false);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 2, false, false);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 0, false, false);
     }
 
     @Nested
@@ -197,7 +209,8 @@ class M3ProjectWatchTest {
         @BeforeEach
         void requiresTheActualNamedModule() {
             Module module = M3ProjectWatch.sdkModule(ModuleLayer.boot());
-            assertNotNull(Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileWatcher"),
+            assertNotNull(
+                    Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileWatcher"),
                     "Explicit integration requires the current or legacy M3File owner");
         }
 
@@ -366,6 +379,19 @@ class M3ProjectWatchTest {
         }
 
         @Test
+        void boundedWatcherRejectsSuccessForInputsChangedDuringItsOnlyBuild() throws Exception {
+            var original = request(1);
+            Path watched = root.resolve("src/Watched.java");
+            var result = execute(original, next -> {
+                write(watched, "class Watched { int value = 9; }\\n");
+                return successful("target");
+            });
+            assertTrue(result.hasExceptions(), "uncommitted bounded generation must fail");
+            assertTrue(result.getExceptions().toString().contains("not committed"));
+            assertFalse(Files.exists(image()), "no successful checkpoint may be persisted");
+        }
+
+        @Test
         void sameTimeMutationRemainsPendingAndEachDelegationGetsAFreshRequest() throws Exception {
             var original = request(2);
             Files.createDirectories(root.resolve(".mvn"));
@@ -484,8 +510,7 @@ class M3ProjectWatchTest {
             });
             assertFalse(result.hasExceptions(), result.getExceptions().toString());
             assertEquals(1, calls.get(), "M3DB state is not a watched source generation");
-            assertFalse(persistedPaths().stream().anyMatch(path ->
-                    path.startsWith(".m3/") || path.contains("/.m3/")));
+            assertFalse(persistedPaths().stream().anyMatch(path -> path.startsWith(".m3/") || path.contains("/.m3/")));
         }
 
         @Test
@@ -637,10 +662,8 @@ class M3ProjectWatchTest {
         Class<?> watchType = Class.forName("org.apache.maven.M3ProjectWatch$SharedWatch");
         var constructor = watchType.getDeclaredConstructor(Object.class, Class.class, Module.class);
         constructor.setAccessible(true);
-        Object shared = constructor.newInstance(
-                watcher,
-                ScriptedWatcher.class,
-                M3ProjectWatch.sdkModule(ModuleLayer.boot()));
+        Object shared =
+                constructor.newInstance(watcher, ScriptedWatcher.class, M3ProjectWatch.sdkModule(ModuleLayer.boot()));
         var method = M3ProjectWatch.class.getDeclaredMethod(
                 "awaitBatch", watchType, Object.class, Object.class, optionsType, LongSupplier.class);
         method.setAccessible(true);

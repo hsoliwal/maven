@@ -44,24 +44,35 @@ final class M3ProjectWatch {
     static Module sdkModule(ModuleLayer layer) {
         for (String name : List.of("org.m3jdk.file", "jdk.m3.file", "com.m3.file")) {
             Optional<Module> candidate = layer.findModule(name);
-            if (candidate.isPresent() && fileOwnerPackage(candidate.get()) != null) return candidate.get();
+            if (candidate.isPresent() && fileOwnerPackage(candidate.get()) != null) {
+                return candidate.get();
+            }
         }
         Optional<Module> base = layer.findModule("java.base");
-        if (base.isPresent() && base.get().getPackages().contains("jdk.m3.file")
-                && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) return base.get();
+        if (base.isPresent()
+                && base.get().getPackages().contains("jdk.m3.file")
+                && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) {
+            return base.get();
+        }
         throw new IllegalStateException("m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
                 + " a compatible legacy M3File module, or an exported java.base file owner");
     }
 
     private static String fileOwnerPackage(Module module) {
-        if (module.getPackages().contains("jdk.m3.file")) return "jdk.m3.file";
-        if (module.getPackages().contains("com.m3.file")) return "com.m3.file";
+        if (module.getPackages().contains("jdk.m3.file")) {
+            return "jdk.m3.file";
+        }
+        if (module.getPackages().contains("com.m3.file")) {
+            return "com.m3.file";
+        }
         return null;
     }
 
     static String sdkPackage(Module module) {
         String owner = fileOwnerPackage(module);
-        if (owner == null) throw new IllegalStateException("not an M3File owner: " + module.getName());
+        if (owner == null) {
+            throw new IllegalStateException("not an M3File owner: " + module.getName());
+        }
         return owner;
     }
 
@@ -122,11 +133,13 @@ final class M3ProjectWatch {
                     checkInterrupted();
                     completed++;
                     options.checkProjectPaths(result);
+                    boolean committed = false;
                     if (result.hasExceptions()) {
                         logger.warn("M3 watch generation {} failed; last successful file state retained", completed);
                     } else {
                         checkInterrupted();
-                        if (!watch.commit(snapshot)) {
+                        committed = watch.commit(snapshot);
+                        if (!committed) {
                             logger.info(
                                     "M3 watch generation {} changed during execution; newer work remains pending",
                                     completed);
@@ -136,6 +149,7 @@ final class M3ProjectWatch {
                     }
                     idleStarted = System.nanoTime();
                     if (options.maxBuilds > 0 && completed >= options.maxBuilds) {
+                        requireCheckpointOnBoundedExit(completed, options.maxBuilds, result.hasExceptions(), committed);
                         return result;
                     }
                 }
@@ -147,6 +161,20 @@ final class M3ProjectWatch {
             }
             result.addException(failure);
             return result;
+        }
+    }
+
+    /**
+     * A bounded watcher must not report success for a build whose input generation
+     * changed during execution and therefore was never committed by M3File.
+     * This does not abort ordinary continuous watching: its owner can retry the
+     * forced pending generation in the next loop. Failed Maven builds already
+     * contain their original diagnostic and must retain that primary failure.
+     */
+    static void requireCheckpointOnBoundedExit(int completed, int maxBuilds, boolean failed,
+            boolean committed) throws IOException {
+        if (maxBuilds > 0 && completed >= maxBuilds && !failed && !committed) {
+            throw new IOException("M3 watch cannot finish successfully: last input generation was not committed");
         }
     }
 
@@ -330,7 +358,8 @@ final class M3ProjectWatch {
                 }
             }
             for (Path component : root.relativize(path)) {
-                if (component.toString().equals(".m3-watch") || component.toString().equals(".m3")
+                if (component.toString().equalsIgnoreCase(".m3-watch")
+                        || component.toString().equalsIgnoreCase(".m3")
                         || ignoredNames.contains(component.toString())) {
                     return true;
                 }
@@ -391,7 +420,9 @@ final class M3ProjectWatch {
                 Path relative = options.root.relativize(path);
                 for (Path component : relative) {
                     String name = component.toString();
-                    if (name.equals(".m3-watch") || name.equals(".m3") || options.ignoredNames.contains(name)) {
+                    if (name.equalsIgnoreCase(".m3-watch")
+                            || name.equalsIgnoreCase(".m3")
+                            || options.ignoredNames.contains(name)) {
                         return true;
                     }
                 }
@@ -522,7 +553,8 @@ final class M3ProjectWatch {
         private static Class<?> sdkClass(Module module, String name) throws ClassNotFoundException {
             Class<?> type = Class.forName(module, name);
             if (type == null) {
-                throw new ClassNotFoundException(name + " is unavailable in the installed " + module.getName() + " module");
+                throw new ClassNotFoundException(
+                        name + " is unavailable in the installed " + module.getName() + " module");
             }
             return type;
         }
