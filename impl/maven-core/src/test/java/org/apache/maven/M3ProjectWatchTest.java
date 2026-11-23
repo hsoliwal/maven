@@ -548,6 +548,47 @@ class M3ProjectWatchTest {
         }
 
         @Test
+        void excludedM3UserSourceCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                built.getProject().addCompileSourceRoot(root.resolve(".m3/user-src").toString());
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("excluded M3 state"));
+            assertFalse(Files.exists(image()), "an unwatched source cannot have a successful M3File checkpoint");
+        }
+
+        @Test
+        void excludedResourceRootCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                var resource = new org.apache.maven.model.Resource();
+                resource.setDirectory(root.resolve(".m3").toString());
+                built.getProject().getBuild().addResource(resource);
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("resource root outside its input inventory"));
+            assertFalse(Files.exists(image()), "unwatched ordinary .m3 user files require original non-watch mode");
+        }
+
+        @Test
+        void externalResourceFilterCannotPublishAContinuousBuildCheckpoint() throws Exception {
+            var original = request(1);
+            var result = execute(original, next -> {
+                var built = successful("target");
+                built.getProject().getBuild().addFilter(root.getParent().resolve("external-filter.properties").toString());
+                return built;
+            });
+            assertTrue(result.hasExceptions());
+            assertTrue(result.getExceptions().toString().contains("resource filter outside its input inventory"));
+            assertFalse(Files.exists(image()), "filters outside the watch root cannot be silently ignored");
+        }
+
+        @Test
         void preservesModelPolicyButClearsThePreviousRepositorySession() throws Exception {
             var original = request(1);
             var configured = new DefaultProjectBuildingRequest();
