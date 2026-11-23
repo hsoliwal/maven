@@ -4,7 +4,7 @@
 ## Exact provenance
 
 - **Source owner:** [merged Maven #274](https://github.com/hsoliwal/maven/pull/274), exact merge commit `53d7bd782077968e596a54cb7948ea22810734c3`. The original `InputStamps.pairedStamps` and `TaskRunner` share one **bounded input observation** across two distinct existing cache keys per observation phase, not a new cache format.
-- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `8a5daf6fd7ea87230dada80f50c55264e002e4e5`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
+- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `3de2db48595b9015c1a513d89a3cef83be5257f5`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
 - **No new engine:** no DB adapter, generic source hash, launcher, native compiler, Maven lifecycle, JNI, Gradle cache key or task dependency is authored in this batch. Existing `EnableM3PolyglotStateBridge` OpenRewrite recipe remains its selected opt-in consumer pathway.
 
 ## Java 17/21 cross-fork acceptance
@@ -20,3 +20,5 @@ The hosted gate rejects a missing, skipped, failed, foreign or duplicated TestKi
 A test source and its workflow configuration are **not** execution evidence. Do not mark this batch qualified without the exact new Java17/21 hosted JUnit reports and original Maven build receipts. The original Maven #275 M3File watcher/M3JDK module integration and [pending Maven #278](https://github.com/hsoliwal/maven/pull/278) Checkstyle correction are independently owned by Maven Core and require separate original JDK/runtime certification. This pin is deliberately **#274**, not a claim that a later Maven master or original M3JDK21 runtime was tested.
 
 Also pending: independent OpenRewrite SDK recipe replay fixed point, native Linux/macOS/Windows proofs beyond this Ubuntu runner, license/DCO and reviewer sign-off, and full Git all-ref lost-optimization audit. No user-defined Gradle task may be skipped because these tests pass. Keep source-comparison PRs in draft until those gates are reviewed.
+
+Original Maven's `InputStamps.engineSources()` binds the **absolute code-source JAR path** as part of its engine transcript. The Gradle fixture therefore stages one original Maven engine outside both project checkouts and supplies that same File to both runs; copying an identical JAR into each checkout would correctly produce different keys and is not a valid portable-cache proof.
