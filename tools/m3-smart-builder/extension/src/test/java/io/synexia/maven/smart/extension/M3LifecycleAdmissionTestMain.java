@@ -468,12 +468,23 @@ public final class M3LifecycleAdmissionTestMain {
         Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v1");
         check(before.equals(moduleRootFingerprint(root, exclusions)),
                 "nested module output publication does not invalidate the parent's unrelated goal");
-        Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v2");
+        Path generated = nestedOutput.resolve("classes/Generated.class");
+        String explicitBefore = M3LifecycleFingerprint.outputs(List.of(generated));
+        Files.writeString(generated, "generated-v2");
         check(before.equals(moduleRootFingerprint(root, exclusions)),
                 "nested output changes remain outside the parent's broad input tree");
+        check(!explicitBefore.equals(M3LifecycleFingerprint.outputs(List.of(generated))),
+                "explicitly declared reactor product bytes still invalidate dependency fingerprints");
+        Files.delete(generated);
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "deleted generated outputs also do not invalidate a parent input tree");
         Files.writeString(input, "class Input { int value; }\\n");
         check(!before.equals(moduleRootFingerprint(root, exclusions)),
                 "nested source changes remain visible to conservative parent fingerprints");
+        String beforePom = moduleRootFingerprint(root, exclusions);
+        Files.writeString(nestedPom, "<project><name>changed</name></project>\\n");
+        check(!beforePom.equals(moduleRootFingerprint(root, exclusions)),
+                "nested reactor POM changes remain visible to conservative parent fingerprints");
         nestedBuild.setDirectory(root.toString());
         refused(() -> M3LifecycleFingerprint.reactorOutputExclusions(
                         fixture.session(), fixture.project(), root, root.resolve("target")),
