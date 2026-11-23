@@ -61,6 +61,13 @@ and does not acknowledge the pending snapshot, even if its execution callback re
 an otherwise successful result. The M3File watcher verifies the latest offered snapshot
 again before committing it.
 
+A bounded watch (`-Dm3.watch.maxBuilds=N`) also refuses to report success when
+its final execution looked successful but the M3File commit detects inputs
+changed during that execution. The previously committed checkpoint remains
+authoritative and the Maven process exits with an error rather than treating
+an uncommitted final build as complete. Unbounded watching continues to
+reconcile and retry the pending generation.
+
 With `m3.watch.quietMillis=0`, later builds retain immediate scheduling. Both batching
 values accept integers from 0 through 60000. A positive quiet period requires a maximum
 at least as large. The maximum is inactive when the quiet period is zero. These values
