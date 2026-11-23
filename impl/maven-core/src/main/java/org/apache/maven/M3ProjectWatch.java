@@ -49,7 +49,8 @@ final class M3ProjectWatch {
             }
         }
         Optional<Module> base = layer.findModule("java.base");
-        if (base.isPresent() && base.get().getPackages().contains("jdk.m3.file")
+        if (base.isPresent()
+                && base.get().getPackages().contains("jdk.m3.file")
                 && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) {
             return base.get();
         }
@@ -340,7 +341,8 @@ final class M3ProjectWatch {
                 }
             }
             for (Path component : root.relativize(path)) {
-                if (component.toString().equals(".m3-watch") || component.toString().equals(".m3")
+                if (component.toString().equals(".m3-watch")
+                        || component.toString().equals(".m3")
                         || ignoredNames.contains(component.toString())) {
                     return true;
                 }
@@ -532,7 +534,8 @@ final class M3ProjectWatch {
         private static Class<?> sdkClass(Module module, String name) throws ClassNotFoundException {
             Class<?> type = Class.forName(module, name);
             if (type == null) {
-                throw new ClassNotFoundException(name + " is unavailable in the installed " + module.getName() + " module");
+                throw new ClassNotFoundException(
+                        name + " is unavailable in the installed " + module.getName() + " module");
             }
             return type;
         }
