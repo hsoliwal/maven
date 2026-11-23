@@ -170,8 +170,8 @@ class M3ProjectWatchTest {
 
     @Test
     void unknownModulesCannotImpersonateTheM3FileOwner() {
-        assertThrows(IllegalStateException.class,
-                () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
+        assertThrows(
+                IllegalStateException.class, () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
     }
 
     @Test
@@ -207,7 +207,8 @@ class M3ProjectWatchTest {
         @BeforeEach
         void requiresTheActualNamedModule() {
             Module module = M3ProjectWatch.sdkModule(ModuleLayer.boot());
-            assertNotNull(Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileWatcher"),
+            assertNotNull(
+                    Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileWatcher"),
                     "Explicit integration requires the current or legacy M3File owner");
         }
 
@@ -507,8 +508,7 @@ class M3ProjectWatchTest {
             });
             assertFalse(result.hasExceptions(), result.getExceptions().toString());
             assertEquals(1, calls.get(), "M3DB state is not a watched source generation");
-            assertFalse(persistedPaths().stream().anyMatch(path ->
-                    path.startsWith(".m3/") || path.contains("/.m3/")));
+            assertFalse(persistedPaths().stream().anyMatch(path -> path.startsWith(".m3/") || path.contains("/.m3/")));
         }
 
         @Test
@@ -660,10 +660,8 @@ class M3ProjectWatchTest {
         Class<?> watchType = Class.forName("org.apache.maven.M3ProjectWatch$SharedWatch");
         var constructor = watchType.getDeclaredConstructor(Object.class, Class.class, Module.class);
         constructor.setAccessible(true);
-        Object shared = constructor.newInstance(
-                watcher,
-                ScriptedWatcher.class,
-                M3ProjectWatch.sdkModule(ModuleLayer.boot()));
+        Object shared =
+                constructor.newInstance(watcher, ScriptedWatcher.class, M3ProjectWatch.sdkModule(ModuleLayer.boot()));
         var method = M3ProjectWatch.class.getDeclaredMethod(
                 "awaitBatch", watchType, Object.class, Object.class, optionsType, LongSupplier.class);
         method.setAccessible(true);
