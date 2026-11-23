@@ -80,7 +80,7 @@ final class M3LifecycleFingerprint {
         new MavenXpp3Writer().write(model, project.getModel());
         value.text(model.toString());
         value.configuration(execution.getConfiguration(), new PluginParameterExpressionEvaluator(session, execution));
-        value.moduleTree(root, List.of(build));
+        value.moduleTree(root, reactorOutputExclusions(session, project, root, build));
         for (MavenProject parent = project; parent != null; parent = parent.getParent()) {
             if (parent.getFile() != null) value.tree(parent.getFile().toPath(), List.of());
         }
@@ -137,6 +137,44 @@ final class M3LifecycleFingerprint {
             value.tree(java.resolve(name), List.of());
         }
         return value.finish();
+    }
+
+    /**
+     * Parent module scans do not acquire another reactor module's generated
+     * output directory as an input. Original Maven reactor project metadata
+     * identifies the exact output owners; source files and POMs of nested
+     * modules remain in the source scan. Explicit dependencies and goal inputs
+     * are still content-verified independently.
+     */
+    static List<Path> reactorOutputExclusions(MavenSession session, MavenProject current,
+            Path root, Path build) throws IOException {
+        List<Path> result = new ArrayList<>();
+        result.add(build);
+        List<MavenProject> projects = session.getProjects();
+        if (projects == null) {
+            return List.copyOf(result);
+        }
+        for (MavenProject other : projects) {
+            if (other == null || other == current || other.getBasedir() == null || other.getBuild() == null) {
+                continue;
+            }
+            Path module = other.getBasedir().toPath().toAbsolutePath().normalize();
+            if (module.equals(root) || !module.startsWith(root)) {
+                continue;
+            }
+            String outputDirectory = other.getBuild().getDirectory();
+            if (outputDirectory == null || outputDirectory.isBlank()) {
+                continue;
+            }
+            Path output = path(module, outputDirectory);
+            if (!output.startsWith(module) || output.equals(module)) {
+                throw new IOException("nested reactor module has unqualified build directory: " + output);
+            }
+            if (!result.contains(output)) {
+                result.add(output);
+            }
+        }
+        return List.copyOf(result);
     }
 
     static String outputs(List<Path> outputs) throws IOException {

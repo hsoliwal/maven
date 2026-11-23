@@ -56,6 +56,7 @@ public final class M3LifecycleAdmissionTestMain {
             preservesCompilerCreatedFileInventory(temporary);
             excludesOnlyInternalSystemCoordination(temporary);
             internalM3StateDoesNotPerturbModuleFingerprint(temporary);
+            excludesOtherReactorOutputsButNotSources(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -440,13 +441,56 @@ public final class M3LifecycleAdmissionTestMain {
 
     }
 
+    private static void excludesOtherReactorOutputsButNotSources(Path temporary) throws Exception {
+        Fixture fixture = fixture(temporary, "reactor-output-closure");
+        Path root = fixture.root();
+        Path nested = Files.createDirectories(root.resolve("nested"));
+        Path input = Files.writeString(nested.resolve("Input.java"), "class Input {}\\n");
+        Path nestedPom = Files.writeString(nested.resolve("pom.xml"), "<project/>\\n");
+        Model nestedModel = new Model();
+        nestedModel.setModelVersion("4.0.0");
+        nestedModel.setGroupId("fixture");
+        nestedModel.setArtifactId("nested");
+        nestedModel.setVersion("1");
+        Build nestedBuild = new Build();
+        Path nestedOutput = nested.resolve("target");
+        nestedBuild.setDirectory(nestedOutput.toString());
+        nestedModel.setBuild(nestedBuild);
+        MavenProject child = new MavenProject(nestedModel);
+        child.setFile(nestedPom.toFile());
+        fixture.session().setProjects(List.of(fixture.project(), child));
+        List<Path> exclusions = M3LifecycleFingerprint.reactorOutputExclusions(
+                fixture.session(), fixture.project(), root, root.resolve("target"));
+        check(exclusions.contains(nestedOutput),
+                "original reactor metadata identifies the exact nested module output directory");
+        String before = moduleRootFingerprint(root, exclusions);
+        Files.createDirectories(nestedOutput.resolve("classes"));
+        Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v1");
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested module output publication does not invalidate the parent's unrelated goal");
+        Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v2");
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested output changes remain outside the parent's broad input tree");
+        Files.writeString(input, "class Input { int value; }\\n");
+        check(!before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested source changes remain visible to conservative parent fingerprints");
+        nestedBuild.setDirectory(root.toString());
+        refused(() -> M3LifecycleFingerprint.reactorOutputExclusions(
+                        fixture.session(), fixture.project(), root, root.resolve("target")),
+                "another module cannot claim the parent root as its output directory");
+    }
+
     private static String moduleRootFingerprint(Path root) throws Exception {
+        return moduleRootFingerprint(root, List.of());
+    }
+
+    private static String moduleRootFingerprint(Path root, List<Path> excluded) throws Exception {
         var constructor = M3LifecycleFingerprint.class.getDeclaredConstructor();
         constructor.setAccessible(true);
         Object fingerprint = constructor.newInstance();
         Method tree = M3LifecycleFingerprint.class.getDeclaredMethod("moduleTree", Path.class, List.class);
         tree.setAccessible(true);
-        tree.invoke(fingerprint, root, List.of());
+        tree.invoke(fingerprint, root, excluded);
         Method finish = M3LifecycleFingerprint.class.getDeclaredMethod("finish");
         finish.setAccessible(true);
         return (String) finish.invoke(fingerprint);

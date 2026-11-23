@@ -28,6 +28,13 @@ The original Maven plugin executes every cache miss. Reuse is admitted for this 
 | maven-compiler-plugin | 3.13.0, 3.14.1 | compile, testCompile |
 | maven-jar-plugin | 3.4.1, 3.4.2 | jar |
 
+Parent module fingerprints also exclude output directories of nested Maven
+reactor projects, using the original `MavenSession` project metadata rather
+than guessing by directory name. Nested project sources and POMs still
+participate in conservative parent input identity; explicit dependency
+artifacts remain hashed through the original goal-closure path. This avoids
+re-hashing generated child module output trees as parent-module inputs.
+
 The module-root fingerprint excludes database-owned files and directories
 under `.m3`, the `.m3-watch` checkpoint and `.git` at any nested reactor depth,
 without hashing the M3DB parent directory marker. Ordinary user files such as
