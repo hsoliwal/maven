@@ -22,7 +22,9 @@ public final class M3EclipseLanguageEvidenceServiceContractTestMain {
     private M3EclipseLanguageEvidenceServiceContractTestMain() { }
 
     public static void main(String[] args) throws Exception {
-        Path root = Files.createTempDirectory("m3-eclipse-language-spi-");
+        // macOS /var/folders traverses a symlink to /private/var.
+        // Canonicalize only the fixture; the source-owned packet no-follow gate remains intact.
+        Path root = Files.createTempDirectory("m3-eclipse-language-spi-").toRealPath();
         try {
             Path packet = Files.writeString(root.resolve("pydev-owner.ide"), source("PyProject", UUID, "Debug"));
             Path eclipse = Files.writeString(root.resolve("eclipse-owner.ide"),

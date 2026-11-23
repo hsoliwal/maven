@@ -260,9 +260,11 @@ public final class ProviderReuseExecutionTestMain {
 
     private static void unavailableInputProofStillExecutes(Path directory) throws Exception {
         Path root = workspace(directory, "Hello", "one");
-        Path extra = Files.createDirectories(root.resolve("aux"));
+        // Windows reserves "aux" as a device name; use a portable declared input directory.
+        // Preserve the nested symlink that deliberately makes provider proof unavailable.
+        Path extra = Files.createDirectories(root.resolve("provider-probe-inputs"));
         if (!link(extra.resolve("unused-link"), root.resolve("src/Hello.java"))) return;
-        Files.writeString(root.resolve("m3-build.tsv"), "input\tcompile\taux\n", StandardOpenOption.APPEND);
+        Files.writeString(root.resolve("m3-build.tsv"), "input\tcompile\tprovider-probe-inputs\n", StandardOpenOption.APPEND);
         Files.createDirectories(root.resolve("classes"));
         Files.writeString(root.resolve("classes/preserved.txt"), "unqualified cleanup must not occur");
         List<String> log = run(root, true, null, true);
