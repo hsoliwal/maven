@@ -24,7 +24,8 @@ public final class MavenizerContractTestMain {
     private MavenizerContractTestMain() {}
 
     public static void main(String[] ignored) throws Exception {
-        Path temp = Files.createTempDirectory("mavenizer-test-");
+        // macOS /var/folders is reachable through a /var symlink; preserve real argv identity.
+        Path temp = Files.createTempDirectory("mavenizer-test-").toRealPath();
         try {
             detectsEachToolFamily(temp.resolve("detect"));
             selectsForkLLVMForCMake(temp.resolve("llvm-cmake"));

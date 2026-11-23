@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Polyglot platform path contracts (review branch)
+
+on:
+  pull_request:
+    branches:
+      - audit/rat-report-artifact-20261122
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java'
+      - '.github/workflows/m3-polyglot-platform-paths-native-20261122.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-owner-tests:
+    name: Original polyglot Maven contracts (${{ matrix.os }}, Java 21)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify exact two Synexia-reviewed Java source images
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import subprocess
+          from pathlib import Path
+          root = Path('tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot')
+          expected = {
+              'LlvmCompilerSelectionContractTestMain.java':
+                  '45ff3136afb14413eaf1b22a80b175206a7cd0694dcbc237266fff22f1b8f641',
+              'ProviderReuseExecutionTestMain.java':
+                  '832784d123c551199c29d65b7eeea886ab993c97880bfe5ee3f401cd1ace50f3',
+          }
+          for name, digest in expected.items():
+              path = root / name
+              # The committed Git blob is the authority, independent of Windows CRLF checkout.
+              body = subprocess.check_output(['git', 'show', 'HEAD:' + path.as_posix()])
+              actual = hashlib.sha256(body).hexdigest()
+              if actual != digest:
+                  raise SystemExit(f'GIT_BLOB_SOURCE_DRIFT {name}: {actual}')
+              # Reject all other checkout byte differences (including BOM or changed code).
+              checked_out = path.read_bytes()
+              if checked_out.replace(b'\r\n', b'\n') != body:
+                  raise SystemExit(f'CHECKOUT_CONTENT_DRIFT {name}')
+          print('PASS: exact Git blobs and LF/CRLF-only checkout transformations')
+          PY
+      - name: Execute existing Maven plugin module and original contract mains
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .m3-polyglot-native-proof
+          mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/pom.xml verify \
+            2>&1 | tee .m3-polyglot-native-proof/01-maven-module-native.log
+      - name: Refuse product or test mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- tools/m3-polyglot-maven-plugin/
+      - name: Retain original Maven test evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-polyglot-platform-${{ matrix.os }}-jdk21
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            .m3-polyglot-native-proof/
+            tools/m3-polyglot-maven-plugin/target/surefire-reports/

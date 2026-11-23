@@ -157,6 +157,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/java_heapdump.hprof
 
       - name: Upload Mimir logs
@@ -229,19 +230,23 @@ jobs:
       - name: Extract Maven distribution
         shell: bash
         run: |
-          mkdir -p maven-local
+          # The extracted distribution includes a repository/ cache, not project source.
+          # Keep it outside Apache RAT's checkout tree without weakening the license gate.
+          maven_home="$(cd .. && pwd -P)/maven-local"
+          test ! -e maven-local
+          mkdir -p "$maven_home"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            unzip maven-dist/apache-maven-*-bin.zip -d maven-local
+            unzip maven-dist/apache-maven-*-bin.zip -d "$maven_home"
             # Get the name of the extracted directory
-            MAVEN_DIR=$(ls maven-local)
+            MAVEN_DIR=$(ls "$maven_home")
             # Move contents up one level
-            mv "maven-local/$MAVEN_DIR"/* maven-local/
-            rm -r "maven-local/$MAVEN_DIR"
+            mv "$maven_home/$MAVEN_DIR"/* "$maven_home/"
+            rm -r "$maven_home/$MAVEN_DIR"
           else
-            tar xzf maven-dist/apache-maven-*-bin.tar.gz -C maven-local --strip-components 1
+            tar xzf maven-dist/apache-maven-*-bin.tar.gz -C "$maven_home" --strip-components 1
           fi
-          echo "MAVEN_HOME=$PWD/maven-local" >> $GITHUB_ENV
-          echo "$PWD/maven-local/bin" >> $GITHUB_PATH
+          echo "MAVEN_HOME=$maven_home" >> "$GITHUB_ENV"
+          echo "$maven_home/bin" >> "$GITHUB_PATH"
 
       - name: Build with downloaded Maven
         shell: bash
@@ -274,6 +279,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/java_heapdump.hprof
 
       - name: Upload Mimir logs
@@ -341,19 +347,23 @@ jobs:
       - name: Extract Maven distribution
         shell: bash
         run: |
-          mkdir -p maven-local
+          # The extracted distribution includes a repository/ cache, not project source.
+          # Keep it outside Apache RAT's checkout tree without weakening the license gate.
+          maven_home="$(cd .. && pwd -P)/maven-local"
+          test ! -e maven-local
+          mkdir -p "$maven_home"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            unzip maven-dist/apache-maven-*-bin.zip -d maven-local
+            unzip maven-dist/apache-maven-*-bin.zip -d "$maven_home"
             # Get the name of the extracted directory
-            MAVEN_DIR=$(ls maven-local)
+            MAVEN_DIR=$(ls "$maven_home")
             # Move contents up one level
-            mv "maven-local/$MAVEN_DIR"/* maven-local/
-            rm -r "maven-local/$MAVEN_DIR"
+            mv "$maven_home/$MAVEN_DIR"/* "$maven_home/"
+            rm -r "$maven_home/$MAVEN_DIR"
           else
-            tar xzf maven-dist/apache-maven-*-bin.tar.gz -C maven-local --strip-components 1
+            tar xzf maven-dist/apache-maven-*-bin.tar.gz -C "$maven_home" --strip-components 1
           fi
-          echo "MAVEN_HOME=$PWD/maven-local" >> $GITHUB_ENV
-          echo "$PWD/maven-local/bin" >> $GITHUB_PATH
+          echo "MAVEN_HOME=$maven_home" >> "$GITHUB_ENV"
+          echo "$maven_home/bin" >> "$GITHUB_PATH"
 
       - name: Build Maven and ITs and run them
         shell: bash
@@ -376,6 +386,7 @@ jobs:
           retention-days: 1
           path: |
             **/target/surefire-reports/*
+            target/rat.txt
             **/target/failsafe-reports/*
             ./its/core-it-suite/target/test-classes/**
             **/target/java_heapdump.hprof
