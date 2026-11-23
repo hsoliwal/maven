@@ -254,7 +254,7 @@ final class M3LifecycleFingerprint {
                 if (moduleRoot && !directory.equals(root)) {
                     // Do not hash the M3DB parent directory marker, but descend
                     // to account for unrelated user configuration in .m3.
-                    if (directory.getFileName().toString().equals(".m3")) {
+                    if (directory.getFileName().toString().equalsIgnoreCase(".m3")) {
                         return FileVisitResult.CONTINUE;
                     }
                     if (isInternalState(root.relativize(directory))) {
