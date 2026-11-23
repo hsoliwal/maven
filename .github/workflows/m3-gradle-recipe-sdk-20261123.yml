@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Gradle recipe original OpenRewrite 8.90.4 SDK acceptance
+on:
+  pull_request:
+    paths:
+      - 'tools/gradle-recipe-acceptance/**'
+      - '.github/workflows/m3-gradle-recipe-sdk-20261123.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-openrewrite-gradle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check out exactly source-sealed Gradle receiving PR 74
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: 6ee4533f36eeea78894ef84b2a6f71abb2512d81
+          path: gradle-recipe-consumer
+          persist-credentials: false
+          sparse-checkout: |
+            m3/quality-bridge/recipes
+      - name: Refuse wrong Gradle source or missing canonical recipe set
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C gradle-recipe-consumer rev-parse HEAD)" = 6ee4533f36eeea78894ef84b2a6f71abb2512d81
+          count="$(find gradle-recipe-consumer/m3/quality-bridge/recipes -maxdepth 1 -type f -name 'enable-*.yml' | wc -l)"
+          test "$count" -eq 8
+          if grep -Rl --include='enable-*.yml' -F 'org.openrewrite.gradle.plugins.AddPlugin:' gradle-recipe-consumer/m3/quality-bridge/recipes; then
+            echo 'unresolved old Gradle OpenRewrite AddPlugin class' >&2
+            exit 1
+          fi
+      - name: Run actual original rewrite-gradle 8.90.4 recipe loader and AST fixed point
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f tools/gradle-recipe-acceptance/pom.xml \
+            -Dm3.gradle.root="$GITHUB_WORKSPACE/gradle-recipe-consumer" verify
+      - name: Require source-bound original SDK JUnit acceptance, no skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          f=Path('tools/gradle-recipe-acceptance/target/surefire-reports/TEST-io.synexia.maven.gradle.recipe.M3GradleRecipeSdkAcceptanceTest.xml')
+          assert f.is_file() and not f.is_symlink() and f.stat().st_size < 1024*1024
+          raw=f.read_bytes()
+          assert b'<!DOCTYPE' not in raw and b'<!ENTITY' not in raw
+          x=ET.fromstring(raw)
+          assert x.tag=='testsuite' and x.attrib.get('name')=='io.synexia.maven.gradle.recipe.M3GradleRecipeSdkAcceptanceTest'
+          assert all(x.attrib.get(k)==str(v) for k,v in (('tests',1),('skipped',0),('failures',0),('errors',0)))
+          cases=[c for c in x if c.tag=='testcase']
+          expected='originalAddBuildPluginResolvesForEveryPinnedGradleRecipeAndReachesFixedPoint'
+          assert len(cases)==1 and cases[0].attrib.get('name') in {expected, expected+'()'}
+          assert cases[0].attrib.get('classname')==x.attrib.get('name')
+          assert not list(cases[0])
+          print('PASS: original OpenRewrite 8.90.4 AddBuildPlugin SDK on all eight sealed Gradle recipes')
+          PY
+      - name: Retain exact source and actual JUnit/SDK failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-gradle-recipe-sdk-8pinned-jdk21
+          path: |
+            tools/gradle-recipe-acceptance/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 14
