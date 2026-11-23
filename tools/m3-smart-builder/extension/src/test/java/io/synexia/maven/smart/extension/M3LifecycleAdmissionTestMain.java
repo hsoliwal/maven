@@ -371,6 +371,7 @@ public final class M3LifecycleAdmissionTestMain {
         Path root = Files.createDirectories(temporary.resolve("internal-state-fingerprint"));
         Path source = Files.createDirectories(root.resolve("src")).resolve("A.java");
         Files.writeString(source, "class A {}\\n");
+        Files.createDirectories(root.resolve("child"));
         String baseline = moduleRootFingerprint(root);
         Files.createDirectories(root.resolve("child/.m3"));
         Files.createDirectories(root.resolve("child/.m3-watch"));
