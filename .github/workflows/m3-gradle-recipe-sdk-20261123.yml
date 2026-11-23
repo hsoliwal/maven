@@ -59,7 +59,9 @@ jobs:
           assert x.tag=='testsuite' and x.attrib.get('name')=='io.synexia.maven.gradle.recipe.M3GradleRecipeSdkAcceptanceTest'
           assert all(x.attrib.get(k)==str(v) for k,v in (('tests',1),('skipped',0),('failures',0),('errors',0)))
           cases=[c for c in x if c.tag=='testcase']
-          assert len(cases)==1 and cases[0].attrib.get('name')=='originalAddBuildPluginResolvesForEveryPinnedGradleRecipeAndReachesFixedPoint()'
+          expected='originalAddBuildPluginResolvesForEveryPinnedGradleRecipeAndReachesFixedPoint'
+          assert len(cases)==1 and cases[0].attrib.get('name') in {expected, expected+'()'}
+          assert cases[0].attrib.get('classname')==x.attrib.get('name')
           assert not list(cases[0])
           print('PASS: original OpenRewrite 8.90.4 AddBuildPlugin SDK on all eight sealed Gradle recipes')
           PY
