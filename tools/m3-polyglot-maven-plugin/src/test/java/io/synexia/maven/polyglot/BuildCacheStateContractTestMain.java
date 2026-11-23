@@ -46,6 +46,7 @@ public final class BuildCacheStateContractTestMain {
             changedGenerationWithSameBytes(temporary.resolve("generation"));
             partialRestoreCannotAuthorizeReuse(temporary.resolve("partial"));
             unqualifiedTasksStayLive(temporary.resolve("unqualified"));
+            internalStateIsNotTaskInputOrOutput(temporary.resolve("internal-state"));
             cacheDirectoryBoundaries(temporary.resolve("boundaries"));
             providerTasksStayLive(temporary.resolve("provider"));
             System.out.println("PASS: " + checks + " build-cache/module-state integration checks");
@@ -190,6 +191,43 @@ public final class BuildCacheStateContractTestMain {
         run(overlap, "child", true, overlapCache);
         check(count(overlap, "parent") == 2 && count(overlap, "child") == 2 && !Files.exists(overlapCache),
                 "overlapping output ownership cannot supply cache generations");
+    }
+
+    /** Internal M3DB and M3File ownership excludes cache admission and output publication. */
+    private static void internalStateIsNotTaskInputOrOutput(Path directory) throws Exception {
+        for (String value : List.of(".m3", ".m3/module.m3db", ".m3-watch",
+                ".m3-watch/state.bin", "child/.m3/receipt", "child/.m3-watch/state.bin")) {
+            check(InputStamps.statePath(value), "internal state component is reserved: " + value);
+        }
+        check(!InputStamps.statePath("child/.m3-ordinary/input.txt"),
+                "similarly named user paths remain ordinary files");
+        check(!InputStamps.statePath("src/.m3-watchable.java"),
+                "reserved names must be whole path components");
+        Path watch = workspace(directory.resolve("watched-input"));
+        Files.createDirectories(watch.resolve(".m3-watch"));
+        Files.writeString(watch.resolve(".m3-watch/state.bin"), "watch");
+        manifest(watch, task("build", "copy", ".m3-watch/state.bin", "result.txt",
+                List.of(".m3-watch/state.bin")));
+        run(watch, "build", true, null);
+        run(watch, "build", true, null);
+        check(count(watch, "build") == 2 && receipt(watch, "build") == null,
+                "watcher checkpoints cannot authorize a persistent task receipt");
+        Path nested = workspace(directory.resolve("nested-module"));
+        Files.createDirectories(nested.resolve("child/.m3"));
+        Files.writeString(nested.resolve("child/.m3/receipt"), "state");
+        manifest(nested, task("build", "copy", "child/.m3/receipt", "result.txt", List.of("child/.m3")));
+        run(nested, "build", true, null);
+        run(nested, "build", true, null);
+        check(count(nested, "build") == 2 && receipt(nested, "build") == null,
+                "declared nested M3DB directory stays uncached across runs");
+        for (String output : List.of(".m3/custom.txt", ".m3-watch/custom.txt",
+                "child/.m3/receipt", "child/.m3-watch/snapshot")) {
+            Path module = workspace(directory.resolve("refuse-" + output.replace('/', '-')));
+            manifest(module, task("build", "copy", "input.txt", output, List.of("input.txt")));
+            expectIo(() -> run(module, "build", true, null),
+                    "output inside internal state must be rejected before executing: " + output);
+            check(count(module, "build") == 0, "internal-state output may not be written: " + output);
+        }
     }
 
     private static void cacheDirectoryBoundaries(Path directory) throws Exception {

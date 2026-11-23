@@ -263,8 +263,19 @@ final class InputStamps {
         return task.outputs().stream().noneMatch(InputStamps::statePath);
     }
 
+    /**
+     * M3 state belongs to the module DB or the M3File watcher, never to an
+     * ordinary reusable task. A declared parent directory or nested reactor
+     * path must not alias either owner's changing receipts/checkpoints.
+     */
     static boolean statePath(String path) {
-        return ModuleStateDb.statePath(path) || overlaps(path, ".m3/polyglot-stamps");
+        String normalized = path.replace('\\', '/');
+        for (String component : normalized.split("/")) {
+            if (component.equals(".m3") || component.equals(".m3-watch")) {
+                return true;
+            }
+        }
+        return ModuleStateDb.statePath(normalized) || overlaps(normalized, ".m3/polyglot-stamps");
     }
 
     private static boolean overlaps(String first, String second) {

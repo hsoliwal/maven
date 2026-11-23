@@ -379,8 +379,12 @@ state. All state and coordination paths are reserved from declared task outputs.
 outputs are completely declared. Declare dependency JARs, compiler libraries, native headers,
 external settings, processors, parent POMs outside the directory ancestry, lock files and other
 tool resources used by the command. The database does not infer hidden dependencies, network
-state, time/randomness or non-file effects. In-place input/output tasks, overlapping output
-owners and unknown provider dependencies remain uncached. Inputs must remain stable while
+state, time/randomness or non-file effects. In-place input/output tasks, overlapping output owners, inputs that refer to
+M3's internal `.m3` or `.m3-watch` state trees (including nested modules),
+and unknown provider dependencies remain uncached. The original command still
+executes for such an input, but cannot publish an incremental success receipt.
+Declared outputs inside those internal state trees are refused before execution
+to prevent corrupting M3DB receipts or watcher checkpoints. Inputs must remain stable while
 the original tool runs.
 
 A packaged Maven plugin/JDK M3 engine has one stable class realm per module run.
