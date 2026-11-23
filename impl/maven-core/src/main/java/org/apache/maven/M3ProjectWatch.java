@@ -54,9 +54,8 @@ final class M3ProjectWatch {
                 && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) {
             return base.get();
         }
-        throw new IllegalStateException(
-                "m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
-                        + " a compatible legacy M3File module, or an exported java.base file owner");
+        throw new IllegalStateException("m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
+                + " a compatible legacy M3File module, or an exported java.base file owner");
     }
 
     private static String fileOwnerPackage(Module module) {
@@ -342,7 +341,8 @@ final class M3ProjectWatch {
                 }
             }
             for (Path component : root.relativize(path)) {
-                if (component.toString().equals(".m3-watch") || component.toString().equals(".m3")
+                if (component.toString().equals(".m3-watch")
+                        || component.toString().equals(".m3")
                         || ignoredNames.contains(component.toString())) {
                     return true;
                 }
@@ -534,7 +534,8 @@ final class M3ProjectWatch {
         private static Class<?> sdkClass(Module module, String name) throws ClassNotFoundException {
             Class<?> type = Class.forName(module, name);
             if (type == null) {
-                throw new ClassNotFoundException(name + " is unavailable in the installed " + module.getName() + " module");
+                throw new ClassNotFoundException(
+                        name + " is unavailable in the installed " + module.getName() + " module");
             }
             return type;
         }
