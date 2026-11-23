@@ -11,11 +11,12 @@ generation. The first build starts immediately, and only one lifecycle runs at a
 
 ## Requirements
 
-Use a built installation of this Maven fork and an M3JDK21 installation containing the
-original named `com.m3.file` module. Resolve that module in the JVM running Maven with
-`--add-modules com.m3.file`, preserving any other required JVM options. For a separately
-installed SDK module, its module path must also be configured. Check `mvn --version` to
-confirm which Maven and Java installations are selected.
+Use a built installation of this Maven fork and an M3JDK21 installation containing
+the current `org.m3jdk.file` module (which exports `jdk.m3.file`). Resolve it in
+the JVM running Maven with `--add-modules org.m3jdk.file`, preserving other JVM
+options. The older `jdk.m3.file` and `com.m3.file` named modules remain compatible;
+an explicitly exported `java.base/jdk.m3.file` package is also recognized.
+Check `mvn --version` and configure the appropriate JDK/module path.
 
 The ordinary bootstrap Maven used to build this repository does not acquire this feature
 from a project property. The enhanced Maven executable must be running. Watch mode refuses
@@ -96,8 +97,11 @@ compilation, plugin skipping or a measured build-time speedup.
 
 Every observed `.mvn` startup-configuration change requires restarting Maven, including
 a change seen while collecting a batch. Inputs and source roots must stay within the
-watched root. Custom output directories need explicit exclusions. The successful
-checkpoint is stored through the original M3File ledger in `.m3-watch/state.bin`.
+watched root. Custom output directories need explicit exclusions. The successful checkpoint is stored through the original M3File ledger in
+`.m3-watch/state.bin`. This source-owned ledger is distinct from the opt-in
+Maven task receipts in `.m3/module.m3db`. The watcher still reads and hashes
+input bytes during reconciliation; it cannot authorize cross-process cache reuse
+or arbitrary Mojo skipping without independent, complete build evidence.
 
 The watcher observes saved filesystem state. It does not capture unsaved editor buffers,
 all external/environment inputs, or every change-and-restore sequence during a build.

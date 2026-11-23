@@ -40,6 +40,31 @@ import org.slf4j.Logger;
 final class M3ProjectWatch {
     private M3ProjectWatch() {}
 
+    /** Choose only a resolved, supported M3JDK file owner; no arbitrary classpath fallback. */
+    static Module sdkModule(ModuleLayer layer) {
+        for (String name : List.of("org.m3jdk.file", "jdk.m3.file", "com.m3.file")) {
+            Optional<Module> candidate = layer.findModule(name);
+            if (candidate.isPresent() && fileOwnerPackage(candidate.get()) != null) return candidate.get();
+        }
+        Optional<Module> base = layer.findModule("java.base");
+        if (base.isPresent() && base.get().getPackages().contains("jdk.m3.file")
+                && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) return base.get();
+        throw new IllegalStateException("m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
+                + " a compatible legacy M3File module, or an exported java.base file owner");
+    }
+
+    private static String fileOwnerPackage(Module module) {
+        if (module.getPackages().contains("jdk.m3.file")) return "jdk.m3.file";
+        if (module.getPackages().contains("com.m3.file")) return "com.m3.file";
+        return null;
+    }
+
+    static String sdkPackage(Module module) {
+        String owner = fileOwnerPackage(module);
+        if (owner == null) throw new IllegalStateException("not an M3File owner: " + module.getName());
+        return owner;
+    }
+
     static boolean enabled(MavenExecutionRequest request) {
         return "true".equalsIgnoreCase(property(request, "m3.watch", "false"));
     }
@@ -352,17 +377,15 @@ final class M3ProjectWatch {
         private SharedWatch(Object watcher, Class<?> watcherType, Module module) throws ClassNotFoundException {
             this.watcher = watcher;
             this.watcherType = watcherType;
-            snapshotType = sdkClass(module, "com.m3.file.M3FileDeltaLedger$Snapshot");
-            planType = sdkClass(module, "com.m3.file.M3BuildImpactPlan");
-            modeType = sdkClass(module, "com.m3.file.M3BuildImpactPlan$Mode");
+            String owner = sdkPackage(module);
+            snapshotType = sdkClass(module, owner + ".M3FileDeltaLedger$Snapshot");
+            planType = sdkClass(module, owner + ".M3BuildImpactPlan");
+            modeType = sdkClass(module, owner + ".M3BuildImpactPlan$Mode");
         }
 
         static SharedWatch open(Options options) throws Exception {
-            Module module = ModuleLayer.boot()
-                    .findModule("com.m3.file")
-                    .orElseThrow(() -> new IllegalStateException(
-                            "m3.watch requires the installed M3JDK21 com.m3.file module (--add-modules com.m3.file)"));
-            Class<?> type = sdkClass(module, "com.m3.file.M3FileWatcher");
+            Module module = sdkModule(ModuleLayer.boot());
+            Class<?> type = sdkClass(module, sdkPackage(module) + ".M3FileWatcher");
             Predicate<Path> excluded = path -> {
                 Path relative = options.root.relativize(path);
                 for (Path component : relative) {
@@ -498,7 +521,7 @@ final class M3ProjectWatch {
         private static Class<?> sdkClass(Module module, String name) throws ClassNotFoundException {
             Class<?> type = Class.forName(module, name);
             if (type == null) {
-                throw new ClassNotFoundException(name + " is unavailable in the installed com.m3.file module");
+                throw new ClassNotFoundException(name + " is unavailable in the installed " + module.getName() + " module");
             }
             return type;
         }

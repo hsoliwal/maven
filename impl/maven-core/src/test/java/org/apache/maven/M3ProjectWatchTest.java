@@ -168,15 +168,21 @@ class M3ProjectWatchTest {
         }
     }
 
+    @Test
+    void unknownModulesCannotImpersonateTheM3FileOwner() {
+        assertThrows(IllegalStateException.class,
+                () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
+    }
+
     @Nested
     @EnabledIfSystemProperty(named = "m3.watch.contract", matches = "true")
     @Timeout(15)
     class WithInstalledSdk {
         @BeforeEach
         void requiresTheActualNamedModule() {
-            assertTrue(
-                    ModuleLayer.boot().findModule("com.m3.file").isPresent(),
-                    "Explicit integration requires --add-modules com.m3.file; an absent SDK is not a pass");
+            Module module = M3ProjectWatch.sdkModule(ModuleLayer.boot());
+            assertNotNull(Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileWatcher"),
+                    "Explicit integration requires the current or legacy M3File owner");
         }
 
         @Test
@@ -547,8 +553,8 @@ class M3ProjectWatchTest {
     }
 
     private Object persistedSnapshot() throws Exception {
-        Module module = ModuleLayer.boot().findModule("com.m3.file").orElseThrow();
-        Class<?> ledger = Class.forName(module, "com.m3.file.M3FileDeltaLedger");
+        Module module = M3ProjectWatch.sdkModule(ModuleLayer.boot());
+        Class<?> ledger = Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileDeltaLedger");
         assertNotNull(ledger);
         return ledger.getMethod("load", Path.class, Path.class).invoke(null, image(), root);
     }
@@ -573,9 +579,9 @@ class M3ProjectWatchTest {
     }
 
     private Object snapshot(Object previous) throws Exception {
-        Module module = ModuleLayer.boot().findModule("com.m3.file").orElseThrow();
-        Class<?> ledger = Class.forName(module, "com.m3.file.M3FileDeltaLedger");
-        Class<?> snapshot = Class.forName(module, "com.m3.file.M3FileDeltaLedger$Snapshot");
+        Module module = M3ProjectWatch.sdkModule(ModuleLayer.boot());
+        Class<?> ledger = Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileDeltaLedger");
+        Class<?> snapshot = Class.forName(module, M3ProjectWatch.sdkPackage(module) + ".M3FileDeltaLedger$Snapshot");
         assertNotNull(ledger);
         assertNotNull(snapshot);
         return ledger.getMethod("scan", Path.class, snapshot, Collection.class, boolean.class)
@@ -599,7 +605,7 @@ class M3ProjectWatchTest {
         Object shared = constructor.newInstance(
                 watcher,
                 ScriptedWatcher.class,
-                ModuleLayer.boot().findModule("com.m3.file").orElseThrow());
+                M3ProjectWatch.sdkModule(ModuleLayer.boot()));
         var method = M3ProjectWatch.class.getDeclaredMethod(
                 "awaitBatch", watchType, Object.class, Object.class, optionsType, LongSupplier.class);
         method.setAccessible(true);
