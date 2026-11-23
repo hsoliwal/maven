@@ -54,14 +54,14 @@ jobs:
           cp source-maven-274/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified/polyglot.jar
           printf 'M3-FUSED-MAVEN274-V1\t%s\t%s\t%s\n' \
             53d7bd782077968e596a54cb7948ea22810734c3 \
-            3de2db48595b9015c1a513d89a3cef83be5257f5 \
+            6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0 \
             '${{ matrix.java }}' > qualified/SOURCE_RECEIPT.tsv
           (cd qualified && sha256sum polyglot.jar SOURCE_RECEIPT.tsv > SHA256SUMS && sha256sum -c SHA256SUMS)
       - name: Checkout exact Gradle PR 75 with original untracked consumer
         uses: actions/checkout@v4
         with:
           repository: hsoliwal/gradle
-          ref: 3de2db48595b9015c1a513d89a3cef83be5257f5
+          ref: 6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0
           path: consumer-gradle
           persist-credentials: false
           sparse-checkout: |
@@ -73,11 +73,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd qualified && sha256sum -c SHA256SUMS)
-          test "$(git -C consumer-gradle rev-parse HEAD)" = 3de2db48595b9015c1a513d89a3cef83be5257f5
+          test "$(git -C consumer-gradle rev-parse HEAD)" = 6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0
           test "$(git -C consumer-gradle hash-object m3/quality-bridge/src/test/java/io/synexia/gradle/quality/M3FusedStateCacheRealEngineTest.java)" = 3a253ab424b498e08c67fdd9da9bbfc8a7497a40
           expected=$(printf 'M3-FUSED-MAVEN274-V1\t%s\t%s\t%s' \
             53d7bd782077968e596a54cb7948ea22810734c3 \
-            3de2db48595b9015c1a513d89a3cef83be5257f5 \
+            6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0 \
             '${{ matrix.java }}')
           test "$(cat qualified/SOURCE_RECEIPT.tsv)" = "$expected"
       - name: Execute real cross-checkout fused Maven cache and Gradle TestKit
