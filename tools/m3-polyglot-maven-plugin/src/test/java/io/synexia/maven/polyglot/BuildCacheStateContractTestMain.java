@@ -225,6 +225,23 @@ public final class BuildCacheStateContractTestMain {
         run(nested, "build", true, null);
         check(count(nested, "build") == 2 && receipt(nested, "build") == null,
                 "declared nested M3DB directory stays uncached across runs");
+        Path broad = workspace(directory.resolve("broad-parent"));
+        Files.createDirectories(broad.resolve("child/.m3"));
+        Files.writeString(broad.resolve("child/.m3/module.m3db"), "old receipt");
+        Files.writeString(broad.resolve("child/data.txt"), "source");
+        manifest(broad, task("build", "copy", "child/data.txt", "result.txt", List.of("child")));
+        run(broad, "build", true, null);
+        run(broad, "build", true, null);
+        check(count(broad, "build") == 2 && receipt(broad, "build") == null,
+                "a declared parent tree containing a nested module DB can never authorize a hit");
+        Path plain = workspace(directory.resolve("ordinary-directory"));
+        Files.createDirectories(plain.resolve("src"));
+        Files.writeString(plain.resolve("src/input.txt"), "source");
+        manifest(plain, task("build", "copy", "src/input.txt", "result.txt", List.of("src")));
+        run(plain, "build", true, null);
+        List<String> reused = run(plain, "build", true, null);
+        check(count(plain, "build") == 1 && has(reused, "UP-TO-DATE build"),
+                "ordinary directory trees remain eligible for verified incremental reuse");
         for (String output : List.of(".m3/module.m3db", ".m3-watch/custom.txt",
                 "child/.m3/module.m3db", "child/.m3-watch/snapshot")) {
             Path module = workspace(directory.resolve("refuse-" + output.replace('/', '-')));

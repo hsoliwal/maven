@@ -385,8 +385,11 @@ for the whole `.m3` directory, database-owned paths below `.m3`, any
 provider dependencies remain uncached. The original command still executes
 for such an input, but cannot publish an incremental success receipt.
 Outputs overlapping database-owned paths or watcher checkpoints are refused
-before execution. Ordinary user files such as `.m3/user-config.json` stay
-readable, writable and cacheable for compatibility. Inputs must remain stable while
+before execution. Broad directory inputs are checked for nested state owners
+before cache admission; any such tree always executes through the original
+tool instead of repeatedly hashing changing nested receipts. Ordinary user
+files such as `.m3/user-config.json` stay readable, writable and cacheable
+for compatibility. Inputs must remain stable while
 the original tool runs.
 
 A packaged Maven plugin/JDK M3 engine has one stable class realm per module run.

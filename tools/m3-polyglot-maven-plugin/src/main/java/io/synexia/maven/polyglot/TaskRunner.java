@@ -240,7 +240,7 @@ public final class TaskRunner {
             ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).inheritIO();
             Map<String, String> environment = Map.copyOf(builder.environment());
             boolean tracked = (incremental || cache != null) && qualityCommand == null
-                    && !task.inputs().isEmpty() && !task.outputs().isEmpty() && InputStamps.separate(task)
+                    && !task.inputs().isEmpty() && !task.outputs().isEmpty() && InputStamps.separate(task, root)
                     && (cacheDirectory == null || task.inputs().stream()
                             .noneMatch(path -> overlaps(cacheDirectory, root.resolve(path))))
                     && !overlappingOutputs.contains(task.name());

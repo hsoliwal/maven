@@ -7,6 +7,7 @@ package io.synexia.maven.polyglot;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -20,10 +21,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /**
  * Content identities for the original task runner. Each file is hashed separately;
@@ -261,6 +264,41 @@ final class InputStamps {
             for (String output : task.outputs()) if (overlaps(input, output)) return false;
         }
         return task.outputs().stream().noneMatch(InputStamps::statePath);
+    }
+
+    /**
+     * A broad directory declaration may contain a nested reactor database
+     * even if the declaration itself is not in the reserved namespace.
+     * Inspect path names without opening file contents; an unreadable or very
+     * large tree simply declines optional reuse and executes the original tool.
+     * Direct ordinary .m3/user-config.json inputs remain eligible.
+     */
+    static boolean separate(TaskManifest.Task task, Path root) throws IOException {
+        if (!separate(task)) {
+            return false;
+        }
+        for (String declaration : task.inputs()) {
+            Path input = checked(root, declaration);
+            if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
+                continue;
+            }
+            try (Stream<Path> entries = Files.walk(input)) {
+                Iterator<Path> cursor = entries.iterator();
+                int seen = 0;
+                while (cursor.hasNext()) {
+                    if (++seen > MAX_PATHS) {
+                        return false;
+                    }
+                    Path entry = cursor.next();
+                    if (statePath(relative(root, entry)) || Files.isSymbolicLink(entry)) {
+                        return false;
+                    }
+                }
+            } catch (IOException | UncheckedIOException | SecurityException unavailable) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Share the module owner's reserved-state classifier with the lifecycle scanner. */
