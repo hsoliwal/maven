@@ -194,8 +194,8 @@ class M3ProjectWatchTest {
 
     @Test
     void boundedWatchCannotHideAnUncommittedSuccessfulGeneration() throws Exception {
-        assertThrows(IOException.class, () ->
-                M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
+        assertThrows(
+                IOException.class, () -> M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, true);
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, true, false);
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 2, false, false);
