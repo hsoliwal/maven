@@ -186,8 +186,20 @@ class M3ProjectWatchTest {
         Object options = from.invoke(null, original);
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3/module.m3db")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.m3/module.m3db")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3/MODULE.M3DB")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.M3-WATCH/STATE.BIN")));
         assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3-watch/state.bin")));
         assertFalse((Boolean) excludes.invoke(options, root.resolve("src/Watched.java")));
+    }
+
+    @Test
+    void boundedWatchCannotHideAnUncommittedSuccessfulGeneration() throws Exception {
+        assertThrows(
+                IOException.class, () -> M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, true);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, true, false);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 2, false, false);
+        M3ProjectWatch.requireCheckpointOnBoundedExit(1, 0, false, false);
     }
 
     @Nested
@@ -364,6 +376,19 @@ class M3ProjectWatchTest {
             assertTrue(result.hasExceptions());
             assertTrue(result.getExceptions().get(0) instanceof InterruptedException);
             assertArrayEquals(previous, Files.readAllBytes(image()));
+        }
+
+        @Test
+        void boundedWatcherRejectsSuccessForInputsChangedDuringItsOnlyBuild() throws Exception {
+            var original = request(1);
+            Path watched = root.resolve("src/Watched.java");
+            var result = execute(original, next -> {
+                write(watched, "class Watched { int value = 9; }\\n");
+                return successful("target");
+            });
+            assertTrue(result.hasExceptions(), "uncommitted bounded generation must fail");
+            assertTrue(result.getExceptions().toString().contains("not committed"));
+            assertFalse(Files.exists(image()), "no successful checkpoint may be persisted");
         }
 
         @Test
