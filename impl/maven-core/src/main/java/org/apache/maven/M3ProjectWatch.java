@@ -44,24 +44,34 @@ final class M3ProjectWatch {
     static Module sdkModule(ModuleLayer layer) {
         for (String name : List.of("org.m3jdk.file", "jdk.m3.file", "com.m3.file")) {
             Optional<Module> candidate = layer.findModule(name);
-            if (candidate.isPresent() && fileOwnerPackage(candidate.get()) != null) return candidate.get();
+            if (candidate.isPresent() && fileOwnerPackage(candidate.get()) != null) {
+                return candidate.get();
+            }
         }
         Optional<Module> base = layer.findModule("java.base");
         if (base.isPresent() && base.get().getPackages().contains("jdk.m3.file")
-                && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) return base.get();
+                && base.get().isExported("jdk.m3.file", M3ProjectWatch.class.getModule())) {
+            return base.get();
+        }
         throw new IllegalStateException("m3.watch requires org.m3jdk.file (--add-modules org.m3jdk.file),"
                 + " a compatible legacy M3File module, or an exported java.base file owner");
     }
 
     private static String fileOwnerPackage(Module module) {
-        if (module.getPackages().contains("jdk.m3.file")) return "jdk.m3.file";
-        if (module.getPackages().contains("com.m3.file")) return "com.m3.file";
+        if (module.getPackages().contains("jdk.m3.file")) {
+            return "jdk.m3.file";
+        }
+        if (module.getPackages().contains("com.m3.file")) {
+            return "com.m3.file";
+        }
         return null;
     }
 
     static String sdkPackage(Module module) {
         String owner = fileOwnerPackage(module);
-        if (owner == null) throw new IllegalStateException("not an M3File owner: " + module.getName());
+        if (owner == null) {
+            throw new IllegalStateException("not an M3File owner: " + module.getName());
+        }
         return owner;
     }
 
