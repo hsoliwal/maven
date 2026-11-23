@@ -97,12 +97,28 @@ jobs:
           for qualified in M3EclipseNativeDescriptorsRealEngineTest M3EclipseJdtRealEngineTest; do
             report="consumer-gradle/m3/quality-bridge/build/test-results/test/TEST-io.synexia.gradle.quality.${qualified}.xml"
             test -s "$report"
-            # Reject successful Gradle invocation with unexecuted/ignored tests.
-            grep -Eq 'tests="1"' "$report"
-            grep -Eq 'skipped="0"' "$report"
-            grep -Eq 'failures="0"' "$report"
-            grep -Eq 'errors="0"' "$report"
-            grep -Eq '<testcase ' "$report"
+            case "$qualified" in
+              M3EclipseNativeDescriptorsRealEngineTest) minimum=3 ;;
+              M3EclipseJdtRealEngineTest) minimum=1 ;;
+              *) echo "Unknown required acceptance suite: $qualified" >&2; exit 1 ;;
+            esac
+            # The descriptor suite has three real tests; more may be added.
+            # Require every declared case to have run and no skipped/failing nodes.
+            python3 - "$report" "$minimum" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          suite = ET.parse(sys.argv[1]).getroot()
+          minimum = int(sys.argv[2])
+          cases = suite.findall("testcase")
+          actual = int(suite.attrib.get("tests", "-1"))
+          if suite.tag != "testsuite" or actual < minimum or actual != len(cases):
+              raise SystemExit(f"JUnit test count mismatch: actual={actual}, cases={len(cases)}, min={minimum}")
+          if any(int(suite.attrib.get(field, "-1")) != 0 for field in ("skipped", "failures", "errors")):
+              raise SystemExit("JUnit suite contains skipped, failed, or errored tests")
+          if any(case.find(event) is not None for case in cases for event in ("skipped", "failure", "error")):
+              raise SystemExit("JUnit individual test contains an unreported non-success result")
+          print(f"PASS: {suite.attrib['name']} {actual} executed acceptance cases")
+          PY
           done
       - name: Retain cross-fork Gradle evidence
         if: always()
