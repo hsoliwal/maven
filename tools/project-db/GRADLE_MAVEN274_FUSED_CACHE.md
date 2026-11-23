@@ -4,7 +4,7 @@
 ## Exact provenance
 
 - **Source owner:** [merged Maven #274](https://github.com/hsoliwal/maven/pull/274), exact merge commit `53d7bd782077968e596a54cb7948ea22810734c3`. The original `InputStamps.pairedStamps` and `TaskRunner` share one **bounded input observation** across two distinct existing cache keys per observation phase, not a new cache format.
-- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `3de2db48595b9015c1a513d89a3cef83be5257f5`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
+- **Gradle receiver:** [draft Gradle #75](https://github.com/hsoliwal/gradle/pull/75), exact immutable candidate `6f2ac46ed9d6bbdda150c4c886434827b0e4f8c0`. Gradle's `M3PolyglotManifestTask` was already `@UntrackedTask` and exposed opt-in Maven `incremental`, `embedded` module state and an explicitly external Maven portable output cache.
 - **No new engine:** no DB adapter, generic source hash, launcher, native compiler, Maven lifecycle, JNI, Gradle cache key or task dependency is authored in this batch. Existing `EnableM3PolyglotStateBridge` OpenRewrite recipe remains its selected opt-in consumer pathway.
 
 ## Java 17/21 cross-fork acceptance
