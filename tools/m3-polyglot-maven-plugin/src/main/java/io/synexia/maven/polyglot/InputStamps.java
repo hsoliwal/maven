@@ -264,16 +264,33 @@ final class InputStamps {
     }
 
     /**
-     * M3 state belongs to the module DB or the M3File watcher, never to an
-     * ordinary reusable task. A declared parent directory or nested reactor
-     * path must not alias either owner's changing receipts/checkpoints.
+     * Reserve the M3DB directory itself, its owned files and any M3File
+     * watcher checkpoint, including in a nested reactor module. Do not reserve
+     * ordinary user files under .m3: the existing ModuleStateDb contract
+     * deliberately permits .m3/user-config.json as a declared input.
      */
     static boolean statePath(String path) {
         String normalized = path.replace('\\', '/');
-        for (String component : normalized.split("/")) {
-            if (component.equals(".m3") || component.equals(".m3-watch")) {
+        int start = 0;
+        while (start < normalized.length()) {
+            int end = normalized.indexOf('/', start);
+            String component = end < 0 ? normalized.substring(start) : normalized.substring(start, end);
+            if (component.equals(".m3-watch")) {
                 return true;
             }
+            if (component.equals(".m3")) {
+                if (end < 0) {
+                    return true; // The entire directory includes database-owned receipts.
+                }
+                String nested = ".m3/" + normalized.substring(end + 1);
+                if (ModuleStateDb.statePath(nested) || overlaps(nested, ".m3/polyglot-stamps")) {
+                    return true;
+                }
+            }
+            if (end < 0) {
+                break;
+            }
+            start = end + 1;
         }
         return ModuleStateDb.statePath(normalized) || overlaps(normalized, ".m3/polyglot-stamps");
     }
