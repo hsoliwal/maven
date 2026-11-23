@@ -393,6 +393,16 @@ identical**. Engine implementations loaded from mutable class directories
 Task inputs and outputs are still fully rehashed independently; no filesystem
 timestamp is allowed to authorize a runner cache hit.
 
+When incremental module state and a portable build cache are both enabled, the
+runner now derives their two different input keys from **one freshly observed
+declared input-tree digest** before execution and from another fresh observation
+after execution. This removes a redundant content traversal without changing
+either existing key, the persisted per-module M3DB format, the dependency
+generation checks or the output verification path. Missing files and same-time
+byte edits still invalidate reuse; no watcher timestamp or old M3DB digest is
+accepted as a cross-process proof of unchanged content. A later authenticated
+M3File generation bridge is required to avoid all fresh-process content hashing.
+
 The verified task runner still reads declared file contents; saved work is the tool's
 compilation or generation. The existing file/native compatibility API retains its guarded
 POSIX metadata digest reuse, while that metadata alone cannot authorize a runner cache hit.

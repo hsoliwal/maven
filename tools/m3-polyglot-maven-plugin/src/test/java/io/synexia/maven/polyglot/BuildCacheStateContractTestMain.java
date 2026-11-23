@@ -10,11 +10,13 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -38,6 +40,7 @@ public final class BuildCacheStateContractTestMain {
         }
         Path temporary = Files.createTempDirectory("m3-build-cache-state-");
         try {
+            fusedInputFingerprintParity(temporary.resolve("fused"));
             portableRestoreAndLocalReceipt(temporary.resolve("portable"));
             failedProducerRevokesConsumers(temporary.resolve("failed-producer"));
             changedGenerationWithSameBytes(temporary.resolve("generation"));
@@ -47,6 +50,34 @@ public final class BuildCacheStateContractTestMain {
             providerTasksStayLive(temporary.resolve("provider"));
             System.out.println("PASS: " + checks + " build-cache/module-state integration checks");
         } finally { erase(temporary); }
+    }
+
+    /** Keys keep their original bytes, while paired mode reads the declared input tree once. */
+    private static void fusedInputFingerprintParity(Path directory) throws Exception {
+        Path root = workspace(directory);
+        manifest(root, task("build", "copy", "input.txt", "result.txt", List.of("input.txt")));
+        TaskManifest.Task task = load(root).order("build").get(0);
+        List<String> command = List.of(java(), "-version");
+        Map<String, String> environment = Map.of("M3_TEST", "stable");
+        Map<String, String> generations = Map.of();
+        InputStamps.EngineTranscript engine = InputStamps.captureEngineTranscript();
+        InputStamps.StampPair paired = InputStamps.pairedStamps(
+                task, root, command, environment, generations, generations, engine);
+        String local = InputStamps.stamp(task, root, command, environment, generations, engine);
+        String portable = InputStamps.portableStamp(task, root, command, environment, generations, engine);
+        check(paired.local().equals(local) && paired.portable().equals(portable),
+                "fused observation preserves both existing cache keys");
+        FileTime time = Files.getLastModifiedTime(root.resolve("input.txt"));
+        Files.writeString(root.resolve("input.txt"), "two");
+        Files.setLastModifiedTime(root.resolve("input.txt"), time);
+        InputStamps.StampPair modified = InputStamps.pairedStamps(
+                task, root, command, environment, generations, generations, engine);
+        check(!modified.local().equals(local) && !modified.portable().equals(portable),
+                "same-timestamp input mutation invalidates both fused keys");
+        Files.delete(root.resolve("input.txt"));
+        expectIo(() -> InputStamps.pairedStamps(
+                task, root, command, environment, generations, generations, engine),
+                "a missing declared input refuses the fused key");
     }
 
     private static void portableRestoreAndLocalReceipt(Path directory) throws Exception {
