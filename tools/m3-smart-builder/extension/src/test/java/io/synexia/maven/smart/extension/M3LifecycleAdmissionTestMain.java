@@ -404,6 +404,7 @@ public final class M3LifecycleAdmissionTestMain {
         Files.writeString(nestedUser, "changed");
         check(!withNested.equals(moduleRootFingerprint(root)),
                 "nested module ordinary configuration is also source-visible");
+        Files.createDirectories(root.resolve("child/.M3"));
         String beforeCaseVariant = moduleRootFingerprint(root);
         Files.writeString(root.resolve("child/.M3/USER-NOTES.TXT"), "case-variant-user-input");
         check(!beforeCaseVariant.equals(moduleRootFingerprint(root)),
