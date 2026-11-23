@@ -278,27 +278,44 @@ final class InputStamps {
             return false;
         }
         for (String declaration : task.inputs()) {
-            Path input = checked(root, declaration);
-            if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
-                continue;
-            }
-            try (Stream<Path> entries = Files.walk(input)) {
-                Iterator<Path> cursor = entries.iterator();
-                int seen = 0;
-                while (cursor.hasNext()) {
-                    if (++seen > MAX_PATHS) {
-                        return false;
-                    }
-                    Path entry = cursor.next();
-                    if (statePath(relative(root, entry)) || Files.isSymbolicLink(entry)) {
-                        return false;
-                    }
-                }
-            } catch (IOException | UncheckedIOException | SecurityException unavailable) {
+            if (containsReservedState(root, checked(root, declaration))) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * A path may hide nested M3DB/M3File state below a declared parent. Unknown
+     * or unreadable input inventories grant no cache proof. This observes only
+     * path names; actual reuse still requires fresh content SHA verification.
+     */
+    static boolean containsReservedState(Path root, Path input) {
+        if (!input.startsWith(root)) {
+            return false;
+        }
+        if (statePath(relative(root, input)) || Files.isSymbolicLink(input)) {
+            return true;
+        }
+        if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try (Stream<Path> entries = Files.walk(input)) {
+            Iterator<Path> cursor = entries.iterator();
+            int seen = 0;
+            while (cursor.hasNext()) {
+                if (++seen > MAX_PATHS) {
+                    return true;
+                }
+                Path entry = cursor.next();
+                if (statePath(relative(root, entry)) || Files.isSymbolicLink(entry)) {
+                    return true;
+                }
+            }
+        } catch (IOException | UncheckedIOException | SecurityException unavailable) {
+            return true;
+        }
+        return false;
     }
 
     /** Share the module owner's reserved-state classifier with the lifecycle scanner. */

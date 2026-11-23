@@ -403,7 +403,7 @@ public final class TaskRunner {
     }
 
     /** Provider/toolchain reads cannot alias products, internal state, or the artifact store. */
-    private static void validateProviderInputs(TaskManifest.Task task, Path root, Path cacheDirectory,
+    static void validateProviderInputs(TaskManifest.Task task, Path root, Path cacheDirectory,
             M3ToolReuseInputs reuse) throws IOException {
         for (String output : task.outputs()) {
             if (overlaps(root.resolve(".m3"), checked(root, output))) {
@@ -412,6 +412,7 @@ public final class TaskRunner {
         }
         for (Path input : reuse.additionalInputs()) {
             if (overlaps(input, root.resolve(".m3"))
+                    || InputStamps.containsReservedState(root, input)
                     || cacheDirectory != null && overlaps(input, cacheDirectory)) {
                 throw new IOException("provider input overlaps state or artifact cache");
             }

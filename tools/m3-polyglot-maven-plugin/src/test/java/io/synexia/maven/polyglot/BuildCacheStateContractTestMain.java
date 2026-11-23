@@ -241,6 +241,19 @@ public final class BuildCacheStateContractTestMain {
         run(broad, "build", true, null);
         check(count(broad, "build") == 2 && receipt(broad, "build") == null,
                 "a declared parent tree containing a nested module DB can never authorize a hit");
+        Path provider = workspace(directory.resolve("provider-nested"));
+        Files.createDirectories(provider.resolve("toolchain/child/.m3"));
+        Files.writeString(provider.resolve("toolchain/child/.m3/module.m3db"), "other module DB");
+        TaskManifest.Task providerTask = loadTask(provider);
+        M3ToolReuseInputs providerInputs = new M3ToolReuseInputs("m3.nested-state.v1",
+                List.of(provider.resolve("toolchain")), List.of(), false);
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, providerInputs),
+                "provider additional input trees containing another module's DB cannot authorize reuse");
+        Files.delete(provider.resolve("toolchain/child/.m3/module.m3db"));
+        Files.delete(provider.resolve("toolchain/child/.m3"));
+        TaskRunner.validateProviderInputs(providerTask, provider, null, providerInputs);
+        check(true, "ordinary provider additional input directories remain admissible");
+
         Path plain = workspace(directory.resolve("ordinary-directory"));
         Files.createDirectories(plain.resolve("src"));
         Files.writeString(plain.resolve("src/input.txt"), "source");
@@ -264,6 +277,11 @@ public final class BuildCacheStateContractTestMain {
         run(ordinary, "build", true, null);
         check(count(ordinary, "build") == 1 && Files.readString(ordinary.resolve(".m3/user-config.json")).equals("one"),
                 "ordinary user configuration in .m3 remains writable and cacheable");
+    }
+
+    private static TaskManifest.Task loadTask(Path root) throws IOException {
+        manifest(root, task("build", "copy", "input.txt", "result.txt", List.of("input.txt")));
+        return load(root).order("build").get(0);
     }
 
     private static void cacheDirectoryBoundaries(Path directory) throws Exception {
