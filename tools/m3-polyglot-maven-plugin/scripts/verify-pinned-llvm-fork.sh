@@ -112,6 +112,7 @@ mkdir -p -- "$BUILD" "$EVIDENCE"
 cmake -S "$SOURCE/llvm" -B "$BUILD" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_ENABLE_PROJECTS=clang \
+  -DCLANG_ENABLE_CIR=OFF \
   -DLLVM_TARGETS_TO_BUILD=X86 \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_EXAMPLES=OFF \
@@ -119,7 +120,7 @@ cmake -S "$SOURCE/llvm" -B "$BUILD" -G Ninja \
   -DLLVM_PARALLEL_COMPILE_JOBS=2 \
   -DLLVM_PARALLEL_LINK_JOBS=1 \
   2>&1 | tee "$EVIDENCE/configure.log"
-cmake --build "$BUILD" --target clang clang++ llc --parallel 2 \
+cmake --build "$BUILD" --target clang llc --parallel 2 \
   2>&1 | tee "$EVIDENCE/native-build.log"
 for tool in clang clang++ llc; do
   test -x "$BUILD/bin/$tool" || { printf 'Expected source-built tool missing: %s\n' "$tool" >&2; exit 67; }
