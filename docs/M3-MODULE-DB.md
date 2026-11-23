@@ -129,6 +129,10 @@ admitted source bytes on every reconciliation: **it is not a gap-free
 filesystem-change attestation** and cannot authorize cross-process hash bypass.
 Unknown processor/plugin effects retain the original execution path.
 
+See [authenticated M3File generation reuse](M3-FILE-GENERATION-REUSE.md) for
+the explicit not-yet-implemented cross-process zero-rehash acceptance gates.
+The existing per-module receipt cache still verifies exact file contents.
+
 ## Next native Maven integration gates
 
 Maven Core has `M3BuildFingerprintService` for typed producer-supplied
