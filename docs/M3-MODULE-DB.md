@@ -105,6 +105,28 @@ in these adapter tests and are not part of Maven's artifact-store contract.
 - `clean` removes build outputs as usual; when a declared output disappears,
   the durable state cannot grant a hit.
 
+## M3File watcher and module database coexistence
+
+The current M3JDK file owner is `org.m3jdk.file` exporting `jdk.m3.file`;
+older `com.m3.file` and `jdk.m3.file` module APIs remain compatibility inputs.
+These two persisted artifacts have separate source owners and purposes:
+
+- `.m3/module.m3db`: Maven's per-module verified task/goal receipts (M3DB owner).
+- `.m3-watch/state.bin`: the source-owned M3File watcher checkpoint, not a
+  second Maven success cache or permission to skip a goal.
+
+The original watcher excludes any directory named `.m3` from its tracked
+input inventory even when the caller replaces the optional ignored-name list.
+The guarded Maven lifecycle module-root fingerprint ignores `.m3`,
+`.m3-watch` and `.git` at every nested reactor depth, and refuses explicitly
+declared internal-state inputs. Thus publication of module receipts or the
+M3File checkpoint does not change the fingerprint of unrelated source files.
+A change to an actual source, dependency, compiler, or Maven configuration
+still invalidates applicable reuse. The M3File ledger currently re-hashes
+admitted source bytes on every reconciliation: **it is not a gap-free
+filesystem-change attestation** and cannot authorize cross-process hash bypass.
+Unknown processor/plugin effects retain the original execution path.
+
 ## Next native Maven integration gates
 
 Maven Core has `M3BuildFingerprintService` for typed producer-supplied

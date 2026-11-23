@@ -11,11 +11,12 @@ generation. The first build starts immediately, and only one lifecycle runs at a
 
 ## Requirements
 
-Use a built installation of this Maven fork and an M3JDK21 installation containing the
-original named `com.m3.file` module. Resolve that module in the JVM running Maven with
-`--add-modules com.m3.file`, preserving any other required JVM options. For a separately
-installed SDK module, its module path must also be configured. Check `mvn --version` to
-confirm which Maven and Java installations are selected.
+Use a built installation of this Maven fork and an M3JDK21 installation containing
+the current `org.m3jdk.file` module (which exports `jdk.m3.file`). Resolve it in
+the JVM running Maven with `--add-modules org.m3jdk.file`, preserving other JVM
+options. The older `jdk.m3.file` and `com.m3.file` named modules remain compatible;
+an explicitly exported `java.base/jdk.m3.file` package is also recognized.
+Check `mvn --version` and configure the appropriate JDK/module path.
 
 The ordinary bootstrap Maven used to build this repository does not acquire this feature
 from a project property. The enhanced Maven executable must be running. Watch mode refuses
@@ -75,7 +76,7 @@ can take longer.
 | `m3.watch.maxBatchMillis` | `1000` | Fixed maximum additional wait for a pending batch. |
 | `m3.watch.inputs` | `.` | Comma-separated input paths under the project root. |
 | `m3.watch.excludes` | empty | Explicit paths to exclude, including custom output directories. |
-| `m3.watch.ignoredDirectoryNames` | `target,.git` | Excluded directory names throughout the root. |
+| `m3.watch.ignoredDirectoryNames` | `target,.git,.m3` | Additional ignored directory names throughout the root; internal `.m3` and `.m3-watch` remain excluded even when overridden. |
 | `m3.watch.timestampChanges` | `true` | Include timestamp changes alongside content and size changes. |
 | `m3.watch.reconcileSeconds` | `30` | Full filesystem reconciliation interval, from 1 to 86400 seconds. |
 | `m3.watch.mode` | `AUTO` | Shared impact-selector policy: `AUTO`, `FULL` or `INCREMENTAL`. |
@@ -96,8 +97,19 @@ compilation, plugin skipping or a measured build-time speedup.
 
 Every observed `.mvn` startup-configuration change requires restarting Maven, including
 a change seen while collecting a batch. Inputs and source roots must stay within the
-watched root. Custom output directories need explicit exclusions. The successful
-checkpoint is stored through the original M3File ledger in `.m3-watch/state.bin`.
+watched root. Custom output directories need explicit exclusions. The successful checkpoint is stored through the original M3File ledger in
+`.m3-watch/state.bin`. This source-owned ledger is distinct from the opt-in
+Maven task receipts in `.m3/module.m3db`. The watcher still reads and hashes
+input bytes during reconciliation; it cannot authorize cross-process cache reuse
+or arbitrary Mojo skipping without independent, complete build evidence.
+
+Module-state directories named `.m3` are excluded at any reactor depth, even if the
+caller replaces the default ignored-name list. Otherwise successful M3DB receipt
+publication could itself be interpreted as a new input generation and cause
+a self-triggered build loop. The guarded lifecycle fingerprint also excludes `.m3` and `.m3-watch`
+directories while scanning a module tree. Explicitly declared inputs under
+these reserved paths are rejected, rather than silently trusted. This exclusion
+does not declare any compiler or plugin outputs to be safe for reuse.
 
 The watcher observes saved filesystem state. It does not capture unsaved editor buffers,
 all external/environment inputs, or every change-and-restore sequence during a build.

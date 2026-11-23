@@ -55,6 +55,7 @@ public final class M3LifecycleAdmissionTestMain {
             rejectsUnqualifiedProjectLayouts(temporary);
             preservesCompilerCreatedFileInventory(temporary);
             excludesOnlyInternalSystemCoordination(temporary);
+            internalM3StateDoesNotPerturbModuleFingerprint(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -363,6 +364,44 @@ public final class M3LifecycleAdmissionTestMain {
                     "lookalike property names cannot escape input tracking");
         }
         check(!System.getProperties().containsKey(leaseName), "closing the lease removes its coordination property");
+    }
+
+    /** Internal module receipts and watcher snapshots must not invalidate the original goal. */
+    private static void internalM3StateDoesNotPerturbModuleFingerprint(Path temporary) throws Exception {
+        Path root = Files.createDirectories(temporary.resolve("internal-state-fingerprint"));
+        Path source = Files.createDirectories(root.resolve("src")).resolve("A.java");
+        Files.writeString(source, "class A {}\\n");
+        Files.createDirectories(root.resolve("child"));
+        String baseline = moduleRootFingerprint(root);
+        Files.createDirectories(root.resolve("child/.m3"));
+        Files.createDirectories(root.resolve("child/.m3-watch"));
+        Files.createDirectories(root.resolve(".m3"));
+        Files.createDirectories(root.resolve(".m3-watch"));
+        Files.writeString(root.resolve(".m3/module.m3db"), "first");
+        Files.writeString(root.resolve("child/.m3/module.m3db"), "first");
+        Files.writeString(root.resolve(".m3-watch/state.bin"), "first");
+        Files.writeString(root.resolve("child/.m3-watch/state.bin"), "first");
+        check(baseline.equals(moduleRootFingerprint(root)),
+                "internal M3DB and M3File state never enter module-root fingerprints");
+        Files.writeString(root.resolve("child/.m3/module.m3db"), "second");
+        Files.writeString(root.resolve(".m3-watch/state.bin"), "second");
+        check(baseline.equals(moduleRootFingerprint(root)),
+                "updated receipts and watcher checkpoints cannot trigger a new module generation");
+        Files.writeString(source, "class A { int a; }\\n");
+        check(!baseline.equals(moduleRootFingerprint(root)),
+                "ordinary source bytes still change the module generation");
+    }
+
+    private static String moduleRootFingerprint(Path root) throws Exception {
+        var constructor = M3LifecycleFingerprint.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Object fingerprint = constructor.newInstance();
+        Method tree = M3LifecycleFingerprint.class.getDeclaredMethod("moduleTree", Path.class, List.class);
+        tree.setAccessible(true);
+        tree.invoke(fingerprint, root, List.of());
+        Method finish = M3LifecycleFingerprint.class.getDeclaredMethod("finish");
+        finish.setAccessible(true);
+        return (String) finish.invoke(fingerprint);
     }
 
     private static String propertyFingerprint(Properties properties, boolean system) throws Exception {

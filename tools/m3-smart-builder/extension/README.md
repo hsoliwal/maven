@@ -28,6 +28,12 @@ The original Maven plugin executes every cache miss. Reuse is admitted for this 
 | maven-compiler-plugin | 3.13.0, 3.14.1 | compile, testCompile |
 | maven-jar-plugin | 3.4.1, 3.4.2 | jar |
 
+The module-root fingerprint excludes internal `.m3`, `.m3-watch` and `.git`
+directories at any nested reactor depth; explicitly declared internal state
+inputs are refused. In particular, writes to `.m3/module.m3db` or the separate
+M3File checkpoint `.m3-watch/state.bin` must not invalidate the source
+generation of another goal. Ordinary source and dependency bytes remain hashed.
+
 The adapter resolves the goal's concrete dependencies through Maven, preserves classpath order,
 and hashes dependency bytes before looking up success. Its key also covers module sources and
 resources, effective POM/configuration, ancestor POMs, Maven settings/toolchains, environment,

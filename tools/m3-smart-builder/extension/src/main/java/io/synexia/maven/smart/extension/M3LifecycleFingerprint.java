@@ -80,7 +80,7 @@ final class M3LifecycleFingerprint {
         new MavenXpp3Writer().write(model, project.getModel());
         value.text(model.toString());
         value.configuration(execution.getConfiguration(), new PluginParameterExpressionEvaluator(session, execution));
-        value.tree(root, List.of(build, root.resolve(".m3"), root.resolve(".git")));
+        value.moduleTree(root, List.of(build));
         for (MavenProject parent = project; parent != null; parent = parent.getParent()) {
             if (parent.getFile() != null) value.tree(parent.getFile().toPath(), List.of());
         }
@@ -100,14 +100,20 @@ final class M3LifecycleFingerprint {
         for (Resource resource : project.getResources()) value.source(root, build, resource.getDirectory());
         for (Resource resource : project.getTestResources()) value.source(root, build, resource.getDirectory());
         for (String filter : project.getFilters()) value.tree(path(root, filter), List.of());
-        for (Path dependency : dependencies) value.tree(dependency, List.of());
-        for (Path input : goalInputs) value.tree(input, List.of());
+        for (Path dependency : dependencies) {
+            refuseInternalState(root, dependency);
+            value.tree(dependency, List.of());
+        }
+        for (Path input : goalInputs) {
+            refuseInternalState(root, input);
+            value.tree(input, List.of());
+        }
         String extra = M3LifecycleExecutionStrategy.property(session, "m3.lifecycle.inputs", "");
         if (!extra.isBlank()) {
             for (String declaration : extra.split(",", -1)) {
                 if (declaration.isBlank()) throw new IOException("empty extra lifecycle input");
                 Path input = path(root, declaration.trim());
-                if (input.startsWith(root.resolve(".m3"))) throw new IOException("database is an input");
+                refuseInternalState(root, input);
                 value.tree(input, List.of());
             }
         }
@@ -150,7 +156,7 @@ final class M3LifecycleFingerprint {
                     || source.equals(build.resolve("generated-test-sources/test-annotations"))) return;
             throw new IOException("unqualified generated source root");
         }
-        if (source.startsWith(root.resolve(".m3"))) throw new IOException("database source root");
+        refuseInternalState(root, source);
         if (!source.startsWith(root)) tree(source, List.of());
     }
 
@@ -202,7 +208,30 @@ final class M3LifecycleFingerprint {
         for (Xpp3Dom child : element.getChildren()) configuration(child, evaluator);
     }
 
+    /** Internal coordination is not source input even when a module contains nested reactors. */
+    private void moduleTree(Path root, List<Path> excluded) throws IOException {
+        tree(root, excluded, true);
+    }
+
+    private static void refuseInternalState(Path root, Path input) throws IOException {
+        if (!input.startsWith(root)) return;
+        for (Path part : root.relativize(input)) {
+            if (isInternalState(part)) throw new IOException("M3 internal state cannot be a build input: " + input);
+        }
+    }
+
+    private static boolean isInternalState(Path name) {
+        return name != null && switch (name.toString()) {
+            case ".m3", ".m3-watch", ".git" -> true;
+            default -> false;
+        };
+    }
+
     private void tree(Path requested, List<Path> excluded) throws IOException {
+        tree(requested, excluded, false);
+    }
+
+    private void tree(Path requested, List<Path> excluded, boolean moduleRoot) throws IOException {
         Path root = requested.toAbsolutePath().normalize();
         text(root.toString());
         rejectLinks(root);
@@ -218,12 +247,17 @@ final class M3LifecycleFingerprint {
             }
             @Override public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
                     throws IOException {
-                if (excluded.stream().anyMatch(directory::startsWith)) return FileVisitResult.SKIP_SUBTREE;
+                if (excluded.stream().anyMatch(directory::startsWith)
+                        || (moduleRoot && !directory.equals(root) && isInternalState(directory.getFileName()))) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
                 admit(directory, attributes);
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                if (!excluded.contains(file)) admit(file, attributes);
+                if (!excluded.contains(file) && !(moduleRoot && isInternalState(file.getFileName()))) {
+                    admit(file, attributes);
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
