@@ -99,7 +99,11 @@ final class M3LifecycleFingerprint {
         for (String source : project.getTestCompileSourceRoots()) value.source(root, build, source);
         for (Resource resource : project.getResources()) value.source(root, build, resource.getDirectory());
         for (Resource resource : project.getTestResources()) value.source(root, build, resource.getDirectory());
-        for (String filter : project.getFilters()) value.tree(path(root, filter), List.of());
+        for (String filter : project.getFilters()) {
+            Path input = path(root, filter);
+            refuseInternalState(root, input);
+            value.tree(input, List.of());
+        }
         for (Path dependency : dependencies) {
             refuseInternalState(root, dependency);
             value.tree(dependency, List.of());

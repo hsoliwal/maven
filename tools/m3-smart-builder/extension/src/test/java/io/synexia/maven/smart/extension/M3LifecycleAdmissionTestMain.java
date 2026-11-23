@@ -423,6 +423,20 @@ public final class M3LifecycleAdmissionTestMain {
             }
         }
         check(rejected, "an explicitly declared M3DB-owned path remains forbidden");
+        for (String owned : List.of(".m3/module.m3db", "child/.m3/module.m3db",
+                "child/.m3-watch/state.bin", ".M3/MODULE.M3DB")) {
+            boolean denied = false;
+            try {
+                guard.invoke(null, root, root.resolve(owned));
+            } catch (InvocationTargetException failure) {
+                if (failure.getCause() instanceof IOException) {
+                    denied = true;
+                } else {
+                    throw failure;
+                }
+            }
+            check(denied, "Maven filters and other direct inputs must reject owned M3 state: " + owned);
+        }
 
     }
 
