@@ -80,7 +80,8 @@ final class M3LifecycleFingerprint {
         new MavenXpp3Writer().write(model, project.getModel());
         value.text(model.toString());
         value.configuration(execution.getConfiguration(), new PluginParameterExpressionEvaluator(session, execution));
-        value.moduleTree(root, reactorOutputExclusions(session, project, root, build));
+        List<Path> reactorExclusions = reactorOutputExclusions(session, project, root, build);
+        value.moduleTree(root, reactorExclusions);
         for (MavenProject parent = project; parent != null; parent = parent.getParent()) {
             if (parent.getFile() != null) value.tree(parent.getFile().toPath(), List.of());
         }
@@ -95,10 +96,22 @@ final class M3LifecycleFingerprint {
                 session.getRequest().getGlobalToolchainsFile()}) {
             if (file != null) value.tree(file.toPath(), List.of());
         }
-        for (String source : project.getCompileSourceRoots()) value.source(root, build, source);
-        for (String source : project.getTestCompileSourceRoots()) value.source(root, build, source);
-        for (Resource resource : project.getResources()) value.source(root, build, resource.getDirectory());
-        for (Resource resource : project.getTestResources()) value.source(root, build, resource.getDirectory());
+        for (String source : project.getCompileSourceRoots()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, source);
+            value.source(root, build, source);
+        }
+        for (String source : project.getTestCompileSourceRoots()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, source);
+            value.source(root, build, source);
+        }
+        for (Resource resource : project.getResources()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, resource.getDirectory());
+            value.source(root, build, resource.getDirectory());
+        }
+        for (Resource resource : project.getTestResources()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, resource.getDirectory());
+            value.source(root, build, resource.getDirectory());
+        }
         for (String filter : project.getFilters()) {
             Path input = path(root, filter);
             refuseInternalState(root, input);
@@ -175,6 +188,23 @@ final class M3LifecycleFingerprint {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * A parent Mojo may explicitly consume generated child-reactor files via
+     * a customized source/resource root. Such output must never be omitted
+     * from its source closure merely because a different reactor project owns
+     * it. Fail closed to original Maven execution on any ancestor/descendant
+     * overlap; direct dependency artifacts remain separately content-hashed.
+     */
+    static void refuseNestedReactorOutputRoot(Path root, Path build, List<Path> exclusions,
+            String declaration) throws IOException {
+        Path source = path(root, declaration);
+        for (Path excluded : exclusions) {
+            if (!excluded.equals(build) && (source.startsWith(excluded) || excluded.startsWith(source))) {
+                throw new IOException("source or resource root overlaps another reactor module's output: " + source);
+            }
+        }
     }
 
     static String outputs(List<Path> outputs) throws IOException {

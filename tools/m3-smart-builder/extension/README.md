@@ -32,7 +32,10 @@ Parent module fingerprints also exclude output directories of nested Maven
 reactor projects, using the original `MavenSession` project metadata rather
 than guessing by directory name. Nested project sources and POMs still
 participate in conservative parent input identity; explicit dependency
-artifacts remain hashed through the original goal-closure path. This avoids
+artifacts remain hashed through the original goal-closure path. A parent
+source/resource root that contains (or is contained in) a nested reactor
+output directory is **not qualified for reuse**: that overlap must take
+the original Maven execution path rather than hiding real input bytes. This avoids
 re-hashing generated child module output trees as parent-module inputs.
 
 The module-root fingerprint excludes database-owned files and directories

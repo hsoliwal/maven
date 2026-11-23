@@ -463,6 +463,17 @@ public final class M3LifecycleAdmissionTestMain {
                 fixture.session(), fixture.project(), root, root.resolve("target"));
         check(exclusions.contains(nestedOutput),
                 "original reactor metadata identifies the exact nested module output directory");
+        M3LifecycleFingerprint.refuseNestedReactorOutputRoot(root, root.resolve("target"),
+                exclusions, "nested/src");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "nested"),
+                "parent resource/source root including child generated outputs must run uncached");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "nested/target/classes"),
+                "parent source root inside child output directory must run uncached");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "."),
+                "parent project-root resources cannot hide a nested module's generated outputs");
         String before = moduleRootFingerprint(root, exclusions);
         Files.createDirectories(nestedOutput.resolve("classes"));
         Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v1");
