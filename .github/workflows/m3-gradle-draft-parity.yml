@@ -1,0 +1,275 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 source-built Maven acceptance of Gradle draft parity 71-73
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m3-gradle-draft-parity.yml'
+      - 'tools/project-db/scripts/verify-gradle-draft-source-pins.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-maven-owner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Guard immutable source identities and negative-admission gates
+        run: sh tools/project-db/scripts/verify-gradle-draft-source-pins.sh
+      - name: Checkout exact merged original Maven source (not any draft)
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/maven
+          ref: dc9c0fcdffe89c2b0388c13612ffc197efb37cbb
+          path: source-owner
+          persist-credentials: false
+      - name: Build original Maven engines and require native Derby transaction contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source-owner rev-parse HEAD)" = dc9c0fcdffe89c2b0388c13612ffc197efb37cbb
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml install
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml -Pm3-derby verify | tee m3-original-derby-verify.log
+          grep -Fq 'actual Derby JDBC transaction/restart/recovery assertions' m3-original-derby-verify.log
+          mvn -B -ntp -f source-owner/tools/project-db/pom.xml verify
+          test -s source-owner/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s source-owner/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar
+      - name: Stage a source/JDK/byte-sealed original Maven bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qualified/derby qualified/llvm/native
+          cp source-owner/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified/polyglot.jar
+          cp source-owner/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar qualified/project-db.jar
+          cp source-owner/tools/project-db/scripts/M3GradleTestKitReceiptMain.java qualified/M3GradleTestKitReceiptMain.java
+          cp source-owner/tools/project-db/scripts/verify-gradle-testkit-results.sh qualified/verify-gradle-testkit-results.sh
+          test "$(git -C source-owner hash-object tools/project-db/scripts/M3GradleTestKitReceiptMain.java)" = 6fd1f257081b433b98b29eea3b5651bf2449d02b
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/m3-build.tsv qualified/llvm/
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/native/hello.c qualified/llvm/native/
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/native/message.h qualified/llvm/native/
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml -Pm3-derby \
+            org.apache.maven.plugins:maven-dependency-plugin:3.7.1:copy-dependencies \
+            -DincludeGroupIds=org.apache.derby -DincludeScope=test \
+            -DoutputDirectory="$GITHUB_WORKSPACE/qualified/derby"
+          test -s qualified/derby/derby-10.16.1.1.jar
+          test -s qualified/derby/derbytools-10.16.1.1.jar
+          printf 'M3-GRADLE-DRAFT-SOURCES-V1\t%s\t%s\n' \
+            dc9c0fcdffe89c2b0388c13612ffc197efb37cbb '${{ matrix.java }}' \
+            > qualified/SOURCE_RECEIPT.tsv
+          (cd qualified && find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Publish original Maven runtime bytes for exact Gradle consumption
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-source-owners-jdk-${{ matrix.java }}
+          path: qualified/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain original Maven verification diagnostics even if owner fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-original-maven-verification-jdk-${{ matrix.java }}
+          path: m3-original-derby-verify.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  source-pinned-gradle-consumers:
+    needs: original-maven-owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+        slice: ['llvm-compdb', 'derby-jdbc', 'project-db-nine']
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Fetch exact source/JDK-bound Maven JARs and evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: m3-source-owners-jdk-${{ matrix.java }}
+          path: qualified
+      - name: Refuse changed Maven engine, driver, source fixture or JUnit parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd qualified && sha256sum -c SHA256SUMS)
+          expected=$(printf 'M3-GRADLE-DRAFT-SOURCES-V1\t%s\t%s' \
+            dc9c0fcdffe89c2b0388c13612ffc197efb37cbb '${{ matrix.java }}')
+          test "$(cat qualified/SOURCE_RECEIPT.tsv)" = "$expected"
+          test -s qualified/polyglot.jar
+          test -s qualified/project-db.jar
+      - name: Checkout exact Gradle PR 71 (Maven-owned Clang compilation DB)
+        if: matrix.slice == 'llvm-compdb'
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: a5b5b0a1b297f54d7782ae306e452aff59354220
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Checkout exact Gradle PR 72 (optional Derby JDBC)
+        if: matrix.slice == 'derby-jdbc'
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: 62783f252977c7dfc7fcd4a568dc4f7db2fdc817
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Checkout exact Gradle PR 73 (current nine project DB cases)
+        if: matrix.slice == 'project-db-nine'
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: 3510a6c277efe7b9b1c3a365325d42728959dee6
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Run only the exact selected Gradle TestKit classes
+        shell: bash
+        env:
+          M3_REQUIRE_DERBY_REAL_ENGINE: '1'
+          JAVA_TOOL_OPTIONS: '-Dderby.stream.error.field=java.lang.System.err'
+        run: |
+          set -euo pipefail
+          case '${{ matrix.slice }}' in
+            llvm-compdb)
+              target=a5b5b0a1b297f54d7782ae306e452aff59354220
+              export M3_MAVEN_COMPILEDB_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+              export M3_MAVEN_COMPILEDB_FIXTURES="$GITHUB_WORKSPACE/qualified/llvm"
+              command -v clang
+              command -v clang++
+              export M3_LLVM_HOME="$(dirname "$(dirname "$(command -v clang)")")"
+              ;;
+            derby-jdbc)
+              target=62783f252977c7dfc7fcd4a568dc4f7db2fdc817
+              export M3_MAVEN_DERBY_ENGINE_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+              export M3_DERBY_DRIVER_DIRECTORY="$GITHUB_WORKSPACE/qualified/derby"
+              ;;
+            project-db-nine)
+              target=3510a6c277efe7b9b1c3a365325d42728959dee6
+              export M3_POLYGLOT_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+              export M3_PROJECT_DB_JAR="$GITHUB_WORKSPACE/qualified/project-db.jar"
+              export M3_PRUNED_POLYGLOT_JAR="$M3_POLYGLOT_JAR"
+              export M3_PRUNED_PROJECT_DB_JAR="$M3_PROJECT_DB_JAR"
+              ;;
+            *) echo 'unexpected Gradle consumer slice' >&2; exit 2;;
+          esac
+          test "$(git -C consumer-gradle rev-parse HEAD)" = "$target"
+          chmod +x consumer-gradle/gradlew
+          cd consumer-gradle
+          case '${{ matrix.slice }}' in
+            llvm-compdb)
+              ./gradlew --no-daemon --stacktrace --console=plain \
+                -p m3/quality-bridge test \
+                --tests 'io.synexia.gradle.quality.M3LlvmCompileDbTaskTest' \
+                --tests 'io.synexia.gradle.quality.M3LlvmCompileDbRealEngineTest' --rerun-tasks
+              ;;
+            derby-jdbc)
+              ./gradlew --no-daemon --stacktrace --console=plain \
+                -p m3/quality-bridge test \
+                --tests 'io.synexia.gradle.quality.M3DerbyRealEngineTest' --rerun-tasks
+              ;;
+            project-db-nine)
+              ./gradlew --no-daemon --stacktrace --console=plain \
+                -p m3/quality-bridge test \
+                --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+                --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+                --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+                --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' --rerun-tasks
+              ;;
+          esac
+      - name: Require original Maven secure nine-case receipt or exact no-skips targeted reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          report=consumer-gradle/m3/quality-bridge/build/test-results/test
+          case '${{ matrix.slice }}' in
+            project-db-nine)
+              sh qualified/verify-gradle-testkit-results.sh "$report" current-nine
+              ;;
+            llvm-compdb|derby-jdbc)
+              python3 tools/project-db/scripts/does-not-exist.py 2>/dev/null && exit 98 || :
+              python3 - "$report" '${{ matrix.slice }}' <<'PY'
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          base, slice = Path(sys.argv[1]), sys.argv[2]
+          if slice == "llvm-compdb":
+              suites = {
+                  "M3LlvmCompileDbTaskTest": {
+                      "delegatesTwiceWithoutNativeExecutionOrTaskCaching()",
+                      "refusesWrongDigestUnknownTargetAndLinkedOutputBeforeStartingMaven()",
+                      "rejectsForeignReceiptAndUnpinnedProvider()"
+                  },
+                  "M3LlvmCompileDbRealEngineTest": {
+                      "publishedDatabaseMatchesOriginalCompilerVectorsAndIsStable()",
+                      "wrongEngineDigestRefusesBeforeMavenCanPublish()"
+                  }
+              }
+          elif slice == "derby-jdbc":
+              suites = {"M3DerbyRealEngineTest": {
+                  "missingDerbyDriverRefusesBeforeExecutingToolOrFallingBack()",
+                  "originalDerbyDriverReopensAndVerifiesSealedStateAcrossGradleInvocations()",
+                  "wrongDriverShaIsRejectedByGradleBeforeStartingMaven()",
+                  "symlinkedDerbyDatabaseDirectoryFailsClosedWithoutToolExecution()"
+              }}
+          else:
+              raise SystemExit("unsupported receipt slice")
+          pkg = "io.synexia.gradle.quality."
+          found = {p.name for p in base.glob("TEST-" + pkg + "M3*.xml")}
+          expected = {"TEST-" + pkg + s + ".xml" for s in suites}
+          assert found == expected, (found, expected)
+          for suite, wanted in suites.items():
+              path = base / ("TEST-" + pkg + suite + ".xml")
+              assert path.is_file() and not path.is_symlink() and path.stat().st_size <= 1024*1024
+              raw = path.read_bytes()
+              assert b"<!DOCTYPE" not in raw and b"<!ENTITY" not in raw
+              root = ET.fromstring(raw)
+              assert root.tag == "testsuite" and root.get("name") == pkg + suite
+              assert all(root.get(k) == str(v) for k,v in (
+                  ("tests", len(wanted)), ("skipped",0), ("failures",0), ("errors",0)))
+              cases = [c for c in root if c.tag == "testcase"]
+              assert len(cases) == len(wanted)
+              assert {c.get("name") for c in cases} == wanted
+              assert all(c.get("classname") == pkg + suite and not list(c) for c in cases)
+          print("PASS: original source-built Maven through Gradle", slice,
+                "testcases", sum(len(v) for v in suites.values()), "zero skips")
+          PY
+              ;;
+          esac
+      - name: Retain exact source and real Gradle JUnit receipts even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-gradle-${{ matrix.slice }}-jdk-${{ matrix.java }}
+          path: |
+            qualified/SOURCE_RECEIPT.tsv
+            qualified/SHA256SUMS
+            consumer-gradle/m3/quality-bridge/build/test-results/test/**
+            consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: warn
+          retention-days: 14
