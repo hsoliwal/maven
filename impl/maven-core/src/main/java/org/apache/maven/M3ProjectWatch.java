@@ -268,7 +268,7 @@ final class M3ProjectWatch {
                     excluded.add(local);
                 }
             }
-            List<String> ignored = names(property(request, "m3.watch.ignoredDirectoryNames", "target,.git"));
+            List<String> ignored = names(property(request, "m3.watch.ignoredDirectoryNames", "target,.git,.m3"));
             for (String name : ignored) {
                 if (name.equals(".") || name.equals("..") || name.contains("/") || name.contains("\\")) {
                     throw new IllegalArgumentException("ignored directory names must be single path components");
@@ -330,7 +330,8 @@ final class M3ProjectWatch {
                 }
             }
             for (Path component : root.relativize(path)) {
-                if (component.toString().equals(".m3-watch") || ignoredNames.contains(component.toString())) {
+                if (component.toString().equals(".m3-watch") || component.toString().equals(".m3")
+                        || ignoredNames.contains(component.toString())) {
                     return true;
                 }
             }
@@ -390,7 +391,7 @@ final class M3ProjectWatch {
                 Path relative = options.root.relativize(path);
                 for (Path component : relative) {
                     String name = component.toString();
-                    if (name.equals(".m3-watch") || options.ignoredNames.contains(name)) {
+                    if (name.equals(".m3-watch") || name.equals(".m3") || options.ignoredNames.contains(name)) {
                         return true;
                     }
                 }

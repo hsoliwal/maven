@@ -76,7 +76,7 @@ can take longer.
 | `m3.watch.maxBatchMillis` | `1000` | Fixed maximum additional wait for a pending batch. |
 | `m3.watch.inputs` | `.` | Comma-separated input paths under the project root. |
 | `m3.watch.excludes` | empty | Explicit paths to exclude, including custom output directories. |
-| `m3.watch.ignoredDirectoryNames` | `target,.git` | Excluded directory names throughout the root. |
+| `m3.watch.ignoredDirectoryNames` | `target,.git,.m3` | Additional ignored directory names throughout the root; internal `.m3` and `.m3-watch` remain excluded even when overridden. |
 | `m3.watch.timestampChanges` | `true` | Include timestamp changes alongside content and size changes. |
 | `m3.watch.reconcileSeconds` | `30` | Full filesystem reconciliation interval, from 1 to 86400 seconds. |
 | `m3.watch.mode` | `AUTO` | Shared impact-selector policy: `AUTO`, `FULL` or `INCREMENTAL`. |
@@ -102,6 +102,12 @@ watched root. Custom output directories need explicit exclusions. The successful
 Maven task receipts in `.m3/module.m3db`. The watcher still reads and hashes
 input bytes during reconciliation; it cannot authorize cross-process cache reuse
 or arbitrary Mojo skipping without independent, complete build evidence.
+
+Module-state directories named `.m3` are excluded at any reactor depth, even if the
+caller replaces the default ignored-name list. Otherwise successful M3DB receipt
+publication could itself be interpreted as a new input generation and cause
+a self-triggered build loop. This exclusion does not declare any compiler or
+plugin outputs to be safe for reuse.
 
 The watcher observes saved filesystem state. It does not capture unsaved editor buffers,
 all external/environment inputs, or every change-and-restore sequence during a build.

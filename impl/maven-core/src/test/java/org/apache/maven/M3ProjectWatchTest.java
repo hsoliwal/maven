@@ -174,6 +174,22 @@ class M3ProjectWatchTest {
                 () -> M3ProjectWatch.sdkPackage(M3ProjectWatchTest.class.getModule()));
     }
 
+    @Test
+    void moduleDbIsAlwaysExcludedEvenWithCustomIgnoredNames() throws Exception {
+        var original = request(1);
+        original.getUserProperties().setProperty("m3.watch.ignoredDirectoryNames", "");
+        Class<?> type = Class.forName("org.apache.maven.M3ProjectWatch$Options");
+        var from = type.getDeclaredMethod("from", MavenExecutionRequest.class);
+        var excludes = type.getDeclaredMethod("excludes", Path.class);
+        from.setAccessible(true);
+        excludes.setAccessible(true);
+        Object options = from.invoke(null, original);
+        assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3/module.m3db")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve("child/.m3/module.m3db")));
+        assertTrue((Boolean) excludes.invoke(options, root.resolve(".m3-watch/state.bin")));
+        assertFalse((Boolean) excludes.invoke(options, root.resolve("src/Watched.java")));
+    }
+
     @Nested
     @EnabledIfSystemProperty(named = "m3.watch.contract", matches = "true")
     @Timeout(15)
@@ -451,6 +467,24 @@ class M3ProjectWatchTest {
             assertFalse(admitted.hasExceptions(), admitted.getExceptions().toString());
             assertTrue(Files.isRegularFile(image()));
             assertFalse(persistedPaths().stream().anyMatch(path -> path.startsWith("custom/")));
+        }
+
+        @Test
+        void moduleDbWritesCannotScheduleAnotherWatchedLifecycle() throws Exception {
+            var original = request(2);
+            original.getUserProperties().setProperty("m3.watch.idleSeconds", "1");
+            original.getUserProperties().setProperty("m3.watch.ignoredDirectoryNames", "");
+            var calls = new AtomicInteger();
+            var result = execute(original, next -> {
+                calls.incrementAndGet();
+                write(root.resolve("child/.m3/module.m3db"), "published receipt\\n");
+                write(root.resolve(".m3/module.m3db.state"), "clean\\n");
+                return successful("target");
+            });
+            assertFalse(result.hasExceptions(), result.getExceptions().toString());
+            assertEquals(1, calls.get(), "M3DB state is not a watched source generation");
+            assertFalse(persistedPaths().stream().anyMatch(path ->
+                    path.startsWith(".m3/") || path.contains("/.m3/")));
         }
 
         @Test
