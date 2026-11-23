@@ -44,6 +44,8 @@ public final class LlvmCompilerSelectionContractTestMain {
     }
 
     private static void correctDriverAndArgumentBoundary(Path root) throws Exception {
+        // argv[0] preserves the selected driver spelling, not a canonicalized alias.
+        // On Windows, toRealPath() may normalize case or short-path components.
         for (String language : List.of("c", "cpp", "objc", "objcpp", "fortran", "llvm-ir")) {
             var argv = command(root, language, List.of("--m3-llvm-home=toolchain", "-O2", "-c", "src/file"));
             String expected = switch (language) {
@@ -52,7 +54,7 @@ public final class LlvmCompilerSelectionContractTestMain {
                 case "llvm-ir" -> "llc";
                 default -> "clang";
             };
-            check(argv.get(0).equals(root.resolve("toolchain/bin/" + name(expected)).toRealPath().toString()),
+            check(argv.get(0).equals(root.resolve("toolchain/bin/" + name(expected)).toAbsolutePath().normalize().toString()),
                     "uses the declared LLVM driver for " + language);
             check(argv.subList(1, argv.size()).equals(List.of("-O2", "-c", "src/file")),
                     "passes compiler argv unchanged for " + language);
@@ -128,7 +130,7 @@ public final class LlvmCompilerSelectionContractTestMain {
         try {
             System.setProperty(LlvmCompilerProvider.HOME_PROPERTY, root.resolve("toolchain").toString());
             var argv = command(root, "c", List.of("-c", "src/file"));
-            check(argv.get(0).equals(root.resolve("toolchain/bin/" + name("clang")).toRealPath().toString()),
+            check(argv.get(0).equals(root.resolve("toolchain/bin/" + name("clang")).toAbsolutePath().normalize().toString()),
                     "shared LLVM home property selects the original clang");
             passed++;
         } finally {
@@ -141,7 +143,7 @@ public final class LlvmCompilerSelectionContractTestMain {
         Files.move(flang, flangNew);
         try {
             var argv = command(root, "fortran", List.of("--m3-llvm-home=toolchain", "-c", "src/file"));
-            check(argv.get(0).equals(flangNew.toRealPath().toString()), "older LLVM flang-new spelling");
+            check(argv.get(0).equals(flangNew.toAbsolutePath().normalize().toString()), "older LLVM flang-new spelling");
             passed++;
         } finally {
             Files.move(flangNew, flang);
