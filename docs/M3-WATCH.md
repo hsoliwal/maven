@@ -118,6 +118,16 @@ directories while scanning a module tree. Explicitly declared inputs under
 these reserved paths are rejected, rather than silently trusted. This exclusion
 does not declare any compiler or plugin outputs to be safe for reuse.
 
+Maven watch mode cannot currently observe ordinary user files under the
+excluded `.m3` directory (or resource filters outside the watched root). In
+contrast, the independent M3DB incremental lifecycle fingerprint can
+content-hash ordinary `.m3/user-config.json` files. To prevent a
+successful-but-unobservable continuous build, watch mode rejects an explicitly
+declared compile source, resource root, test resource root or resource filter
+that falls outside its watched inventory. Use ordinary Maven execution (without
+`-Dm3.watch=true`) for projects with such inputs until a finer-grained
+M3File owner exclusion protocol is qualified.
+
 The watcher observes saved filesystem state. It does not capture unsaved editor buffers,
 all external/environment inputs, or every change-and-restore sequence during a build.
 The filesystem is not a transaction. A preset embedding `MavenProject` is refused because
