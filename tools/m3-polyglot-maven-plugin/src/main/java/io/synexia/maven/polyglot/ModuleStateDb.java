@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -109,7 +110,9 @@ public final class ModuleStateDb implements AutoCloseable {
      * statePath method retains its narrower compatibility contract.
      */
     public static boolean reservedStatePath(String path) {
-        String normalized = Objects.requireNonNull(path, "path").replace('\\', '/');
+        // A case-insensitive filesystem can alias .M3 to .m3. Classify
+        // reserved ASCII owner names conservatively on every host.
+        String normalized = Objects.requireNonNull(path, "path").replace('\\', '/').toLowerCase(Locale.ROOT);
         int start = 0;
         while (start < normalized.length()) {
             int end = normalized.indexOf('/', start);

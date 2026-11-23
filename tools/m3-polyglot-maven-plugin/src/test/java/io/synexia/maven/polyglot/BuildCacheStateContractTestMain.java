@@ -200,8 +200,15 @@ public final class BuildCacheStateContractTestMain {
                 "child/.m3-watch/state.bin", ".m3/polyglot-stamps/result")) {
             check(InputStamps.statePath(value), "internal state component is reserved: " + value);
         }
+        for (String variant : List.of(".M3/MODULE.M3DB", "child/.M3/MODULE.M3DB",
+                "child/.M3-WATCH/STATE.BIN", ".M3/MODULE-STATE.RUN.LOCK")) {
+            check(InputStamps.statePath(variant),
+                    "case-insensitive filesystem aliases of original state owners are reserved: " + variant);
+        }
         check(!InputStamps.statePath("child/.m3-ordinary/input.txt"),
                 "similarly named user paths remain ordinary files");
+        check(!InputStamps.statePath(".M3/USER-CONFIG.JSON"),
+                "case-varied ordinary .m3 user files are not falsely classified as DB state");
         check(!InputStamps.statePath(".m3/user-config.json"),
                 "original module-state compatibility permits ordinary .m3 user configuration");
         check(!InputStamps.statePath("child/.m3/receipt"),
