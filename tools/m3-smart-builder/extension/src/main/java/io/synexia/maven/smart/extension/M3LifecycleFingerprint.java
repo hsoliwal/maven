@@ -214,17 +214,18 @@ final class M3LifecycleFingerprint {
     }
 
     private static void refuseInternalState(Path root, Path input) throws IOException {
-        if (!input.startsWith(root)) return;
-        for (Path part : root.relativize(input)) {
-            if (isInternalState(part)) throw new IOException("M3 internal state cannot be a build input: " + input);
+        if (input.startsWith(root) && isInternalState(root.relativize(input))) {
+            throw new IOException("M3 internal state cannot be a build input: " + input);
         }
     }
 
-    private static boolean isInternalState(Path name) {
-        return name != null && switch (name.toString()) {
-            case ".m3", ".m3-watch", ".git" -> true;
-            default -> false;
-        };
+    private static boolean isInternalState(Path relative) {
+        for (Path part : relative) {
+            if (part.toString().equals(".git")) {
+                return true;
+            }
+        }
+        return ModuleStateDb.reservedStatePath(relative.toString().replace('\\', '/'));
     }
 
     private void tree(Path requested, List<Path> excluded) throws IOException {
@@ -247,15 +248,25 @@ final class M3LifecycleFingerprint {
             }
             @Override public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
                     throws IOException {
-                if (excluded.stream().anyMatch(directory::startsWith)
-                        || (moduleRoot && !directory.equals(root) && isInternalState(directory.getFileName()))) {
+                if (excluded.stream().anyMatch(directory::startsWith)) {
                     return FileVisitResult.SKIP_SUBTREE;
+                }
+                if (moduleRoot && !directory.equals(root)) {
+                    // Do not hash the M3DB parent directory marker, but descend
+                    // to account for unrelated user configuration in .m3.
+                    if (directory.getFileName().toString().equals(".m3")) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    if (isInternalState(root.relativize(directory))) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
                 }
                 admit(directory, attributes);
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                if (!excluded.contains(file) && !(moduleRoot && isInternalState(file.getFileName()))) {
+                if (!excluded.contains(file)
+                        && !(moduleRoot && isInternalState(root.relativize(file)))) {
                     admit(file, attributes);
                 }
                 return FileVisitResult.CONTINUE;

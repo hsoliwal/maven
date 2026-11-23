@@ -390,6 +390,34 @@ public final class M3LifecycleAdmissionTestMain {
         Files.writeString(source, "class A { int a; }\\n");
         check(!baseline.equals(moduleRootFingerprint(root)),
                 "ordinary source bytes still change the module generation");
+        Path user = Files.writeString(root.resolve(".m3/user-config.json"), "version=A\\n");
+        String withUser = moduleRootFingerprint(root);
+        check(!baseline.equals(withUser), "ordinary .m3 user configuration is included in module identity");
+        var timestamp = Files.getLastModifiedTime(user);
+        Files.writeString(user, "version=B\\n");
+        Files.setLastModifiedTime(user, timestamp);
+        check(!withUser.equals(moduleRootFingerprint(root)),
+                "same-size same-mtime .m3 user configuration changes still invalidate content identity");
+        Path nestedUser = Files.writeString(root.resolve("child/.m3/user-config.json"), "nested");
+        String withNested = moduleRootFingerprint(root);
+        Files.writeString(nestedUser, "changed");
+        check(!withNested.equals(moduleRootFingerprint(root)),
+                "nested module ordinary configuration is also source-visible");
+        Method guard = M3LifecycleFingerprint.class.getDeclaredMethod("refuseInternalState", Path.class, Path.class);
+        guard.setAccessible(true);
+        guard.invoke(null, root, user); // ordinary file remains an explicit input
+        boolean rejected = false;
+        try {
+            guard.invoke(null, root, root.resolve(".m3/module.m3db"));
+        } catch (InvocationTargetException failure) {
+            if (failure.getCause() instanceof IOException) {
+                rejected = true;
+            } else {
+                throw failure;
+            }
+        }
+        check(rejected, "an explicitly declared M3DB-owned path remains forbidden");
+
     }
 
     private static String moduleRootFingerprint(Path root) throws Exception {
