@@ -3,9 +3,10 @@ name: M3 Eclipse packet and compatible Windows LLVM host
 
 on:
   pull_request:
-    branches: [master]
+    branches: [master, fix/m3-eclipse-packet-win2022-20261123]
     paths:
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceServiceContractTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java'
       - '.github/workflows/m3-eclipse-packet-win2022-20261123.yml'
   workflow_dispatch:
 
@@ -37,15 +38,21 @@ jobs:
           import hashlib
           import subprocess
           from pathlib import Path
-          path = Path("tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceServiceContractTestMain.java")
-          expected = "a5b846a60452f980f17bc3ee0479cb6e8ee0d91c7fa074a95a67bae36365480b"
-          stored = subprocess.check_output(["git", "show", "HEAD:" + path.as_posix()])
-          found = hashlib.sha256(stored).hexdigest()
-          if found != expected:
-              raise SystemExit("SOURCE_SEAL_DRIFT: " + found)
-          if path.read_bytes().replace(b"\r\n", b"\n") != stored:
-              raise SystemExit("CHECKOUT_CHANGED_BEYOND_CRLF")
-          print("PASS: exact original Java source postimage; checkout unchanged beyond CRLF")
+          expected = {
+              "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceServiceContractTestMain.java":
+                  "a5b846a60452f980f17bc3ee0479cb6e8ee0d91c7fa074a95a67bae36365480b",
+              "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java":
+                  "5552faa7ec457fdfa121894e30e0e06bcd138e0877702e01ed8057d0dde3610b",
+          }
+          for path_string, source_hash in expected.items():
+              path = Path(path_string)
+              stored = subprocess.check_output(["git", "show", "HEAD:" + path.as_posix()])
+              found = hashlib.sha256(stored).hexdigest()
+              if found != source_hash:
+                  raise SystemExit("SOURCE_SEAL_DRIFT " + path_string + ": " + found)
+              if path.read_bytes().replace(b"\r\n", b"\n") != stored:
+                  raise SystemExit("CHECKOUT_CHANGED_BEYOND_CRLF " + path_string)
+          print("PASS: two exact Git source images; checkout unchanged beyond CRLF")
           PY
       - name: Read and record real native toolchain identities
         shell: bash
