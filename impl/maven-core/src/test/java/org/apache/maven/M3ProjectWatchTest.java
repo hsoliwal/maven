@@ -202,6 +202,29 @@ class M3ProjectWatchTest {
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 0, false, false);
     }
 
+    @Test
+    void unwatchedExplicitInputsAreRefusedWithoutInstalledSdk() throws Exception {
+        var request = request(1);
+        Class<?> optionsType = Class.forName("org.apache.maven.M3ProjectWatch$Options");
+        var from = optionsType.getDeclaredMethod("from", MavenExecutionRequest.class);
+        from.setAccessible(true);
+        Object options = from.invoke(null, request);
+        var require = optionsType.getDeclaredMethod("requireWatchedInput", String.class, String.class);
+        require.setAccessible(true);
+        require.invoke(options, root.resolve("src/Watched.java").toString(), "resource filter");
+        for (String path : List.of(
+                root.resolve(".m3/user-config.json").toString(),
+                root.resolve(".M3/MODULE.M3DB").toString(),
+                root.resolve(".m3-watch/state.bin").toString(),
+                root.resolve("target/generated.txt").toString(),
+                root.getParent().resolve("outside-filter.properties").toString())) {
+            InvocationTargetException failure = assertThrows(
+                    InvocationTargetException.class, () -> require.invoke(options, path, "resource filter"));
+            assertTrue(failure.getCause() instanceof IOException,
+                    "unobservable Maven input must fail closed: " + path);
+        }
+    }
+
     @Nested
     @EnabledIfSystemProperty(named = "m3.watch.contract", matches = "true")
     @Timeout(15)
