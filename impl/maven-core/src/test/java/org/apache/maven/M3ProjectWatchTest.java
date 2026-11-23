@@ -474,6 +474,7 @@ class M3ProjectWatchTest {
             var original = request(2);
             original.getUserProperties().setProperty("m3.watch.idleSeconds", "1");
             original.getUserProperties().setProperty("m3.watch.ignoredDirectoryNames", "");
+            original.getUserProperties().setProperty("m3.watch.excludes", "target");
             var calls = new AtomicInteger();
             var result = execute(original, next -> {
                 calls.incrementAndGet();
