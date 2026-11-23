@@ -147,6 +147,11 @@ public class ConsumerTest {
         command = base + (['-Dm3.lifecycle.incremental=true'] if enabled else []) + list(flags) + ['verify']
         if args.prime_repository and name == 'disabled-baseline':
             command.remove('-o')
+            # Resolve later offline plugin realms without early clean/install effects.
+            command[-1:-1] = [
+                'org.apache.maven.plugins:maven-clean-plugin:3.2.0:help',
+                'org.apache.maven.plugins:maven-install-plugin:3.1.2:help',
+            ]
         started = time.monotonic()
         process = subprocess.run(command, cwd=directory or reactor, env=env, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, text=True, timeout=240)
