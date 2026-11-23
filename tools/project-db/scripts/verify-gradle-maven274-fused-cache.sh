@@ -13,9 +13,9 @@ require() {
 }
 require "java: ['17', '21']"
 require 'ref: 53d7bd782077968e596a54cb7948ea22810734c3'
-require 'ref: 8a5daf6fd7ea87230dada80f50c55264e002e4e5'
+require 'ref: 3de2db48595b9015c1a513d89a3cef83be5257f5'
 require 'M3-FUSED-MAVEN274-V1'
-require 'b7261f71d82603eae13d7924f8650f10192213d4'
+require '3a253ab424b498e08c67fdd9da9bbfc8a7497a40'
 require 'build-cache/module-state integration checks'
 require 'M3_REQUIRE_FUSED_REAL_ENGINE:'
 require 'M3_FUSED_MAVEN_ENGINE_JAR='
