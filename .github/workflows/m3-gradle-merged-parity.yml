@@ -1,0 +1,233 @@
+# SPDX-License-Identifier: Apache-2.0
+# Merged-source acceptance: Maven owns engines; Gradle owns its task graph.
+name: M3 Maven to merged Gradle combined JDK17 and JDK21 acceptance
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m3-gradle-merged-parity.yml'
+      - 'tools/project-db/scripts/verify-gradle-merged-parity.sh'
+      - 'tools/project-db/GRADLE_MERGED_PARITY.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-maven-owner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Guard exact source pins, combined tests and history preservation
+        run: sh tools/project-db/scripts/verify-gradle-merged-parity.sh
+      - name: Checkout exact reviewed merged Maven source
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/maven
+          ref: 2cb32473cced0c1ef3570fc481a2dfeb11e92553
+          path: source-owner
+          persist-credentials: false
+      - name: Build source-owned Maven engines and qualify real Derby and JUnit refusal
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source-owner rev-parse HEAD)" = '2cb32473cced0c1ef3570fc481a2dfeb11e92553'
+          sh source-owner/tools/project-db/scripts/verify-gradle-junit-modes.sh
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml install
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml -Pm3-derby verify 2>&1 | tee m3-derby-merged-owner.log
+          grep -Fq 'actual Derby JDBC transaction/restart/recovery assertions' m3-derby-merged-owner.log
+          mvn -B -ntp -f source-owner/tools/project-db/pom.xml verify
+          test -s source-owner/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar
+          test -s source-owner/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar
+      - name: Seal original Maven bytes, Derby closure, LLVM fixture and exact source/JDK receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qualified/derby qualified/llvm/native
+          cp source-owner/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified/polyglot.jar
+          cp source-owner/tools/project-db/target/maven-project-db-plugin-0.1.0-SNAPSHOT.jar qualified/project-db.jar
+          cp source-owner/tools/project-db/scripts/verify-gradle-testkit-results.sh qualified/verify-gradle-testkit-results.sh
+          cp source-owner/tools/project-db/scripts/M3GradleTestKitReceiptMain.java qualified/M3GradleTestKitReceiptMain.java
+          test "$(git -C source-owner hash-object tools/project-db/scripts/M3GradleTestKitReceiptMain.java)" = '6fd1f257081b433b98b29eea3b5651bf2449d02b'
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/m3-build.tsv qualified/llvm/
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/native/hello.c qualified/llvm/native/
+          cp source-owner/tools/m3-polyglot-maven-plugin/examples/llvm/native/message.h qualified/llvm/native/
+          mvn -B -ntp -f source-owner/tools/m3-polyglot-maven-plugin/pom.xml -Pm3-derby \
+            org.apache.maven.plugins:maven-dependency-plugin:3.7.1:copy-dependencies \
+            -DincludeGroupIds=org.apache.derby -DincludeScope=test \
+            -DoutputDirectory="$GITHUB_WORKSPACE/qualified/derby"
+          test -s qualified/derby/derby-10.16.1.1.jar
+          test -s qualified/derby/derbytools-10.16.1.1.jar
+          printf 'M3-MERGED-CROSSFORK-V1\t%s\t%s\t%s\n' \
+            '2cb32473cced0c1ef3570fc481a2dfeb11e92553' \
+            'a8ab91be59f414e39245762445f1057a8677fba2' \
+            '${{ matrix.java }}' > qualified/SOURCE_RECEIPT.tsv
+          (cd qualified && find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Upload source-bound Maven engines for the merged Gradle consumer
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-merged-maven-owner-jdk-${{ matrix.java }}
+          path: qualified/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve original Maven verification trace even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-merged-maven-verification-jdk-${{ matrix.java }}
+          path: m3-derby-merged-owner.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  merged-gradle-consumer:
+    needs: original-maven-owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Download original Maven JDK-specific sealed engine artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: m3-merged-maven-owner-jdk-${{ matrix.java }}
+          path: qualified
+      - name: Verify the exact producer bytes and two-source/JDK receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd qualified && sha256sum -c SHA256SUMS)
+          expected=$(printf 'M3-MERGED-CROSSFORK-V1\t%s\t%s\t%s' \
+            '2cb32473cced0c1ef3570fc481a2dfeb11e92553' \
+            'a8ab91be59f414e39245762445f1057a8677fba2' \
+            '${{ matrix.java }}')
+          test "$(cat qualified/SOURCE_RECEIPT.tsv)" = "$expected"
+          test -s qualified/polyglot.jar
+          test -s qualified/project-db.jar
+          test -s qualified/M3GradleTestKitReceiptMain.java
+          test -s qualified/derby/derby-10.16.1.1.jar
+          test -s qualified/derby/derbytools-10.16.1.1.jar
+      - name: Checkout exact merged Gradle containing three integrated PRs
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/gradle
+          ref: a8ab91be59f414e39245762445f1057a8677fba2
+          path: consumer-gradle
+          persist-credentials: false
+          sparse-checkout: |
+            gradlew
+            gradle/wrapper
+            m3/quality-bridge
+      - name: Execute all 18 combined Gradle TestKit cases against one Maven producer
+        shell: bash
+        env:
+          M3_REQUIRE_DERBY_REAL_ENGINE: '1'
+          JAVA_TOOL_OPTIONS: '-Dderby.stream.error.field=java.lang.System.err'
+        run: |
+          set -euo pipefail
+          test "$(git -C consumer-gradle rev-parse HEAD)" = 'a8ab91be59f414e39245762445f1057a8677fba2'
+          export M3_MAVEN_COMPILEDB_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+          export M3_MAVEN_COMPILEDB_FIXTURES="$GITHUB_WORKSPACE/qualified/llvm"
+          export M3_MAVEN_DERBY_ENGINE_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+          export M3_DERBY_DRIVER_DIRECTORY="$GITHUB_WORKSPACE/qualified/derby"
+          export M3_POLYGLOT_JAR="$GITHUB_WORKSPACE/qualified/polyglot.jar"
+          export M3_PROJECT_DB_JAR="$GITHUB_WORKSPACE/qualified/project-db.jar"
+          export M3_PRUNED_POLYGLOT_JAR="$M3_POLYGLOT_JAR"
+          export M3_PRUNED_PROJECT_DB_JAR="$M3_PROJECT_DB_JAR"
+          command -v clang
+          command -v clang++
+          export M3_LLVM_HOME="$(dirname "$(dirname "$(command -v clang)")")"
+          chmod +x consumer-gradle/gradlew
+          cd consumer-gradle
+          ./gradlew --no-daemon --stacktrace --console=plain \
+            -p m3/quality-bridge test \
+            --tests 'io.synexia.gradle.quality.M3LlvmCompileDbTaskTest' \
+            --tests 'io.synexia.gradle.quality.M3LlvmCompileDbRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3DerbyRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbGradleNativeRealEngineTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbTaskTest' \
+            --tests 'io.synexia.gradle.quality.M3ProjectDbPrunedSymlinkRealEngineTest' \
+            --rerun-tasks
+      - name: Require original secure Maven nine-case parser on actual merged Gradle JUnit
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh qualified/verify-gradle-testkit-results.sh \
+            consumer-gradle/m3/quality-bridge/build/test-results/test current-nine
+      - name: Require all original LLVM and Derby receipt identities and zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          directory = Path("consumer-gradle/m3/quality-bridge/build/test-results/test")
+          names = {
+              "M3LlvmCompileDbTaskTest": {
+                  "delegatesTwiceWithoutNativeExecutionOrTaskCaching()",
+                  "refusesWrongDigestUnknownTargetAndLinkedOutputBeforeStartingMaven()",
+                  "rejectsForeignReceiptAndUnpinnedProvider()",
+              },
+              "M3LlvmCompileDbRealEngineTest": {
+                  "publishedDatabaseMatchesOriginalCompilerVectorsAndIsStable()",
+                  "wrongEngineDigestRefusesBeforeMavenCanPublish()",
+              },
+              "M3DerbyRealEngineTest": {
+                  "missingDerbyDriverRefusesBeforeExecutingToolOrFallingBack()",
+                  "originalDerbyDriverReopensAndVerifiesSealedStateAcrossGradleInvocations()",
+                  "wrongDriverShaIsRejectedByGradleBeforeStartingMaven()",
+                  "symlinkedDerbyDatabaseDirectoryFailsClosedWithoutToolExecution()",
+              },
+          }
+          pkg = "io.synexia.gradle.quality."
+          present = {p.name for p in directory.glob("TEST-" + pkg + "M3LlvmCompileDb*.xml")}
+          present |= {p.name for p in directory.glob("TEST-" + pkg + "M3Derby*.xml")}
+          expected = {"TEST-" + pkg + suite + ".xml" for suite in names}
+          assert present == expected, (present, expected)
+          for suite, methods in names.items():
+              p = directory / ("TEST-" + pkg + suite + ".xml")
+              assert p.is_file() and not p.is_symlink() and p.stat().st_size <= 1024*1024
+              content = p.read_bytes()
+              assert b"<!DOCTYPE" not in content and b"<!ENTITY" not in content
+              node = ET.fromstring(content)
+              assert node.tag == "testsuite" and node.get("name") == pkg + suite
+              assert all(node.get(key) == str(value) for key,value in (
+                  ("tests",len(methods)), ("skipped",0), ("failures",0), ("errors",0)))
+              cases = [c for c in node if c.tag == "testcase"]
+              assert len(cases) == len(methods)
+              assert {c.get("name") for c in cases} == methods
+              assert all(c.get("classname") == pkg + suite and len(c) == 0 for c in cases)
+          print("PASS: nine original LLVM/Derby cases and nine original Maven project DB cases")
+          PY
+      - name: Recheck original Maven source-bound artifact bytes after Gradle consumption
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd qualified && sha256sum -c SHA256SUMS)
+          test "$(git -C consumer-gradle rev-parse HEAD)" = a8ab91be59f414e39245762445f1057a8677fba2
+          git -C consumer-gradle diff --exit-code --quiet
+      - name: Retain all 18 actual TestKit receipts and source hashes on failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-merged-gradle-18-jdk-${{ matrix.java }}
+          path: |
+            qualified/SOURCE_RECEIPT.tsv
+            qualified/SHA256SUMS
+            consumer-gradle/m3/quality-bridge/build/test-results/test/**
+            consumer-gradle/m3/quality-bridge/build/reports/tests/test/**
+          if-no-files-found: warn
+          retention-days: 14
