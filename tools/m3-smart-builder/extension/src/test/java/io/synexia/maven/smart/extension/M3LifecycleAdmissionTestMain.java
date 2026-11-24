@@ -43,7 +43,8 @@ public final class M3LifecycleAdmissionTestMain {
     private M3LifecycleAdmissionTestMain() {}
 
     public static void main(String[] ignored) throws Exception {
-        Path temporary = Files.createTempDirectory("m3-lifecycle-admission-");
+        // System temporary directories can have an ancestor alias, such as macOS /var.
+        Path temporary = Files.createTempDirectory("m3-lifecycle-admission-").toRealPath();
         try {
             acceptsOnlyQualifiedGoalMetadata();
             rejectsUntrackedResourceOverrides(temporary);
