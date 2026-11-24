@@ -49,6 +49,14 @@ public final class ModuleStateDb implements AutoCloseable {
     private static final int MAX_ENTRIES = 250_000;
     private static final int MAX_FINGERPRINT_BYTES = 32 * 1024 * 1024 - 128 * 1024;
     private static final int FILE_VERSION = 1;
+    /**
+     * The m3:machine-fingerprints MIndexDB analysis store, its parent and its
+     * sibling writer lock (owned by the smart builder's ModuleFingerprintDatabase).
+     * Analysis-cache writes are M3-owned state, never build inputs or task outputs.
+     */
+    private static final String ANALYSIS_PARENT = ".m3/maven";
+    private static final String ANALYSIS_STORE = ANALYSIS_PARENT + "/mindexdb";
+    private static final String ANALYSIS_LOCK = ANALYSIS_STORE + ".lock";
 
     private record Attributes(long size, long mtime, long ctime, String fileKey) {}
 
@@ -126,7 +134,7 @@ public final class ModuleStateDb implements AutoCloseable {
                 }
                 String nested = ".m3/" + normalized.substring(end + 1);
                 if (statePath(nested) || nested.equals(".m3/polyglot-stamps")
-                        || nested.startsWith(".m3/polyglot-stamps/")) {
+                        || nested.startsWith(".m3/polyglot-stamps/") || analysisStatePath(nested)) {
                     return true;
                 }
             }
@@ -136,6 +144,29 @@ public final class ModuleStateDb implements AutoCloseable {
             start = end + 1;
         }
         return statePath(normalized);
+    }
+
+    /**
+     * Identify directories that M3 state writers create to hold reserved
+     * owners: any .m3 directory and the .m3/maven analysis-store parent,
+     * at any nested reactor depth. A content scanner should not hash such a
+     * directory marker, but must still visit its other children: ordinary
+     * files such as .m3/user-config.json or .m3/maven/notes.txt stay inputs.
+     */
+    public static boolean reservedStateParent(String path) {
+        String normalized = Objects.requireNonNull(path, "path").replace('\\', '/').toLowerCase(Locale.ROOT);
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized.equals(".m3") || normalized.endsWith("/.m3")
+                || normalized.equals(ANALYSIS_PARENT) || normalized.endsWith("/" + ANALYSIS_PARENT);
+    }
+
+    /** The parent declaration includes the store, like the whole .m3 directory includes receipts. */
+    private static boolean analysisStatePath(String nested) {
+        String path = nested.endsWith("/") ? nested.substring(0, nested.length() - 1) : nested;
+        return path.equals(ANALYSIS_PARENT) || path.equals(ANALYSIS_STORE)
+                || path.startsWith(ANALYSIS_STORE + "/") || path.equals(ANALYSIS_LOCK);
     }
 
     /** Identify only temporary internal JVM lease markers, never ordinary user properties. */

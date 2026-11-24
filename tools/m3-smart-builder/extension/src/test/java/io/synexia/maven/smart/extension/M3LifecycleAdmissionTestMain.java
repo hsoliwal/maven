@@ -56,6 +56,7 @@ public final class M3LifecycleAdmissionTestMain {
             preservesCompilerCreatedFileInventory(temporary);
             excludesOnlyInternalSystemCoordination(temporary);
             internalM3StateDoesNotPerturbModuleFingerprint(temporary);
+            analysisStoreDoesNotPerturbModuleFingerprint(temporary);
             excludesOtherReactorOutputsButNotSources(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
@@ -439,6 +440,72 @@ public final class M3LifecycleAdmissionTestMain {
             check(denied, "Maven filters and other direct inputs must reject owned M3 state: " + owned);
         }
 
+    }
+
+    /**
+     * The m3:machine-fingerprints MIndexDB analysis store under .m3/maven is
+     * M3-owned cache state: its writes must not invalidate lifecycle receipts,
+     * while ordinary user files under .m3 remain content-hashed inputs.
+     */
+    private static void analysisStoreDoesNotPerturbModuleFingerprint(Path temporary) throws Exception {
+        Path root = Files.createDirectories(temporary.resolve("analysis-store-fingerprint"));
+        Path source = Files.createDirectories(root.resolve("src")).resolve("A.java");
+        Files.writeString(source, "class A {}\n");
+        Path user = Files.createDirectories(root.resolve(".m3")).resolve("user-config.json");
+        Files.writeString(user, "version=A\n");
+        Files.createDirectories(root.resolve("child/src"));
+        String baseline = moduleRootFingerprint(root);
+        for (String module : List.of("", "child/")) {
+            // First publication creates the .m3/maven parent, the store and its sibling lock.
+            Path store = Files.createDirectories(root.resolve(module + ".m3/maven/mindexdb"));
+            Files.writeString(store.resolve("maven-syntax-fingerprints-v1.miart"), "first");
+            Files.writeString(root.resolve(module + ".m3/maven/mindexdb.lock"), "");
+        }
+        check(baseline.equals(moduleRootFingerprint(root)),
+                "creating MIndexDB analysis stores at any reactor depth does not change module identity");
+        Files.writeString(root.resolve(".m3/maven/mindexdb/maven-syntax-fingerprints-v1.miart"), "second-generation");
+        Path added = Files.writeString(root.resolve("child/.m3/maven/mindexdb/other-root.miart"), "added");
+        Files.writeString(root.resolve(".m3/maven/mindexdb.lock"), "held");
+        check(baseline.equals(moduleRootFingerprint(root)),
+                "MIndexDB artifact and lock writes do not invalidate lifecycle receipts of the module or parents");
+        Files.delete(added);
+        check(baseline.equals(moduleRootFingerprint(root)),
+                "pruning an MIndexDB artifact does not invalidate lifecycle receipts");
+        Files.writeString(user, "version=B\n");
+        String withUser = moduleRootFingerprint(root);
+        check(!baseline.equals(withUser),
+                "ordinary .m3 user configuration beside the analysis store is still content-hashed");
+        Path neighbour = Files.writeString(root.resolve(".m3/maven/notes.txt"), "user");
+        String withNeighbour = moduleRootFingerprint(root);
+        check(!withUser.equals(withNeighbour),
+                "an ordinary user file beside the store under .m3/maven remains a module input");
+        Files.writeString(neighbour, "edited");
+        String editedNeighbour = moduleRootFingerprint(root);
+        check(!withNeighbour.equals(editedNeighbour), "edits to that ordinary .m3/maven file still invalidate");
+        Files.writeString(root.resolve("child/.m3/maven/mindexdb-notes.txt"), "lookalike");
+        String withLookalike = moduleRootFingerprint(root);
+        check(!editedNeighbour.equals(withLookalike), "store-like sibling names are not reserved");
+        Files.writeString(source, "class A { int a; }\n");
+        check(!withLookalike.equals(moduleRootFingerprint(root)),
+                "ordinary source bytes still change the module generation beside the analysis store");
+        Method guard = M3LifecycleFingerprint.class.getDeclaredMethod("refuseInternalState", Path.class, Path.class);
+        guard.setAccessible(true);
+        guard.invoke(null, root, neighbour); // ordinary .m3/maven file remains an explicit input
+        for (String owned : List.of(".m3/maven", ".m3/maven/mindexdb",
+                ".m3/maven/mindexdb/maven-syntax-fingerprints-v1.miart", ".m3/maven/mindexdb.lock",
+                "child/.m3/maven/mindexdb/other-root.miart", ".M3/MAVEN/MINDEXDB.LOCK")) {
+            boolean denied = false;
+            try {
+                guard.invoke(null, root, root.resolve(owned));
+            } catch (InvocationTargetException failure) {
+                if (failure.getCause() instanceof IOException) {
+                    denied = true;
+                } else {
+                    throw failure;
+                }
+            }
+            check(denied, "explicit inputs must reject the owned MIndexDB analysis store: " + owned);
+        }
     }
 
     private static void excludesOtherReactorOutputsButNotSources(Path temporary) throws Exception {

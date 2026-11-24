@@ -134,6 +134,10 @@ artifact metadata, and malformed application records are refused. Corrupt files
 are preserved for diagnosis. To reset the cache, remove `.m3/maven/mindexdb` and
 its sibling `mindexdb.lock` after the module's Maven processes have stopped.
 Projects can add `**/.m3/maven/` to `.gitignore` for this local state.
+The store and its lock are reserved M3 state (`ModuleStateDb.reservedStatePath`):
+the guarded lifecycle fingerprint excludes them, so a cache write never
+invalidates the module's lifecycle receipts, and polyglot tasks can neither
+cache inputs from nor write outputs into them.
 
 The real-provider regression lane runs through the standalone Maven build:
 

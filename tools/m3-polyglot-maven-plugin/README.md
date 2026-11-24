@@ -380,7 +380,9 @@ outputs are completely declared. Declare dependency JARs, compiler libraries, na
 external settings, processors, parent POMs outside the directory ancestry, lock files and other
 tool resources used by the command. The database does not infer hidden dependencies, network
 state, time/randomness or non-file effects. In-place input/output tasks, overlapping output owners, an input declaration
-for the whole `.m3` directory, database-owned paths below `.m3`, any
+for the whole `.m3` directory, database-owned paths below `.m3` (including
+the smart builder's `.m3/maven/mindexdb` analysis store, its `.m3/maven`
+parent and its `mindexdb.lock`), any
 `.m3-watch` checkpoint path (including nested reactor modules), and unknown
 provider dependencies remain uncached. The original command still executes
 for such an input, but cannot publish an incremental success receipt.
