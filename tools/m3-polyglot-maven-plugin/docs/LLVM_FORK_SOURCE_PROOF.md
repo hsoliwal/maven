@@ -137,3 +137,34 @@ Linux host under JDK 17 and 21, not source-built Flang, MLIR, LLD,
 Wasm/COFF, new target ABIs, Windows/macOS, broad native-cache reuse,
 or a full Maven/Gradle reactor. Preserve upstream LLVM
 Apache-2.0 WITH LLVM-exception provenance.
+
+## Six-tool source-build and cross-JDK identity admission
+
+The original `binary-receipt.txt` is created immediately after compiling
+`clang`, `clang++`, `llc`, `opt`, `llvm-as` and `llvm-link` from the
+pinned source. Before the optional IR helper invokes any native tool, it
+must require **exactly one matching SHA-256 line per selected executable**
+in that original receipt, together with the recorded source commit.
+A hash equality checked only *within* a JDK lane does not prove that the
+lane used the six initial source-built executables.
+
+The JDK 17 optional LLVM IR stage additionally requires both earlier
+success records: JDK 21's actual `opt/llvm-as/llvm-link` native regression
+and JDK 17's already-completed original Clang/`llc` regression. Its
+`llvm-ir-jdk17-binaries-before.sha256` transcript must be byte-identical
+to JDK 21's `llvm-ir-jdk21-binaries-after.sha256` transcript. Each stage
+must still check its own before/after fingerprints. Any missing or
+contradictory receipt, changed executable byte sequence, or out-of-order
+JDK 17 request is an explicit refusal, never an implicit rebuild, cache
+restoration, silently downgraded assertion or native success.
+
+These are **provenance-admission checks**, not a new LLVM implementation.
+The `M3ToolProvider` v1 SPI, native argv, existing JDK 21/JDK 17
+five-task regression, M3DB/CAS skip exclusion and build ownership are
+unchanged. The synthetic regression suite exercises changed/missing
+source-build identities, missing JDK 21 results and cross-lane drift;
+only the exact-fork hosted execution can qualify real native binaries.
+
+A successful run does not certify the complete OS/SDK dependency closure,
+Flang, MLIR, LLD, cross-platform ABIs or reproducibility of the host
+compiler. Native LLVM output reuse remains disabled.
