@@ -9,3 +9,8 @@
 *.jar    binary
 *.war    binary
 tools/m3-polyglot-maven-plugin/examples/llvm/m3-build.tsv text eol=lf
+tools/m3-polyglot-maven-plugin/src/test/resources/m3-cargo-build-facts-v1.fixture text eol=lf
+tools/m3-polyglot-maven-plugin/src/test/resources/m3-cdt-compiler-facts-v1.fixture text eol=lf
+tools/m3-polyglot-maven-plugin/src/test/resources/m3-eclipse-build-handoff-v1.fixture text eol=lf
+tools/m3-polyglot-maven-plugin/src/test/resources/m3-jdt-compiler-facts-v1.fixture text eol=lf
+tools/m3-polyglot-maven-plugin/src/test/resources/m3-tycho-final-p2-facts-v1.fixture text eol=lf
