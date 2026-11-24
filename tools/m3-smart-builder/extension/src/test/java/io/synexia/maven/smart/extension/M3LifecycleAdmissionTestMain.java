@@ -628,6 +628,9 @@ public final class M3LifecycleAdmissionTestMain {
         check(M3LifecycleExecutionStrategy.existingOutputForReuse(
                         new String[] {inputDigest}, inputDigest, outputs, null) == null,
                 "malformed old receipts never grant a content-hash reuse path");
+        check(M3LifecycleExecutionStrategy.existingOutputForReuse(
+                        new String[] {inputDigest, null}, inputDigest, outputs, null) == null,
+                "a malformed missing output digest must fail closed rather than be dereferenced");
         M3LifecycleFingerprint.Evidence valid = M3LifecycleExecutionStrategy.existingOutputForReuse(
                 new String[] {inputDigest, original}, inputDigest, outputs, output);
         check(valid != null && valid.digest().equals(original)

@@ -199,7 +199,7 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
      */
     static M3LifecycleFingerprint.Evidence existingOutputForReuse(
             String[] prior, String inputDigest, List<Path> outputs, Path attachedArtifact) throws IOException {
-        if (prior == null || prior.length != 2 || !inputDigest.equals(prior[0])
+        if (prior == null || prior.length != 2 || prior[1] == null || !inputDigest.equals(prior[0])
                 || (attachedArtifact != null && !Files.isRegularFile(attachedArtifact, LinkOption.NOFOLLOW_LINKS))) {
             return null;
         }
