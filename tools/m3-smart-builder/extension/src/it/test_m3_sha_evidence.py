@@ -40,6 +40,14 @@ class ScanEvidenceTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             qualify_cold_and_warm(scan_evidence(COLD), scan_evidence(""))
 
+    def test_zero_source_payload_is_not_positive_observation(self):
+        cold = COLD.replace("8 files, 3840 payload bytes", "8 files, 0 payload bytes")
+        with self.assertRaises(AssertionError):
+            qualify_cold_and_warm(scan_evidence(cold), scan_evidence(WARM))
+        warm = WARM.replace("9 files, 3950 payload bytes", "9 files, 0 payload bytes")
+        with self.assertRaises(AssertionError):
+            qualify_cold_and_warm(scan_evidence(COLD), scan_evidence(warm))
+
     def test_no_skipped_warm_output_attestation(self):
         warm = WARM.replace("2 files, 2048 payload bytes",
                             "skipped (no matching input receipt)")

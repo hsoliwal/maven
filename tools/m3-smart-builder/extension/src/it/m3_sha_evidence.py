@@ -40,14 +40,14 @@ def scan_evidence(log: str) -> dict:
 def qualify_cold_and_warm(cold: dict, warm: dict) -> dict:
     cold_phases = cold["sha256_content_scans"]
     warm_phases = warm["sha256_content_scans"]
-    if cold_phases["before"]["scans"] < 1:
-        raise AssertionError("cold run did not expose a real input SHA-256 scan")
+    if cold_phases["before"]["scans"] < 1 or cold_phases["before"]["payload_bytes_read"] < 1:
+        raise AssertionError("cold run did not expose a positive original input SHA-256 payload read")
     if cold_phases["outputs before"]["scans"] != 0:
         raise AssertionError("cold run pointlessly hashed pre-existing output contents")
     if cold["old_output_preflight_skipped"] < 1:
         raise AssertionError("cold run did not document a skipped old-output preflight")
-    if warm_phases["before"]["scans"] < 1:
-        raise AssertionError("warm run lacked a fresh input SHA-256 scan")
+    if warm_phases["before"]["scans"] < 1 or warm_phases["before"]["payload_bytes_read"] < 1:
+        raise AssertionError("warm run lacked a positive fresh input SHA-256 payload read")
     if warm_phases["outputs before"]["scans"] < 1:
         raise AssertionError("warm run failed to rehash actual candidate outputs")
     if warm_phases["outputs before"]["payload_bytes_read"] < 1:
