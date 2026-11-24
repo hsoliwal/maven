@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -47,7 +48,16 @@ class Fixture:
         for tool in TOOLS:
             executable(self.build / "bin" / tool, "#!/bin/sh\nexit 0\n")
         (self.evidence / "source-receipt.tsv").write_text(
-            "key\tvalue\nsource_built_clang_llc_maven_native\tPASS\n", encoding="utf-8")
+            f"key\tvalue\nsource_revision\t{PIN}\n"
+            "source_built_clang_llc_maven_native\tPASS\n", encoding="utf-8")
+        source_binaries = [f"source_revision\t{PIN}\n"]
+        for tool in TOOLS:
+            binary = self.build / "bin" / tool
+            source_binaries += [f"tool\t{tool}\n",
+                                f"{hashlib.sha256(binary.read_bytes()).hexdigest()}  {binary}\n",
+                                f"{tool} version synthetic\n"]
+        (self.evidence / "binary-receipt.txt").write_text(
+            "".join(source_binaries), encoding="utf-8")
         executable(self.bin / "git", '''#!/usr/bin/env bash
 if [[ "$*" == *"rev-parse --verify HEAD"* ]]; then
   printf '%s\\n' "${FAKE_GIT_SHA:-591f3d1edf0a9ee718d17a0ee70dd013b3c01908}"
@@ -173,6 +183,83 @@ class NativeToolProofAdmissionTests(unittest.TestCase):
     def test_duplicate_success_refused(self) -> None:
         self.assertEqual(self.f.run().returncode, 0)
         self.assertEqual(self.f.run().returncode, 65)
+
+    def test_missing_original_binary_receipt_refused(self) -> None:
+        (self.f.evidence / "binary-receipt.txt").unlink()
+        result = self.f.run()
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt())
+
+    def test_changed_original_source_binary_refused(self) -> None:
+        binary = self.f.build / "bin" / "opt"
+        binary.write_text("#!/bin/sh\necho altered binary\n", encoding="utf-8")
+        binary.chmod(0o755)
+        result = self.f.run()
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt())
+
+    def test_unrecorded_source_revision_refused(self) -> None:
+        receipt = self.f.evidence / "source-receipt.tsv"
+        receipt.write_text(receipt.read_text().replace(f"source_revision\t{PIN}\n", ""))
+        self.assertEqual(self.f.run().returncode, 66)
+        self.assertFalse(self.f.receipt())
+
+    def test_duplicate_original_binary_hash_refused(self) -> None:
+        receipt = self.f.evidence / "binary-receipt.txt"
+        old = receipt.read_text()
+        digest = hashlib.sha256((self.f.build / "bin/opt").read_bytes()).hexdigest()
+        receipt.write_text(old + f"{digest}  {self.f.build / 'bin/opt'}\n")
+        self.assertEqual(self.f.run().returncode, 66)
+        self.assertFalse(self.f.receipt())
+
+    def test_duplicate_original_source_identity_refused(self) -> None:
+        receipt = self.f.evidence / "source-receipt.tsv"
+        receipt.write_text(receipt.read_text() + f"source_revision\t{PIN}\n")
+        self.assertEqual(self.f.run().returncode, 66)
+        self.assertFalse(self.f.receipt())
+
+    def test_jdk17_requires_prior_jdk21_native_ir_receipt(self) -> None:
+        with (self.f.evidence / "source-receipt.tsv").open("a") as out:
+            out.write("source_built_clang_llc_maven_native_jdk17\tPASS\n")
+        result = self.f.run("17")
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt("17"))
+
+    def test_jdk17_requires_previous_binary_transcript(self) -> None:
+        self.assertEqual(self.f.run().returncode, 0)
+        (self.f.evidence / "llvm-ir-jdk21-binaries-after.sha256").unlink()
+        with (self.f.evidence / "source-receipt.tsv").open("a") as out:
+            out.write("source_built_clang_llc_maven_native_jdk17\tPASS\n")
+        result = self.f.run("17")
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt("17"))
+
+    def test_jdk17_refuses_cross_lane_transcript_drift(self) -> None:
+        self.assertEqual(self.f.run().returncode, 0)
+        with (self.f.evidence / "source-receipt.tsv").open("a") as out:
+            out.write("source_built_clang_llc_maven_native_jdk17\tPASS\n")
+        previous = self.f.evidence / "llvm-ir-jdk21-binaries-after.sha256"
+        previous.write_text(previous.read_text().replace("a", "b", 1))
+        result = self.f.run("17")
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt("17"))
+
+    def test_jdk17_rejects_swapped_binary_even_if_baseline_receipt_rewritten(self) -> None:
+        self.assertEqual(self.f.run().returncode, 0)
+        with (self.f.evidence / "source-receipt.tsv").open("a") as out:
+            out.write("source_built_clang_llc_maven_native_jdk17\tPASS\n")
+        binary = self.f.build / "bin/opt"
+        old_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        binary.write_text("#!/bin/sh\necho replaced after JDK 21\n", encoding="utf-8")
+        binary.chmod(0o755)
+        new_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        original = self.f.evidence / "binary-receipt.txt"
+        original.write_text(original.read_text().replace(
+            f"{old_digest}  {binary}\n", f"{new_digest}  {binary}\n"))
+        result = self.f.run("17")
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertFalse(self.f.receipt("17"))
+
 
 
 class MavenPrerequisiteFixture:

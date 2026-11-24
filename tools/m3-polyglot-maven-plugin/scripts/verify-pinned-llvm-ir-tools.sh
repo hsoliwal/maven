@@ -50,6 +50,21 @@ if [[ "$LANE" == 17 ]] &&
   echo 'Missing original Java 17 Clang/llc successful Maven proof' >&2
   exit 66
 fi
+# Each successful lane must bind to the original source-built bytes and the
+# exact prior proof. A same-lane before/after match alone is insufficient.
+require_one_line() {
+  local file="$1" expected="$2" count
+  if [[ ! -f "$file" || -L "$file" ]] ||
+     ! count="$(grep -Fxc -- "$expected" "$file")" ||
+     [[ "$count" != 1 ]]; then
+    printf 'LLVM IR proof missing/ambiguous original identity: %s\n' "$expected" >&2
+    exit 66
+  fi
+}
+require_one_line "$RECEIPT" "$(printf 'source_revision\t%s' "$PIN")"
+if [[ "$LANE" == 17 ]]; then
+  require_one_line "$RECEIPT" $'source_built_llvm_ir_tools_native_jdk21\tPASS'
+fi
 if grep -Fxq "$(printf '%s\tPASS' "$SUCCESS")" "$RECEIPT"; then
   echo 'LLVM IR proof success receipt already exists; refuse duplicate run' >&2
   exit 65
@@ -82,6 +97,23 @@ done
 for tool in clang clang++ llc opt llvm-as llvm-link; do
   sha256sum "$BUILD/bin/$tool"
 done > "$EVIDENCE/llvm-ir-jdk${LANE}-binaries-before.sha256"
+# The original CMake/Ninja producer recorded these selected executable bytes.
+# Require each driver name and exact SHA-256 line exactly once, not merely a
+# current hash that stays unchanged during one Java process.
+readonly SOURCE_BINARIES="$EVIDENCE/binary-receipt.txt"
+require_one_line "$SOURCE_BINARIES" "$(printf 'source_revision\t%s' "$PIN")"
+for tool in clang clang++ llc opt llvm-as llvm-link; do
+  require_one_line "$SOURCE_BINARIES" "$(printf 'tool\t%s' "$tool")"
+  require_one_line "$SOURCE_BINARIES" "$(sha256sum "$BUILD/bin/$tool")"
+done
+if [[ "$LANE" == 17 ]]; then
+  previous="$EVIDENCE/llvm-ir-jdk21-binaries-after.sha256"
+  if [[ ! -f "$previous" || -L "$previous" ]] ||
+     ! cmp -s -- "$previous" "$EVIDENCE/llvm-ir-jdk17-binaries-before.sha256"; then
+    echo 'JDK 17 LLVM IR binaries differ from the proven JDK 21 native toolchain' >&2
+    exit 66
+  fi
+fi
 
 # The classes must not contaminate the original Maven module's targets,
 # native build, pinned source worktree or retained evidence artifact.
