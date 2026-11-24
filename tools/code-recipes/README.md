@@ -30,6 +30,19 @@ what was checked and why.
 
 ## Recipes
 
+### EnableM3LifecycleModuleDb
+
+The opt-in OpenRewrite composite `org.apache.maven.recipes.EnableM3LifecycleModuleDb`
+adds `m3.lifecycle.incremental=true` and
+`m3.lifecycle.backend=embedded` to a Maven POM, but **preserves existing
+explicit values**, including opt-outs and alternate backends. It changes
+configuration only; it does not execute the Maven lifecycle or authorize
+arbitrary plugins. Use the recipe explicitly through OpenRewrite, and
+retain the original per-module database at `.m3/module.m3db`.
+`EnableM3LifecycleModuleDbTest` proves both insertion and explicit-policy
+preservation with the original `RewriteTest` Maven XML parser.
+
+
 | Recipe | Kind | Options |
 |---|---|---|
 | `org.apache.maven.recipes.SetupJavaMinimumVersion` | change | `minimumJavaMajorVersion` (8 to 99, default 21) |
