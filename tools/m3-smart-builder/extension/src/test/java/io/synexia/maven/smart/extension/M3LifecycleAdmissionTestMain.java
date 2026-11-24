@@ -61,6 +61,7 @@ public final class M3LifecycleAdmissionTestMain {
             excludesOtherReactorOutputsButNotSources(temporary);
             shaScanEvidenceMatchesOriginalKeys(temporary);
             coldAndDirtyGoalsDoNotHashOldOutputs(temporary);
+            reusedScratchPreservesShaAcrossFileAndChunkBoundaries(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -639,6 +640,42 @@ public final class M3LifecycleAdmissionTestMain {
         check(mutated != null && !mutated.digest().equals(original)
                         && mutated.filesHashed() == 1 && mutated.payloadBytesRead() == Files.size(output),
                 "same-size, restored-timestamp output tampering remains detectable on warm admission");
+    }
+
+    private static void reusedScratchPreservesShaAcrossFileAndChunkBoundaries(Path temporary) throws Exception {
+        Path root = Files.createDirectories(temporary.resolve("m3-file-scratch"));
+        int[] sizes = {0, 1, 65_535, 65_536, 65_537, 131_073, 3};
+        long totalBytes = 0;
+        List<Path> files = new ArrayList<>();
+        for (int i = 0; i < sizes.length; i++) {
+            byte[] payload = new byte[sizes[i]];
+            for (int j = 0; j < payload.length; j++) {
+                payload[j] = (byte) ((i * 97 + j * 17) & 0xff);
+            }
+            Path file = Files.write(root.resolve(String.format("f-%02d.bin", i)), payload);
+            files.add(file);
+            totalBytes += payload.length;
+        }
+        M3LifecycleFingerprint.Evidence baseline = M3LifecycleFingerprint.observeOutputs(List.of(root));
+        check(baseline.filesHashed() == sizes.length && baseline.payloadBytesRead() == totalBytes,
+                "reused SHA scratch accounts for empty, short, 64-KiB and multi-chunk files without extra reads");
+        check(baseline.digest().equals(M3LifecycleFingerprint.outputs(List.of(root))),
+                "per-fingerprint SHA scratch preserves the identical tree output identity");
+        Path changed = files.get(5);
+        byte[] before = Files.readAllBytes(changed);
+        var previousTime = Files.getLastModifiedTime(changed);
+        byte[] altered = before.clone();
+        altered[65_536] ^= 0x5a;
+        Files.write(changed, altered);
+        Files.setLastModifiedTime(changed, previousTime);
+        M3LifecycleFingerprint.Evidence mutation = M3LifecycleFingerprint.observeOutputs(List.of(root));
+        check(!baseline.digest().equals(mutation.digest())
+                        && mutation.filesHashed() == sizes.length && mutation.payloadBytesRead() == totalBytes,
+                "same-size same-timestamp content mutation after a 64-KiB boundary still invalidates SHA");
+        Files.write(changed, before);
+        Files.setLastModifiedTime(changed, previousTime);
+        check(baseline.digest().equals(M3LifecycleFingerprint.outputs(List.of(root))),
+                "restoring exact bytes restores the canonical digest across reused read buffers");
     }
 
     private static String propertyFingerprint(Properties properties, boolean system) throws Exception {

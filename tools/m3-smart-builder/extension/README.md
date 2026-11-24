@@ -46,6 +46,13 @@ observation; after original execution, outputs are fully verified before M3DB
 records a new success. This is a bounded read-elimination optimization, not
 cross-process source-digest reuse.
 
+The SHA-256 source scanner also reuses one lazily initialized 64-KiB
+read buffer and one reset SHA-256 provider per fingerprint rather than
+allocating both for every file. These objects are thread-confined, never
+persisted, and do not cache content between process invocations. Differential
+tests cover empty files, shorter files, exact 64-KiB files, multi-chunk
+reads, same-timestamp mutation and byte-for-byte digest restoration.
+
 For measured qualification, Maven's existing debug logger now reports the
 actual `M3DB SHA-256 before/after` and `outputs before/after` counts as
 `files` and `payload bytes` for eligible lifecycle goals. For example,
