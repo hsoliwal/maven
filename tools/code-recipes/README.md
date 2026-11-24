@@ -40,8 +40,11 @@ missing. It **preserves local and inherited parent values**, including opt-outs
 and alternate backends, rather than overriding an inherited `false` in a
 reactor child. It changes
 configuration only; it does not execute the Maven lifecycle or authorize
-arbitrary plugins. Use the recipe explicitly through OpenRewrite, and
-retain the original per-module database at `.m3/module.m3db`.
+arbitrary plugins. Use the recipe explicitly through OpenRewrite and run the
+enhanced Synexia Maven fork or its compatible installed extension: stock Maven
+does not implement the `m3.lifecycle.*` execution strategy merely because
+these properties appear in a POM. Retain the original per-module database at
+`.m3/module.m3db`.
 `EnableM3LifecycleModuleDbTest` proves both insertion and explicit-policy
 preservation with the original `RewriteTest` Maven XML parser.
 
