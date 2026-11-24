@@ -54,14 +54,14 @@ jobs:
           cp source-maven-274/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar qualified/polyglot.jar
           printf 'M3-FUSED-MAVEN274-V1\t%s\t%s\t%s\n' \
             53d7bd782077968e596a54cb7948ea22810734c3 \
-            abb445e9f710bb861e95d5491d0591438dc98257 \
+            c37aebffa4a7040f2bb5d1f783ce18237354fd90 \
             '${{ matrix.java }}' > qualified/SOURCE_RECEIPT.tsv
           (cd qualified && sha256sum polyglot.jar SOURCE_RECEIPT.tsv > SHA256SUMS && sha256sum -c SHA256SUMS)
-      - name: Checkout exact Gradle PR 75 with original untracked consumer
+      - name: Checkout exact Gradle deleted-output regression
         uses: actions/checkout@v4
         with:
           repository: hsoliwal/gradle
-          ref: abb445e9f710bb861e95d5491d0591438dc98257
+          ref: c37aebffa4a7040f2bb5d1f783ce18237354fd90
           path: consumer-gradle
           persist-credentials: false
           sparse-checkout: |
@@ -73,11 +73,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd qualified && sha256sum -c SHA256SUMS)
-          test "$(git -C consumer-gradle rev-parse HEAD)" = abb445e9f710bb861e95d5491d0591438dc98257
-          test "$(git -C consumer-gradle hash-object m3/quality-bridge/src/test/java/io/synexia/gradle/quality/M3FusedStateCacheRealEngineTest.java)" = 40012d55ca7a86155cfe07183a1589592994149d
+          test "$(git -C consumer-gradle rev-parse HEAD)" = c37aebffa4a7040f2bb5d1f783ce18237354fd90
+          test "$(git -C consumer-gradle hash-object m3/quality-bridge/src/test/java/io/synexia/gradle/quality/M3FusedStateCacheRealEngineTest.java)" = 075444a7b403d890729c5924915a3bf6cae4f5bc
           expected=$(printf 'M3-FUSED-MAVEN274-V1\t%s\t%s\t%s' \
             53d7bd782077968e596a54cb7948ea22810734c3 \
-            abb445e9f710bb861e95d5491d0591438dc98257 \
+            c37aebffa4a7040f2bb5d1f783ce18237354fd90 \
             '${{ matrix.java }}')
           test "$(cat qualified/SOURCE_RECEIPT.tsv)" = "$expected"
       - name: Execute real cross-checkout fused Maven cache and Gradle TestKit
@@ -128,6 +128,7 @@ jobs:
           name: m3-gradle-maven274-fused-jdk-${{ matrix.java }}
           path: |
             m3-maven274-original.log
+            qualified/polyglot.jar
             qualified/SOURCE_RECEIPT.tsv
             qualified/SHA256SUMS
             consumer-gradle/m3/quality-bridge/build/test-results/test/**
