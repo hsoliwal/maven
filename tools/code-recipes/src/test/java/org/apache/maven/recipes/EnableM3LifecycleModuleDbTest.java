@@ -49,8 +49,60 @@ class EnableM3LifecycleModuleDbTest implements RewriteTest {
                   <artifactId>native-m3db</artifactId>
                   <version>1.0</version>
                   <properties>
-                    <m3.lifecycle.incremental>true</m3.lifecycle.incremental>
                     <m3.lifecycle.backend>embedded</m3.lifecycle.backend>
+                    <m3.lifecycle.incremental>true</m3.lifecycle.incremental>
+                  </properties>
+                </project>
+                """));
+    }
+
+    @Test
+    void preservesExplicitDisabledValueWhileAddingOnlyMissingBackend() {
+        rewriteRun(pomXml(
+                """
+                <project>
+                  <groupId>example</groupId>
+                  <artifactId>partial-opt-out</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <m3.lifecycle.incremental>false</m3.lifecycle.incremental>
+                  </properties>
+                </project>
+                """,
+                """
+                <project>
+                  <groupId>example</groupId>
+                  <artifactId>partial-opt-out</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <m3.lifecycle.backend>embedded</m3.lifecycle.backend>
+                    <m3.lifecycle.incremental>false</m3.lifecycle.incremental>
+                  </properties>
+                </project>
+                """));
+    }
+
+    @Test
+    void respectsExistingBackendWhenOnlyIncrementalPropertyIsMissing() {
+        rewriteRun(pomXml(
+                """
+                <project>
+                  <groupId>example</groupId>
+                  <artifactId>partial-backend</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <m3.lifecycle.backend>sqlite</m3.lifecycle.backend>
+                  </properties>
+                </project>
+                """,
+                """
+                <project>
+                  <groupId>example</groupId>
+                  <artifactId>partial-backend</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <m3.lifecycle.backend>sqlite</m3.lifecycle.backend>
+                    <m3.lifecycle.incremental>true</m3.lifecycle.incremental>
                   </properties>
                 </project>
                 """));
