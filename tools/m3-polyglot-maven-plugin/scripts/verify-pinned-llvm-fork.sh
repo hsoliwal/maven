@@ -10,7 +10,7 @@ if [[ $# -ne 3 ]]; then
   printf 'usage: %s <checked-out-llvm-fork> <build-directory> <evidence-directory>\n' "$0" >&2
   exit 64
 fi
-for tool in git cmake ninja java javac mvn sha256sum grep find realpath tee sed; do
+for tool in git cmake ninja java javac mvn sha256sum grep find realpath tee sed sleep; do
   command -v "$tool" >/dev/null || { printf 'missing build tool: %s\n' "$tool" >&2; exit 69; }
 done
 
@@ -107,6 +107,48 @@ mkdir -p -- "$BUILD" "$EVIDENCE"
   sha256sum llvm/CMakeLists.txt clang/tools/driver/CMakeLists.txt cmake/Modules/LLVMVersion.cmake
 ) > "$EVIDENCE/source-file-sha256.txt"
 
+# Resolve and compile the original Maven prerequisite before the costly native
+# build, but only after every source and fresh-output refusal above has passed.
+# Match the observed Maven Central artifact-resolution error, not a stale 429
+# warning alongside an unrelated failure. Unknown error diagnostics are terminal.
+readonly MAVEN_CENTRAL_429='^\[ERROR\][[:space:]]+The following artifacts could not be resolved: [^[:space:]]+ \(absent\): Could not transfer artifact [^[:space:]]+ from\/to central \(https:\/\/repo\.maven\.apache\.org\/maven2\): HTTP Status: 429$'
+attempt=1
+while :; do
+  attempt_log="$EVIDENCE/maven-test-compile-attempt-$attempt.log"
+  # No M3-LLVM_HOME or native test selector on Maven compilation. The pinned
+  # tools are opt-in for only the actual original TaskRunner regression below.
+  if mvn -B -ntp -f "$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/pom.xml" test-compile \
+      > "$attempt_log" 2>&1; then
+    tee "$EVIDENCE/maven-test-compile.log" < "$attempt_log"
+    break
+  else
+    status=$?
+    tee "$EVIDENCE/maven-test-compile.log" < "$attempt_log"
+    if [[ "$attempt" -ge 3 ]] || ! grep -Eq "$MAVEN_CENTRAL_429" "$attempt_log"; then
+      exit "$status"
+    fi
+    unexpected_errors="$(sed -n '/^\[ERROR\]/p' "$attempt_log" | sed -E \
+      -e "/$MAVEN_CENTRAL_429/d" \
+      -e '/^\[ERROR\][[:space:]]*$/d' \
+      -e '/^\[ERROR\] BUILD FAILURE$/d' \
+      -e '/^\[ERROR\] Plugin [^[:space:]]+ or one of its dependencies could not be resolved:$/d' \
+      -e '/^\[ERROR\] -> \[Help 1\]$/d' \
+      -e '/^\[ERROR\] To see the full stack trace of the errors, re-run Maven with the -e switch\.$/d' \
+      -e '/^\[ERROR\] Re-run Maven using the -X switch to enable full debug logging\.$/d' \
+      -e '/^\[ERROR\] For more information about the errors and possible solutions, please read the following articles:$/d' \
+      -e '/^\[ERROR\] \[Help 1\] https?:\/\/cwiki\.apache\.org\/confluence\/display\/MAVEN\/PluginResolutionException$/d')"
+    if [[ -n "$unexpected_errors" ]]; then
+      exit "$status"
+    fi
+    echo "Maven Central rate-limited dependency resolution; retry $attempt of 2" >&2
+    sleep $((attempt * 20))
+    attempt=$((attempt + 1))
+  fi
+done
+readonly CLASSES="$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/target/classes"
+readonly TEST_CLASSES="$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/target/test-classes"
+test -f "$TEST_CLASSES/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.class"
+
 # Restrict target backend and memory pressure; no original compiler flags or
 # Maven task vectors are rewritten. GCC/host SDK remains an external input.
 cmake -S "$SOURCE/llvm" -B "$BUILD" -G Ninja \
@@ -134,13 +176,6 @@ done
   done
 } > "$EVIDENCE/binary-receipt.txt"
 
-# No M3-LLVM_HOME or native test selector on Maven compilation. The pinned
-# tools are opt-in for only the actual original TaskRunner regression below.
-mvn -B -ntp -f "$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/pom.xml" test-compile \
-  2>&1 | tee "$EVIDENCE/maven-test-compile.log"
-readonly CLASSES="$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/target/classes"
-readonly TEST_CLASSES="$MAVEN_ROOT/tools/m3-polyglot-maven-plugin/target/test-classes"
-test -f "$TEST_CLASSES/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.class"
 (
   cd "$MAVEN_ROOT"
   M3_POLYGLOT_LLVM_TEST_HOME="$BUILD" java -cp "$TEST_CLASSES:$CLASSES" \
