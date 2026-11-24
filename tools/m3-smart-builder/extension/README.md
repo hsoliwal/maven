@@ -53,6 +53,15 @@ persisted, and do not cache content between process invocations. Differential
 tests cover empty files, shorter files, exact 64-KiB files, multi-chunk
 reads, same-timestamp mutation and byte-for-byte digest restoration.
 
+The original real-Maven `verify_module_state.py` acceptance now selects
+debug logging for its **cold** and **fresh-JVM warm** runs and records
+`sha256-scan-evidence.json` plus the same evidence inside
+`acceptance.json`. Cold goals must report skipped *preflight old-output*
+reads; a warm receipt candidate must still report freshly hashed output
+payload bytes and a fresh source SHA scan. Missing DEBUG evidence is a
+hard test failure. This is measured I/O evidence, **not** a claim that
+source files were skipped or zero-rehashed between processes.
+
 For measured qualification, Maven's existing debug logger now reports the
 actual `M3DB SHA-256 before/after` and `outputs before/after` counts as
 `files` and `payload bytes` for eligible lifecycle goals. For example,

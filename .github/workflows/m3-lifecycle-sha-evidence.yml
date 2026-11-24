@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 lifecycle SHA-256 evidence parser contract
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-smart-builder/extension/src/it/m3_sha_evidence.py'
+      - 'tools/m3-smart-builder/extension/src/it/test_m3_sha_evidence.py'
+      - 'tools/m3-smart-builder/extension/src/it/verify_module_state.py'
+      - '.github/workflows/m3-lifecycle-sha-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run deterministic original M3DB DEBUG evidence regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover \
+            -s tools/m3-smart-builder/extension/src/it \
+            -p 'test_m3_sha_evidence.py' -v
+      - name: Prove original integration harness still parses
+        shell: bash
+        run: |
+          python3 -m py_compile \
+            tools/m3-smart-builder/extension/src/it/verify_module_state.py \
+            tools/m3-smart-builder/extension/src/it/m3_sha_evidence.py
