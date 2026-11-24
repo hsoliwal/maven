@@ -10,10 +10,10 @@ import re
 
 _HASH = re.compile(
     r"M3DB SHA-256 (?P<phase>outputs before|outputs after|before|after) "
-    r"(?P<goal>.+?): (?P<files>[0-9]+) files, (?P<bytes>[0-9]+) payload bytes(?:\\s|$)")
+    r"(?P<goal>.+?): (?P<files>[0-9]+) files, (?P<bytes>[0-9]+) payload bytes(?:\s|$)")
 _SKIPPED = re.compile(
     r"M3DB SHA-256 outputs before (?P<goal>.+?): "
-    r"skipped \\(no matching input receipt\\)")
+    r"skipped \(no matching input receipt\)")
 
 
 def scan_evidence(log: str) -> dict:
