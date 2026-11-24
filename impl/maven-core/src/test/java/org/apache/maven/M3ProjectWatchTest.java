@@ -591,7 +591,7 @@ class M3ProjectWatchTest {
                 var built = successful("target");
                 var resource = new org.apache.maven.model.Resource();
                 resource.setDirectory(root.resolve(".m3").toString());
-                built.getProject().getBuild().addResource(resource);
+                built.getProject().addResource(resource);
                 return built;
             });
             assertTrue(result.hasExceptions());
