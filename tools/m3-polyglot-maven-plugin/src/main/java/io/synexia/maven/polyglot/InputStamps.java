@@ -289,12 +289,14 @@ final class InputStamps {
      * A path may hide nested M3DB/M3File state below a declared parent. Unknown
      * or unreadable input inventories grant no cache proof. This observes only
      * path names; actual reuse still requires fresh content SHA verification.
+     * Symlinks stay with the content scanner: eligible ordinary inputs must
+     * fail validation, while optional provider identity failures retain fallback.
      */
     static boolean containsReservedState(Path root, Path input) {
         if (!input.startsWith(root)) {
             return false;
         }
-        if (statePath(relative(root, input)) || Files.isSymbolicLink(input)) {
+        if (statePath(relative(root, input))) {
             return true;
         }
         if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
@@ -308,7 +310,7 @@ final class InputStamps {
                     return true;
                 }
                 Path entry = cursor.next();
-                if (statePath(relative(root, entry)) || Files.isSymbolicLink(entry)) {
+                if (statePath(relative(root, entry))) {
                     return true;
                 }
             }
