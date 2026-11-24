@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 native lifecycle OpenRewrite recipe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/code-recipes/**'
+      - '.github/workflows/m3-native-module-db-recipe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rewrite-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Original OpenRewrite Maven XML and recipe tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/m3-polyglot-maven-plugin/scripts/retry-maven-central-429.sh \
+            mvn --batch-mode --no-transfer-progress -f tools/code-recipes/pom.xml verify
+      - name: Require a real non-skipped native M3DB recipe test result
+        shell: bash
+        run: |
+          set -euo pipefail
+          report=tools/code-recipes/target/surefire-reports/TEST-org.apache.maven.recipes.EnableM3LifecycleModuleDbTest.xml
+          test -s "$report"
+          python3 - "$report" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          suite = ET.parse(sys.argv[1]).getroot()
+          count = int(suite.attrib.get("tests", "0"))
+          assert suite.tag == "testsuite" and count >= 2 and len(suite.findall("testcase")) == count
+          assert all(int(suite.attrib.get(k, "-1")) == 0 for k in ("errors", "failures", "skipped"))
+          assert not any(any(case.find(k) is not None for k in ("error", "failure", "skipped"))
+                         for case in suite.findall("testcase"))
+          print(f"PASS: original OpenRewrite Maven recipe tests executed: {count}")
+          PY
+      - name: Preserve actual OpenRewrite proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-native-module-db-rewrite-tests
+          path: tools/code-recipes/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 14
