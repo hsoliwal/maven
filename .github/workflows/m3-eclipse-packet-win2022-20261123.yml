@@ -5,6 +5,7 @@ on:
   pull_request:
     branches: [master, fix/m3-eclipse-packet-win2022-20261123]
     paths:
+      - '.gitattributes'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/M3EclipseLanguageEvidenceServiceContractTestMain.java'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/ProviderReuseExecutionTestMain.java'
       - '.github/workflows/m3-eclipse-packet-win2022-20261123.yml'
