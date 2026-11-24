@@ -30,6 +30,17 @@ what was checked and why.
 
 ## Recipes
 
+### M3MachineFlowJava17
+
+Run the explicit `org.apache.maven.recipes.M3MachineFlowJava17` OpenRewrite
+recipe to lower the two original `MachineFlowAnalysis.java` pattern-switch
+initializers to Java 17 `instanceof` expressions. The recipe is scoped to the
+original class and exact AST expression shapes; it preserves switch-on-null
+failure semantics and leaves other Java switches unchanged. `MachineFlowJava17SwitchesTest`
+proves the mechanical postimage and idempotence via the original Java parser.
+A separate Java 17 compiler gate must compile the real Maven source too.
+
+
 ### EnableM3LifecycleModuleDb
 
 The opt-in OpenRewrite composite `org.apache.maven.recipes.EnableM3LifecycleModuleDb`

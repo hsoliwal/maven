@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Recipe-first mechanical source convergence; changes only the original
+# MachineFlowAnalysis.java two exact pattern-switch initializers. All other
+# Java switch expressions and unknown source shapes remain untouched.
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: org.apache.maven.recipes.M3MachineFlowJava17
+displayName: Lower M3 compiler may-flow dispatch to Java 17 syntax
+description: >-
+  Java 17 code generation for the two original compiler TreePath pattern
+  switches, without changing symbol/flow facts, source ownership or contracts.
+recipeList:
+  - org.apache.maven.recipes.MachineFlowJava17Switches
