@@ -194,8 +194,7 @@ class M3ProjectWatchTest {
 
     @Test
     void boundedWatchCannotHideAnUncommittedSuccessfulGeneration() throws Exception {
-        assertThrows(
-                IOException.class, () -> M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
+        assertThrows(IOException.class, () -> M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, false));
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, false, true);
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 1, true, false);
         M3ProjectWatch.requireCheckpointOnBoundedExit(1, 2, false, false);
@@ -221,8 +220,7 @@ class M3ProjectWatchTest {
                 root.getParent().resolve("outside-filter.properties").toString())) {
             InvocationTargetException failure = assertThrows(
                     InvocationTargetException.class, () -> require.invoke(options, path, "resource filter"));
-            assertTrue(failure.getCause() instanceof IOException,
-                    "unobservable Maven input must fail closed: " + path);
+            assertTrue(failure.getCause() instanceof IOException, "unobservable Maven input must fail closed: " + path);
         }
     }
 
@@ -576,7 +574,8 @@ class M3ProjectWatchTest {
             var original = request(1);
             var result = execute(original, next -> {
                 var built = successful("target");
-                built.getProject().addCompileSourceRoot(root.resolve(".m3/user-src").toString());
+                built.getProject()
+                        .addCompileSourceRoot(root.resolve(".m3/user-src").toString());
                 return built;
             });
             assertTrue(result.hasExceptions());
@@ -604,7 +603,11 @@ class M3ProjectWatchTest {
             var original = request(1);
             var result = execute(original, next -> {
                 var built = successful("target");
-                built.getProject().getBuild().addFilter(root.getParent().resolve("external-filter.properties").toString());
+                built.getProject()
+                        .getBuild()
+                        .addFilter(root.getParent()
+                                .resolve("external-filter.properties")
+                                .toString());
                 return built;
             });
             assertTrue(result.hasExceptions());
