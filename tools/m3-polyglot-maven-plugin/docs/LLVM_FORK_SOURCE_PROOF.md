@@ -88,3 +88,48 @@ Flang, MLIR, LLD, additional target SDKs, Windows/macOS or native cache reuse.
 The workflow and native-provider public APIs are unchanged. This extension
 executes only after the pinned native proof, reuses its build output, and
 does not add a default lifecycle or a second compiler owner.
+
+## Source-built LLVM IR tools across JDK 21 and JDK 17
+
+Extend the existing single-source-build CMake/Ninja lane with upstream LLVM
+targets `opt`, `llvm-as`, and `llvm-link`, retaining `clang` and `llc`.
+Their target names are verified at donor commit
+`hsoliwal/llvm-project@591f3d1edf0a9ee718d17a0ee70dd013b3c01908`.
+These are original LLVM commands; no compiler, optimizer, assembler, linker,
+scheduler, or cache implementation is duplicated inside Maven.
+
+After the existing JDK 21 Clang/`llc` native test passes, the independent
+`scripts/verify-pinned-llvm-ir-tools.sh` must compile the existing optional
+`LlvmNativeToolsProvider` and `LlvmNativePipelineIntegrationTestMain`
+against the Maven engine's compiled classes using
+`javac --release 17 -encoding UTF-8 -Xlint:all -Werror`.
+The original `ServiceLoader` discovers the optional provider, and the
+original `TaskRunner` executes its five-stage
+`opt -> llvm-as -> llvm-link -> opt` native DAG. The regression checks
+input mutation, invalid-IR failure and recovery, native cache exclusion,
+and nonempty generated products.
+
+After the original JDK 17 Clang/`llc` run, the same helper must run on
+Java 17 using the **same** LLVM source-built binaries, without rebuilding
+LLVM. It must refuse a wrong source Git revision, missing compiler
+success receipt, unselected native tools, incompatible Java/Maven
+runtime, missing compiled Maven classes, or an unsuccessful native test.
+Each JDK gets an independent log and terminal PASS receipt, written only
+after the real original process exits successfully and its result has
+been checked. Six source-built native executable SHA-256 identities
+(`clang`, `clang++`, `llc`, `opt`, `llvm-as`, `llvm-link`)
+are recorded and remain unchanged across both JDK lanes.
+
+Provider class files are compiled only into an isolated runner-temporary
+directory and cleaned after the test. Retained CI artifacts contain
+receipts, process logs, and hashes, not newly packaged binaries.
+Changes to the helper, provider Java sources, evidence reader, provider
+`META-INF/services`, or native pipeline regression must trigger this
+expensive source-built proof on PRs and `master` pushes, subject to the
+existing strict symmetric trigger checker.
+
+The new proof qualifies these **three LLVM IR utilities** on the tested
+Linux host under JDK 17 and 21, not source-built Flang, MLIR, LLD,
+Wasm/COFF, new target ABIs, Windows/macOS, broad native-cache reuse,
+or a full Maven/Gradle reactor. Preserve upstream LLVM
+Apache-2.0 WITH LLVM-exception provenance.
