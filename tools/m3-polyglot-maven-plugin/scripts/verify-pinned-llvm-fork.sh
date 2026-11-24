@@ -120,14 +120,14 @@ cmake -S "$SOURCE/llvm" -B "$BUILD" -G Ninja \
   -DLLVM_PARALLEL_COMPILE_JOBS=2 \
   -DLLVM_PARALLEL_LINK_JOBS=1 \
   2>&1 | tee "$EVIDENCE/configure.log"
-cmake --build "$BUILD" --target clang llc --parallel 2 \
+cmake --build "$BUILD" --target clang llc opt llvm-as llvm-link --parallel 2 \
   2>&1 | tee "$EVIDENCE/native-build.log"
-for tool in clang clang++ llc; do
+for tool in clang clang++ llc opt llvm-as llvm-link; do
   test -x "$BUILD/bin/$tool" || { printf 'Expected source-built tool missing: %s\n' "$tool" >&2; exit 67; }
 done
 {
   printf 'source_revision\t%s\n' "$ACTUAL"
-  for tool in clang clang++ llc; do
+  for tool in clang clang++ llc opt llvm-as llvm-link; do
     printf 'tool\t%s\n' "$tool"
     sha256sum "$BUILD/bin/$tool"
     "$BUILD/bin/$tool" --version | sed -n '1p'
@@ -158,3 +158,5 @@ for requirement in \
 done
 printf 'source_built_clang_llc_maven_native\tPASS\n' >> "$EVIDENCE/source-receipt.tsv"
 echo 'PASS: pinned-fork clang/clang++/llc built from exact sources and executed through original Maven TaskRunner'
+# Reuse these source-built original LLVM tools, now invoking the optional SPI.
+bash "$SCRIPT_DIR/verify-pinned-llvm-ir-tools.sh" "$SOURCE" "$BUILD" "$EVIDENCE" 21
