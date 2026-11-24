@@ -8,3 +8,4 @@
 *.sql    text
 *.jar    binary
 *.war    binary
+tools/m3-polyglot-maven-plugin/examples/llvm/m3-build.tsv text eol=lf
