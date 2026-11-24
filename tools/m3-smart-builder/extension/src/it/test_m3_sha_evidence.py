@@ -46,11 +46,18 @@ class ScanEvidenceTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             qualify_cold_and_warm(scan_evidence(COLD), scan_evidence(warm))
 
+    def test_ansi_colored_real_maven_logs_are_not_discarded(self):
+        cold = COLD.replace("[DEBUG]", "\x1b[36m[DEBUG]\x1b[0m")
+        warm = WARM.replace("[DEBUG]", "\x1b[36m[DEBUG]\x1b[0m")
+        proof = qualify_cold_and_warm(scan_evidence(cold), scan_evidence(warm))
+        self.assertEqual(proof["cold"]["old_output_preflight_skipped"], 1)
+        self.assertEqual(proof["warm"]["sha256_content_scans"]["outputs before"]["payload_bytes_read"], 2048)
+
     def test_unrelated_and_truncated_text_is_not_evidence(self):
         found = scan_evidence(
-            "M3DB SHA-256 before goal: 4 files, -1 payload bytes\\n"
-            "M3DB SHA-256 outputs before goal: 2 files, 30 bytes\\n"
-            "timestamp-only no hash\\n")
+            "M3DB SHA-256 before goal: 4 files, -1 payload bytes\n"
+            "M3DB SHA-256 outputs before goal: 2 files, 30 bytes\n"
+            "timestamp-only no hash\n")
         self.assertEqual(sum(v["scans"] for v in found["sha256_content_scans"].values()), 0)
         self.assertEqual(found["old_output_preflight_skipped"], 0)
 

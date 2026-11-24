@@ -8,6 +8,7 @@ No file contents are retained, and absence of evidence fails qualification.
 """
 import re
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _HASH = re.compile(
     r"M3DB SHA-256 (?P<phase>outputs before|outputs after|before|after) "
     r"(?P<goal>.+?): (?P<files>[0-9]+) files, (?P<bytes>[0-9]+) payload bytes(?:\s|$)")
@@ -22,7 +23,8 @@ def scan_evidence(log: str) -> dict:
         for phase in ("before", "after", "outputs before", "outputs after")
     }
     skipped = 0
-    for line in log.splitlines():
+    for raw_line in log.splitlines():
+        line = _ANSI_ESCAPE.sub("", raw_line)
         record = _HASH.search(line)
         if record:
             entry = phases[record.group("phase")]
