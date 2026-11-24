@@ -45,6 +45,12 @@ without hashing the M3DB parent directory marker. Ordinary user files such as
 state inputs is refused. In particular, writes to `.m3/module.m3db` or the separate
 M3File checkpoint `.m3-watch/state.bin` must not invalidate the source
 generation of another goal. Ordinary source and dependency bytes remain hashed.
+The `m3:machine-fingerprints` MIndexDB analysis store
+(`.m3/maven/mindexdb/**` and its sibling `.m3/maven/mindexdb.lock`) is
+M3-owned state too: it is excluded at any reactor depth, the `.m3/maven`
+directory marker is not hashed, and analysis-cache writes do not invalidate
+the lifecycle receipts of that module or its parents. Ordinary user files
+beside it, such as `.m3/maven/notes.txt`, remain content-hashed.
 
 The adapter resolves the goal's concrete dependencies through Maven, preserves classpath order,
 and hashes dependency bytes before looking up success. Its key also covers module sources and

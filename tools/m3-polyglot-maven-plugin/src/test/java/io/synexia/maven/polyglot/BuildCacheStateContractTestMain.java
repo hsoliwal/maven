@@ -47,6 +47,7 @@ public final class BuildCacheStateContractTestMain {
             partialRestoreCannotAuthorizeReuse(temporary.resolve("partial"));
             unqualifiedTasksStayLive(temporary.resolve("unqualified"));
             internalStateIsNotTaskInputOrOutput(temporary.resolve("internal-state"));
+            analysisStoreIsNotTaskInputOrOutput(temporary.resolve("analysis-store"));
             cacheDirectoryBoundaries(temporary.resolve("boundaries"));
             providerTasksStayLive(temporary.resolve("provider"));
             System.out.println("PASS: " + checks + " build-cache/module-state integration checks");
@@ -277,6 +278,58 @@ public final class BuildCacheStateContractTestMain {
         run(ordinary, "build", true, null);
         check(count(ordinary, "build") == 1 && Files.readString(ordinary.resolve(".m3/user-config.json")).equals("one"),
                 "ordinary user configuration in .m3 remains writable and cacheable");
+    }
+
+    /**
+     * The m3:machine-fingerprints MIndexDB analysis store (.m3/maven/mindexdb)
+     * and its sibling writer lock are M3-owned state at any reactor depth.
+     * Ordinary user files beside them remain inputs and outputs.
+     */
+    private static void analysisStoreIsNotTaskInputOrOutput(Path directory) throws Exception {
+        for (String value : List.of(".m3/maven", ".m3/maven/mindexdb",
+                ".m3/maven/mindexdb/maven-syntax-fingerprints-v1.miart", ".m3/maven/mindexdb.lock",
+                "child/.m3/maven/mindexdb/root.miart", "child/.m3/maven/mindexdb.lock",
+                "child\\.m3\\maven\\mindexdb\\root.miart", ".M3/MAVEN/MINDEXDB/ROOT.MIART",
+                "child/.M3/Maven/MIndexDB.lock")) {
+            check(InputStamps.statePath(value), "MIndexDB analysis store is reserved M3 state: " + value);
+        }
+        for (String value : List.of(".m3/maven/notes.txt", ".m3/maven/mindexdb-notes.txt",
+                ".m3/maven/mindexdb.lock.bak", "child/.m3/maven/user/config.json",
+                "src/maven/mindexdb/root.miart", "maven/mindexdb.lock")) {
+            check(!InputStamps.statePath(value), "ordinary paths near the analysis store stay ordinary: " + value);
+        }
+        check(!ModuleStateDb.statePath(".m3/maven/mindexdb/root.miart")
+                        && !ModuleStateDb.statePath(".m3/maven/mindexdb.lock"),
+                "the narrower legacy ModuleStateDb.statePath contract is unchanged");
+        for (String value : List.of(".m3", "child/.M3", ".m3/maven", "child/.m3/Maven", "child\\.m3\\maven")) {
+            check(ModuleStateDb.reservedStateParent(value), "state parent directory marker: " + value);
+        }
+        for (String value : List.of(".m3/maven/mindexdb", ".m3/user", "src/maven", "maven", ".m3-watch")) {
+            check(!ModuleStateDb.reservedStateParent(value), "not a state parent directory marker: " + value);
+        }
+        Path declared = workspace(directory.resolve("declared-store"));
+        Files.createDirectories(declared.resolve(".m3/maven/mindexdb"));
+        Files.writeString(declared.resolve(".m3/maven/mindexdb/root.miart"), "analysis");
+        manifest(declared, task("build", "copy", ".m3/maven/mindexdb/root.miart", "result.txt",
+                List.of(".m3/maven/mindexdb")));
+        run(declared, "build", true, null);
+        run(declared, "build", true, null);
+        check(count(declared, "build") == 2 && receipt(declared, "build") == null,
+                "a declared MIndexDB analysis store stays uncached across runs");
+        for (String output : List.of(".m3/maven/mindexdb/root.miart", ".m3/maven/mindexdb.lock",
+                "child/.m3/maven/mindexdb/root.miart")) {
+            Path module = workspace(directory.resolve("refuse-" + output.replace('/', '-')));
+            manifest(module, task("build", "copy", "input.txt", output, List.of("input.txt")));
+            expectIo(() -> run(module, "build", true, null),
+                    "output inside the analysis store must be rejected before executing: " + output);
+            check(count(module, "build") == 0, "analysis-store output may not be written: " + output);
+        }
+        Path ordinary = workspace(directory.resolve("ordinary-m3-maven-output"));
+        manifest(ordinary, task("build", "copy", "input.txt", ".m3/maven/notes.txt", List.of("input.txt")));
+        run(ordinary, "build", true, null);
+        run(ordinary, "build", true, null);
+        check(count(ordinary, "build") == 1 && Files.readString(ordinary.resolve(".m3/maven/notes.txt")).equals("one"),
+                "an ordinary user file beside the analysis store remains writable and cacheable");
     }
 
     private static TaskManifest.Task loadTask(Path root) throws IOException {

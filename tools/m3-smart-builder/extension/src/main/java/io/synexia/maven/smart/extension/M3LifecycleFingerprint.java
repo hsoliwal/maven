@@ -324,12 +324,14 @@ final class M3LifecycleFingerprint {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
                 if (moduleRoot && !directory.equals(root)) {
-                    // Do not hash the M3DB parent directory marker, but descend
-                    // to account for unrelated user configuration in .m3.
-                    if (directory.getFileName().toString().equalsIgnoreCase(".m3")) {
+                    Path relative = root.relativize(directory);
+                    // Do not hash the M3 state parent directory markers (.m3 and
+                    // the .m3/maven MIndexDB store parent), but descend to account
+                    // for unrelated user configuration inside them.
+                    if (ModuleStateDb.reservedStateParent(relative.toString())) {
                         return FileVisitResult.CONTINUE;
                     }
-                    if (isInternalState(root.relativize(directory))) {
+                    if (isInternalState(relative)) {
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                 }

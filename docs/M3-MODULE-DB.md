@@ -121,7 +121,11 @@ The guarded Maven lifecycle module-root fingerprint ignores M3DB-owned
 files, `.m3-watch` checkpoints and `.git` at every nested reactor depth.
 It does not hash the `.m3` directory marker, but still fingerprints ordinary
 `.m3/user-config.json` inputs; explicitly declared internal-state paths
-are rejected. Thus publication of module receipts or the
+are rejected. The smart builder's `m3:machine-fingerprints` MIndexDB
+analysis store (`.m3/maven/mindexdb/**` and `.m3/maven/mindexdb.lock`) is
+reserved in the same `ModuleStateDb.reservedStatePath` classifier, and the
+`.m3/maven` directory marker is not hashed. Thus publication of module
+receipts, analysis-cache artifacts or the
 M3File checkpoint does not change the fingerprint of unrelated source files.
 A change to an actual source, dependency, compiler, or Maven configuration
 still invalidates applicable reuse. The M3File ledger currently re-hashes
