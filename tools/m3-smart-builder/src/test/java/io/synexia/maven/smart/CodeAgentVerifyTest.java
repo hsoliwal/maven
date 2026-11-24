@@ -22,7 +22,7 @@ public final class CodeAgentVerifyTest {
             System.out.println("CODE AGENT VERIFY TESTS SKIPPED: POSIX synthetic Maven executable unavailable on Windows");
             return;
         }
-        Path project = Files.createTempDirectory("m3-code-verify-");
+        Path project = Files.createTempDirectory("m3-code-verify-").toRealPath();
         Path source = Files.createDirectory(project.resolve("src"));
         String initial = "class Example { int sum(int[] a) { int n=0; for(int x:a)n+=x; return n; } }\n";
         Path file = Files.writeString(source.resolve("Example.java"), initial);
