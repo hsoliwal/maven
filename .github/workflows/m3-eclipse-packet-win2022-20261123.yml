@@ -86,6 +86,7 @@ jobs:
         with:
           name: m3-eclipse-packet-${{ matrix.os }}-jdk21
           retention-days: 14
+          include-hidden-files: true
           if-no-files-found: warn
           path: |
             .m3-eclipse-packet-proof/
