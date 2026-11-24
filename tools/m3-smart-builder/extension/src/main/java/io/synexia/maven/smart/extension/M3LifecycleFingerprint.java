@@ -43,6 +43,10 @@ final class M3LifecycleFingerprint {
     private final MessageDigest digest = sha256();
     private long bytes;
     private int paths;
+    private int hashedFiles;
+
+    /** Exact successful content observations; no timestamps or cached bytes substitute for SHA-256. */
+    record Evidence(String digest, int filesHashed, long payloadBytesRead) {}
 
     private M3LifecycleFingerprint() { text(DOMAIN); }
 
@@ -57,6 +61,11 @@ final class M3LifecycleFingerprint {
     }
 
     static String inputs(MavenSession session, MojoExecution execution, List<Path> dependencies,
+            List<Path> goalInputs) throws IOException {
+        return observeInputs(session, execution, dependencies, goalInputs).digest();
+    }
+
+    static Evidence observeInputs(MavenSession session, MojoExecution execution, List<Path> dependencies,
             List<Path> goalInputs) throws IOException {
         MavenProject project = session.getCurrentProject();
         Path root = project.getBasedir().toPath().toRealPath();
@@ -149,7 +158,7 @@ final class M3LifecycleFingerprint {
         for (String name : List.of("release", "lib/modules", "lib/ct.sym", "conf")) {
             value.tree(java.resolve(name), List.of());
         }
-        return value.finish();
+        return value.evidence();
     }
 
     /**
@@ -208,10 +217,14 @@ final class M3LifecycleFingerprint {
     }
 
     static String outputs(List<Path> outputs) throws IOException {
+        return observeOutputs(outputs).digest();
+    }
+
+    static Evidence observeOutputs(List<Path> outputs) throws IOException {
         M3LifecycleFingerprint value = new M3LifecycleFingerprint();
         value.text("outputs");
         for (Path output : outputs) value.tree(output, List.of());
-        return value.finish();
+        return value.evidence();
     }
 
     static Path path(Path root, String value) throws IOException {
@@ -371,6 +384,7 @@ final class M3LifecycleFingerprint {
                 throw new IOException("lifecycle input changed while hashing");
             }
             text(HexFormat.of().formatHex(file.digest()));
+            hashedFiles++;
         }
     }
 
@@ -389,6 +403,7 @@ final class M3LifecycleFingerprint {
         digest.update(encoded);
     }
 
+    private Evidence evidence() { return new Evidence(finish(), hashedFiles, bytes); }
     private String finish() { return HexFormat.of().formatHex(digest.digest()); }
     private static MessageDigest sha256() {
         try { return MessageDigest.getInstance("SHA-256"); }

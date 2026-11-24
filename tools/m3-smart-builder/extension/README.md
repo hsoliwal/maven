@@ -38,6 +38,16 @@ output directory is **not qualified for reuse**: that overlap must take
 the original Maven execution path rather than hiding real input bytes. This avoids
 re-hashing generated child module output trees as parent-module inputs.
 
+For measured qualification, Maven's existing debug logger now reports the
+actual `M3DB SHA-256 before/after` and `outputs before/after` counts as
+`files` and `payload bytes` for eligible lifecycle goals. For example,
+run `mvn -X -Dm3.lifecycle.incremental=true verify` and inspect the M3DB
+scan lines. These are actual content reads by the Maven SHA scanner, not
+elapsed-time estimates or metadata-derived claims; the counts do not alter
+any existing receipt digest or the one-file-per-module M3DB format.
+A verified unchanged cross-process invocation still reads source bytes
+until M3File supplies a qualified gap-free generation contract.
+
 The module-root fingerprint excludes database-owned files and directories
 under `.m3`, the `.m3-watch` checkpoint and `.git` at any nested reactor depth,
 without hashing the M3DB parent directory marker. Ordinary user files such as

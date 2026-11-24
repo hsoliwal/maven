@@ -59,6 +59,7 @@ public final class M3LifecycleAdmissionTestMain {
             internalM3StateDoesNotPerturbModuleFingerprint(temporary);
             analysisStoreDoesNotPerturbModuleFingerprint(temporary);
             excludesOtherReactorOutputsButNotSources(temporary);
+            shaScanEvidenceMatchesOriginalKeys(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -584,6 +585,27 @@ public final class M3LifecycleAdmissionTestMain {
         Method finish = M3LifecycleFingerprint.class.getDeclaredMethod("finish");
         finish.setAccessible(true);
         return (String) finish.invoke(fingerprint);
+    }
+
+    private static void shaScanEvidenceMatchesOriginalKeys(Path temporary) throws Exception {
+        Path root = Files.createDirectories(temporary.resolve("sha-observation-counts"));
+        Path input = Files.writeString(root.resolve("Input.java"), "class Input {}\\n");
+        Path other = Files.writeString(root.resolve("metadata.properties"), "name=first\\n");
+        List<Path> observedPaths = List.of(input, other);
+        M3LifecycleFingerprint.Evidence observed = M3LifecycleFingerprint.observeOutputs(observedPaths);
+        check(observed.filesHashed() == 2, "every admitted file content SHA is counted exactly once");
+        check(observed.payloadBytesRead() == Files.size(input) + Files.size(other),
+                "observed bytes count actual payload bytes, not metadata, directory names or SHA output");
+        check(observed.digest().equals(M3LifecycleFingerprint.outputs(observedPaths)),
+                "instrumentation preserves the exact original output fingerprint contract");
+        var previousTime = Files.getLastModifiedTime(other);
+        Files.writeString(other, "name=other\\n");
+        Files.setLastModifiedTime(other, previousTime);
+        M3LifecycleFingerprint.Evidence changed = M3LifecycleFingerprint.observeOutputs(observedPaths);
+        check(!observed.digest().equals(changed.digest()),
+                "same-size same-time input content edits invalidate the old SHA result");
+        check(changed.filesHashed() == 2 && changed.payloadBytesRead() == observed.payloadBytesRead(),
+                "instrumentation still reads the complete declared byte content after a same-size edit");
     }
 
     private static String propertyFingerprint(Properties properties, boolean system) throws Exception {
