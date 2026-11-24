@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Java 17 compiler may-flow and OpenRewrite proof
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-smart-builder/src/main/java/io/synexia/maven/smart/MachineFlowAnalysis.java'
+      - 'tools/m3-smart-builder/scripts/verify-machine-flow-java17.py'
+      - 'tools/code-recipes/**'
+      - '.github/workflows/m3-machine-flow-java17.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile real compiler may-flow source at Java 17 release and exercise javac attribution
+        run: python3 tools/m3-smart-builder/scripts/verify-machine-flow-java17.py
+      - name: Run original OpenRewrite typed recipe test
+        run: |
+          bash tools/m3-polyglot-maven-plugin/scripts/retry-maven-central-429.sh \
+            mvn --batch-mode --no-transfer-progress \
+              -f tools/code-recipes/pom.xml -Dtest=MachineFlowJava17SwitchesTest test
+      - name: Assert actual non-skipped recipe tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          file = Path('tools/code-recipes/target/surefire-reports/TEST-org.apache.maven.recipes.MachineFlowJava17SwitchesTest.xml')
+          assert file.exists(), 'original OpenRewrite test XML is missing'
+          suite = ET.parse(file).getroot()
+          assert int(suite.get('tests', '0')) >= 2
+          assert all(int(suite.get(name, '-1')) == 0 for name in ('failures', 'errors', 'skipped'))
+          print('PASS: typed OpenRewrite may-flow Java 17 regression and idempotence')
+          PY
+      - name: Preserve real original test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-machine-flow-java17-source-and-recipe
+          path: tools/code-recipes/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 14

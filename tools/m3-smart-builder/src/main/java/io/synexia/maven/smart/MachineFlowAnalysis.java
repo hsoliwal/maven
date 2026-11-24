@@ -89,12 +89,9 @@ final class MachineFlowAnalysis {
     private MachineFlowAnalysis() { }
 
     static Facts inspect(Trees trees, TreePath atom) throws IOException {
-        Tree executable = switch (atom.getLeaf()) {
-            case MethodTree method -> method.getBody();
-            case LambdaExpressionTree lambda -> lambda.getBody();
-            case BlockTree block -> block;
-            default -> null;
-        };
+        Tree executable = java.util.Objects.requireNonNull(atom.getLeaf()) instanceof MethodTree method
+                ? method.getBody() : atom.getLeaf() instanceof LambdaExpressionTree lambda
+                ? lambda.getBody() : atom.getLeaf() instanceof BlockTree block ? block : null;
         Graph graph = new Graph();
         int exit = graph.node("EXIT", null);
         int first = executable == null ? exit : graph.emit(executable, exit, new Context(-1, -1));
@@ -208,11 +205,12 @@ final class MachineFlowAnalysis {
         void symbols(Trees trees, TreePath atom, TreePath body, int entry) {
             AccessScanner scanner = new AccessScanner(trees, this);
             // Parameters are reaching definitions at the atom entry, not executable write sites.
-            List<? extends VariableTree> parameters = switch (atom.getLeaf()) {
-                case MethodTree method -> method.getParameters();
-                case LambdaExpressionTree lambda -> lambda.getParameters();
-                default -> List.of();
-            };
+            List<? extends VariableTree> parameters =
+                    java.util.Objects.requireNonNull(atom.getLeaf()) instanceof MethodTree method
+                            ? method.getParameters()
+                            : atom.getLeaf() instanceof LambdaExpressionTree lambda
+                                    ? lambda.getParameters()
+                                    : List.of();
             for (VariableTree parameter : parameters) {
                 TreePath parameterPath = TreePath.getPath(atom, parameter);
                 if (parameterPath != null) scanner.parameter(parameterPath, nodes.get(entry));
