@@ -23,6 +23,12 @@ on:
       - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
       - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh'
+      - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py'
+      - 'tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmNativeToolsProvider.java'
+      - 'tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java'
+      - 'tools/m3-llvm-tools-provider/src/test/java/io/synexia/maven/llvm/LlvmNativePipelineIntegrationTestMain.java'
+      - 'tools/m3-llvm-tools-provider/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
   pull_request:
     paths:
       - '.github/workflows/m3-llvm-fork-source-proof.yml'
@@ -42,6 +48,12 @@ on:
       - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
       - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh'
+      - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py'
+      - 'tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmNativeToolsProvider.java'
+      - 'tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java'
+      - 'tools/m3-llvm-tools-provider/src/test/java/io/synexia/maven/llvm/LlvmNativePipelineIntegrationTestMain.java'
+      - 'tools/m3-llvm-tools-provider/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
   workflow_dispatch:
 
 permissions:
@@ -67,6 +79,7 @@ jobs:
           set -euo pipefail
           python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_llvm_fork_source_triggers.py
           python3 -B tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py
+          python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py
       - name: Fetch exactly pinned LLVM fork source with sparse partial clone
         shell: bash
         run: |
@@ -208,10 +221,10 @@ jobs:
           grep -Fxq $'source_built_clang_llc_maven_native\tPASS' "$evidence/source-receipt.tsv"
           java -version 2>&1 | tee "$evidence/java17-version.log" | grep -Eq 'version "17([.]|")'
           mvn --version | tee "$evidence/maven17-version.log" | grep -Eq 'Java version: 17([.]|,|$)'
-          for tool in clang clang++ llc; do
+          for tool in clang clang++ llc opt llvm-as llvm-link; do
             test -x "$build/bin/$tool"
           done
-          for tool in clang clang++ llc; do
+          for tool in clang clang++ llc opt llvm-as llvm-link; do
             sha256sum "$build/bin/$tool"
           done > "$evidence/jdk17-binaries-before.sha256"
           mvn -B -ntp -f "$project/pom.xml" clean test-compile \
@@ -233,13 +246,21 @@ jobs:
               exit 68
             }
           done
-          for tool in clang clang++ llc; do
+          for tool in clang clang++ llc opt llvm-as llvm-link; do
             sha256sum "$build/bin/$tool"
           done > "$evidence/jdk17-binaries-after.sha256"
           cmp "$evidence/jdk17-binaries-before.sha256" \
             "$evidence/jdk17-binaries-after.sha256"
           printf 'source_built_clang_llc_maven_native_jdk17\tPASS\n' >> "$evidence/source-receipt.tsv"
           echo 'PASS: exact source-built Clang/Clang++/llc native regression under Java 17'
+      - name: Qualify the same source-built LLVM IR toolchain on Java 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh \
+            "$GITHUB_WORKSPACE/llvm-source" \
+            "$RUNNER_TEMP/m3-llvm-original-build" \
+            "$RUNNER_TEMP/m3-llvm-fork-native-receipt" 17
       - name: Retain exact-source and original binary execution receipts
         if: always()
         uses: actions/upload-artifact@v4

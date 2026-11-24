@@ -32,6 +32,12 @@ REQUIRED = frozenset({
     "tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java",
     "tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java",
     "tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider",
+    "tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh",
+    "tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py",
+    "tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmNativeToolsProvider.java",
+    "tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java",
+    "tools/m3-llvm-tools-provider/src/test/java/io/synexia/maven/llvm/LlvmNativePipelineIntegrationTestMain.java",
+    "tools/m3-llvm-tools-provider/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider",
 })
 MAX_WORKFLOW_BYTES = 1024 * 1024
 MAX_PATHS = 128

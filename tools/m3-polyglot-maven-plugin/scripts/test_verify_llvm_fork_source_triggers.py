@@ -29,7 +29,7 @@ class TriggerProofTests(unittest.TestCase):
 
     def test_valid_canonical_trigger(self) -> None:
         result = GATE.trigger_paths(self.workflow)
-        self.assertEqual(len(result["push"]), 17)
+        self.assertEqual(len(result["push"]), len(GATE.REQUIRED))
         self.assertEqual(result["push"], result["pull_request"])
         self.assertEqual(set(result["push"]), GATE.REQUIRED)
 
@@ -139,8 +139,8 @@ class TriggerProofTests(unittest.TestCase):
                 [sys.executable, str(SCRIPT), str(workflow), "--root", str(root)],
                 capture_output=True, text=True, check=True
             )
-            self.assertIn("PASS: 17 mandatory owners", completed.stdout)
-            self.assertIn("push\t17\tPASS", completed.stdout)
+            self.assertIn(f"PASS: {len(GATE.REQUIRED)} mandatory owners", completed.stdout)
+            self.assertIn(f"push\t{len(GATE.REQUIRED)}\tPASS", completed.stdout)
 
     def test_read_only_validator(self) -> None:
         with tempfile.TemporaryDirectory(prefix="m3-llvm-trigger-nochange-") as directory:
