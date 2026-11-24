@@ -23,8 +23,10 @@ jobs:
           java-version: ${{ matrix.java }}
       - name: Source contract and provider argv tests
         run: sh tools/m3-polyglot-maven-plugin/scripts/verify.sh
+      - name: Maven Central 429 retry contract
+        run: bash tools/m3-polyglot-maven-plugin/scripts/test-retry-maven-central-429.sh
       - name: Maven plugin descriptor, compile and contract verification
-        run: mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml verify
+        run: bash tools/m3-polyglot-maven-plugin/scripts/retry-maven-central-429.sh mvn --batch-mode --no-transfer-progress -f tools/m3-polyglot-maven-plugin/pom.xml verify
       - name: Required real Clang C and C++ native regression
         shell: bash
         run: |
