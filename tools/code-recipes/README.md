@@ -33,14 +33,27 @@ what was checked and why.
 ### EnableM3LifecycleModuleDb
 
 The opt-in OpenRewrite composite `org.apache.maven.recipes.EnableM3LifecycleModuleDb`
-adds `m3.lifecycle.incremental=true` and
-`m3.lifecycle.backend=embedded` to a Maven POM, but **preserves existing
-explicit values**, including opt-outs and alternate backends. It changes
+uses the fork's `M3LifecycleModuleDbDefaults` guard and the original
+OpenRewrite `AddPropertyVisitor` to add `m3.lifecycle.incremental=true` and
+`m3.lifecycle.backend=embedded` only where those effective properties are
+missing. It **preserves local and inherited parent values**, including opt-outs
+and alternate backends, rather than overriding an inherited `false` in a
+reactor child. It changes
 configuration only; it does not execute the Maven lifecycle or authorize
 arbitrary plugins. Use the recipe explicitly through OpenRewrite, and
 retain the original per-module database at `.m3/module.m3db`.
 `EnableM3LifecycleModuleDbTest` proves both insertion and explicit-policy
 preservation with the original `RewriteTest` Maven XML parser.
+
+The recipe's resolved Maven-model guard is required because plain
+`org.openrewrite.maven.AddProperty(preserveExistingValue=true)` protects
+properties written in the current POM but can still insert child overrides for
+a different value inherited from its parent. The guard uses the donor's
+`MavenIsoVisitor` model and `AddPropertyVisitor` LST implementation; it does
+not edit POM XML as text. Regression fixtures include a parent/child reactor
+with an inherited explicit opt-out and SQLite backend.
+
+
 
 
 | Recipe | Kind | Options |

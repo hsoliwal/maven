@@ -28,11 +28,4 @@ description: >-
   execute goals, trust timestamps, install a watcher, or authorize arbitrary
   plugin reuse. Activate it deliberately through OpenRewrite.
 recipeList:
-  - org.openrewrite.maven.AddProperty:
-      key: m3.lifecycle.incremental
-      value: 'true'
-      preserveExistingValue: true
-  - org.openrewrite.maven.AddProperty:
-      key: m3.lifecycle.backend
-      value: embedded
-      preserveExistingValue: true
+  - org.apache.maven.recipes.M3LifecycleModuleDbDefaults

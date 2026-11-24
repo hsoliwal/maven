@@ -19,6 +19,7 @@
 package org.apache.maven.recipes;
 
 import static org.openrewrite.maven.Assertions.pomXml;
+import static org.openrewrite.java.Assertions.mavenProject;
 
 import org.junit.jupiter.api.Test;
 import org.openrewrite.test.RecipeSpec;
@@ -106,6 +107,40 @@ class EnableM3LifecycleModuleDbTest implements RewriteTest {
                   </properties>
                 </project>
                 """));
+    }
+
+    @Test
+    void preservesReactorParentOptOutWithoutAddingChildOverrides() {
+        rewriteRun(
+                pomXml(
+                        """
+                        <project>
+                          <modelVersion>4.0.0</modelVersion>
+                          <groupId>example</groupId>
+                          <artifactId>parent</artifactId>
+                          <version>1.0</version>
+                          <packaging>pom</packaging>
+                          <modules>
+                            <module>child</module>
+                          </modules>
+                          <properties>
+                            <m3.lifecycle.incremental>false</m3.lifecycle.incremental>
+                            <m3.lifecycle.backend>sqlite</m3.lifecycle.backend>
+                          </properties>
+                        </project>
+                        """),
+                mavenProject("child", pomXml(
+                        """
+                        <project>
+                          <parent>
+                            <groupId>example</groupId>
+                            <artifactId>parent</artifactId>
+                            <version>1.0</version>
+                            <relativePath>../pom.xml</relativePath>
+                          </parent>
+                          <artifactId>child</artifactId>
+                        </project>
+                        """)));
     }
 
     @Test
