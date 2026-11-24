@@ -138,15 +138,18 @@ jobs:
           ./mvnw test -e -B -V -pl impl/maven-core -am \
             '-Dtest=M3ProjectWatchTest*' -Dsurefire.failIfNoSpecifiedTests=false -Dm3.watch.contract=true \
             "-DargLine.xmx=-Xmx256m --module-path $modules --add-modules org.m3jdk.file"
-          # @EnabledIfSystemProperty skips the suite silently if the property never reaches the forked JVM.
-          python3 - "$reports/TEST-org.apache.maven.M3ProjectWatchTest\$WithInstalledSdk.xml" <<'EOF'
+          # @EnabledIfSystemProperty skips the suite silently if the property never reaches the forked JVM. Surefire
+          # reports the nested class's cases in the outer class's report, under classname ...$WithInstalledSdk.
+          python3 - "$reports/TEST-org.apache.maven.M3ProjectWatchTest.xml" <<'EOF'
           import sys
           import xml.etree.ElementTree as ET
-          suite = ET.parse(sys.argv[1]).getroot()
-          counts = {key: int(suite.get(key, '0')) for key in ('tests', 'skipped', 'failures', 'errors')}
-          print(suite.get('name'), counts)
-          if counts['tests'] == 0 or counts['skipped'] or counts['failures'] or counts['errors']:
-              sys.exit('the installed-SDK M3ProjectWatch contracts did not all run and pass')
+          cases = [case for case in ET.parse(sys.argv[1]).getroot().iter('testcase')
+                   if case.get('classname', '').endswith('$WithInstalledSdk')]
+          bad = [case.get('name') for case in cases
+                 if any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error'))]
+          print(f'M3ProjectWatchTest$WithInstalledSdk: {len(cases)} cases, {len(bad)} skipped, failed or errored')
+          if not cases or bad:
+              sys.exit('the installed-SDK M3ProjectWatch contracts did not all run and pass: ' + ', '.join(bad))
           EOF
 
       - name: Build Maven distributions with the inline plugins
