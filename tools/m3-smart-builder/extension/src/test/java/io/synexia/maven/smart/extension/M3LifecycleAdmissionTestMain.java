@@ -60,6 +60,7 @@ public final class M3LifecycleAdmissionTestMain {
             analysisStoreDoesNotPerturbModuleFingerprint(temporary);
             excludesOtherReactorOutputsButNotSources(temporary);
             shaScanEvidenceMatchesOriginalKeys(temporary);
+            coldAndDirtyGoalsDoNotHashOldOutputs(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -606,6 +607,38 @@ public final class M3LifecycleAdmissionTestMain {
                 "same-size same-time input content edits invalidate the old SHA result");
         check(changed.filesHashed() == 2 && changed.payloadBytesRead() == observed.payloadBytesRead(),
                 "instrumentation still reads the complete declared byte content after a same-size edit");
+    }
+
+    private static void coldAndDirtyGoalsDoNotHashOldOutputs(Path temporary) throws Exception {
+        Path root = Files.createDirectories(temporary.resolve("m3-cold-output-preflight"));
+        Path output = Files.writeString(root.resolve("Output.class"), "compiled-output-v1\\n");
+        List<Path> outputs = List.of(output);
+        String original = M3LifecycleFingerprint.outputs(outputs);
+        String inputDigest = "verified-input-generation";
+        check(M3LifecycleExecutionStrategy.existingOutputForReuse(null, inputDigest, outputs, null) == null,
+                "a cold lifecycle goal has no receipt and never scans old output content");
+        check(M3LifecycleExecutionStrategy.existingOutputForReuse(
+                        new String[] {"stale-input-generation", original}, inputDigest, outputs, null) == null,
+                "a changed input makes old output content irrelevant to cache admission");
+        check(M3LifecycleExecutionStrategy.existingOutputForReuse(
+                        new String[] {inputDigest, original}, inputDigest, outputs, root.resolve("missing.jar")) == null,
+                "a missing required attached artifact prevents old output scans");
+        check(M3LifecycleExecutionStrategy.existingOutputForReuse(
+                        new String[] {inputDigest}, inputDigest, outputs, null) == null,
+                "malformed old receipts never grant a content-hash reuse path");
+        M3LifecycleFingerprint.Evidence valid = M3LifecycleExecutionStrategy.existingOutputForReuse(
+                new String[] {inputDigest, original}, inputDigest, outputs, output);
+        check(valid != null && valid.digest().equals(original)
+                        && valid.filesHashed() == 1 && valid.payloadBytesRead() == Files.size(output),
+                "a matching receipt verifies exactly the original output bytes and key");
+        var timestamp = Files.getLastModifiedTime(output);
+        Files.writeString(output, "compiled-output-v2\\n");
+        Files.setLastModifiedTime(output, timestamp);
+        M3LifecycleFingerprint.Evidence mutated = M3LifecycleExecutionStrategy.existingOutputForReuse(
+                new String[] {inputDigest, original}, inputDigest, outputs, output);
+        check(mutated != null && !mutated.digest().equals(original)
+                        && mutated.filesHashed() == 1 && mutated.payloadBytesRead() == Files.size(output),
+                "same-size, restored-timestamp output tampering remains detectable on warm admission");
     }
 
     private static String propertyFingerprint(Properties properties, boolean system) throws Exception {

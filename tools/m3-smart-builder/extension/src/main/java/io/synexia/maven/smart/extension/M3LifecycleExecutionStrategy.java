@@ -143,17 +143,20 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
                     continue;
                 }
                 String[] prior = state.lookup(key);
-                String output = null;
+                M3LifecycleFingerprint.Evidence oldOutputs = null;
                 try {
-                    M3LifecycleFingerprint.Evidence evidence = M3LifecycleFingerprint.observeOutputs(paths.outputs());
-                    output = evidence.digest();
-                    LOG.debug("M3DB SHA-256 outputs before {}: {} files, {} payload bytes",
-                            goal, evidence.filesHashed(), evidence.payloadBytesRead());
+                    oldOutputs = existingOutputForReuse(
+                            prior, before.digest(), paths.outputs(), paths.artifact());
+                    if (oldOutputs != null) {
+                        LOG.debug("M3DB SHA-256 outputs before {}: {} files, {} payload bytes",
+                                goal, oldOutputs.filesHashed(), oldOutputs.payloadBytesRead());
+                    } else {
+                        LOG.debug("M3DB SHA-256 outputs before {}: skipped (no matching input receipt)", goal);
+                    }
                 } catch (IOException changed) {
                     LOG.debug("M3DB output miss", changed);
                 }
-                if (prior != null && before.digest().equals(prior[0]) && prior[1].equals(output)
-                        && (paths.artifact() == null || Files.isRegularFile(paths.artifact(), LinkOption.NOFOLLOW_LINKS))) {
+                if (oldOutputs != null && prior[1].equals(oldOutputs.digest())) {
                     restore(project, goal, paths);
                     LOG.info("M3DB UP-TO-DATE {}:{} ({})", goal.getArtifactId(), goal.getGoal(), project.getArtifactId());
                     events.fire(ExecutionEvent.Type.MojoSkipped, session, goal);
@@ -184,6 +187,23 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
                 throw new LifecycleExecutionException("M3 module state: " + failure.getMessage(), failure);
             }
         }
+    }
+
+
+    /**
+     * A pre-execution output hash can authorize a hit only when the existing
+     * input receipt is already content-verified. On cold builds, invalidated
+     * inputs or missing attached artifacts, reading old output payload would
+     * be wasted: the original goal must execute regardless. Post-execution
+     * verification and durable publication remain unchanged.
+     */
+    static M3LifecycleFingerprint.Evidence existingOutputForReuse(
+            String[] prior, String inputDigest, List<Path> outputs, Path attachedArtifact) throws IOException {
+        if (prior == null || prior.length != 2 || !inputDigest.equals(prior[0])
+                || (attachedArtifact != null && !Files.isRegularFile(attachedArtifact, LinkOption.NOFOLLOW_LINKS))) {
+            return null;
+        }
+        return M3LifecycleFingerprint.observeOutputs(outputs);
     }
 
     private static void revoke(Path root) throws LifecycleExecutionException {
