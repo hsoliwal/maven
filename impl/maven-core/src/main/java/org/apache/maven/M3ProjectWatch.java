@@ -171,8 +171,8 @@ final class M3ProjectWatch {
      * forced pending generation in the next loop. Failed Maven builds already
      * contain their original diagnostic and must retain that primary failure.
      */
-    static void requireCheckpointOnBoundedExit(int completed, int maxBuilds, boolean failed,
-            boolean committed) throws IOException {
+    static void requireCheckpointOnBoundedExit(int completed, int maxBuilds, boolean failed, boolean committed)
+            throws IOException {
         if (maxBuilds > 0 && completed >= maxBuilds && !failed && !committed) {
             throw new IOException("M3 watch cannot finish successfully: last input generation was not committed");
         }
@@ -372,7 +372,9 @@ final class M3ProjectWatch {
                 throw new IOException("M3 watch cannot monitor a missing source/input declaration");
             }
             Path path = Path.of(value);
-            return (path.isAbsolute() ? path : root.resolve(path)).toAbsolutePath().normalize();
+            return (path.isAbsolute() ? path : root.resolve(path))
+                    .toAbsolutePath()
+                    .normalize();
         }
 
         private boolean isM3StateDirectory(Path path) {
