@@ -113,10 +113,13 @@ or arbitrary Mojo skipping without independent, complete build evidence.
 Module-state directories named `.m3` are excluded at any reactor depth, even if the
 caller replaces the default ignored-name list. Otherwise successful M3DB receipt
 publication could itself be interpreted as a new input generation and cause
-a self-triggered build loop. The guarded lifecycle fingerprint also excludes `.m3` and `.m3-watch`
-directories while scanning a module tree. Explicitly declared inputs under
-these reserved paths are rejected, rather than silently trusted. This exclusion
-does not declare any compiler or plugin outputs to be safe for reuse.
+a self-triggered build loop. Separately, the guarded Maven lifecycle
+fingerprint omits database-owned files and `.m3-watch` checkpoints but does
+fingerprint ordinary user content such as `.m3/user-config.json`. It descends
+into the `.m3` directory without treating that directory marker as an input.
+Explicit declarations of owned database/checkpoint paths are rejected; ordinary
+user paths remain valid. This distinction does not authorize compiler or plugin
+output reuse without content verification.
 
 Maven watch mode cannot currently observe ordinary user files under the
 excluded `.m3` directory (or resource filters outside the watched root). In

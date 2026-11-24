@@ -28,9 +28,21 @@ The original Maven plugin executes every cache miss. Reuse is admitted for this 
 | maven-compiler-plugin | 3.13.0, 3.14.1 | compile, testCompile |
 | maven-jar-plugin | 3.4.1, 3.4.2 | jar |
 
-The module-root fingerprint excludes internal `.m3`, `.m3-watch` and `.git`
-directories at any nested reactor depth; explicitly declared internal state
-inputs are refused. In particular, writes to `.m3/module.m3db` or the separate
+Parent module fingerprints also exclude output directories of nested Maven
+reactor projects, using the original `MavenSession` project metadata rather
+than guessing by directory name. Nested project sources and POMs still
+participate in conservative parent input identity; explicit dependency
+artifacts remain hashed through the original goal-closure path. A parent
+source/resource root that contains (or is contained in) a nested reactor
+output directory is **not qualified for reuse**: that overlap must take
+the original Maven execution path rather than hiding real input bytes. This avoids
+re-hashing generated child module output trees as parent-module inputs.
+
+The module-root fingerprint excludes database-owned files and directories
+under `.m3`, the `.m3-watch` checkpoint and `.git` at any nested reactor depth,
+without hashing the M3DB parent directory marker. Ordinary user files such as
+`.m3/user-config.json` remain content-hashed; explicitly declaring internal
+state inputs is refused. In particular, writes to `.m3/module.m3db` or the separate
 M3File checkpoint `.m3-watch/state.bin` must not invalidate the source
 generation of another goal. Ordinary source and dependency bytes remain hashed.
 

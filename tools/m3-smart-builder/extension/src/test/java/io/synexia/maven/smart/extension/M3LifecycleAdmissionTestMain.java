@@ -56,6 +56,7 @@ public final class M3LifecycleAdmissionTestMain {
             preservesCompilerCreatedFileInventory(temporary);
             excludesOnlyInternalSystemCoordination(temporary);
             internalM3StateDoesNotPerturbModuleFingerprint(temporary);
+            excludesOtherReactorOutputsButNotSources(temporary);
             System.out.println("PASS: " + checks + " Maven lifecycle admission and state assertions");
         } finally {
             try (var entries = Files.walk(temporary)) {
@@ -390,15 +391,128 @@ public final class M3LifecycleAdmissionTestMain {
         Files.writeString(source, "class A { int a; }\\n");
         check(!baseline.equals(moduleRootFingerprint(root)),
                 "ordinary source bytes still change the module generation");
+        String beforeUser = moduleRootFingerprint(root);
+        Path user = Files.writeString(root.resolve(".m3/user-config.json"), "version=A\\n");
+        String withUser = moduleRootFingerprint(root);
+        check(!beforeUser.equals(withUser), "ordinary .m3 user configuration is included in module identity");
+        var timestamp = Files.getLastModifiedTime(user);
+        Files.writeString(user, "version=B\\n");
+        Files.setLastModifiedTime(user, timestamp);
+        check(!withUser.equals(moduleRootFingerprint(root)),
+                "same-size same-mtime .m3 user configuration changes still invalidate content identity");
+        Path nestedUser = Files.writeString(root.resolve("child/.m3/user-config.json"), "nested");
+        String withNested = moduleRootFingerprint(root);
+        Files.writeString(nestedUser, "changed");
+        check(!withNested.equals(moduleRootFingerprint(root)),
+                "nested module ordinary configuration is also source-visible");
+        Files.createDirectories(root.resolve("child/.M3"));
+        String beforeCaseVariant = moduleRootFingerprint(root);
+        Files.writeString(root.resolve("child/.M3/USER-NOTES.TXT"), "case-variant-user-input");
+        check(!beforeCaseVariant.equals(moduleRootFingerprint(root)),
+                "a case-varied M3 directory retains original user file content identity");
+        Method guard = M3LifecycleFingerprint.class.getDeclaredMethod("refuseInternalState", Path.class, Path.class);
+        guard.setAccessible(true);
+        guard.invoke(null, root, user); // ordinary file remains an explicit input
+        boolean rejected = false;
+        try {
+            guard.invoke(null, root, root.resolve(".m3/module.m3db"));
+        } catch (InvocationTargetException failure) {
+            if (failure.getCause() instanceof IOException) {
+                rejected = true;
+            } else {
+                throw failure;
+            }
+        }
+        check(rejected, "an explicitly declared M3DB-owned path remains forbidden");
+        for (String owned : List.of(".m3/module.m3db", "child/.m3/module.m3db",
+                "child/.m3-watch/state.bin", ".M3/MODULE.M3DB")) {
+            boolean denied = false;
+            try {
+                guard.invoke(null, root, root.resolve(owned));
+            } catch (InvocationTargetException failure) {
+                if (failure.getCause() instanceof IOException) {
+                    denied = true;
+                } else {
+                    throw failure;
+                }
+            }
+            check(denied, "Maven filters and other direct inputs must reject owned M3 state: " + owned);
+        }
+
+    }
+
+    private static void excludesOtherReactorOutputsButNotSources(Path temporary) throws Exception {
+        Fixture fixture = fixture(temporary, "reactor-output-closure");
+        Path root = fixture.root();
+        Path nested = Files.createDirectories(root.resolve("nested"));
+        Path input = Files.writeString(nested.resolve("Input.java"), "class Input {}\\n");
+        Path nestedPom = Files.writeString(nested.resolve("pom.xml"), "<project/>\\n");
+        Model nestedModel = new Model();
+        nestedModel.setModelVersion("4.0.0");
+        nestedModel.setGroupId("fixture");
+        nestedModel.setArtifactId("nested");
+        nestedModel.setVersion("1");
+        Build nestedBuild = new Build();
+        Path nestedOutput = nested.resolve("target");
+        nestedBuild.setDirectory(nestedOutput.toString());
+        nestedModel.setBuild(nestedBuild);
+        MavenProject child = new MavenProject(nestedModel);
+        child.setFile(nestedPom.toFile());
+        fixture.session().setProjects(List.of(fixture.project(), child));
+        List<Path> exclusions = M3LifecycleFingerprint.reactorOutputExclusions(
+                fixture.session(), fixture.project(), root, root.resolve("target"));
+        check(exclusions.contains(nestedOutput),
+                "original reactor metadata identifies the exact nested module output directory");
+        M3LifecycleFingerprint.refuseNestedReactorOutputRoot(root, root.resolve("target"),
+                exclusions, "nested/src");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "nested"),
+                "parent resource/source root including child generated outputs must run uncached");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "nested/target/classes"),
+                "parent source root inside child output directory must run uncached");
+        refused(() -> M3LifecycleFingerprint.refuseNestedReactorOutputRoot(
+                        root, root.resolve("target"), exclusions, "."),
+                "parent project-root resources cannot hide a nested module's generated outputs");
+        String before = moduleRootFingerprint(root, exclusions);
+        Files.createDirectories(nestedOutput.resolve("classes"));
+        Files.writeString(nestedOutput.resolve("classes/Generated.class"), "generated-v1");
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested module output publication does not invalidate the parent's unrelated goal");
+        Path generated = nestedOutput.resolve("classes/Generated.class");
+        String explicitBefore = M3LifecycleFingerprint.outputs(List.of(generated));
+        Files.writeString(generated, "generated-v2");
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested output changes remain outside the parent's broad input tree");
+        check(!explicitBefore.equals(M3LifecycleFingerprint.outputs(List.of(generated))),
+                "explicitly declared reactor product bytes still invalidate dependency fingerprints");
+        Files.delete(generated);
+        check(before.equals(moduleRootFingerprint(root, exclusions)),
+                "deleted generated outputs also do not invalidate a parent input tree");
+        Files.writeString(input, "class Input { int value; }\\n");
+        check(!before.equals(moduleRootFingerprint(root, exclusions)),
+                "nested source changes remain visible to conservative parent fingerprints");
+        String beforePom = moduleRootFingerprint(root, exclusions);
+        Files.writeString(nestedPom, "<project><name>changed</name></project>\\n");
+        check(!beforePom.equals(moduleRootFingerprint(root, exclusions)),
+                "nested reactor POM changes remain visible to conservative parent fingerprints");
+        nestedBuild.setDirectory(root.toString());
+        refused(() -> M3LifecycleFingerprint.reactorOutputExclusions(
+                        fixture.session(), fixture.project(), root, root.resolve("target")),
+                "another module cannot claim the parent root as its output directory");
     }
 
     private static String moduleRootFingerprint(Path root) throws Exception {
+        return moduleRootFingerprint(root, List.of());
+    }
+
+    private static String moduleRootFingerprint(Path root, List<Path> excluded) throws Exception {
         var constructor = M3LifecycleFingerprint.class.getDeclaredConstructor();
         constructor.setAccessible(true);
         Object fingerprint = constructor.newInstance();
         Method tree = M3LifecycleFingerprint.class.getDeclaredMethod("moduleTree", Path.class, List.class);
         tree.setAccessible(true);
-        tree.invoke(fingerprint, root, List.of());
+        tree.invoke(fingerprint, root, excluded);
         Method finish = M3LifecycleFingerprint.class.getDeclaredMethod("finish");
         finish.setAccessible(true);
         return (String) finish.invoke(fingerprint);

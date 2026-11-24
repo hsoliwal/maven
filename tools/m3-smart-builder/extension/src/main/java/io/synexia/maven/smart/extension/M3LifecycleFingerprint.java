@@ -80,7 +80,8 @@ final class M3LifecycleFingerprint {
         new MavenXpp3Writer().write(model, project.getModel());
         value.text(model.toString());
         value.configuration(execution.getConfiguration(), new PluginParameterExpressionEvaluator(session, execution));
-        value.moduleTree(root, List.of(build));
+        List<Path> reactorExclusions = reactorOutputExclusions(session, project, root, build);
+        value.moduleTree(root, reactorExclusions);
         for (MavenProject parent = project; parent != null; parent = parent.getParent()) {
             if (parent.getFile() != null) value.tree(parent.getFile().toPath(), List.of());
         }
@@ -95,11 +96,27 @@ final class M3LifecycleFingerprint {
                 session.getRequest().getGlobalToolchainsFile()}) {
             if (file != null) value.tree(file.toPath(), List.of());
         }
-        for (String source : project.getCompileSourceRoots()) value.source(root, build, source);
-        for (String source : project.getTestCompileSourceRoots()) value.source(root, build, source);
-        for (Resource resource : project.getResources()) value.source(root, build, resource.getDirectory());
-        for (Resource resource : project.getTestResources()) value.source(root, build, resource.getDirectory());
-        for (String filter : project.getFilters()) value.tree(path(root, filter), List.of());
+        for (String source : project.getCompileSourceRoots()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, source);
+            value.source(root, build, source);
+        }
+        for (String source : project.getTestCompileSourceRoots()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, source);
+            value.source(root, build, source);
+        }
+        for (Resource resource : project.getResources()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, resource.getDirectory());
+            value.source(root, build, resource.getDirectory());
+        }
+        for (Resource resource : project.getTestResources()) {
+            refuseNestedReactorOutputRoot(root, build, reactorExclusions, resource.getDirectory());
+            value.source(root, build, resource.getDirectory());
+        }
+        for (String filter : project.getFilters()) {
+            Path input = path(root, filter);
+            refuseInternalState(root, input);
+            value.tree(input, List.of());
+        }
         for (Path dependency : dependencies) {
             refuseInternalState(root, dependency);
             value.tree(dependency, List.of());
@@ -133,6 +150,61 @@ final class M3LifecycleFingerprint {
             value.tree(java.resolve(name), List.of());
         }
         return value.finish();
+    }
+
+    /**
+     * Parent module scans do not acquire another reactor module's generated
+     * output directory as an input. Original Maven reactor project metadata
+     * identifies the exact output owners; source files and POMs of nested
+     * modules remain in the source scan. Explicit dependencies and goal inputs
+     * are still content-verified independently.
+     */
+    static List<Path> reactorOutputExclusions(MavenSession session, MavenProject current,
+            Path root, Path build) throws IOException {
+        List<Path> result = new ArrayList<>();
+        result.add(build);
+        List<MavenProject> projects = session.getProjects();
+        if (projects == null) {
+            return List.copyOf(result);
+        }
+        for (MavenProject other : projects) {
+            if (other == null || other == current || other.getBasedir() == null || other.getBuild() == null) {
+                continue;
+            }
+            Path module = other.getBasedir().toPath().toAbsolutePath().normalize();
+            if (module.equals(root) || !module.startsWith(root)) {
+                continue;
+            }
+            String outputDirectory = other.getBuild().getDirectory();
+            if (outputDirectory == null || outputDirectory.isBlank()) {
+                continue;
+            }
+            Path output = path(module, outputDirectory);
+            if (!output.startsWith(module) || output.equals(module)) {
+                throw new IOException("nested reactor module has unqualified build directory: " + output);
+            }
+            if (!result.contains(output)) {
+                result.add(output);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * A parent Mojo may explicitly consume generated child-reactor files via
+     * a customized source/resource root. Such output must never be omitted
+     * from its source closure merely because a different reactor project owns
+     * it. Fail closed to original Maven execution on any ancestor/descendant
+     * overlap; direct dependency artifacts remain separately content-hashed.
+     */
+    static void refuseNestedReactorOutputRoot(Path root, Path build, List<Path> exclusions,
+            String declaration) throws IOException {
+        Path source = path(root, declaration);
+        for (Path excluded : exclusions) {
+            if (!excluded.equals(build) && (source.startsWith(excluded) || excluded.startsWith(source))) {
+                throw new IOException("source or resource root overlaps another reactor module's output: " + source);
+            }
+        }
     }
 
     static String outputs(List<Path> outputs) throws IOException {
@@ -214,17 +286,18 @@ final class M3LifecycleFingerprint {
     }
 
     private static void refuseInternalState(Path root, Path input) throws IOException {
-        if (!input.startsWith(root)) return;
-        for (Path part : root.relativize(input)) {
-            if (isInternalState(part)) throw new IOException("M3 internal state cannot be a build input: " + input);
+        if (input.startsWith(root) && isInternalState(root.relativize(input))) {
+            throw new IOException("M3 internal state cannot be a build input: " + input);
         }
     }
 
-    private static boolean isInternalState(Path name) {
-        return name != null && switch (name.toString()) {
-            case ".m3", ".m3-watch", ".git" -> true;
-            default -> false;
-        };
+    private static boolean isInternalState(Path relative) {
+        for (Path part : relative) {
+            if (part.toString().equals(".git")) {
+                return true;
+            }
+        }
+        return ModuleStateDb.reservedStatePath(relative.toString().replace('\\', '/'));
     }
 
     private void tree(Path requested, List<Path> excluded) throws IOException {
@@ -247,15 +320,25 @@ final class M3LifecycleFingerprint {
             }
             @Override public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
                     throws IOException {
-                if (excluded.stream().anyMatch(directory::startsWith)
-                        || (moduleRoot && !directory.equals(root) && isInternalState(directory.getFileName()))) {
+                if (excluded.stream().anyMatch(directory::startsWith)) {
                     return FileVisitResult.SKIP_SUBTREE;
+                }
+                if (moduleRoot && !directory.equals(root)) {
+                    // Do not hash the M3DB parent directory marker, but descend
+                    // to account for unrelated user configuration in .m3.
+                    if (directory.getFileName().toString().equalsIgnoreCase(".m3")) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    if (isInternalState(root.relativize(directory))) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
                 }
                 admit(directory, attributes);
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                if (!excluded.contains(file) && !(moduleRoot && isInternalState(file.getFileName()))) {
+                if (!excluded.contains(file)
+                        && !(moduleRoot && isInternalState(root.relativize(file)))) {
                     admit(file, attributes);
                 }
                 return FileVisitResult.CONTINUE;

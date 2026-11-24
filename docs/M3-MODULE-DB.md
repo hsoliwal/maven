@@ -117,15 +117,21 @@ These two persisted artifacts have separate source owners and purposes:
 
 The original watcher excludes any directory named `.m3` from its tracked
 input inventory even when the caller replaces the optional ignored-name list.
-The guarded Maven lifecycle module-root fingerprint ignores `.m3`,
-`.m3-watch` and `.git` at every nested reactor depth, and refuses explicitly
-declared internal-state inputs. Thus publication of module receipts or the
+The guarded Maven lifecycle module-root fingerprint ignores M3DB-owned
+files, `.m3-watch` checkpoints and `.git` at every nested reactor depth.
+It does not hash the `.m3` directory marker, but still fingerprints ordinary
+`.m3/user-config.json` inputs; explicitly declared internal-state paths
+are rejected. Thus publication of module receipts or the
 M3File checkpoint does not change the fingerprint of unrelated source files.
 A change to an actual source, dependency, compiler, or Maven configuration
 still invalidates applicable reuse. The M3File ledger currently re-hashes
 admitted source bytes on every reconciliation: **it is not a gap-free
 filesystem-change attestation** and cannot authorize cross-process hash bypass.
 Unknown processor/plugin effects retain the original execution path.
+
+See [authenticated M3File generation reuse](M3-FILE-GENERATION-REUSE.md) for
+the explicit not-yet-implemented cross-process zero-rehash acceptance gates.
+The existing per-module receipt cache still verifies exact file contents.
 
 ## Next native Maven integration gates
 

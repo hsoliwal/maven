@@ -379,8 +379,17 @@ state. All state and coordination paths are reserved from declared task outputs.
 outputs are completely declared. Declare dependency JARs, compiler libraries, native headers,
 external settings, processors, parent POMs outside the directory ancestry, lock files and other
 tool resources used by the command. The database does not infer hidden dependencies, network
-state, time/randomness or non-file effects. In-place input/output tasks, overlapping output
-owners and unknown provider dependencies remain uncached. Inputs must remain stable while
+state, time/randomness or non-file effects. In-place input/output tasks, overlapping output owners, an input declaration
+for the whole `.m3` directory, database-owned paths below `.m3`, any
+`.m3-watch` checkpoint path (including nested reactor modules), and unknown
+provider dependencies remain uncached. The original command still executes
+for such an input, but cannot publish an incremental success receipt.
+Outputs overlapping database-owned paths or watcher checkpoints are refused
+before execution. Broad directory inputs are checked for nested state owners
+before cache admission; any such tree always executes through the original
+tool instead of repeatedly hashing changing nested receipts. Ordinary user
+files such as `.m3/user-config.json` stay readable, writable and cacheable
+for compatibility. Inputs must remain stable while
 the original tool runs.
 
 A packaged Maven plugin/JDK M3 engine has one stable class realm per module run.

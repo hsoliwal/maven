@@ -46,6 +46,7 @@ public final class BuildCacheStateContractTestMain {
             changedGenerationWithSameBytes(temporary.resolve("generation"));
             partialRestoreCannotAuthorizeReuse(temporary.resolve("partial"));
             unqualifiedTasksStayLive(temporary.resolve("unqualified"));
+            internalStateIsNotTaskInputOrOutput(temporary.resolve("internal-state"));
             cacheDirectoryBoundaries(temporary.resolve("boundaries"));
             providerTasksStayLive(temporary.resolve("provider"));
             System.out.println("PASS: " + checks + " build-cache/module-state integration checks");
@@ -190,6 +191,97 @@ public final class BuildCacheStateContractTestMain {
         run(overlap, "child", true, overlapCache);
         check(count(overlap, "parent") == 2 && count(overlap, "child") == 2 && !Files.exists(overlapCache),
                 "overlapping output ownership cannot supply cache generations");
+    }
+
+    /** Internal M3DB and M3File ownership excludes cache admission and output publication. */
+    private static void internalStateIsNotTaskInputOrOutput(Path directory) throws Exception {
+        for (String value : List.of(".m3", ".m3/module.m3db", ".m3-watch",
+                ".m3-watch/state.bin", "child/.m3", "child/.m3/module.m3db",
+                "child/.m3-watch/state.bin", ".m3/polyglot-stamps/result")) {
+            check(InputStamps.statePath(value), "internal state component is reserved: " + value);
+        }
+        for (String variant : List.of(".M3/MODULE.M3DB", "child/.M3/MODULE.M3DB",
+                "child/.M3-WATCH/STATE.BIN", ".M3/MODULE-STATE.RUN.LOCK")) {
+            check(InputStamps.statePath(variant),
+                    "case-insensitive filesystem aliases of original state owners are reserved: " + variant);
+        }
+        check(!InputStamps.statePath("child/.m3-ordinary/input.txt"),
+                "similarly named user paths remain ordinary files");
+        check(!InputStamps.statePath(".M3/USER-CONFIG.JSON"),
+                "case-varied ordinary .m3 user files are not falsely classified as DB state");
+        check(!InputStamps.statePath(".m3/user-config.json"),
+                "original module-state compatibility permits ordinary .m3 user configuration");
+        check(!InputStamps.statePath("child/.m3/receipt"),
+                "a nested user file is not a native database-owned artifact");
+        check(!InputStamps.statePath("src/.m3-watchable.java"),
+                "reserved names must be whole path components");
+        Path watch = workspace(directory.resolve("watched-input"));
+        Files.createDirectories(watch.resolve(".m3-watch"));
+        Files.writeString(watch.resolve(".m3-watch/state.bin"), "watch");
+        manifest(watch, task("build", "copy", ".m3-watch/state.bin", "result.txt",
+                List.of(".m3-watch/state.bin")));
+        run(watch, "build", true, null);
+        run(watch, "build", true, null);
+        check(count(watch, "build") == 2 && receipt(watch, "build") == null,
+                "watcher checkpoints cannot authorize a persistent task receipt");
+        Path nested = workspace(directory.resolve("nested-module"));
+        Files.createDirectories(nested.resolve("child/.m3"));
+        Files.writeString(nested.resolve("child/.m3/receipt"), "state");
+        manifest(nested, task("build", "copy", "child/.m3/receipt", "result.txt", List.of("child/.m3")));
+        run(nested, "build", true, null);
+        run(nested, "build", true, null);
+        check(count(nested, "build") == 2 && receipt(nested, "build") == null,
+                "declared nested M3DB directory stays uncached across runs");
+        Path broad = workspace(directory.resolve("broad-parent"));
+        Files.createDirectories(broad.resolve("child/.m3"));
+        Files.writeString(broad.resolve("child/.m3/module.m3db"), "old receipt");
+        Files.writeString(broad.resolve("child/data.txt"), "source");
+        manifest(broad, task("build", "copy", "child/data.txt", "result.txt", List.of("child")));
+        run(broad, "build", true, null);
+        run(broad, "build", true, null);
+        check(count(broad, "build") == 2 && receipt(broad, "build") == null,
+                "a declared parent tree containing a nested module DB can never authorize a hit");
+        Path provider = workspace(directory.resolve("provider-nested"));
+        Files.createDirectories(provider.resolve("toolchain/child/.m3"));
+        Files.writeString(provider.resolve("toolchain/child/.m3/module.m3db"), "other module DB");
+        TaskManifest.Task providerTask = loadTask(provider);
+        M3ToolReuseInputs providerInputs = new M3ToolReuseInputs("m3.nested-state.v1",
+                List.of(provider.resolve("toolchain")), List.of(), false);
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, providerInputs),
+                "provider additional input trees containing another module's DB cannot authorize reuse");
+        Files.delete(provider.resolve("toolchain/child/.m3/module.m3db"));
+        Files.delete(provider.resolve("toolchain/child/.m3"));
+        TaskRunner.validateProviderInputs(providerTask, provider, null, providerInputs);
+        check(true, "ordinary provider additional input directories remain admissible");
+
+        Path plain = workspace(directory.resolve("ordinary-directory"));
+        Files.createDirectories(plain.resolve("src"));
+        Files.writeString(plain.resolve("src/input.txt"), "source");
+        manifest(plain, task("build", "copy", "src/input.txt", "result.txt", List.of("src")));
+        run(plain, "build", true, null);
+        List<String> reused = run(plain, "build", true, null);
+        check(count(plain, "build") == 1 && has(reused, "UP-TO-DATE build"),
+                "ordinary directory trees remain eligible for verified incremental reuse");
+        for (String output : List.of(".m3/module.m3db", ".m3-watch/custom.txt",
+                "child/.m3/module.m3db", "child/.m3-watch/snapshot")) {
+            Path module = workspace(directory.resolve("refuse-" + output.replace('/', '-')));
+            manifest(module, task("build", "copy", "input.txt", output, List.of("input.txt")));
+            expectIo(() -> run(module, "build", true, null),
+                    "output inside internal state must be rejected before executing: " + output);
+            check(count(module, "build") == 0, "internal-state output may not be written: " + output);
+        }
+        Path ordinary = workspace(directory.resolve("ordinary-m3-user-output"));
+        manifest(ordinary, task("build", "copy", "input.txt", ".m3/user-config.json",
+                List.of("input.txt")));
+        run(ordinary, "build", true, null);
+        run(ordinary, "build", true, null);
+        check(count(ordinary, "build") == 1 && Files.readString(ordinary.resolve(".m3/user-config.json")).equals("one"),
+                "ordinary user configuration in .m3 remains writable and cacheable");
+    }
+
+    private static TaskManifest.Task loadTask(Path root) throws IOException {
+        manifest(root, task("build", "copy", "input.txt", "result.txt", List.of("input.txt")));
+        return load(root).order("build").get(0);
     }
 
     private static void cacheDirectoryBoundaries(Path directory) throws Exception {

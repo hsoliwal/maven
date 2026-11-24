@@ -7,6 +7,7 @@ package io.synexia.maven.polyglot;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -20,10 +21,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /**
  * Content identities for the original task runner. Each file is hashed separately;
@@ -263,8 +266,63 @@ final class InputStamps {
         return task.outputs().stream().noneMatch(InputStamps::statePath);
     }
 
+    /**
+     * A broad directory declaration may contain a nested reactor database
+     * even if the declaration itself is not in the reserved namespace.
+     * Inspect path names without opening file contents; an unreadable or very
+     * large tree simply declines optional reuse and executes the original tool.
+     * Direct ordinary .m3/user-config.json inputs remain eligible.
+     */
+    static boolean separate(TaskManifest.Task task, Path root) throws IOException {
+        if (!separate(task)) {
+            return false;
+        }
+        for (String declaration : task.inputs()) {
+            if (containsReservedState(root, checked(root, declaration))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * A path may hide nested M3DB/M3File state below a declared parent. Unknown
+     * or unreadable input inventories grant no cache proof. This observes only
+     * path names; actual reuse still requires fresh content SHA verification.
+     * Symlinks stay with the content scanner: eligible ordinary inputs must
+     * fail validation, while optional provider identity failures retain fallback.
+     */
+    static boolean containsReservedState(Path root, Path input) {
+        if (!input.startsWith(root)) {
+            return false;
+        }
+        if (statePath(relative(root, input))) {
+            return true;
+        }
+        if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try (Stream<Path> entries = Files.walk(input)) {
+            Iterator<Path> cursor = entries.iterator();
+            int seen = 0;
+            while (cursor.hasNext()) {
+                if (++seen > MAX_PATHS) {
+                    return true;
+                }
+                Path entry = cursor.next();
+                if (statePath(relative(root, entry))) {
+                    return true;
+                }
+            }
+        } catch (IOException | UncheckedIOException | SecurityException unavailable) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Share the module owner's reserved-state classifier with the lifecycle scanner. */
     static boolean statePath(String path) {
-        return ModuleStateDb.statePath(path) || overlaps(path, ".m3/polyglot-stamps");
+        return ModuleStateDb.reservedStatePath(path);
     }
 
     private static boolean overlaps(String first, String second) {

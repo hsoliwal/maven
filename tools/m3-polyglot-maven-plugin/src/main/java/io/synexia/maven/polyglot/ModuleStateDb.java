@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -100,6 +101,41 @@ public final class ModuleStateDb implements AutoCloseable {
 
     public static boolean statePath(String relative) {
         return M3DbModuleStore.statePath(Objects.requireNonNull(relative, "relative"));
+    }
+
+    /**
+     * Reserve complete module-state owner boundaries without swallowing
+     * ordinary user files such as .m3/user-config.json. Source consumers may
+     * reuse this lexical classifier for nested reactors; the original
+     * statePath method retains its narrower compatibility contract.
+     */
+    public static boolean reservedStatePath(String path) {
+        // A case-insensitive filesystem can alias .M3 to .m3. Classify
+        // reserved ASCII owner names conservatively on every host.
+        String normalized = Objects.requireNonNull(path, "path").replace('\\', '/').toLowerCase(Locale.ROOT);
+        int start = 0;
+        while (start < normalized.length()) {
+            int end = normalized.indexOf('/', start);
+            String component = end < 0 ? normalized.substring(start) : normalized.substring(start, end);
+            if (component.equals(".m3-watch")) {
+                return true;
+            }
+            if (component.equals(".m3")) {
+                if (end < 0) {
+                    return true; // The parent directory includes module receipts.
+                }
+                String nested = ".m3/" + normalized.substring(end + 1);
+                if (statePath(nested) || nested.equals(".m3/polyglot-stamps")
+                        || nested.startsWith(".m3/polyglot-stamps/")) {
+                    return true;
+                }
+            }
+            if (end < 0) {
+                break;
+            }
+            start = end + 1;
+        }
+        return statePath(normalized);
     }
 
     /** Identify only temporary internal JVM lease markers, never ordinary user properties. */
