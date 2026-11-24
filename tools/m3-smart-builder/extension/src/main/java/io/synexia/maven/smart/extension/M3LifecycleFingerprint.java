@@ -44,6 +44,10 @@ final class M3LifecycleFingerprint {
     private long bytes;
     private int paths;
     private int hashedFiles;
+    // Thread-confined scratch for this fingerprint only; initialized only when
+    // a real file is visited, never retained by the module's persistent DB.
+    private byte[] fileReadBuffer;
+    private MessageDigest fileSha;
 
     /** Exact successful content observations; no timestamps or cached bytes substitute for SHA-256. */
     record Evidence(String digest, int filesHashed, long payloadBytesRead) {}
@@ -367,14 +371,18 @@ final class M3LifecycleFingerprint {
             if (!before.isRegularFile()) throw new IOException("lifecycle file changed type");
             text("file");
             text(Long.toString(before.size()));
-            MessageDigest file = sha256();
+            if (fileSha == null) {
+                fileSha = sha256();
+                fileReadBuffer = new byte[65536];
+            } else {
+                fileSha.reset();
+            }
             long read = 0;
             try (InputStream stream = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
-                byte[] buffer = new byte[65536];
-                for (int count; (count = stream.read(buffer)) != -1;) {
+                for (int count; (count = stream.read(fileReadBuffer)) != -1;) {
                     if ((bytes += count) > MAX_BYTES) throw new IOException("lifecycle byte budget exceeded");
                     read += count;
-                    file.update(buffer, 0, count);
+                    fileSha.update(fileReadBuffer, 0, count);
                 }
             }
             BasicFileAttributes after = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -383,7 +391,7 @@ final class M3LifecycleFingerprint {
                     || !java.util.Objects.equals(before.fileKey(), after.fileKey())) {
                 throw new IOException("lifecycle input changed while hashing");
             }
-            text(HexFormat.of().formatHex(file.digest()));
+            text(HexFormat.of().formatHex(fileSha.digest()));
             hashedFiles++;
         }
     }

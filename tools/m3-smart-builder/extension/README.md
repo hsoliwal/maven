@@ -38,6 +38,21 @@ output directory is **not qualified for reuse**: that overlap must take
 the original Maven execution path rather than hiding real input bytes. This avoids
 re-hashing generated child module output trees as parent-module inputs.
 
+The lifecycle strategy does not scan pre-existing output payloads on a cold
+build, after an input-generation mismatch, or when a required attached artifact
+is absent: no old output digest could authorize reuse in those cases. A matching
+verified input receipt still requires a fresh preflight output SHA-256
+observation; after original execution, outputs are fully verified before M3DB
+records a new success. This is a bounded read-elimination optimization, not
+cross-process source-digest reuse.
+
+The SHA-256 source scanner also reuses one lazily initialized 64-KiB
+read buffer and one reset SHA-256 provider per fingerprint rather than
+allocating both for every file. These objects are thread-confined, never
+persisted, and do not cache content between process invocations. Differential
+tests cover empty files, shorter files, exact 64-KiB files, multi-chunk
+reads, same-timestamp mutation and byte-for-byte digest restoration.
+
 For measured qualification, Maven's existing debug logger now reports the
 actual `M3DB SHA-256 before/after` and `outputs before/after` counts as
 `files` and `payload bytes` for eligible lifecycle goals. For example,
