@@ -30,3 +30,45 @@ Also pending: hosted reports for this exact candidate, native macOS/Windows cons
 Original Maven's `InputStamps.engineSources()` binds the **absolute code-source JAR path** as part of its engine transcript. The Gradle fixture therefore stages one original Maven engine outside both project checkouts and supplies that same File to both runs; copying an identical JAR into each checkout would correctly produce different keys and is not a valid portable-cache proof.
 
 The same original Maven input stamp must cover the Java fixture's executable bytecode: `MarkerTool.class` is explicitly declared beside `source.txt` in the manifest. A changed compiled fixture class is therefore an input mutation, not an unaudited portable cache reuse. Both checkouts use the same externally pinned Maven JAR code-source path.\n
+
+## Included-build identity hosted companion
+
+The same registered workflow now contains an independent, bounded JDK 17/21 job
+for [Gradle #78](https://github.com/hsoliwal/gradle/pull/78), exact source
+507d1830b61bb6afaaf80268f0f6e815d7c9ee01 and quality-bridge module tree
+36a98dcba8578d34a418739afcbae53ab5de3e0f. It executes the existing exporter,
+reviewer and plugin TestKit owners: six, two and one methods respectively.
+These tests use native Gradle InputChanges and configuration-cache behavior;
+they do not consume or qualify another Maven engine.
+
+The original fused Maven #274 / Gradle #77 job remains byte-for-byte unchanged,
+including its producer pin, deleted-output regression, three-method validator,
+JAR retention and all artifact paths. #77 and #78 are sibling commits of the
+same base. Replacing the #77 pin with #78 would lose the deleted-output test
+extension, so their source identities and results remain separate. Passing both
+jobs would not qualify a combined Gradle tree or merge either draft.
+
+The identity job verifies its exact Git commit and complete module tree, hashes
+every tracked source and wrapper/build input against its Git blob, and rejects
+source drift, links and additional Java inputs. It records the actual JDK
+properties and wrapper version, runs the three exact existing test classes with
+task rerun enabled, and requires all nine original method identities with zero
+skips, failures or errors. Missing, duplicated, foreign or entity-bearing XML
+receipts refuse admission. Source bytes are checked again after execution.
+
+The optional --identity mode of the existing shell guard checks this companion
+job's fixed source/test/admission bindings before checkout. Its no-argument
+fused-cache behavior and original refusals remain unchanged. Runtime XML
+validation remains a separate gate after execution.
+
+Actual logs, source/toolchain receipts, XML/HTML reports and the compiled plugin
+classes/resources/TestKit classpath metadata are retained even when a preceding
+step fails. The identity job has two matrix entries, at most two parallel jobs,
+a 30-minute timeout and 14-day artifact retention. This edit adds no registered
+workflow, trigger, secret context, writable permission or new action provider.
+
+The existing nine-method local JDK 17/21 qualification belongs to canonical
+[Synexia #19144](https://github.com/hsoliwal/com.synexia/pull/19144). Replaying
+those retained XML files verifies receipt admission; it is not a new TestKit
+execution. Fresh hosted results for this companion remain required. Global
+history, provenance, platform and release admission remain separate obligations.
