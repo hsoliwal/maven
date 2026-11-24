@@ -131,9 +131,11 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
             }
             String key = M3LifecycleFingerprint.key(goal);
             try (ModuleStateDb state = ModuleStateDb.open(root, backend, true, LOG::info)) {
-                final String before;
+                final M3LifecycleFingerprint.Evidence before;
                 try {
-                    before = M3LifecycleFingerprint.inputs(session, goal, resolved, paths.inputs());
+                    before = M3LifecycleFingerprint.observeInputs(session, goal, resolved, paths.inputs());
+                    LOG.debug("M3DB SHA-256 before {}: {} files, {} payload bytes",
+                            goal, before.filesHashed(), before.payloadBytesRead());
                 } catch (IOException unsupported) {
                     state.invalidate(key);
                     LOG.info("M3DB UNCACHED {}: {}", goal, unsupported.getMessage());
@@ -142,9 +144,15 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
                 }
                 String[] prior = state.lookup(key);
                 String output = null;
-                try { output = M3LifecycleFingerprint.outputs(paths.outputs()); }
-                catch (IOException changed) { LOG.debug("M3DB output miss", changed); }
-                if (prior != null && before.equals(prior[0]) && prior[1].equals(output)
+                try {
+                    M3LifecycleFingerprint.Evidence evidence = M3LifecycleFingerprint.observeOutputs(paths.outputs());
+                    output = evidence.digest();
+                    LOG.debug("M3DB SHA-256 outputs before {}: {} files, {} payload bytes",
+                            goal, evidence.filesHashed(), evidence.payloadBytesRead());
+                } catch (IOException changed) {
+                    LOG.debug("M3DB output miss", changed);
+                }
+                if (prior != null && before.digest().equals(prior[0]) && prior[1].equals(output)
                         && (paths.artifact() == null || Files.isRegularFile(paths.artifact(), LinkOption.NOFOLLOW_LINKS))) {
                     restore(project, goal, paths);
                     LOG.info("M3DB UP-TO-DATE {}:{} ({})", goal.getArtifactId(), goal.getGoal(), project.getArtifactId());
@@ -155,12 +163,19 @@ public final class M3LifecycleExecutionStrategy implements MojosExecutionStrateg
                 forceCompilerContentCheck(goal, paths);
                 runFresh(goal, runner);
                 try {
-                    String after = M3LifecycleFingerprint.inputs(session, goal, resolved, paths.inputs());
+                    M3LifecycleFingerprint.Evidence after =
+                            M3LifecycleFingerprint.observeInputs(session, goal, resolved, paths.inputs());
+                    LOG.debug("M3DB SHA-256 after {}: {} files, {} payload bytes",
+                            goal, after.filesHashed(), after.payloadBytesRead());
                     File attached = project.getArtifact() == null ? null : project.getArtifact().getFile();
-                    if (before.equals(after) && unchangedAttachments(project, attachments)
+                    if (before.digest().equals(after.digest()) && unchangedAttachments(project, attachments)
                             && (paths.artifact() == null || (Files.isRegularFile(paths.artifact(), LinkOption.NOFOLLOW_LINKS)
                                     && attached != null && attached.toPath().toRealPath().equals(paths.artifact().toRealPath())))) {
-                        state.record(key, after, M3LifecycleFingerprint.outputs(paths.outputs()));
+                        M3LifecycleFingerprint.Evidence outputAfter =
+                                M3LifecycleFingerprint.observeOutputs(paths.outputs());
+                        LOG.debug("M3DB SHA-256 outputs after {}: {} files, {} payload bytes",
+                                goal, outputAfter.filesHashed(), outputAfter.payloadBytesRead());
+                        state.record(key, after.digest(), outputAfter.digest());
                     } else LOG.info("M3DB UNCACHED {}: inputs or artifact attachments changed", goal);
                 } catch (IOException unstable) {
                     LOG.info("M3DB UNCACHED {}: {}", goal, unstable.getMessage());
