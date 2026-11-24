@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import zipfile
+from m3_sha_evidence import scan_evidence, qualify_cold_and_warm
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
@@ -142,9 +143,9 @@ public class ConsumerTest {
                     and hashlib.sha256(data).hexdigest() == identity['sha256'],
                     'MIndexDB classpath JAR changed during acceptance: ' + identity['path'])
 
-    def run(name, flags=(), success=True, enabled=True, directory=None):
+    def run(name, flags=(), success=True, enabled=True, directory=None, measure_sha=False):
         unchanged_mindexdb_classpath()
-        command = base + (['-Dm3.lifecycle.incremental=true'] if enabled else []) + list(flags) + ['verify']
+        command = base + (['-Dm3.lifecycle.incremental=true'] if enabled else []) + list(flags) + (['-X'] if measure_sha else []) + ['verify']
         if args.prime_repository and name == 'disabled-baseline':
             command.remove('-o')
             # Resolve later offline plugin realms without early clean/install effects.
@@ -160,6 +161,8 @@ public class ConsumerTest {
         row = {'case': name, 'exit': process.returncode, 'expected_success': success,
                'seconds': round(time.monotonic() - started, 3),
                'hits': [line for line in text.splitlines() if 'M3DB UP-TO-DATE' in line]}
+        if measure_sha:
+            row['sha256_evidence'] = scan_evidence(text)
         results.append(row)
         (work / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
         print(name, 'exit=' + str(process.returncode), 'hits=' + str(len(row['hits'])), flush=True)
@@ -171,9 +174,11 @@ public class ConsumerTest {
 
     run('disabled-baseline', enabled=False)
     require(not (reactor / 'library/.m3').exists(), 'disabled fresh build created state')
-    run('cold')
+    run('cold', measure_sha=True)
     tests = count_tests()
-    warm = run('warm-fresh-jvm')
+    warm = run('warm-fresh-jvm', measure_sha=True)
+    scan_proof = qualify_cold_and_warm(results[-2]['sha256_evidence'], results[-1]['sha256_evidence'])
+    (work / 'sha256-scan-evidence.json').write_text(json.dumps(scan_proof, indent=2) + '\n')
     require('M3DB UP-TO-DATE maven-compiler-plugin:compile (library)' in warm, 'library compile not reused')
     require('M3DB UP-TO-DATE maven-compiler-plugin:compile (consumer)' in warm, 'consumer compile not reused')
     require('M3DB UP-TO-DATE maven-jar-plugin:jar (library)' in warm, 'library jar not reused')
@@ -436,6 +441,7 @@ public class OwnProcessor extends AbstractProcessor {
         'state_sha256': hashlib.sha256(args.state_jar.read_bytes()).hexdigest(),
         'jdbc_backends': jdbc_evidence,
         'native_mindexdb': native_evidence,
+        'sha256_scan_evidence': scan_proof,
         'runtime': runtime_version,
         'results': results}, indent=2) + '\n')
 
