@@ -110,6 +110,48 @@ jobs:
         shell: bash
         run: ./mvnw verify -e -B -V
 
+      # M3ProjectWatchTest$WithInstalledSdk (#286, #287) is opt-in with -Dm3.watch.contract=true: it needs the original
+      # M3File owner, module org.m3jdk.file, in the test JVM's boot layer, and a stock JDK has none. Compile that module
+      # and its only dependency, jdk.m3.collections, from pinned M3JDK21 sources with the javac flags of M3JDK21's own
+      # m3/file workflows, put both on the forked test JVM's module path, and fail unless the opt-in suite really ran.
+      - name: Run the installed-SDK M3ProjectWatch contract tests
+        shell: bash
+        env:
+          M3JDK21_REPOSITORY: https://github.com/hsoliwal/M3jdk21.git
+          M3JDK21_COMMIT: 8bf6fc3b27dbcd5a334ca6c5dd9a098126427c50
+        run: |
+          src="$RUNNER_TEMP/m3jdk21-file-owner"
+          modules="$RUNNER_TEMP/m3-file-modules"
+          git init -q "$src"
+          git -C "$src" remote add origin "$M3JDK21_REPOSITORY"
+          git -C "$src" sparse-checkout set --no-cone \
+            /m3/file/compile-dependencies.sh /m3/file/src/main/java/ /src/jdk.m3.collections/share/classes/
+          git -C "$src" fetch -q --depth 1 --filter=blob:none origin "$M3JDK21_COMMIT"
+          git -C "$src" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$M3JDK21_COMMIT"
+          bash "$src/m3/file/compile-dependencies.sh" "$JAVA_HOME" "$modules"
+          find "$src/m3/file/src/main/java" -type f -name '*.java' | LC_ALL=C sort > "$RUNNER_TEMP/m3-file.sources"
+          "$JAVA_HOME/bin/javac" --release 21 -proc:none -Xlint:all,-module -Werror \
+            --module-path "$modules" -d "$modules/org.m3jdk.file" "@$RUNNER_TEMP/m3-file.sources"
+          reports=impl/maven-core/target/surefire-reports
+          rm -f "$reports"/TEST-org.apache.maven.M3ProjectWatchTest*.xml
+          ./mvnw test -e -B -V -pl impl/maven-core -am \
+            '-Dtest=M3ProjectWatchTest*' -Dsurefire.failIfNoSpecifiedTests=false -Dm3.watch.contract=true \
+            "-DargLine.xmx=-Xmx256m --module-path $modules --add-modules org.m3jdk.file"
+          # @EnabledIfSystemProperty skips the suite silently if the property never reaches the forked JVM. Surefire
+          # reports the nested class's cases in the outer class's report, under classname ...$WithInstalledSdk.
+          python3 - "$reports/TEST-org.apache.maven.M3ProjectWatchTest.xml" <<'EOF'
+          import sys
+          import xml.etree.ElementTree as ET
+          cases = [case for case in ET.parse(sys.argv[1]).getroot().iter('testcase')
+                   if case.get('classname', '').endswith('$WithInstalledSdk')]
+          bad = [case.get('name') for case in cases
+                 if any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error'))]
+          print(f'M3ProjectWatchTest$WithInstalledSdk: {len(cases)} cases, {len(bad)} skipped, failed or errored')
+          if not cases or bad:
+              sys.exit('the installed-SDK M3ProjectWatch contracts did not all run and pass: ' + ', '.join(bad))
+          EOF
+
       - name: Build Maven distributions with the inline plugins
         shell: bash
         run: ./mvnw package -Pplugins -DskipTests -e -B -V
