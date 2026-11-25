@@ -82,7 +82,9 @@ class M3BuildSuggestionsTest {
         List<String> command = M3BuildSuggestions.nativeCommand(config, null, false, 20);
         assertFalse(command.contains("--binary"));
         assertEquals("jni", argument(command, "--backend"));
-        assertEquals(config.getProperty("m3.smart.modelPath"), argument(command, "--model"));
+        assertEquals(
+                Path.of(config.getProperty("m3.smart.modelPath")).toRealPath().toString(),
+                argument(command, "--model"));
         assertEquals("https://example.invalid/jni", argument(command, "--jni-url"));
         assertFalse(Files.exists(Path.of(config.getProperty("m3.smart.jniCacheDir"))));
         config.remove("m3.smart.modelPath");

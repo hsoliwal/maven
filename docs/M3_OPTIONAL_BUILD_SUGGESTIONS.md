@@ -196,9 +196,9 @@ mvn -B -ntp -pl impl/maven-cli -am \
 
 The existing runtime acceptance script also checks an actual packaged Maven
 distribution. It requires the packaged completion and original invoker classes,
-records every runtime file under `bin`, `conf`, `boot` and `lib` plus the completion
-and invoker class hashes, and invokes its `bin/mvn` eleven
-times. The cases cover disabled/LLM-only modes, completed failures, successful
+records every runtime file under `bin`, `conf`, `boot`, `lib` and any bundled
+`repository`, plus the completion and invoker class hashes. It invokes its
+`bin/mvn` eleven times. The cases cover disabled/LLM-only modes, completed failures, successful
 builds with invalid provider settings, unavailable providers, `--fail-never` and
 nested model-resolution diagnostics. Every invocation runs offline. Fixture
 inputs and packaged runtime bytes must remain unchanged.

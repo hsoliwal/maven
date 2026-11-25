@@ -231,7 +231,14 @@ def completion_distribution(maven: Path) -> dict:
     if len(owners) != 1:
         raise AssertionError("Exactly one packaged Maven optional-advice owner is required")
     inputs = []
-    for directory in ("bin", "conf", "boot", "lib"):
+    directories = ["bin", "conf", "boot", "lib"]
+    bundled_repository = home / "repository"
+    if (bundled_repository.exists() or bundled_repository.is_symlink()
+            or (home / "conf/maven-boot-repository.properties").exists()):
+        # Distributions built with -Pplugins resolve their inline plugins
+        # and dependencies from this read-only local-repository tail.
+        directories.append("repository")
+    for directory in directories:
         runtime_root = home / directory
         if runtime_root.is_symlink() or not runtime_root.is_dir():
             raise ValueError("Packaged runtime directories must be ordinary directories")

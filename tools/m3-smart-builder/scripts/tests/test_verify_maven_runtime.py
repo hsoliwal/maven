@@ -160,6 +160,23 @@ class MavenRuntimeAcceptanceContract(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.completion_distribution(launcher)
             linked.unlink()
+            boot_configuration = root / "conf/maven-boot-repository.properties"
+            boot_configuration.write_bytes(b"maven.repo.local.tail = ${maven.home}/repository\n")
+            with self.assertRaises(ValueError):
+                module.completion_distribution(launcher)
+            bundled = root / "repository/io/test/inline-plugin/1/inline-plugin-1.jar"
+            bundled.parent.mkdir(parents=True)
+            bundled.write_bytes(b"first bundled artifact fixture")
+            with_bundled = module.completion_distribution(launcher)
+            self.assertEqual(with_bundled["inputs"][str(bundled.relative_to(root))],
+                             module.file_sha256(bundled))
+            bundled.write_bytes(b"changed bundled artifact fixture")
+            self.assertNotEqual(with_bundled, module.completion_distribution(launcher))
+            linked_bundle = bundled.parent / "linked.jar"
+            linked_bundle.symlink_to(bundled)
+            with self.assertRaises(ValueError):
+                module.completion_distribution(launcher)
+            linked_bundle.unlink()
             (root / "lib/duplicate-owner.jar").write_bytes(library.read_bytes())
             with self.assertRaises(AssertionError):
                 module.completion_distribution(launcher)
