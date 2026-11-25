@@ -194,6 +194,33 @@ mvn -B -ntp -pl impl/maven-cli -am \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
+The existing runtime acceptance script also checks an actual packaged Maven
+distribution. It requires the packaged completion and original invoker classes,
+records every runtime file under `bin`, `conf`, `boot` and `lib` plus the completion
+and invoker class hashes, and invokes its `bin/mvn` eleven
+times. The cases cover disabled/LLM-only modes, completed failures, successful
+builds with invalid provider settings, unavailable providers, `--fail-never` and
+nested model-resolution diagnostics. Every invocation runs offline. Fixture
+inputs and packaged runtime bytes must remain unchanged.
+The fixture supplies empty user settings and user extensions, so an account's
+external extensions cannot change these offline cases. Packaged installation
+configuration remains active and is included in the recorded hashes.
+
+After building and extracting the distribution, choose a preexisting absolute
+repository directory and a new absolute output directory with an existing parent:
+
+```sh
+python3 tools/m3-smart-builder/scripts/verify_maven_runtime.py \
+  --core-completion --maven "$M3_MAVEN_HOME/bin/mvn" \
+  --local-repo "$M3_ACCEPTANCE_REPOSITORY" --work "$M3_ACCEPTANCE_OUTPUT"
+```
+
+`--prepare-only` cannot qualify this mode. The ordinary runtime-script mode
+continues to exercise the installed Maven plugin's existing eight goal cases.
+Java CI runs packaged completion acceptance after distribution packaging and the
+boot-repository license check, and retains the actual invocation logs and receipt.
+This packaged completion check does not claim native inference qualification.
+
 Actual receiving-module compilation, invoker execution, adviser plugin packaging,
 native CLI/JNI/model execution and platform-specific qualification are separate
 gates. Component tests and protocol fixtures do not satisfy those gates. Reusable

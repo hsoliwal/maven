@@ -166,6 +166,33 @@ jobs:
           tar -xzf apache-maven/target/apache-maven-*-bin.tar.gz -C "$dist"
           bash apache-maven/src/test/scripts/check-boot-repository-licences.sh "$dist"/apache-maven-*
 
+      - name: Qualify optional advice through the packaged Maven launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          m3_advice_distributions=("$RUNNER_TEMP/boot-licences"/apache-maven-*)
+          test "${#m3_advice_distributions[@]}" -eq 1
+          m3_advice_maven_home="${m3_advice_distributions[0]}"
+          test -x "$m3_advice_maven_home/bin/mvn"
+          mkdir -p "$RUNNER_TEMP/m3-completion-repository"
+          python3 -m unittest discover \
+            -s tools/m3-smart-builder/scripts/tests -p test_verify_maven_runtime.py
+          python3 tools/m3-smart-builder/scripts/verify_maven_runtime.py \
+            --core-completion --maven "$m3_advice_maven_home/bin/mvn" \
+            --local-repo "$RUNNER_TEMP/m3-completion-repository" \
+            --work "$RUNNER_TEMP/m3-completion-acceptance"
+
+      - name: Retain packaged completion acceptance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: maven-packaged-completion
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/m3-completion-acceptance/logs/*.log
+            ${{ runner.temp }}/m3-completion-acceptance/acceptance.json
+
       - name: Test the inline plugins
         shell: bash
         run: ./mvnw -f plugins/pom.xml verify -e -B -V

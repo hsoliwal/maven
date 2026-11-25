@@ -101,6 +101,79 @@ class MavenRuntimeAcceptanceContract(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 module.assert_receipt(p, "m3.smart.provision.v1")
 
+    def test_completion_fixture_preserves_exact_inputs_and_missing_parent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            a = module.completion_fixture(first)
+            b = module.completion_fixture(second)
+            for project in ("ordinary", "missing-parent"):
+                self.assertEqual((a[project] / "pom.xml").read_bytes(),
+                                 (b[project] / "pom.xml").read_bytes())
+                self.assertTrue((a[project] / ".mvn").is_dir())
+            self.assertIn(b"<relativePath/>", (a["missing-parent"] / "pom.xml").read_bytes())
+            self.assertFalse(a["forbidden-cache"].exists())
+            with self.assertRaises(FileExistsError):
+                module.completion_fixture(first)
+
+    def test_completion_distribution_refuses_missing_and_duplicate_owners(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for folder in ("bin", "conf", "boot", "lib"):
+                (root / folder).mkdir()
+            launcher = root / "bin/mvn"
+            launcher.write_bytes(b"unit fixture only; never executed\n")
+            (root / "conf/m2.conf").write_bytes(b"unit fixture\n")
+            with zipfile.ZipFile(root / "boot/launcher.jar", "w") as jar:
+                jar.writestr("manifest.txt", "unit fixture")
+            helper = "org/apache/maven/cling/invoker/mvn/M3BuildSuggestions.class"
+            invoker = "org/apache/maven/cling/invoker/mvn/MavenInvoker.class"
+            library = root / "lib/maven-cli.jar"
+            with zipfile.ZipFile(library, "w") as jar:
+                jar.writestr(invoker, b"original invoker fixture")
+            with self.assertRaises(AssertionError):
+                module.completion_distribution(launcher)
+            with zipfile.ZipFile(library, "w") as jar:
+                jar.writestr(helper, b"completion fixture")
+            with self.assertRaises(AssertionError):
+                module.completion_distribution(launcher)
+            with zipfile.ZipFile(library, "w") as jar:
+                jar.writestr(helper, b"completion fixture")
+                jar.writestr(invoker, b"original invoker fixture")
+            identity = module.completion_distribution(launcher)
+            self.assertEqual(identity["owner"]["classes"][helper], module.sha256(b"completion fixture"))
+            self.assertEqual(identity["inputs"]["lib/maven-cli.jar"], module.file_sha256(library))
+            (root / "lib/ext").mkdir()
+            resource = root / "lib/ext/runtime-resource.txt"
+            resource.write_bytes(b"first runtime resource")
+            (root / "bin/JvmConfigParser.class").write_bytes(b"parser fixture")
+            extended = module.completion_distribution(launcher)
+            self.assertIn("bin/JvmConfigParser.class", extended["inputs"])
+            self.assertEqual(extended["inputs"]["lib/ext/runtime-resource.txt"], module.file_sha256(resource))
+            resource.write_bytes(b"changed runtime resource")
+            self.assertNotEqual(extended, module.completion_distribution(launcher))
+            linked = root / "conf/linked.properties"
+            linked.symlink_to(resource)
+            with self.assertRaises(ValueError):
+                module.completion_distribution(launcher)
+            linked.unlink()
+            (root / "lib/duplicate-owner.jar").write_bytes(library.read_bytes())
+            with self.assertRaises(AssertionError):
+                module.completion_distribution(launcher)
+
+    def test_core_mode_cannot_turn_preparation_into_runtime_qualification(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "must-not-be-created"
+            with self.assertRaises(ValueError):
+                module.main(["--core-completion", "--prepare-only", "--work", str(work)])
+            self.assertFalse(work.exists())
+            with self.assertRaises(ValueError):
+                module.main(["--work", str(work)])
+            self.assertFalse(work.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
