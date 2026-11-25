@@ -489,7 +489,8 @@ public final class MachineFingerprintTest {
     }
 
     static Fixture fixture(String code, String file, boolean extra) throws Exception {
-        Path project = Files.createTempDirectory("m3-ast-fingerprints-");
+        // Keep the test-owned project and its canonical evidence directory under one path.
+        Path project = Files.createTempDirectory("m3-ast-fingerprints-").toRealPath();
         Path source = Files.createDirectory(project.resolve("src"));
         Files.writeString(source.resolve(file), code);
         if (extra) Files.writeString(source.resolve("Extra.java"), "class Extra { int f(int n) { return n + 1; } }\n");
