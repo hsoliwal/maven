@@ -220,6 +220,12 @@ jobs:
       matrix:
         os: [ubuntu-26.04, macos-latest, windows-latest]
         java: ['21', '25', '27']
+    env:
+      # Inline Maven plugins inherit a pre-Java-25 Palantir from maven-parent 45.
+      # Keep the original spotless:check enabled, but use the first supported PJF
+      # runtime only on Java 25. JDK 21 remains on the original parent style;
+      # Java 27 needs the separate upstream JDK-8372948 fix.
+      MAVEN_ARGS: ${{ matrix.java == '25' && '-Dversion.palantirJavaFormat=2.71.0' || '' }}
     steps:
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -290,6 +296,18 @@ jobs:
           echo "MAVEN_HOME=$maven_home" >> "$GITHUB_ENV"
           echo "$maven_home/bin" >> "$GITHUB_PATH"
 
+      - name: Verify original Palantir formatting under Java 25
+        if: matrix.java == '25'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$MAVEN_ARGS" = "-Dversion.palantirJavaFormat=2.71.0"
+          actual="$(mvn -q -f plugins/maven-clean-plugin/pom.xml help:evaluate -Dexpression=version.palantirJavaFormat -DforceStdout)"
+          test "$actual" = "2.71.0"
+          # Genuine Spotless check of the failing inherited plugin's Java sources;
+          # no spotless.skip or formatter bypass is allowed on Java 25.
+          mvn --batch-mode --no-transfer-progress -f plugins/maven-clean-plugin/pom.xml com.diffplug.spotless:spotless-maven-plugin:check
+
       - name: Build with downloaded Maven
         shell: bash
         run: mvn verify -Papache-release -Dgpg.skip=true -e -B -V
@@ -342,6 +360,12 @@ jobs:
       matrix:
         os: [ubuntu-26.04, macos-latest, windows-latest]
         java: ['21', '25', '27']
+    env:
+      # Inline Maven plugins inherit a pre-Java-25 Palantir from maven-parent 45.
+      # Keep the original spotless:check enabled, but use the first supported PJF
+      # runtime only on Java 25. JDK 21 remains on the original parent style;
+      # Java 27 needs the separate upstream JDK-8372948 fix.
+      MAVEN_ARGS: ${{ matrix.java == '25' && '-Dversion.palantirJavaFormat=2.71.0' || '' }}
     steps:
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -406,6 +430,18 @@ jobs:
           fi
           echo "MAVEN_HOME=$maven_home" >> "$GITHUB_ENV"
           echo "$maven_home/bin" >> "$GITHUB_PATH"
+
+      - name: Verify original Palantir formatting under Java 25
+        if: matrix.java == '25'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$MAVEN_ARGS" = "-Dversion.palantirJavaFormat=2.71.0"
+          actual="$(mvn -q -f plugins/maven-clean-plugin/pom.xml help:evaluate -Dexpression=version.palantirJavaFormat -DforceStdout)"
+          test "$actual" = "2.71.0"
+          # Genuine Spotless check of the failing inherited plugin's Java sources;
+          # no spotless.skip or formatter bypass is allowed on Java 25.
+          mvn --batch-mode --no-transfer-progress -f plugins/maven-clean-plugin/pom.xml com.diffplug.spotless:spotless-maven-plugin:check
 
       - name: Build Maven and ITs and run them
         shell: bash
