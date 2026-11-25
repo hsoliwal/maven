@@ -4,7 +4,6 @@ package io.synexia.maven.smart;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 /** Independently runnable advisory hooks; never executes or changes the Maven build. */
 public final class BuildHookMain {
@@ -22,7 +20,6 @@ public final class BuildHookMain {
             "--require-atom-pattern", "--atom-pattern-manifest",
             "--preparation-required", "--preparation-report",
             "--summarizer", "--summarizer-timeout-seconds");
-    private static final int MAX_SUMMARY_LINES = 40;
 
     private BuildHookMain() { }
 
@@ -144,7 +141,8 @@ public final class BuildHookMain {
                     : preparationRejected ? "CanonicalPreparationEvidenceRejected" : "";
             int exit = admissionRejected ? 2 : 0;
             try {
-                // Complete source/receipt admission before provider construction or subprocess work.
+                // Complete source/receipt admission before provider construction or inference.
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException("build advice interrupted");
                 if (!admissionRejected && Set.of("cli", "jni").contains(provider)) {
                     McpAdviser.Config nativeProvider = new McpAdviser.Config(
                             path(base, required(options, "--chrome-llm-jar")), provider,
@@ -177,7 +175,7 @@ public final class BuildHookMain {
         }
     }
 
-    /** The configured CPU summarizer on the pom and the log; its output lines become facts. Failure is recorded, never raised. */
+    /** Runs the configured CPU summarizer; bounded output becomes facts and failures stay advisory. */
     private static String summary(Map<String, String> options, Path base, Path directory, String phase) {
         if (!options.containsKey("--summarizer")) return ",\"summaryStatus\":\"not-requested\"";
         String status;
@@ -190,20 +188,11 @@ public final class BuildHookMain {
             if (Files.isRegularFile(base.resolve("pom.xml"))) command.add(base.resolve("pom.xml").toString());
             if (options.containsKey("--log-file") && Files.isRegularFile(path(base, options.get("--log-file"))))
                 command.add(path(base, options.get("--log-file")).toString());
-            Path out = directory.resolve(phase + ".summary.txt");
-            Process process = new ProcessBuilder(command).directory(base.toFile())
-                    .redirectOutput(out.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            if (!process.waitFor(timeout, TimeUnit.SECONDS)) { process.destroyForcibly(); status = "failed: timeout"; }
-            else if (process.exitValue() != 0) status = "failed: exit " + process.exitValue();
-            else {
-                status = "available";
-                Files.readAllLines(out, StandardCharsets.UTF_8).stream().map(String::strip).filter(line -> !line.isEmpty())
-                        .limit(MAX_SUMMARY_LINES).map(line -> line.length() > 300 ? line.substring(0, 300) : line).forEach(lines::add);
-            }
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            status = "failed: interrupted";
-        } catch (IOException | RuntimeException failure) {
+            CpuSummarizer.Result result = CpuSummarizer.run(command, base,
+                    directory.resolve(phase + ".summary.txt"), timeout);
+            status = result.status();
+            lines.addAll(result.lines());
+        } catch (RuntimeException failure) {
             status = "failed: " + failure.getClass().getSimpleName();
         }
         StringBuilder json = new StringBuilder(",\"summaryStatus\":").append(TinyJson.quote(status)).append(",\"summaryLines\":[");
@@ -223,6 +212,7 @@ public final class BuildHookMain {
             else if (Character.isWhitespace(c)) { if (started) { tokens.add(current.toString()); current.setLength(0); started = false; } }
             else { current.append(c); started = true; }
         }
+        if (quote != 0) throw new IllegalArgumentException("unterminated summarizer quote");
         if (started) tokens.add(current.toString());
         return tokens;
     }

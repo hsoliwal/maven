@@ -38,7 +38,9 @@ The optional provider reuses `io.synexia.maven.smart.McpAdviser` from the existi
 `tools/m3-smart-builder` artifact. Maven starts that entry point in a selected
 Java process, and the existing adviser uses ChromeLLM's MCP stdio owner with
 the explicitly selected `cli` or `jni` backend. There is no browser prerequisite,
-HTTP fallback, new MCP implementation or model downloader in this pass.
+HTTP fallback, new MCP implementation or model downloader in this pass. An
+explicit pinned artifact tuple can instead select ChromeLLM's existing lazy
+model or JNI cache, described below.
 
 The adviser runs on Java 21 or later. Maven itself retains its Java 17 API
 baseline. `m3.smart.llmJavaHome` defaults to the JVM running Maven; select a
@@ -81,7 +83,60 @@ Maven distribution through its existing `M3_MAVEN_HOME` support.
 | `m3.smart.modelPath` | Absolute path to the explicitly selected local GGUF. |
 | `m3.smart.llmTimeoutSeconds` | Whole adviser exchange deadline, integer 1–120; default 120 seconds. |
 
-All selected file paths, including the selected Java executable, must identify
+### Lazy model and JNI acquisition
+
+The completion pass can forward a complete artifact identity to ChromeLLM's
+existing `ModelArtifactCache` and `LazyModelBackend`. It starts them only after
+an opted-in build has completed with failure diagnostics. Successful builds,
+disabled suggestions and `optionllm` alone perform no provider or cache work.
+Maven does not implement a second downloader.
+
+To select a lazy model, replace `m3.smart.modelPath` with all four properties:
+
+| Property | Required value |
+| --- | --- |
+| `m3.smart.modelUrl` | Operator-selected HTTPS artifact URL, without credentials or fragment. |
+| `m3.smart.modelSha256` | Exact lowercase 64-hex SHA-256. |
+| `m3.smart.modelBytes` | Exact expected length, from 1 byte through 64 GiB. |
+| `m3.smart.modelCacheDir` | Explicit absolute cache directory owned by the operator. |
+| `m3.smart.modelFollowRedirects` | Optional `true` to use ChromeLLM's bounded HTTPS redirect handling; default `false`. |
+
+With the `jni` backend, a native bridge can also be lazy: replace
+`m3.smart.jniLib` with `m3.smart.jniUrl`, `m3.smart.jniSha256`,
+`m3.smart.jniBytes` and `m3.smart.jniCacheDir`. The same identity and size rules
+apply. This is a raw JNI library, not an archive. The CLI backend still requires
+an installed `m3.smart.llamaBin`; it does not download executables.
+
+Downloads default off. `-Dm3.smart.llmAllowDownloads=true` permits first-use
+acquisition only when Maven's effective request is online. **Maven `-o` always
+wins**, including when the download property comes from system properties or
+the project. Offline operation can reuse a verified cache entry. Missing or
+corrupt entries cannot trigger networking; an offline miss does not create its
+cache directory. Incomplete tuples, local-plus-lazy duplicates, wrong backend
+selection and malformed identities are refused before the provider starts.
+
+After setting the existing JAR, Java and backend properties above, an example
+using independently approved model values is:
+
+```sh
+"$M3_MAVEN_HOME/bin/mvn" -Dm3.smart.suggest=true -Doptionllm=true \
+  -Dm3.smart.llmBackend=cli -Dm3.smart.llamaBin="$LLAMA_CLI" \
+  -Dm3.smart.adviserJar="$ADVISER_JAR" -Dm3.smart.adviserJarSha256="$ADVISER_JAR_SHA256" \
+  -Dm3.smart.chromeLlmJar="$CHROMELLM_JAR" -Dm3.smart.chromeLlmJarSha256="$CHROMELLM_JAR_SHA256" \
+  -Dm3.smart.llmJavaHome="$JAVA21_HOME" \
+  -Dm3.smart.modelUrl="$MODEL_URL" -Dm3.smart.modelSha256="$MODEL_SHA256" \
+  -Dm3.smart.modelBytes="$MODEL_BYTES" -Dm3.smart.modelCacheDir="$MODEL_CACHE" \
+  -Dm3.smart.llmAllowDownloads=true verify
+```
+
+The whole exchange keeps its 1–120 second deadline, including acquisition.
+Use a separately provisioned cache for artifacts that need longer. The exact
+model byte count is also the download ceiling. ChromeLLM owns content-addressed
+publication, rehashing, corruption refusal and provider initialization. Existing
+local model/library paths and the public adviser `Config` API remain supported.
+The JARs themselves still need to be supplied and pinned as before.
+
+All selected local file paths, including the selected Java executable, must identify
 existing regular files. Leaf symlinks are refused. Both selected JARs are
 stream-hashed and limited to 64 MiB each. Missing configuration, a different JAR
 digest, an unsuitable Java runtime or a provider failure produces an advisory

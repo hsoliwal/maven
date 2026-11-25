@@ -41,12 +41,18 @@ public final class StandaloneMain {
         for (int i = 0; i + 1 < args.length; i += 2) {
             if (args[i].equals("--model")) model = Path.of(args[i + 1]);
             if (args[i].equals("--backend")) backend = args[i + 1];
-            if (args[i].equals("--jni-lib") || args[i].equals("--llama-bin")) nativeFlag = args[i];
+            if (args[i].equals("--jni-lib") || args[i].equals("--llama-bin") || args[i].equals("--jni-url")) nativeFlag = args[i];
+        }
+        if (options.containsKey("--model-url")) {
+            model = Path.of(options.get("--model-cache-dir")).resolve("lazy-fixture.gguf");
+            if (!options.get("--model-max-bytes").equals(options.get("--model-bytes")))
+                throw new IllegalArgumentException("expected exact lazy artifact bound");
         }
         if (model == null) throw new IllegalArgumentException("expected explicit model");
         if (!("cli".equals(backend) && "--llama-bin".equals(nativeFlag))
-                && !("jni".equals(backend) && "--jni-lib".equals(nativeFlag)))
+                && !("jni".equals(backend) && ("--jni-lib".equals(nativeFlag) || "--jni-url".equals(nativeFlag))))
             throw new IllegalArgumentException("expected explicit matching native backend");
+        Files.writeString(Path.of(model + ".arguments"), new java.util.TreeMap<>(options).toString());
         Files.writeString(Path.of(model + ".started"), Long.toString(ProcessHandle.current().pid()));
         var lines = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         String initialization = lines.readLine();
