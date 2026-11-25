@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: Apache-2.0
+# Source-bound diagnostics only. This workflow does not grant Maven provider reuse.
+name: M3 original Maven javac hosted JDK preflight (HOLD)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m3-javac-host-preflight-20261125.yml'
+      - 'tools/project-db/diagnostics/javac-host-preflight-20261125/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-maven-host-jdk-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        java: ['17', '21']
+    steps:
+      - name: Checkout exact Synexia-origin diagnostic receiver and its hash seal
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/m3-javac-host-preflight-20261125.yml
+            tools/project-db/diagnostics/javac-host-preflight-20261125/
+          sparse-checkout-cone-mode: false
+      - name: Select the actual Temurin runtime under inspection
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Checkout exact original Maven compiler provider source
+        uses: actions/checkout@v4
+        with:
+          repository: hsoliwal/maven
+          ref: 53d7bd782077968e596a54cb7948ea22810734c3
+          path: source-maven-provider
+          persist-credentials: false
+      - name: Verify source revision and original module tree, compile original engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source-maven-provider rev-parse HEAD)" = '53d7bd782077968e596a54cb7948ea22810734c3'
+          test "$(git -C source-maven-provider rev-parse HEAD:tools/m3-polyglot-maven-plugin)" = '3652731870e840170acca60acfeea298cc9c85fd'
+          mvn -B -ntp -f source-maven-provider/tools/m3-polyglot-maven-plugin/pom.xml verify
+          jar tf source-maven-provider/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar |
+            grep -Fxq 'io/synexia/maven/polyglot/JdkReuseInputs.class'
+      - name: Run original class reflection and bounded host inventory, without granting a cache hit
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='tools/project-db/diagnostics/javac-host-preflight-20261125'
+          engine='source-maven-provider/tools/m3-polyglot-maven-plugin/target/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar'
+          mkdir -p qualified-provider-preflight/classes
+          (cd "$input" && sha256sum -c SOURCE_SHA256SUMS)
+          test "$(git hash-object "$input/M3HostedJavacGate.java")" = '1175f31aebbe35b428e894b9422374b7b22a3451'
+          test "$(git hash-object "$input/SOURCE_SHA256SUMS")" = '74c62ae24cd039f8f796415f52108fc77bfce0bd' 
+          sha256sum "$engine" > qualified-provider-preflight/ENGINE_SHA256SUM
+          javac --release 17 -cp "$engine" -d qualified-provider-preflight/classes "$input/M3HostedJavacGate.java"
+          java -cp "qualified-provider-preflight/classes:$engine" M3HostedJavacGate --self-test |
+            tee qualified-provider-preflight/SELF_TEST.log
+          grep -Fxq 'M3_HOSTED_JAVAC_GATE_SELF_TEST=PASS 9 controls' qualified-provider-preflight/SELF_TEST.log
+          java -cp "qualified-provider-preflight/classes:$engine" M3HostedJavacGate --inspect-current-jdk |
+            tee qualified-provider-preflight/HOST_JDK_PREFLIGHT.txt
+          grep -Fxq M3_HOSTED_JAVAC_GATE_PREFLIGHT_V1 qualified-provider-preflight/HOST_JDK_PREFLIGHT.txt
+          grep -Eq '^originalToolchainInputCount=[0-4]$' qualified-provider-preflight/HOST_JDK_PREFLIGHT.txt
+          grep -Eq '^javaHomeMatchesSetup=(true|false)$' qualified-provider-preflight/HOST_JDK_PREFLIGHT.txt
+          printf '%s\n' 'HOLD: observations only; Maven/Gradle provider-reuse acceptance is NOT_RUN in this job' > qualified-provider-preflight/HOSTED_DISPOSITION.txt
+          grep -Fxq "jdkMajor=${{ matrix.java }}" qualified-provider-preflight/HOST_JDK_PREFLIGHT.txt
+          (cd "$input" && sha256sum -c SOURCE_SHA256SUMS)
+          (cd qualified-provider-preflight && sha256sum ENGINE_SHA256SUM SELF_TEST.log HOST_JDK_PREFLIGHT.txt HOSTED_DISPOSITION.txt > RECEIPT_SHA256SUMS && sha256sum -c RECEIPT_SHA256SUMS)
+      - name: Retain source-built original Maven host preflight bytes even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-maven-host-javac-preflight-jdk-${{ matrix.java }}
+          path: qualified-provider-preflight/
+          if-no-files-found: warn
+          retention-days: 14
