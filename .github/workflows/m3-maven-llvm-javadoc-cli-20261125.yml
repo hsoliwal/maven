@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 LLVM Javadoc CLI exact-source proof
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java'
+      - '.github/workflows/m3-maven-llvm-javadoc-cli-20261125.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  javadoc-release17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Assert exact hash-pinned Synexia candidate without any source widening
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          path = Path('tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java')
+          text = path.read_bytes()
+          actual = hashlib.sha256(text).hexdigest()
+          assert actual == '50be388a1899a7edf0fd79d3a721988f9dc844b1dd54c977b02b808a40938021', f'unqualified source content: {actual}'
+          assert b'     * Portable CLI: {@code scan <home> <manifest> <comma-separated tools>}' in text
+          assert b'     * or {@code verify <home> <manifest>}. Neither operation runs any LLVM executable.' in text
+          print('PASS: exact source hash and both literal Javadoc examples')
+          PY
+      - name: Generate real source Javadoc under release 17 with all default diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/m3-javadoc-cli-proof
+          javadoc --release 17 -quiet -d target/m3-javadoc-cli-proof/docs \
+            tools/m3-llvm-tools-provider/src/main/java/io/synexia/maven/llvm/LlvmToolchainEvidence.java \
+            2>&1 | tee target/m3-javadoc-cli-proof/javadoc.log
+          test -s target/m3-javadoc-cli-proof/docs/io/synexia/maven/llvm/LlvmToolchainEvidence.html
+          echo 'PASS: production LLVM evidence source generated Javadoc with release 17'
+      - name: Retain original Javadoc tool output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-llvm-javadoc-cli-release17
+          path: target/m3-javadoc-cli-proof/**
+          if-no-files-found: warn
