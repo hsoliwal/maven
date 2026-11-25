@@ -134,6 +134,17 @@ public final class StandaloneMain {
             String request = lines.readLine();
             if (observeEvidence) Files.writeString(Path.of(model + ".request"), request);
             if (!request.contains("infer_text")) throw new IllegalArgumentException("expected infer_text");
+            if (scenario.startsWith("hook-drift-")) {
+                Path project = Path.of(model).getParent();
+                Path target = project.resolve(switch (scenario) {
+                    case "hook-drift-source" -> "src/Example.java";
+                    case "hook-drift-receipt" -> ".reports/preparation.json";
+                    case "hook-drift-checkpoint" -> "synthetic-checkpoints/source-0.tsv";
+                    default -> throw new IllegalArgumentException("unknown hook drift fixture");
+                });
+                Files.writeString(target, " ", java.nio.file.StandardOpenOption.APPEND);
+                Files.writeString(Path.of(model + ".mutated"), "synthetic mutation before successful reply\n");
+            }
             if (request.contains("fixture-provider-error")) scenario = "call-is-error";
             if (request.contains("fixture timeout")) Thread.sleep(15000);
             if (request.contains("fixture invalid content")) scenario = "call-nontext";

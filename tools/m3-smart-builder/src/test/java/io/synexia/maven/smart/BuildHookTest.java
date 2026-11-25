@@ -21,6 +21,11 @@ public final class BuildHookTest {
             summaryFixture(args);
             return;
         }
+        if (args.length == 2 && args[0].equals("--evidence-regression")) {
+            checkEvidenceFreshness(Files.createTempDirectory("build-hook-evidence-"), args[1]);
+            System.out.println("BUILD HOOK EVIDENCE REGRESSION PASS: " + checks);
+            return;
+        }
         if (args.length == 2 && args[0].equals("--workflow")) {
             Path project = Path.of(args[1]);
             String pre = Files.readString(project.resolve(".reports/m3-smart/pre-build.json"));
@@ -232,7 +237,123 @@ public final class BuildHookTest {
                     "deadline must retire the waiting provider process");
             checkBlockedWriter(module, executable, Files.writeString(root.resolve("mcp-blocked-writer.gguf"), "fixture model"));
         }
+        for (String scenario : List.of("rejected:preparation:receipt", "rejected:atom:manifest",
+                "summary:preparation:source", "summary:preparation:added", "summary:atom:removed",
+                "summary:preparation:receipt", "summary:atom:checkpoint", "summary:both:source",
+                "summary:both:unchanged", "summary:none:source", "provider:preparation:source",
+                "provider:preparation:receipt", "provider:atom:checkpoint", "provider:both:source"))
+            checkEvidenceFreshness(root.resolve(scenario.replace(':', '-')), scenario);
         System.out.println("BUILD HOOK TESTS PASS: " + checks);
+    }
+
+    /** Receipts must stay bound to the admitted bytes across both external work boundaries. */
+    private static void checkEvidenceFreshness(Path root, String scenario) throws Exception {
+        String[] parts = scenario.split(":");
+        String stage = parts[0];
+        String kind = parts[1];
+        String mutation = parts[2];
+        String fixture = System.getProperty("m3.smart.fixtureJar");
+        if (stage.equals("provider") && fixture == null) return;
+        Path project = Files.createDirectories(root.resolve("project with spaces"));
+        Path source = Files.createDirectories(project.resolve("src"));
+        Path javaSource = Files.writeString(source.resolve("Example.java"), "class Example { native void run(); }");
+        Files.writeString(project.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
+                + "<groupId>test</groupId><artifactId>evidence</artifactId><version>1</version></project>");
+        Path receipt = Files.createDirectories(project.resolve(".reports")).resolve("preparation.json");
+        Files.writeString(receipt, CanonicalPreparationEvidenceTestMain.report(
+                SourceInventory.inspectSelected(project, source)));
+        AtomPatternEvidenceTest.writeActionFixture(project, Path.of("src"));
+        boolean preparation = kind.equals("preparation") || kind.equals("both");
+        boolean atom = kind.equals("atom") || kind.equals("both");
+        List<String> options = new ArrayList<>(List.of("--project-dir", project.toString(),
+                "--build-dir", ".hook-results", "--source-root", "src"));
+        if (preparation) options.addAll(List.of("--preparation-required", "true",
+                "--preparation-report", ".reports/preparation.json"));
+        if (atom) options.addAll(List.of("--require-atom-pattern", "true",
+                "--atom-pattern-manifest", "synthetic-checkpoints.tsv"));
+        if (stage.equals("rejected")) {
+            if (preparation) Files.writeString(receipt, "{}");
+            else Files.delete(project.resolve("synthetic-checkpoints.tsv"));
+        }
+        if (!stage.equals("provider")) options.addAll(List.of("--summarizer", summaryCommand()
+                + " hook-evidence " + (stage.equals("rejected") ? "unchanged" : mutation)
+                + " \"" + project + "\""));
+        Path model = project.resolve(stage.equals("provider")
+                ? "mcp-hook-drift-" + mutation + ".gguf" : "mcp-evidence-observer.gguf");
+        if (fixture != null) {
+            Files.writeString(model, "synthetic fixture only");
+            Path executable = Files.writeString(project.resolve("llama fixture"), "synthetic fixture only");
+            options.addAll(List.of("--backend", "cli", "--chrome-llm-jar", fixture,
+                    "--llama-bin", executable.toString(), "--model", model.toString(), "--timeout-seconds", "7"));
+        }
+        long originalSize = Files.size(javaSource);
+        var originalModified = Files.getLastModifiedTime(javaSource);
+        int status = run(options, "--phase", "post-build", "--build-outcome", "failure");
+        Map<String, Object> observed = report(project, "post-build");
+        boolean blocked = !kind.equals("none") && !mutation.equals("unchanged");
+        if (stage.equals("rejected")) {
+            require(!Files.exists(project.resolve(".summary-ran")), scenario + " must not start the summarizer");
+            require("blocked-admission".equals(observed.get("summaryStatus")),
+                    scenario + " records the skipped summarizer");
+        } else if (stage.equals("summary")) {
+            require(Files.exists(project.resolve(".summary-ran")), scenario + " crosses the summary boundary");
+            if (mutation.equals("source")) require(Files.size(javaSource) == originalSize
+                    && Files.getLastModifiedTime(javaSource).equals(originalModified),
+                    "source drift keeps byte length and timestamp so only content binding can reject it");
+            if (mutation.equals("receipt")) CanonicalPreparationEvidence.inspect(project, source, receipt);
+            if (mutation.equals("checkpoint")) AtomPatternEvidence.inspect(project, source,
+                    project.resolve("synthetic-checkpoints.tsv"));
+        } else require(Files.exists(Path.of(model + ".mutated")),
+                scenario + " changes evidence after receiving the inference request");
+        require(status == (blocked ? 2 : 0), scenario + " keeps the declared hook status");
+        require("failure".equals(observed.get("buildOutcome")), scenario + " retains the original Maven failure");
+        require(Boolean.FALSE.equals(observed.get("llmCandidateTrusted")), scenario + " never promotes model authority");
+        if (blocked) {
+            require((atom ? "blocked-evidence" : "blocked-preparation").equals(observed.get("adviceStatus")),
+                    scenario + " refuses stale evidence before publishing advice");
+            require("".equals(observed.get("llmCandidate")), scenario + " suppresses any completed candidate");
+            if (atom) require("rejected".equals(observed.get("atomPatternStatus")),
+                    scenario + " cannot describe stale checkpoints as validated");
+            if (preparation) require("refused".equals(observed.get("preparationStatus")),
+                    scenario + " cannot describe stale preparation as source-bound");
+            if (!stage.equals("provider")) require(!Files.exists(Path.of(model + ".started")),
+                    scenario + " must refuse before starting the provider");
+        } else {
+            require((fixture == null ? "disabled" : "available").equals(observed.get("adviceStatus")),
+                    scenario + " preserves unrequested and unchanged admission behavior");
+            if (fixture != null) require(((String) observed.get("llmCandidate")).contains("fake MCP advisory"),
+                    scenario + " retains the successful synthetic response");
+        }
+    }
+
+    /** Deterministic fixture effects; checkpoint replacement remains structurally valid. */
+    private static void mutateEvidence(Path project, String mutation) throws Exception {
+        Path source = project.resolve("src/Example.java");
+        switch (mutation) {
+            case "source" -> {
+                var modified = Files.getLastModifiedTime(source);
+                Files.writeString(source, Files.readString(source).replace("run()", "put()"));
+                Files.setLastModifiedTime(source, modified);
+            }
+            case "added" -> Files.writeString(project.resolve("src/Added.java"), "class Added {}");
+            case "removed" -> Files.delete(source);
+            case "receipt" -> Files.writeString(project.resolve(".reports/preparation.json"), " ",
+                    java.nio.file.StandardOpenOption.APPEND);
+            case "checkpoint" -> {
+                Path checkpoint = project.resolve("synthetic-checkpoints/source-0.tsv");
+                String before = Hashes.sha256(Files.readAllBytes(checkpoint));
+                List<String> rows = Files.readAllLines(checkpoint);
+                String[] cells = rows.get(1).split("\t");
+                cells[5] = cells[5].equals("a".repeat(64)) ? "b".repeat(64) : "a".repeat(64);
+                rows.set(1, String.join("\t", cells));
+                Files.writeString(checkpoint, String.join("\n", rows) + "\n");
+                Path manifest = project.resolve("synthetic-checkpoints.tsv");
+                Files.writeString(manifest, Files.readString(manifest).replace(before,
+                        Hashes.sha256(Files.readAllBytes(checkpoint))));
+            }
+            case "unchanged" -> { /* Positive control retains the exact admitted evidence. */ }
+            default -> throw new IllegalArgumentException("unknown evidence mutation");
+        }
     }
 
     /** Runs actual subprocesses without depending on a platform shell or any trained model. */
@@ -414,6 +535,12 @@ public final class BuildHookTest {
 
     private static void summaryFixture(String[] args) throws Exception {
         switch (args[1]) {
+            case "hook-evidence" -> {
+                Path project = Path.of(args[3]);
+                Files.writeString(project.resolve(".summary-ran"), "synthetic summarizer ran\n");
+                mutateEvidence(project, args[2]);
+                System.out.println("synthetic summary after " + args[2]);
+            }
             case "eof" -> System.out.println(System.in.read() == -1 ? "stdin closed" : "unexpected input");
             case "lines" -> {
                 System.out.println("x".repeat(299) + "😀suffix");

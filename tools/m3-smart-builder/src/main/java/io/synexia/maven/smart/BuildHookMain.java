@@ -66,10 +66,7 @@ public final class BuildHookMain {
             String evidenceError = "";
             if (evidenceRequested) {
                 try {
-                    evidence = AtomPatternEvidence.inspect(base,
-                            options.containsKey("--source-root") ? path(base, options.get("--source-root")) : null,
-                            options.containsKey("--atom-pattern-manifest")
-                                    ? path(base, options.get("--atom-pattern-manifest")) : null);
+                    evidence = inspectAtomPattern(options, base);
                 } catch (AtomPatternEvidence.Rejected rejected) {
                     evidenceError = rejected.getMessage();
                 } catch (IOException | IllegalArgumentException rejected) {
@@ -81,9 +78,7 @@ public final class BuildHookMain {
             String preparationError = "";
             if (preparationRequired) {
                 try {
-                    preparationFacts = CanonicalPreparationEvidence.inspect(base,
-                            path(base, options.get("--source-root")),
-                            path(base, options.get("--preparation-report")));
+                    preparationFacts = inspectPreparation(options, base);
                 } catch (IOException | IllegalArgumentException rejected) {
                     preparationError = "preparation-report-refused";
                 }
@@ -104,26 +99,28 @@ public final class BuildHookMain {
                 try { source = SourceInventory.inspect(base, path(base, options.get("--source-root"))); }
                 catch (IOException unavailable) { /* Recorded as unavailable. */ }
             }
-            String facts = "\"phase\":" + TinyJson.quote(phase)
+            // A configured summarizer is an external process too: admission must precede it.
+            String summaryFacts = admissionRejected && options.containsKey("--summarizer")
+                    ? ",\"summaryStatus\":\"blocked-admission\",\"summaryLines\":[]"
+                    : summary(options, base, directory, phase);
+            if (!admissionRejected) {
+                evidenceError = changedAtomPattern(options, base, evidence);
+                preparationError = preparationRequired ? changedPreparation(options, base, preparationFacts) : "";
+                evidenceRejected = !evidenceError.isEmpty();
+                preparationRejected = !preparationError.isEmpty();
+                admissionRejected = evidenceRejected || preparationRejected;
+            }
+            String observedFacts = "\"phase\":" + TinyJson.quote(phase)
                     + ",\"buildOutcome\":" + TinyJson.quote(outcome)
                     + ",\"pomStatus\":" + TinyJson.quote(pom == null ? "unavailable" : "available")
                     + ",\"pomFacts\":" + (pom == null ? "null" : pom.json())
                     + ",\"logStatus\":" + TinyJson.quote(!options.containsKey("--log-file") ? "not-requested" : log == null ? "unavailable" : "available")
                     + ",\"logFacts\":" + (log == null ? "null" : log.json())
                     + ",\"sourceStatus\":" + TinyJson.quote(!options.containsKey("--source-root") ? "not-requested" : source == null ? "unavailable" : "available")
-                    + ",\"sourceFacts\":" + (source == null ? "null" : source.json())
-                    + ",\"atomPatternRequired\":" + requireAtomPattern
-                    + ",\"atomPatternStatus\":" + TinyJson.quote(!evidenceRequested ? "not-requested"
-                            : evidenceRejected ? "rejected" : "structurally-validated")
-                    + ",\"atomPatternError\":" + TinyJson.quote(evidenceError)
-                    + ",\"atomPatternFacts\":" + (evidence == null ? "null" : evidence.json())
-                    + summary(options, base, directory, phase);
-            if (preparationRequired) {
-                facts += ",\"preparationRequired\":true"
-                        + ",\"preparationStatus\":" + TinyJson.quote(preparationRejected
-                                ? "refused" : "source-bound")
-                        + ",\"preparationFacts\":" + preparationFacts;
-            }
+                    + ",\"sourceFacts\":" + (source == null ? "null" : source.json());
+            String facts = observedFacts
+                    + atomPatternFacts(requireAtomPattern, evidenceRequested, evidence, evidenceError)
+                    + summaryFacts + preparationFacts(preparationRequired, preparationFacts, preparationError);
             String prompt = "Review-only Maven " + phase + " advisory. Build outcome is an observed fact: " + outcome
                     + ". Missing facts are unknown. Do not assert tests ran or override the observed result. "
                     + "Suggest registered recipe categories and verification steps in prose only. "
@@ -160,6 +157,21 @@ public final class BuildHookMain {
                 errorType = failure.getClass().getSimpleName();
                 exit = 2;
             }
+            if (exit == 0) {
+                // Reuse the same source-bound parsers after inference, as CodeAgentMain does.
+                evidenceError = changedAtomPattern(options, base, evidence);
+                preparationError = preparationRequired ? changedPreparation(options, base, preparationFacts) : "";
+                if (!evidenceError.isEmpty() || !preparationError.isEmpty()) {
+                    candidate = "";
+                    adviceStatus = !evidenceError.isEmpty() ? "blocked-evidence" : "blocked-preparation";
+                    errorType = !evidenceError.isEmpty() ? "AtomPatternEvidenceRejected"
+                            : "CanonicalPreparationEvidenceRejected";
+                    exit = 2;
+                }
+            }
+            facts = observedFacts
+                    + atomPatternFacts(requireAtomPattern, evidenceRequested, evidence, evidenceError)
+                    + summaryFacts + preparationFacts(preparationRequired, preparationFacts, preparationError);
             String report = "{\"schema\":\"m3.smart.build-hook.v1\",\"mode\":\"review-only\","
                     + facts + ",\"provider\":" + TinyJson.quote(provider)
                     + ",\"adviceStatus\":" + TinyJson.quote(adviceStatus)
@@ -173,6 +185,57 @@ public final class BuildHookMain {
             error.println("Build advice hook rejected: " + failure.getClass().getSimpleName());
             return 2;
         }
+    }
+
+    /** Resolve the original checkpoint parser inputs identically at every admission boundary. */
+    private static AtomPatternEvidence.Summary inspectAtomPattern(Map<String, String> options, Path base)
+            throws IOException {
+        return AtomPatternEvidence.inspect(base,
+                options.containsKey("--source-root") ? path(base, options.get("--source-root")) : null,
+                options.containsKey("--atom-pattern-manifest") ? path(base, options.get("--atom-pattern-manifest")) : null);
+    }
+
+    private static String inspectPreparation(Map<String, String> options, Path base) throws IOException {
+        return CanonicalPreparationEvidence.inspect(base, path(base, options.get("--source-root")),
+                path(base, options.get("--preparation-report")));
+    }
+
+    /** An unrequested gate stays disabled; replacement valid receipts still invalidate the original snapshot. */
+    private static String changedAtomPattern(Map<String, String> options, Path base,
+            AtomPatternEvidence.Summary admitted) {
+        if (admitted == null) return "";
+        try {
+            return admitted.equals(inspectAtomPattern(options, base)) ? "" : "changed-after-admission";
+        } catch (AtomPatternEvidence.Rejected rejected) {
+            return rejected.getMessage();
+        } catch (IOException | IllegalArgumentException rejected) {
+            return "unreadable-evidence";
+        }
+    }
+
+    /** Compare the exact original receipt and source identity, not just a new successful parse. */
+    private static String changedPreparation(Map<String, String> options, Path base, String admitted) {
+        try {
+            return admitted.equals(inspectPreparation(options, base)) ? "" : "preparation-changed-after-admission";
+        } catch (IOException | IllegalArgumentException rejected) {
+            return "preparation-report-refused";
+        }
+    }
+
+    private static String atomPatternFacts(boolean required, boolean requested,
+            AtomPatternEvidence.Summary evidence, String error) {
+        return ",\"atomPatternRequired\":" + required
+                + ",\"atomPatternStatus\":" + TinyJson.quote(!requested ? "not-requested"
+                        : !error.isEmpty() ? "rejected" : "structurally-validated")
+                + ",\"atomPatternError\":" + TinyJson.quote(error)
+                + ",\"atomPatternFacts\":" + (evidence == null ? "null" : evidence.json());
+    }
+
+    private static String preparationFacts(boolean required, String facts, String error) {
+        if (!required) return "";
+        return ",\"preparationRequired\":true"
+                + ",\"preparationStatus\":" + TinyJson.quote(error.isEmpty() ? "source-bound" : "refused")
+                + ",\"preparationFacts\":" + facts;
     }
 
     /** Runs the configured CPU summarizer; bounded output becomes facts and failures stay advisory. */
