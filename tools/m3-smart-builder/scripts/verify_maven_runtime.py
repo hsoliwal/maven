@@ -213,7 +213,7 @@ def completion_distribution(maven: Path) -> dict:
     if maven.resolve(strict=True) != maven:
         raise ValueError("Packaged Maven launcher must use an absolute path without symlink parents")
     home = maven.parent.parent.resolve(strict=True)
-    configuration = home / "conf/m2.conf"
+    configuration = home / "bin/m2.conf"
     libraries = sorted((home / "lib").rglob("*.jar"))
     boot = sorted((home / "boot").glob("*.jar"))
     if not configuration.is_file() or not libraries or not boot:
@@ -273,6 +273,24 @@ def completion_fixture(work: Path) -> dict[str, Path]:
             "forbidden-cache": fixture / "must-not-initialize-cache"}
 
 
+def check_completion_inputs(fx: dict[str, Path], before: dict[str, str]) -> list[str]:
+    # Maven may create its ordinary build outputs even for validate (including
+    # .mvn/target/project-local-repo). Those are not completion-pass source edits.
+    paths = list(fx["fixture"].rglob("*"))
+    if any(path.is_symlink() for path in paths):
+        raise AssertionError("Completion fixture contains an unexpected symbolic link")
+    after = {str(path.relative_to(fx["fixture"])): file_sha256(path)
+             for path in paths if path.is_file()}
+    if any(after.get(name) != digest for name, digest in before.items()) or fx["forbidden-cache"].exists():
+        raise AssertionError("Completion pass changed fixture inputs or initialized an inert provider cache")
+    generated = sorted(set(after).difference(before))
+    build_outputs = tuple(project + prefix for project in ("ordinary", "missing-parent")
+                          for prefix in ("/.mvn/target/", "/target/"))
+    if any(not path.startswith(build_outputs) for path in generated):
+        raise AssertionError("Completion fixture created a file outside Maven build-output directories")
+    return generated
+
+
 def completion_acceptance(maven: str, repository: Path, work: Path,
                           distribution: dict) -> dict:
     logs = work / "logs"
@@ -324,12 +342,9 @@ def completion_acceptance(maven: str, repository: Path, work: Path,
         output = log.read_text(encoding="utf-8", errors="replace")
         if code != expected or any(value not in output for value in required) or any(value in output for value in forbidden):
             raise AssertionError(f"Packaged completion contract failed: {label}; exit={code}; see {log}")
-        after = {str(p.relative_to(fx["fixture"])): file_sha256(p)
-                 for p in fx["fixture"].rglob("*") if p.is_file()}
-        if before != after or fx["forbidden-cache"].exists():
-            raise AssertionError("Completion pass changed fixture inputs or initialized an inert provider cache")
+        generated = check_completion_inputs(fx, before)
         results.append({"case": label, "exitCode": code, "expectedExitCode": expected,
-                        "logSha256": file_sha256(log)})
+                        "logSha256": file_sha256(log), "mavenBuildOutputs": generated})
     if completion_distribution(Path(maven)) != distribution:
         raise AssertionError("Packaged runtime inputs changed during acceptance")
     return {"schema": "m3.smart.packaged-completion.acceptance.v1", "status": "PASS",

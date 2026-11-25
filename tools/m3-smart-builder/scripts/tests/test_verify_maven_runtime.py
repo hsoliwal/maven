@@ -126,7 +126,7 @@ class MavenRuntimeAcceptanceContract(unittest.TestCase):
                 (root / folder).mkdir()
             launcher = root / "bin/mvn"
             launcher.write_bytes(b"unit fixture only; never executed\n")
-            (root / "conf/m2.conf").write_bytes(b"unit fixture\n")
+            (root / "bin/m2.conf").write_bytes(b"unit fixture\n")
             with zipfile.ZipFile(root / "boot/launcher.jar", "w") as jar:
                 jar.writestr("manifest.txt", "unit fixture")
             helper = "org/apache/maven/cling/invoker/mvn/M3BuildSuggestions.class"
@@ -163,6 +163,31 @@ class MavenRuntimeAcceptanceContract(unittest.TestCase):
             (root / "lib/duplicate-owner.jar").write_bytes(library.read_bytes())
             with self.assertRaises(AssertionError):
                 module.completion_distribution(launcher)
+
+    def test_completion_accepts_maven_outputs_but_refuses_input_and_provider_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fx = module.completion_fixture(Path(temporary))
+            before = {str(p.relative_to(fx["fixture"])): module.file_sha256(p)
+                      for p in fx["fixture"].rglob("*") if p.is_file()}
+            output = fx["ordinary"] / ".mvn/target/project-local-repo/consumer.pom"
+            output.parent.mkdir(parents=True)
+            output.write_bytes(b"ordinary Maven output")
+            self.assertEqual(module.check_completion_inputs(fx, before),
+                             ["ordinary/.mvn/target/project-local-repo/consumer.pom"])
+            pom = fx["ordinary"] / "pom.xml"
+            original = pom.read_bytes()
+            pom.write_bytes(b"changed source")
+            with self.assertRaises(AssertionError):
+                module.check_completion_inputs(fx, before)
+            pom.write_bytes(original)
+            side_effect = fx["ordinary"] / "unexpected.txt"
+            side_effect.write_bytes(b"unexpected output outside target")
+            with self.assertRaises(AssertionError):
+                module.check_completion_inputs(fx, before)
+            side_effect.unlink()
+            fx["forbidden-cache"].mkdir()
+            with self.assertRaises(AssertionError):
+                module.check_completion_inputs(fx, before)
 
     def test_core_mode_cannot_turn_preparation_into_runtime_qualification(self):
         with tempfile.TemporaryDirectory() as temporary:
