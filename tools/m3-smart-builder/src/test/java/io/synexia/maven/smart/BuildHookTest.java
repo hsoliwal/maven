@@ -380,11 +380,19 @@ public final class BuildHookTest {
                 + absoluteClasspath() + "\" " + BuildHookTest.class.getName() + " --summary-fixture";
     }
 
+    /** Uses actual fixture class locations, including Maven exec:java's isolated class realm. */
     private static String absoluteClasspath() {
-        return java.util.Arrays.stream(System.getProperty("java.class.path")
-                        .split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
-                .map(path -> Path.of(path).toAbsolutePath().normalize().toString())
-                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+        java.util.Set<String> locations = new java.util.LinkedHashSet<>();
+        for (Class<?> type : List.of(BuildHookTest.class, BuildHookMain.class)) {
+            var source = type.getProtectionDomain().getCodeSource();
+            if (source == null) throw new IllegalStateException("summary fixture needs file-backed classes");
+            try {
+                locations.add(Path.of(source.getLocation().toURI()).toAbsolutePath().normalize().toString());
+            } catch (java.net.URISyntaxException invalid) {
+                throw new IllegalStateException("summary fixture class location is invalid", invalid);
+            }
+        }
+        return String.join(java.io.File.pathSeparator, locations);
     }
 
     private static boolean retired(Path marker) throws Exception {
