@@ -24,6 +24,9 @@ on:
 jobs:
   pr-automation:
     name: PR Automation
+    # Upstream only: it enforces apache/maven's PR label and milestone policy,
+    # which this fork does not use ("PRs must be labeled", no open milestone).
+    if: github.repository == 'apache/maven'
     # Grants exactly what the nested jobs of pr-automation.yml@v5 request (a reusable workflow can only reduce them):
     #   pr: pull-requests: read
     #   milestone, milestone-rm, labels, assignees: issues: write, pull-requests: write

@@ -24,6 +24,9 @@ on:
 
 jobs:
    update_release_draft:
+      # Upstream only: the shared workflow reads its config from
+      # <owner>/maven-gh-actions-shared, which a fork does not have (404).
+      if: github.repository == 'apache/maven'
       # Grants exactly what the nested jobs of release-drafter.yml@v5 request (a reusable workflow can only reduce them):
       #   detect-version: none
       #   update_release_draft: contents: write

@@ -25,4 +25,12 @@ on:
 
 jobs:
   stale:
+    # Upstream only: it labels and closes apache/maven issues and PRs.
+    if: github.repository == 'apache/maven'
+    # Grants exactly what stale.yml@v5 requests (a reusable workflow can only reduce them);
+    # without this the fork's read-only default token makes every run a startup failure.
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: write
     uses: 'apache/maven-gh-actions-shared/.github/workflows/stale.yml@v5'
