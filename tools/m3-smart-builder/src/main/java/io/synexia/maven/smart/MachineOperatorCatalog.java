@@ -49,7 +49,19 @@ final class MachineOperatorCatalog {
     }
 
     record Summary(String catalogSha256, String evidenceSha256, int atoms, int operatorHints,
-                   int unclassified, int ambiguous, int contractCueMismatches, List<Leaf> details) {
+                   int unclassified, int ambiguous, int contractCueMismatches,
+                   List<Leaf> details, List<Leaf> allLeaves) {
+        // Preserves synthetic fixtures and old call sites; real producers retain all bounded leaves.
+        Summary(String catalogSha256, String evidenceSha256, int atoms, int operatorHints,
+                int unclassified, int ambiguous, int contractCueMismatches, List<Leaf> details) {
+            this(catalogSha256, evidenceSha256, atoms, operatorHints,
+                    unclassified, ambiguous, contractCueMismatches, details, details);
+        }
+        Summary {
+            details = List.copyOf(details);
+            allLeaves = List.copyOf(allLeaves);
+        }
+
         String json() {
             StringBuilder json = new StringBuilder("{\"schema\":\"m3.smart.semantic-operator-candidates.v1\",\"catalogSha256\":")
                     .append(TinyJson.quote(catalogSha256))
@@ -138,7 +150,8 @@ final class MachineOperatorCatalog {
             default -> 3;
         }).thenComparing(Leaf::path).thenComparing(Leaf::atomId));
         return new Summary(Hashes.sha256(approved), evidenceSha, all.size(), hints, unclassified,
-                ambiguous, contractMismatches, List.copyOf(all.subList(0, Math.min(MAX_DETAILS, all.size()))));
+                ambiguous, contractMismatches, List.copyOf(all.subList(0, Math.min(MAX_DETAILS, all.size()))),
+                List.copyOf(all));
     }
 
     private static List<Operator> parseCatalog(String text) throws IOException {

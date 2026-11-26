@@ -182,6 +182,12 @@ public final class MachineOperatorProofRegistryTest {
         require(scope.json().contains("\"scope\":\"SOURCE_LEAF\"")
                         && scope.json().contains("\"semanticProofAuthenticated\":false"),
                 "source-specific signature does not grant automatic semantic equivalence");
+        MachineOperatorCatalog.Summary incompleteInventory = new MachineOperatorCatalog.Summary(
+                semantic.catalogSha256(), semantic.evidenceSha256(), 2, 1, 0, 0, 0,
+                semantic.details(), semantic.allLeaves());
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                incompleteInventory, recipes, "6".repeat(64), "c".repeat(64)),
+                "mismatched full semantic inventory count is never accepted as signed proof");
         MachineOperatorCatalog.Summary changedLedger = new MachineOperatorCatalog.Summary(
                 semantic.catalogSha256(), "9".repeat(64), 1, 1, 0, 0, 0, semantic.details());
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,

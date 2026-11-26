@@ -113,6 +113,9 @@ public final class MachineOperatorCatalogTest {
         require(crowded.atoms() == 30 && crowded.details().size() == 24
                         && crowded.json().contains("\"detailsTruncated\":true"),
                 "review context is bounded and admits honest truncation");
+        require(crowded.allLeaves().size() == 30
+                        && crowded.allLeaves().size() > crowded.details().size(),
+                "mechanical semantic-atom inventory retains all source-bound leaves beyond the LLM context");
         System.out.println("MACHINE OPERATOR CATALOG TESTS PASS: " + checks);
     }
 

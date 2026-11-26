@@ -249,3 +249,17 @@ have `semanticProofAuthenticated=false` and
 `promotionAuthority=false`. Operator approval, pinned offline
 OpenRewrite verification, API/ABI/JNI compatibility and M3 serial canon
 ratification remain independent requirements.
+
+
+### Full source-bound recognition, bounded LLM projection
+
+The Java producer retains all up to 4096 validated semantic leaves for the
+deterministic admission gate, while the prompt and review JSON present only
+the first 24 ranked leaves. A valid V2 signed attestation for a later leaf
+can qualify its reviewed recipe even when that leaf is not printed in the
+model-facing context. In that case `matchedVisibleAtoms` is correctly
+zero, yet the signed proof is source-bound and participates in the strict
+mechanical intersection. The matching set is derived from the complete,
+source-validated machine ledger; it does **not** trust omitted LLM context
+to establish absence of a pattern. Every match still requires independent
+behavioral verification.

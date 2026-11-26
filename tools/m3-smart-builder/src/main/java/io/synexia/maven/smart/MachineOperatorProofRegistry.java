@@ -112,6 +112,8 @@ final class MachineOperatorProofRegistry {
                            RecipeCatalog recipes, String currentSourceDigest,
                            String expectedStageEvidenceBindingSha256) throws IOException {
         if (semantic == null || recipes == null) throw new IOException("proof registry needs validated operator candidates");
+        if (semantic.atoms() != semantic.allLeaves().size())
+            throw new IOException("incomplete machine semantic inventory cannot authorize signed recipe admission");
         if (!isHash(trustedKeySha256)) throw new IOException("missing independent public-key pin");
         byte[] keyBytes = RecipeCatalog.readLocal(base, keyFile, 256);
         String actualKey = Hashes.sha256(keyBytes);
