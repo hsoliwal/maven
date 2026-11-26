@@ -1,0 +1,8 @@
+path	git_object_type	git_blob_sha1	description
+MachineOperatorCatalog.java	git-blob-SHA1	58b1cd2ad9acb74adc9b3f49aadfe3d6b91367ce	all bounded machine leaves retained independently of model display
+MachineOperatorProofRegistry.java	git-blob-SHA1	22b1cd9210bf63bdbcc845810f8f11a8f8d97a36	full source leaf proof matcher and six-attribute signer authority
+MachineRulebook.java	git-blob-SHA1	46dcfea80c1147cdd2685e052a709243999647a1	mode-separated evidence binding
+mop-rules.tsv	git-blob-SHA1	c039b9c11f665e663c0b9c8edee422e900818d8d	31 rules six mechanical
+CodeAgentMain.java	git-blob-SHA1	0501668a7395d38b23adfd0ecde22ac7c5e1c0c7	strict V2 nomination admission
+CodeAgentVerifyMain.java	git-blob-SHA1	fe4ff9fad5154a7eb5e5ae3e93b4343054729658	strict mode staged replay validation
+source_code_head	git-commit-SHA1	e7d36c6c0a7ff7a4de175c53d7d65ab2f65b7ce0	published source snapshot
