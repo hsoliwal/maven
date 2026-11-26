@@ -104,6 +104,9 @@ under the License.
             <exclude>src/main/resources/META-INF/project-db/mcp-tools.json</exclude>
             <!-- Test project inputs, as excluded by the root POM. -->
             <exclude>src/test/projects/**</exclude>
+            <!-- Checksum manifests contain raw sha256sum rows, not commentable source; adjacent README retains Apache-2.0 attribution. Java/Python and all other resources remain RAT checked. -->
+            <exclude>diagnostics/javac-host-preflight-20261125/SOURCE_SHA256SUMS</exclude>
+            <exclude>diagnostics/javac-host-preflight-20261125/BOOTSTRAP_SHA256SUMS</exclude>
           </inputExcludes>
         </configuration>
         <executions>
