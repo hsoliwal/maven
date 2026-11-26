@@ -39,3 +39,31 @@ full-CI toolchain update. Keep its first receiving PR draft until the Windows
 hosted job executes and publishes its original unskipped evidence. Existing
 Linux exact-source binary receipts and Windows package provenance must remain
 distinct; neither can authorize native output-cache reuse.
+
+## Read-only CI source-owner and trigger admission
+
+The `.github/scripts/verify-m3-llvm-windows-triggers.py` check runs **before**
+the compiler installer. It admits exactly 20 literal path triggers, the master
+PR destination, the explicitly enumerated opened/reopened/synchronize/review
+events, manual dispatch, and a read-only contents permission. Its Python
+standard-library self-test generates **21 negative mutations** and requires
+each to fail, including trigger removal/duplication, wildcard/alias entry,
+unexpected event, missing required native assertion, missing post-run SHA-256
+verification, changed LLVM version or installer digest, and forbidden bypasses.
+The standalone verifier also checks that every triggering owner file exists
+and is not an escaping symlink. The validator is read-only; it neither
+downloads compilers nor rewrites Maven or its code.
+
+Run the same deterministic checks locally before reviewing this CI packet:
+
+```sh
+python3 -B .github/scripts/verify-m3-llvm-windows-triggers.py --self-test
+python3 -B .github/scripts/verify-m3-llvm-windows-triggers.py
+```
+
+This source-contract verification is **not** Windows certification. The runner
+must execute the real Clang/MSVC C++20 program and the original Maven native
+integration assertions, preserve all six binary digest records, and report
+an unskipped successful hosted job. Until then this receiver remains
+**DRAFT/HOLD**; original Synexia recipe history/provenance and full available
+fork-history verification remain separate unqualified admission requirements.
