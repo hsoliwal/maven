@@ -4,6 +4,7 @@ name: M3 LLVM Windows MSVC STL native qualification
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
     branches: [master]
     paths:
       - '.github/workflows/m3-llvm-windows-stl-compat.yml'
@@ -32,7 +33,8 @@ jobs:
           java-version: '21'
       - name: Install pinned ABI-compatible LLVM and prove real C++20 MSVC STL
         shell: pwsh
-        run: .github/scripts/require-m3-llvm-windows-stl.ps1
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE '.github/scripts/require-m3-llvm-windows-stl.ps1')
       - name: Compile the original Maven polyglot native contract owners
         shell: pwsh
         run: |
@@ -56,6 +58,33 @@ jobs:
               throw "Required original Maven native proof absent: $required"
             }
           }
+      - name: Fail closed if installed LLVM tool bytes changed during native execution
+        shell: pwsh
+        run: |
+          $receipt = Join-Path $env:RUNNER_TEMP 'm3-llvm-windows-stl-proof/host-binary-receipt.tsv'
+          if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
+            throw 'Missing original Windows compiler SHA-256 receipt.'
+          }
+          $lines = @(Get-Content -LiteralPath $receipt)
+          foreach ($tool in @('clang', 'clang++', 'llc', 'opt', 'llvm-as', 'llvm-link')) {
+            $matches = @($lines | Where-Object { $_.StartsWith("$tool`t") })
+            if ($matches.Count -ne 1) { throw "Expected exactly one SHA-256 record for $tool" }
+            $parts = $matches[0] -split "`t", 3
+            if ($parts.Count -ne 3 -or $parts[1] -notmatch '^[a-f0-9]{64}
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-windows-llvm22-msvc-stl-native
+          retention-days: 14
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/m3-llvm-windows-stl-proof/
+) {
+              throw "Malformed SHA-256 record for $tool"
+            }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $parts[2]).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[1]) { throw "LLVM binary drift during native run: $tool" }
+          }
+          Write-Output 'PASS: all six original Windows host LLVM executable digests unchanged'
       - name: Retain original Windows compiler and Maven TaskRunner evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
