@@ -333,6 +333,34 @@ public final class CodeAgentVerifyTest {
         require(sourceBinding.equals(verification(project).get("evidenceBindingSha256"))
                         && Boolean.FALSE.equals(verification(project).get("semanticProofAuthenticated")),
                 "even source-specific signed replay cannot authenticate semantic equivalence");
+        // Explicit opt-in: a signed V1 catalogue hint cannot satisfy source-scoped recipe admission.
+        List<String> strictV1 = plus(signedNomination, "--require-source-scoped-recipe-proof", "true");
+        require(runNomination(strictV1) == 2,
+                "strict recipe selection refuses legacy catalogue-only signed proof");
+        List<String> strictSource = plus(sourceNomination, "--require-source-scoped-recipe-proof", "true");
+        require(runNomination(strictSource) == 0,
+                "strict recipe mode accepts the matching signed V2 source-leaf attestation");
+        Map<?, ?> strictReport = nomination(project);
+        require(Boolean.TRUE.equals(strictReport.get("sourceScopedRecipeProofRequired"))
+                        && ((List<?>) strictReport.get("applicableRecipes")).size() == 1,
+                "strict mode only exposes the signed, applicable reviewed recipe");
+        String strictBinding = (String) strictReport.get("evidenceBindingSha256");
+        require(!sourceBinding.equals(strictBinding),
+                "signed strict recipe admission has a distinct replay digest");
+        Files.writeString(project.resolve("strict-source-candidate.json"),
+                "{\"schema\":\"m3.smart.code-agent.candidate.v1\",\"evidenceSha256\":\""
+                        + strictBinding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(strictSource, "--candidate-file", "strict-source-candidate.json")) == 0,
+                "strict signed nomination stays schema-bound to one approved recipe");
+        List<String> strictVerify = plus(sourceVerify, "--require-source-scoped-recipe-proof", "true");
+        require(runVerify(strictVerify) == 0,
+                "strict mode verifies a matching V2 signed leaf and unchanged stage inputs");
+        require(strictBinding.equals(verification(project).get("evidenceBindingSha256")),
+                "staged verifier retains the exact signed strict-mode evidence digest");
+        refused(sourceVerify, project,
+                "a strict signed nomination cannot be replayed by omitting its strict execution mode");
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "legacy opt-in signed V2 nomination recovers without strict selection");
         String originalRecipeCatalog = Files.readString(catalog);
         Files.writeString(catalog, originalRecipeCatalog
                 + "z-inapplicable\tBRANCHING\tFILE\tcom.synexia.rewrite.Unused\t"

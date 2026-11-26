@@ -50,6 +50,10 @@ public final class CodeAgentTest {
                 "strict atom-pattern policy refuses a missing machine fingerprint ledger");
         refused(plus(options, "--require-machine-evidence", "invalid"), project,
                 "strict atom-pattern option must be a literal boolean");
+        refused(plus(options, "--require-source-scoped-recipe-proof", "true"), project,
+                "strict signed source-leaf admission refuses a missing proof registry");
+        refused(plus(options, "--require-source-scoped-recipe-proof", "not-a-boolean"), project,
+                "source-leaf proof admission requires an exact boolean");
         require(run(options) == 0, "deterministic catalog examination without a model");
         Map<?, ?> report = result(project);
         require("awaiting-review".equals(report.get("status")), "no AI doesn't invent a choice");

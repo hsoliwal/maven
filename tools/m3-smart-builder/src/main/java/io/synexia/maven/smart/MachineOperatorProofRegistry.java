@@ -69,7 +69,13 @@ final class MachineOperatorProofRegistry {
     }
 
     record Summary(String registrySha256, String trustedPublicKeySha256, int signedEntries,
-                   int sourceScopedEntries, int matchedEntries, List<Candidate> candidates) {
+                   int sourceScopedEntries, int matchedEntries, List<Candidate> candidates,
+                   List<String> sourceScopedRecipeIds) {
+        /** Verified source-leaf recipe IDs include matches beyond the bounded model display. */
+        boolean hasSourceScopedRecipe(String recipeId) {
+            return sourceScopedRecipeIds.contains(recipeId);
+        }
+
         String json() {
             StringBuilder out = new StringBuilder("{\"schema\":\"m3.smart.operator-proof-registry.v1\","
                     + "\"registrySha256\":").append(TinyJson.quote(registrySha256))
@@ -121,6 +127,7 @@ final class MachineOperatorProofRegistry {
                 || !(HEADER.equals(rows[0]) || sourceScoped))
             throw new IOException("invalid operator proof registry schema");
         List<Candidate> matches = new ArrayList<>();
+        java.util.SortedSet<String> sourceScopedRecipes = new java.util.TreeSet<>();
         int totalMatches = 0;
         String previous = "";
         for (int i = 1; i < rows.length; i++) {
@@ -171,13 +178,15 @@ final class MachineOperatorProofRegistry {
                         && (!sourceScoped || fields[6].equals(leaf.semanticId()))) visible++;
             if (visible > 0) {
                 totalMatches++;
+                if (sourceScoped) sourceScopedRecipes.add(fields[1]);
                 if (matches.size() < MAX_DETAILS)
                     matches.add(new Candidate(fields[0], fields[1], fields[3],
                             fields[sourceScoped ? 7 : 5], sourceScoped ? fields[6] : null, visible));
             }
         }
         return new Summary(Hashes.sha256(registryBytes), actualKey, rows.length - 1,
-                sourceScoped ? rows.length - 1 : 0, totalMatches, List.copyOf(matches));
+                sourceScoped ? rows.length - 1 : 0, totalMatches, List.copyOf(matches),
+                List.copyOf(sourceScopedRecipes));
     }
 
     /** Signs an exact canonical registry row, not its arbitrary path or untrusted presentation. */

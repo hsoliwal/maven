@@ -88,6 +88,9 @@ public final class MachineOperatorProofRegistryTest {
                 base, registry, root, key, pinned, semantic, recipes);
         require(result.signedEntries() == 1 && result.matchedEntries() == 1
                         && result.candidates().size() == 1, "a matching signed receipt yields only an attested hint");
+        require(result.sourceScopedRecipeIds().isEmpty()
+                        && !result.hasSourceScopedRecipe(recipeId),
+                "legacy signed V1 catalogue labels are never strict source-leaf recipe admission");
         require(result.json().contains("\"signatureVerified\":true")
                         && result.json().contains("\"semanticProofAuthenticated\":false")
                         && result.json().contains("\"promotionAuthority\":false"),
@@ -173,6 +176,9 @@ public final class MachineOperatorProofRegistryTest {
         require(scope.sourceScopedEntries() == 1 && scope.matchedEntries() == 1
                         && scope.candidates().getFirst().semanticLeafSha256() != null,
                 "V2 attestation authenticates one specific machine ledger and semantic leaf");
+        require(scope.hasSourceScopedRecipe(recipeId)
+                        && scope.sourceScopedRecipeIds().equals(List.of(recipeId)),
+                "V2 verified source-leaf proof indexes the exact reviewed recipe independently of prompt truncation");
         require(scope.json().contains("\"scope\":\"SOURCE_LEAF\"")
                         && scope.json().contains("\"semanticProofAuthenticated\":false"),
                 "source-specific signature does not grant automatic semantic equivalence");

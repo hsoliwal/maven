@@ -24,7 +24,7 @@ final class MachineRulebook {
             "SIMILARITY", "REWRITE", "VERIFY", "PROMOTION", "RESIDUE");
     private static final Set<String> AUTHORITIES = Set.of("MECHANICAL", "PRODUCER_REPORTED", "REVIEW_ONLY", "EXTERNAL_GATE");
     private static final Set<String> ENFORCED_IDS = Set.of("atom-inventory", "file-digest",
-            "inference-boundary", "recipe-first", "stage-evidence-binding");
+            "inference-boundary", "recipe-first", "stage-evidence-binding", "signed-recipe-admission");
 
     record Rule(String id, String stage, String authority, String directive) {
         String json() {
@@ -88,6 +88,15 @@ final class MachineRulebook {
     static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
                        MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic) {
         return bind(preparation, atoms, catalog, machine, rules, semantic, null);
+    }
+
+    static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
+                       MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic,
+                       MachineOperatorProofRegistry.Summary proof, boolean requireSourceScopedRecipeProof) {
+        String regular = bind(preparation, atoms, catalog, machine, rules, semantic, proof);
+        if (!requireSourceScopedRecipeProof) return regular;
+        return Hashes.sha256((regular + "\nM3_REQUIRE_SOURCE_SCOPED_RECIPE_PROOF_V1")
+                .getBytes(StandardCharsets.UTF_8));
     }
 
     static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,

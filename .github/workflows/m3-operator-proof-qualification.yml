@@ -50,7 +50,8 @@ jobs:
               assert goal in goals, f"missing real Maven descriptor goal: {goal}; got {sorted(goals)}"
           names = {t.text for t in root.findall(".//{*}mojo/{*}parameters/{*}parameter/{*}name")}
           for name in ("operatorCatalog", "operatorProofRegistry", "operatorProofDir",
-                       "operatorProofPublicKey", "operatorProofPublicKeySha256"):
+                       "operatorProofPublicKey", "operatorProofPublicKeySha256",
+                       "requireSourceScopedRecipeProof"):
               assert name in names, f"missing Maven parameter in actual plugin descriptor: {name}"
           print("PASS: actual Maven plugin packaged and all M3 operator proof goals/parameters described")
           PY

@@ -229,3 +229,23 @@ branch; the pull_request trigger is the expected automatic path.
 Review completed run logs and artifacts before any merge or M3 promotion.
 Runner and GitHub credentials must stay outside the repository, prompts,
 and PR comments.
+
+
+## Strict V2 recipe selection (optional)
+
+With the existing source-bound machine/atom evidence, operator catalogue,
+approved recipe catalogue, and a valid V2 signed proof registry, supply
+`-Dm3.smart.requireSourceScopedRecipeProof=true` to **both** code-agent and
+code-agent-verify. Only recipes that satisfy *both* the existing preparation
+pattern counts and a current V2 signed source-leaf attestation may be
+nominated. A legacy seven-column V1 attestation is **not** sufficient.
+An unrecognized boolean, missing V2 proof or unrelated recipe fails closed.
+Strict nominations have a distinct SHA-256 binding, and the verifier refuses
+mode-switched replay. The rule is mechanically enforced by Maven and is
+packaged as `signed-recipe-admission`.
+
+This controls *eligibility*, not truth. Signed external attestations still
+have `semanticProofAuthenticated=false` and
+`promotionAuthority=false`. Operator approval, pinned offline
+OpenRewrite verification, API/ABI/JNI compatibility and M3 serial canon
+ratification remain independent requirements.

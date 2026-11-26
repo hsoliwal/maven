@@ -185,8 +185,8 @@ This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
 the LLM is a constrained speculative operator, while the machine owns evidence,
 recipes, verification, and canonical promotion.
 
-The 18 original mandatory M3 laws and twelve additive analysis, operator, and proof-provenance rules
-(30 in the current packet) are materialized as the packaged resource
+The 18 original mandatory M3 laws and thirteen additive analysis, operator, and proof-provenance rules
+(31 in the current packet) are materialized as the packaged resource
 `src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
 `rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
 complete required set, bounded syntax, and an exact schema before any model
@@ -196,7 +196,7 @@ nomination and verification receipts and participates in the model candidate's
 requires a fresh nomination rather than silently replaying an obsolete one.
 New reviewed rules may be appended additively in sorted order (up to 64 rows),
 but cannot claim `MECHANICAL` authority without a corresponding implemented
-gate. Five admission rules are mechanically enforced in this version, including source-scoped stage evidence binding. A new MECHANICAL rule must have an actual implemented check.
+gate. Six admission rules are mechanically enforced in this version, including source-scoped stage evidence binding and strict signed recipe selection. A new MECHANICAL rule must have an actual implemented check.
 
 The four authority classes are deliberately distinct:
 
@@ -459,3 +459,28 @@ review-only attestation facts; staged verification rechecks them. An external
 signature **never** authenticates semantic equivalence or authorizes a
 FILE-to-PACKAGE/API promotion. Omitting the registry retains the legacy
 nomination and verification contract.
+
+
+## Optional strict source-leaf signed recipe gate
+
+The boolean property `m3.smart.requireSourceScopedRecipeProof=true` may be supplied to
+both `m3:code-agent` and the separate `m3:code-agent-verify` goal. It defaults
+to false. When enabled, a source-bound machine ledger, operator catalogue
+and valid signed **V2** proof registry are mandatory. Before any model call,
+Maven intersects the existing *applicable reviewed recipe catalogue* with
+the deterministic set of recipe IDs referenced by signed V2 receipts for
+currently matched semantic leaves. It rejects a missing registry, a V1-only
+registry, or an empty intersection. Matching proof entries beyond the first
+24 display candidates still participate in admission; the LLM continues to
+receive a bounded context projection.
+
+The strict flag is independently parsed and included in the SHA-256 evidence
+binding with domain separation. The source-scoped receipt records
+`sourceScopedRecipeProofRequired=true`, and the verifier requires the
+identical flag and the exact filtered allowlist. A strict nomination cannot
+be replayed with a legacy verifier invocation or vice versa. The new
+`signed-recipe-admission` M3 rule has MECHANICAL authority because
+both nomination and staged verification enforce it. Other semantics remain
+unchanged: the model can only nominate an operator-reviewed recipe, and
+even a valid V2 signature does **not** prove semantic equivalence or authorize
+automatic source edits, promotion, or expansion beyond FILE scope.

@@ -24,6 +24,7 @@ pattern-order	PATTERN	PRODUCER_REPORTED	Patternize after atomization using AST s
 recipe-first	REWRITE	MECHANICAL	Create or reuse an operator-reviewed Maven OpenRewrite recipe instead of accepting direct LLM source patches.
 semantic-residue	RESIDUE	REVIEW_ONLY	Prioritize unclassified and ambiguous semantic leaves before matched hints; preserve contract effects dispatch and flow proof obligations without claiming equivalence.
 signed-proof-attestation	VERIFY	REVIEW_ONLY	Verify externally pinned Ed25519 proof signatures and M3 artifact hashes; signed declarations are provenance not behavior equivalence or promotion authority.
+signed-recipe-admission	VERIFY	MECHANICAL	Strict opt in nominates and verifies only applicable allowlisted recipes matched to a signed source leaf receipt; never grant edit or promotion authority.
 simhash	SIMILARITY	REVIEW_ONLY	SimHash Hamming-near atoms are similarity candidates only; never infer equivalence from a distance threshold.
 source-proof-scope	VERIFY	REVIEW_ONLY	Source-specific signed receipts bind the exact current machine ledger semantic leaf and staged source digest; legacy catalogue-only signatures never prove source behavior.
 stage-evidence-binding	VERIFY	MECHANICAL	Source scoped signed proof must bind current rulebook pre proof nomination source inventory and changed staged digest before model inference or staged execution.

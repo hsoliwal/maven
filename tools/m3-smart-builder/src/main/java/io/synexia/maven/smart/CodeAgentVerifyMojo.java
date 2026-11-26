@@ -37,6 +37,8 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
     private File operatorProofPublicKey;
     @Parameter(property = "m3.smart.operatorProofPublicKeySha256")
     private String operatorProofPublicKeySha256;
+    @Parameter(property = "m3.smart.requireSourceScopedRecipeProof", defaultValue = "false")
+    private boolean requireSourceScopedRecipeProof;
     @Parameter(property = "m3.smart.approvedRecipeId", required = true)
     private String approvedRecipeId;
     @Parameter(property = "m3.smart.approveRecipeExecution", defaultValue = "false")
@@ -77,6 +79,8 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
         if (operatorProofPublicKey != null) args.addAll(List.of("--operator-proof-key", operatorProofPublicKey.toString()));
         if (operatorProofPublicKeySha256 != null)
             args.addAll(List.of("--operator-proof-key-sha256", operatorProofPublicKeySha256));
+        if (requireSourceScopedRecipeProof)
+            args.addAll(List.of("--require-source-scoped-recipe-proof", "true"));
         int status = CodeAgentVerifyMain.run(args.toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 recipe verification refused (status " + status + ")");
     }

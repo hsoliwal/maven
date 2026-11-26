@@ -33,7 +33,7 @@ Status: experimental. This project lives **outside the upstream Maven reactor** 
 - `m3:code-agent` extends the advisory pipeline with **source-bound recipe nomination**: it requires both canonical Java atom/pattern receipts and the OpenRewrite preparation report, a strictly sorted operator-approved SHA-pinned recipe catalogue, and optionally a ChromeLLM candidate. It only proposes an applicable, catalogued recipe; source mutation, recipe approval and verification remain separate. See [code-agent contract](docs/CODE_AGENT.md).
 - The semantic operator catalogue now also accepts an optional `contract_sha256` pin to reject conflicting syntactic signatures. Per-atom `MachineContractEnvelope` reports source-bound signature/type/call/effect/may-flow cues, explicit typed mismatch residue and outstanding proof obligations. A match never authenticates API/ABI/behavior; the locked M3 canon is unchanged.
 - `m3:code-agent` can also consume a strictly sorted, operator-curated **semantic operator catalogue** (`m3.smart.operatorCatalog`) alongside `m3.smart.machineEvidence`. Exact logic/structural hash hits become only REVIEW_ONLY operator-family hints; unmatched and ambiguous leaves remain typed residue. The catalogue SHA-256 and source-bound projection participate in both nomination and staged-verifier bindings. It never claims effects, contract equivalence, or automatic source mutation. See [code-agent contract](docs/CODE_AGENT.md).
-- `m3:code-agent` optionally consumes a current-file-bound **structural/logic/SimHash atom ledger** and guides ChromeLLM with a versioned, digest-bound **M3 Machine-Oriented Programming law packet** (18 mandatory plus twelve additional analysis and proof-provenance rules, including one more mechanically enforced stage-binding gate) packaged in the plugin. Deterministic patternization exposes at most 24 ranked atom-pair review candidates with contract-signature risk, plus AST control-flow/effect-cue counts and an opt-in JDK 21 compiler-attribution pass (`m3.smart.attributeTypes=true`) that binds static call targets and type digests when all selected sources resolve. The hashes and bindings provide signals, not proof; authority labels distinguish local gates, producer statements, advisory evidence, and proof still outstanding. `m3:code-agent-verify` is a **separate**, explicitly approved, offline/pinned OpenRewrite `dryRun` → staged `run` → Maven `verify` → fixed-point replay workflow, restricted to FILE scope. It keeps original sources unchanged and does not authenticate semantic equivalence or promote recipes. See [code-agent contract](docs/CODE_AGENT.md).
+- `m3:code-agent` optionally consumes a current-file-bound **structural/logic/SimHash atom ledger** and guides ChromeLLM with a versioned, digest-bound **M3 Machine-Oriented Programming law packet** (18 original mandatory plus thirteen additive analysis and proof-provenance rules, including six enforced mechanical admission gates) packaged in the plugin. Deterministic patternization exposes at most 24 ranked atom-pair review candidates with contract-signature risk, plus AST control-flow/effect-cue counts and an opt-in JDK 21 compiler-attribution pass (`m3.smart.attributeTypes=true`) that binds static call targets and type digests when all selected sources resolve. The hashes and bindings provide signals, not proof; authority labels distinguish local gates, producer statements, advisory evidence, and proof still outstanding. `m3:code-agent-verify` is a **separate**, explicitly approved, offline/pinned OpenRewrite `dryRun` → staged `run` → Maven `verify` → fixed-point replay workflow, restricted to FILE scope. It keeps original sources unchanged and does not authenticate semantic equivalence or promote recipes. See [code-agent contract](docs/CODE_AGENT.md).
 - New `m3:machine-fingerprints` produces this ledger locally from the JDK 21 javac syntax AST, after validating canonical preparation and atom/pattern checkpoints. It emits bounded per-atom structural, normalized-logic-cue, SimHash and syntactic contract hashes, with deterministic parallel per-file fan-in. The default is syntax-only; explicit `m3.smart.attributeTypes=true` adds source-bound compiler type/call symbols under a dependency-free admission gate, still without physical atomization or equivalence proof. See [code-agent contract](docs/CODE_AGENT.md).
 
 ### Persisted module computations in M3DB
@@ -232,6 +232,22 @@ pre-provisioned **offline** Maven repository with independently verified hashes.
 It neither downloads nor substitutes artifacts. A green Maven build of this
 Synexia plugin does not qualify a real OpenRewrite run. See
 [Code Agent execution contract](docs/CODE_AGENT.md).
+
+### Strict source-leaf recipe admission (opt-in)
+
+Use `-Dm3.smart.requireSourceScopedRecipeProof=true` **together with** a
+current, verified V2 signed proof registry and operator catalogue. This
+mechanical gate restricts `m3:code-agent` recipe nominations to the
+intersection of (1) observed applicable operator-reviewed OpenRewrite
+recipes and (2) recipes with a **matching signed V2 source-leaf attestation**.
+A V1 catalogue-only signature, unrelated recipe, missing proof, or unsupported
+boolean is refused *before* invoking a model. An exact strict-mode flag is
+included in the nomination binding and checked again by
+`m3:code-agent-verify`; a legacy nomination cannot bypass the gate.
+`sourceScopedRecipeProofRequired=true` is shown in the nomination receipt
+only when enabled. **This is a filter, not a permission to execute**, and
+independent behavioral/API/JNI verification and canonical promotion remain
+separate. Default `false` preserves existing callers.
 
 ### Source-scoped stage and rulebook consistency (V2)
 
