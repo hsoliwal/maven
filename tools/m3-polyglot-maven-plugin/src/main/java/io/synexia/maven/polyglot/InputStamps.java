@@ -293,10 +293,13 @@ final class InputStamps {
      * fail validation, while optional provider identity failures retain fallback.
      */
     static boolean containsReservedState(Path root, Path input) {
-        if (!input.startsWith(root)) {
-            return false;
+        // Provider toolchains may be absolute and outside this module.
+        // Keep the same reserved owner rules on their filesystem volume.
+        Path namespace = input.startsWith(root) ? root : input.getRoot();
+        if (namespace == null) {
+            return true;
         }
-        if (statePath(relative(root, input))) {
+        if (statePath(relative(namespace, input)) || Files.isSymbolicLink(input)) {
             return true;
         }
         if (!Files.isDirectory(input, LinkOption.NOFOLLOW_LINKS)) {
@@ -310,7 +313,7 @@ final class InputStamps {
                     return true;
                 }
                 Path entry = cursor.next();
-                if (statePath(relative(root, entry))) {
+                if (statePath(relative(namespace, entry)) || Files.isSymbolicLink(entry)) {
                     return true;
                 }
             }

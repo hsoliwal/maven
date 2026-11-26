@@ -255,6 +255,38 @@ public final class BuildCacheStateContractTestMain {
         TaskRunner.validateProviderInputs(providerTask, provider, null, providerInputs);
         check(true, "ordinary provider additional input directories remain admissible");
 
+        Path external = Files.createDirectories(directory.resolve("external-provider-toolchain"));
+        Path externalState = Files.createDirectories(external.resolve("child/.m3"));
+        Path externalDb = Files.writeString(externalState.resolve("module.m3db"), "external owner receipt");
+        M3ToolReuseInputs externalReuse = new M3ToolReuseInputs("m3.external-state.v1",
+                List.of(external), List.of(), false);
+        check(InputStamps.containsReservedState(provider, external),
+                "external provider toolchain trees are inspected for nested database state");
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, externalReuse),
+                "external absolute toolchain containing M3DB receipts cannot authorize reuse");
+        Files.delete(externalDb);
+        Path externalUser = Files.writeString(externalState.resolve("user-config.json"), "ordinary");
+        check(InputStamps.containsReservedState(provider, external),
+                "a broad external .m3 directory stays conservatively excluded");
+        M3ToolReuseInputs directUser = new M3ToolReuseInputs("m3.external-user-file.v1",
+                List.of(externalUser), List.of(), false);
+        check(!InputStamps.containsReservedState(provider, externalUser),
+                "direct external .m3 user configuration remains eligible");
+        TaskRunner.validateProviderInputs(providerTask, provider, null, directUser);
+        Path cleanExternal = Files.createDirectories(directory.resolve("clean-provider-toolchain"));
+        Files.writeString(cleanExternal.resolve("compiler.txt"), "fixed toolchain bytes");
+        M3ToolReuseInputs cleanReuse = new M3ToolReuseInputs("m3.external-clean.v1",
+                List.of(cleanExternal), List.of(), false);
+        check(!InputStamps.containsReservedState(provider, cleanExternal),
+                "ordinary external toolchain tree is permitted");
+        TaskRunner.validateProviderInputs(providerTask, provider, null, cleanReuse);
+        Path other = Files.createDirectories(directory.resolve("external-watcher-toolchain/child/.m3-watch"));
+        Files.writeString(other.resolve("state.bin"), "watch checkpoint");
+        M3ToolReuseInputs watchReuse = new M3ToolReuseInputs("m3.external-watch.v1",
+                List.of(other.getParent().getParent()), List.of(), false);
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, watchReuse),
+                "external watcher checkpoints cannot authorize a provider receipt");
+
         Path plain = workspace(directory.resolve("ordinary-directory"));
         Files.createDirectories(plain.resolve("src"));
         Files.writeString(plain.resolve("src/input.txt"), "source");
