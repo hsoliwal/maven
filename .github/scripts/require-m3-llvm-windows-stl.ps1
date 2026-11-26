@@ -17,7 +17,7 @@ $installerUrlSuffix = "llvmorg-$expectedVersion/LLVM-$expectedVersion-win64.exe"
 # Chocolatey's pinned package obtains the official upstream LLVM installer and
 # verifies its SHA-256. Do not accept the runner's original LLVM 20 on VS 2026,
 # or use _ALLOW_COMPILER_AND_STL_VERSION_MISMATCH to disable the STL guard.
-& choco upgrade llvm --yes --no-progress --limit-output "--version=$expectedVersion"
+& choco upgrade llvm --yes --no-progress "--version=$expectedVersion" --allow-downgrade
 if ($LASTEXITCODE -ne 0) {
     throw "Pinned Chocolatey LLVM $expectedVersion installation failed: $LASTEXITCODE"
 }
@@ -47,11 +47,17 @@ foreach ($tool in $tools) {
     $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
     $receipt += "$tool`t$digest`t$file"
 }
-$clangxx = Join-Path $llvmBin 'clang++.exe'
-$banner = & $clangxx --version
-if ($LASTEXITCODE -ne 0 -or ($banner | Select-Object -First 1) -notmatch 'clang version 22[.]1[.]8') {
-    throw "Installed Clang++ does not match the pinned host release: $banner"
+# Verify both independently selected native drivers, not just the C++ frontend.
+# A mixed/stale bin directory must be rejected before Maven invokes TaskRunner.
+foreach ($compiler in @('clang', 'clang++')) {
+    $compilerPath = Join-Path $llvmBin "$compiler.exe"
+    $banner = & $compilerPath --version
+    if ($LASTEXITCODE -ne 0 -or ($banner | Select-Object -First 1) -notmatch 'clang version 22[.]1[.]8') {
+        throw "Installed $compiler does not match the pinned host release: $banner"
+    }
+    Write-Output "$compiler ($($banner | Select-Object -First 1))"
 }
+$clangxx = Join-Path $llvmBin 'clang++.exe'
 
 $proofDir = Join-Path $env:RUNNER_TEMP 'm3-llvm-windows-stl-proof'
 [void](New-Item -ItemType Directory -Force -Path $proofDir)
