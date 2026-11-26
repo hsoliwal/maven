@@ -1,0 +1,10 @@
+gate	status	evidence
+source_signature_gate	CODE_COMMITTED	V2 source scope compares current source inventory staged rulebook and pre-proof evidence binding
+machine_policy	SOURCE_AUDIT_PASS	30 sorted rules; 5 labelled MECHANICAL; stage-evidence-binding required
+source_structure	SOURCE_AUDIT_PASS	7 touched Java files structurally balanced; nine source/resource/script files scanned
+regression_fixtures	COMMITTED_NOT_RUN	Signed stale policy; stale pre-proof binding; identical before-after digests; catalog drift; policy removal
+jdk21_compile_latest_head	NOT_EXECUTED	Host Java 21 exists but complete updated source/Maven dependencies unavailable in container
+full_maven_qualify	NOT_EXECUTED	No Maven launcher and no reported GitHub workflow
+live_openrewrite	NOT_EXECUTED	Real pinned OpenRewrite 6.66.0 and approved offline dependencies outstanding
+semantic_api_abi_jni	NOT_PROVEN	Independent contract/behavior proof owner required
+promotion	HOLD	No FILE PACKAGE MODULE REACTOR API promotion

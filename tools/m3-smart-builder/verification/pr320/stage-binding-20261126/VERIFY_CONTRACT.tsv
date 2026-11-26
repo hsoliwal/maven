@@ -1,0 +1,12 @@
+order	gate	result	evidence_or_blocker
+1	git_tree_and_scope	PASS_STATIC	Nine audited source/test/resource/script files exist and are within approved plugin scope
+1a	mechanical_rulebook_labels	PASS_STATIC	30 sorted machine laws; exactly five mechanically enforced
+1b	V2_trust_binding	PASS_STATIC	Rulebook sha256 + pre-proof nomination binding + before and after source guards present
+1c	java_lexical_structure	PASS_STATIC	Seven changed Java files passed string/comment-aware delimiter balance check
+1d	whitespace_hygiene	PASS_STATIC	No trailing whitespace in nine audited files
+2	javac_compile_latest_commit	NOT_EXECUTED	No full source/workspace in local container; do not reuse old test claim
+3	machine_registry_tests_latest	NOT_EXECUTED	New cryptographic regressions require Maven/JDK-only runner
+4	full_maven_plugin_build	NOT_EXECUTED	Maven launcher absent; GitHub CI not yet reported
+5	real_OpenRewrite_6_66_0	NOT_EXECUTED	Authorized preprovisioned offline plugin and recipe artifacts required
+6	independent_behavior_API_ABI_JNI	NOT_AUTHENTICATED	Independent M3 proof owner required
+7	serial_canon_promotion	NOT_PERFORMED	PR remains draft; source-bound crypto is not semantic proof
