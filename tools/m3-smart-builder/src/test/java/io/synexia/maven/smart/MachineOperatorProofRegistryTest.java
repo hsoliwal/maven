@@ -182,6 +182,15 @@ public final class MachineOperatorProofRegistryTest {
         require(scope.json().contains("\"scope\":\"SOURCE_LEAF\"")
                         && scope.json().contains("\"semanticProofAuthenticated\":false"),
                 "source-specific signature does not grant automatic semantic equivalence");
+        MachineOperatorCatalog.Summary hiddenFromPrompt = new MachineOperatorCatalog.Summary(
+                semantic.catalogSha256(), semantic.evidenceSha256(), 1, 1, 0, 0, 0,
+                List.of(), semantic.allLeaves());
+        MachineOperatorProofRegistry.Summary hiddenProof = MachineOperatorProofRegistry.inspect(
+                base, registry, root, key, pinned, hiddenFromPrompt, recipes,
+                "6".repeat(64), "c".repeat(64));
+        require(hiddenProof.matchedEntries() == 1 && hiddenProof.hasSourceScopedRecipe(recipeId)
+                        && hiddenProof.candidates().getFirst().matchedVisibleAtoms() == 0,
+                "valid V2 signed leaf remains mechanically eligible when omitted from model context");
         MachineOperatorCatalog.Summary incompleteInventory = new MachineOperatorCatalog.Summary(
                 semantic.catalogSha256(), semantic.evidenceSha256(), 2, 1, 0, 0, 0,
                 semantic.details(), semantic.allLeaves());

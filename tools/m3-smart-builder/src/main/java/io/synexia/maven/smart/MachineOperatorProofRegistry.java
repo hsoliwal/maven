@@ -173,12 +173,18 @@ final class MachineOperatorProofRegistry {
             checkStage(readJsonProof(base, proofDirectory, stageSha), fields[1], fields[2],
                     sourceScoped, currentSourceDigest, expectedStageEvidenceBindingSha256);
             checkCanon(base, proofDirectory, readJsonProof(base, proofDirectory, canonSha), fields[3]);
+            // Machine admission must use all source-bound atoms, not the truncated LLM projection.
+            int matchedSourceAtoms = 0;
             int visible = 0;
+            for (MachineOperatorCatalog.Leaf leaf : semantic.allLeaves())
+                if (fields[0].equals(leaf.operatorId())
+                        && fields[3].equals(leaf.envelope().syntacticContractSha256())
+                        && (!sourceScoped || fields[6].equals(leaf.semanticId()))) matchedSourceAtoms++;
             for (MachineOperatorCatalog.Leaf leaf : semantic.details())
                 if (fields[0].equals(leaf.operatorId())
                         && fields[3].equals(leaf.envelope().syntacticContractSha256())
                         && (!sourceScoped || fields[6].equals(leaf.semanticId()))) visible++;
-            if (visible > 0) {
+            if (matchedSourceAtoms > 0) {
                 totalMatches++;
                 if (sourceScoped) sourceScopedRecipes.add(fields[1]);
                 if (matches.size() < MAX_DETAILS)
