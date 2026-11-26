@@ -308,6 +308,23 @@ LLM text or shell fragments. The rulebook digest from nomination must match
 the verifier's packaged rulebook. Only `FILE`-scoped recipes are executable in this
 slice. Other scopes require their independent contract gates first.
 
+**OpenRewrite 6.66.0 artifact provenance and offline qualification.** The upstream
+[release v6.66.0](https://github.com/openrewrite/rewrite-maven-plugin/releases/tag/v6.66.0)
+was published on 2026-11-15. Newer OpenRewrite artifacts are published to
+the authenticated [Code Genome Project Maven repository](https://artifacts.codegenomeproject.org/maven),
+**not Maven Central**. Its upstream README explicitly requires a user/token
+for downloads. Consequently, this verifier **must not assume** that the exact
+6.66.0 plugin JAR or a chosen recipe JAR can be resolved anonymously from
+Maven Central. An authorized operator must provision these artifacts and
+their transitive dependencies in the approved offline Maven repository,
+verify their real SHA-256 digests independently, and only then invoke the
+verifier. The verifier itself stays offline and never requests credentials,
+performs model-directed downloads, or falls back to an unpinned plugin version.
+Do not place repository tokens in command-line arguments, model prompts,
+logs, receipts, or the source tree. This qualification is distinct from the
+M3 Smart Builder Maven-plugin **packaging** check: packaging the Synexia plugin
+does not prove the OpenRewrite 6.66.0 staged execution.
+
 The goal makes a bounded, symlink-free project copy inside
 `target/m3-smart/code-agent-stage-*`, omitting `.git` and previous `target`
 trees. It then executes, in order:

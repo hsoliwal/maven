@@ -221,6 +221,18 @@ before and after a build, including after failed compilation. See [Build advice 
 for setup, failure preservation, the operator-chosen CPU summarizer whose lines join the facts, and
 `failOnError=false` for binding the hook into a POM's lifecycle without letting advice change the build result.
 
+### OpenRewrite staged replay artifact distribution
+
+The pinned OpenRewrite Maven plugin 6.66.0 was released on 2026-11-15.
+Upstream now publishes newer artifacts through the authenticated
+[Code Genome Project Maven repository](https://artifacts.codegenomeproject.org/maven),
+rather than Maven Central. The M3 staged verifier must receive the exact
+operator-approved plugin and recipe JARs (and required dependencies) in its
+pre-provisioned **offline** Maven repository with independently verified hashes.
+It neither downloads nor substitutes artifacts. A green Maven build of this
+Synexia plugin does not qualify a real OpenRewrite run. See
+[Code Agent execution contract](docs/CODE_AGENT.md).
+
 ### Source-specific signed provenance (V2)
 
 The newer nine-column signed operator registry pins the **current machine
