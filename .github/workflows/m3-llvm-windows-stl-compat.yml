@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 LLVM Windows MSVC STL native qualification
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/m3-llvm-windows-stl-compat.yml'
+      - '.github/scripts/require-m3-llvm-windows-stl.ps1'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msvc-llvm:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out original Maven fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select Java 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned ABI-compatible LLVM and prove real C++20 MSVC STL
+        shell: pwsh
+        run: .github/scripts/require-m3-llvm-windows-stl.ps1
+      - name: Compile the original Maven polyglot native contract owners
+        shell: pwsh
+        run: |
+          mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml test-compile
+          if ($LASTEXITCODE -ne 0) { throw 'Original Maven plugin test compilation failed.' }
+      - name: Require original Maven TaskRunner C/C++/IR/Objective-C native execution
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:GITHUB_WORKSPACE 'tools/m3-polyglot-maven-plugin'
+          $classpath = "$project/target/test-classes;$project/target/classes"
+          $log = Join-Path $env:RUNNER_TEMP 'm3-llvm-windows-stl-proof/maven-native.log'
+          & java -cp $classpath io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw 'Original Maven LLVM native integration failed.' }
+          foreach ($required in @(
+            'PASS: LLVM C17/C++20 compile/link/run',
+            'PASS: LLVM IR llc object, clang link and native run',
+            'PASS: Objective-C and both Objective-C++ spellings compile',
+            'LLVM native integration assertions')) {
+            if (-not (Select-String -LiteralPath $log -SimpleMatch -Quiet -Pattern $required)) {
+              throw "Required original Maven native proof absent: $required"
+            }
+          }
+      - name: Retain original Windows compiler and Maven TaskRunner evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-windows-llvm22-msvc-stl-native
+          retention-days: 14
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/m3-llvm-windows-stl-proof/
