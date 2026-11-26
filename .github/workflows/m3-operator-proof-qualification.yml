@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: Apache-2.0
+# Opt-in M3 source-bound operator proof qualification; no code promotion.
+name: M3 operator proof real Java 21 qualification
+
+"on":
+  pull_request:
+    paths:
+      - 'tools/m3-smart-builder/**'
+      - '.github/workflows/m3-operator-proof-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-maven-plugin:
+    name: Actual Maven plugin build, descriptor and synthetic replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: tools/m3-smart-builder/pom.xml
+      - name: Maven 3 runtime and actual plugin packaging
+        run: |
+          set -euo pipefail
+          mvn -version
+          mvn -B -ntp -f tools/m3-smart-builder/pom.xml clean install
+      - name: Inspect generated Maven plugin descriptor and operator-proof options
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from zipfile import ZipFile
+          jars = sorted(Path("tools/m3-smart-builder/target").glob("m3-smart-maven-plugin-*.jar"))
+          assert len(jars) == 1, f"expected one packaged Maven plugin JAR; got {jars}"
+          with ZipFile(jars[0]) as jar:
+              descriptor = jar.read("META-INF/maven/plugin.xml")
+          root = ET.fromstring(descriptor)
+          goals = {t.text for t in root.findall(".//{*}mojo/{*}goal")}
+          for goal in ("code-agent", "code-agent-verify", "machine-fingerprints"):
+              assert goal in goals, f"missing real Maven descriptor goal: {goal}; got {sorted(goals)}"
+          names = {t.text for t in root.findall(".//{*}mojo/{*}parameters/{*}parameter/{*}name")}
+          for name in ("operatorCatalog", "operatorProofRegistry", "operatorProofDir",
+                       "operatorProofPublicKey", "operatorProofPublicKeySha256"):
+              assert name in names, f"missing Maven parameter in actual plugin descriptor: {name}"
+          print("PASS: actual Maven plugin packaged and all M3 operator proof goals/parameters described")
+          PY
+      - name: Report actual test receipt presence
+        if: always()
+        run: |
+          find tools/m3-smart-builder/target -maxdepth 3 -type f \
+            \( -name '*.log' -o -name '*.xml' -o -name '*.txt' \) \
+            -print 2>/dev/null | head -60 || true
+
+  full-jdk-no-maven-api:
+    name: Full JDK-only lint, compiler, canon and synthetic MCP regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Strict JDK-only Java 21 regression
+        run: sh tools/m3-smart-builder/scripts/verify.sh
+      - name: Python runtime harness contract tests
+        run: python3 -m unittest discover -s tools/m3-smart-builder/scripts/tests -p 'test_*.py' -v
