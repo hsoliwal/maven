@@ -90,6 +90,14 @@ java -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
 java -cp target/jdk-only io.synexia.maven.smart.BuildHookTest
 java -cp target/jdk-only io.synexia.maven.smart.AtomPatternEvidenceTest
 java -cp target/canon-only io.synexia.maven.smart.canon.CanonGateTest
+# Run source-bound agent/proof checks before unrelated syntax-plane probes so failures stay attributable.
+java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
+java -cp target/jdk-only io.synexia.maven.smart.MachineFingerprintTest
+java -cp target/jdk-only io.synexia.maven.smart.MachineRulebookTest
+java -cp target/jdk-only io.synexia.maven.smart.MachineOperatorCatalogTest
+java -cp target/jdk-only io.synexia.maven.smart.MachineOperatorProofRegistryTest
+java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
+java -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest
 for program in ASTHierarchyContract ASTHierarchyEncodingTest ProbeGuardContract SyntaxCoordinatesContract \
   SyntaxDeltaContract SyntaxIndexContract SyntaxIndexFactsFirstContract SyntaxIndexKindPostingsContract \
   SyntaxIndexStableScatterContract SyntaxJavacContract SyntaxOriginsContract SyntaxTreeAtomicGrowthContract \
@@ -100,13 +108,6 @@ done
 # The failure contract needs the agent that injects a fault before each of the ten array copies of a grow.
 java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaagent:target/syntax-agent.jar \
   -cp target/syntax-only io.synexia.maven.smart.ast.SyntaxTreeAtomicFailureContract
-java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
-java -cp target/jdk-only io.synexia.maven.smart.MachineFingerprintTest
-java -cp target/jdk-only io.synexia.maven.smart.MachineRulebookTest
-java -cp target/jdk-only io.synexia.maven.smart.MachineOperatorCatalogTest
-java -cp target/jdk-only io.synexia.maven.smart.MachineOperatorProofRegistryTest
-java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
-java -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp "target/jdk-only${sep}target/adapter-only" io.synexia.maven.smart.SmartBuilderAdapterTest
 # Runtime verification uses the separate synthetic MCP subprocess; it is not a trained model.
 java -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp target/jdk-only io.synexia.maven.smart.SmartBuilderTest
