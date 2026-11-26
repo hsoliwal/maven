@@ -180,8 +180,8 @@ public final class LlvmToolchainEvidence {
     }
 
     /**
-     * Portable CLI: scan <home> <manifest> <comma-separated tools>
-     * or verify <home> <manifest>. Neither operation runs any LLVM executable.
+     * Portable CLI: {@code scan <home> <manifest> <comma-separated tools>}
+     * or {@code verify <home> <manifest>}. Neither operation runs any LLVM executable.
      */
     public static void main(String[] args) throws Exception {
         if (args.length == 4 && "scan".equals(args[0])) {
