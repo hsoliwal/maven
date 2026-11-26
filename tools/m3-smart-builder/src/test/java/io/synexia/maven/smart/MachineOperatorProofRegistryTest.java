@@ -134,10 +134,13 @@ public final class MachineOperatorProofRegistryTest {
                         + implementation + "\n");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key,
                 pinned, semantic, RecipeCatalog.load(base, broad)), "unapproved higher-scope promotion");
-        Path link = base.resolve("linked-key.der");
-        Files.createSymbolicLink(link, key);
-        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, link,
-                pinned, semantic, recipes), "symlinked trust anchors refused");
+        // Windows development hosts may not grant unprivileged symlink creation.
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            Path link = base.resolve("linked-key.der");
+            Files.createSymbolicLink(link, key);
+            refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, link,
+                    pinned, semantic, recipes), "symlinked trust anchors refused");
+        }
         System.out.println("MACHINE OPERATOR PROOF REGISTRY TESTS PASS: " + checks);
     }
 
