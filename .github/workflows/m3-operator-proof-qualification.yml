@@ -28,10 +28,11 @@ jobs:
           cache: maven
           cache-dependency-path: tools/m3-smart-builder/pom.xml
       - name: Maven 3 runtime and actual plugin packaging
+        working-directory: tools/m3-smart-builder
         run: |
           set -euo pipefail
           mvn -version
-          mvn -B -ntp -f tools/m3-smart-builder/pom.xml clean install
+          mvn -B -ntp clean install
       - name: Inspect generated Maven plugin descriptor and operator-proof options
         run: |
           set -euo pipefail
