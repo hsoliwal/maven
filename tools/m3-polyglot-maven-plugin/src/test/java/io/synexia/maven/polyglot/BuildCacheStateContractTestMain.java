@@ -264,6 +264,12 @@ public final class BuildCacheStateContractTestMain {
                 "external provider toolchain trees are inspected for nested database state");
         expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, externalReuse),
                 "external absolute toolchain containing M3DB receipts cannot authorize reuse");
+        M3ToolReuseInputs directDb = new M3ToolReuseInputs("m3.external-direct-db.v1",
+                List.of(externalDb), List.of(), false);
+        check(InputStamps.containsReservedState(provider, externalDb),
+                "direct external M3DB receipt is independently identified as reserved");
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, directDb),
+                "direct external database receipt cannot be admitted as a provider input");
         Files.delete(externalDb);
         Path externalUser = Files.writeString(externalState.resolve("user-config.json"), "ordinary");
         check(InputStamps.containsReservedState(provider, external),
@@ -286,6 +292,13 @@ public final class BuildCacheStateContractTestMain {
                 List.of(other.getParent().getParent()), List.of(), false);
         expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, watchReuse),
                 "external watcher checkpoints cannot authorize a provider receipt");
+        Path watchFile = other.resolve("state.bin");
+        M3ToolReuseInputs directWatch = new M3ToolReuseInputs("m3.external-direct-watch.v1",
+                List.of(watchFile), List.of(), false);
+        check(InputStamps.containsReservedState(provider, watchFile),
+                "direct external watcher checkpoint is reserved independently of its directory");
+        expectIo(() -> TaskRunner.validateProviderInputs(providerTask, provider, null, directWatch),
+                "a direct external watcher checkpoint cannot enter a reusable provider receipt");
 
         Path plain = workspace(directory.resolve("ordinary-directory"));
         Files.createDirectories(plain.resolve("src"));
