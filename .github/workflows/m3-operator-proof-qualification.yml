@@ -54,12 +54,17 @@ jobs:
               assert name in names, f"missing Maven parameter in actual plugin descriptor: {name}"
           print("PASS: actual Maven plugin packaged and all M3 operator proof goals/parameters described")
           PY
-      - name: Report actual test receipt presence
+      - name: Retain packaged Maven plugin and test evidence
         if: always()
-        run: |
-          find tools/m3-smart-builder/target -maxdepth 3 -type f \
-            \( -name '*.log' -o -name '*.xml' -o -name '*.txt' \) \
-            -print 2>/dev/null | head -60 || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-operator-proof-real-maven-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            tools/m3-smart-builder/target/m3-smart-maven-plugin-*.jar
+            tools/m3-smart-builder/target/surefire-reports/**
+            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
 
   full-jdk-no-maven-api:
     name: Full JDK-only lint, compiler, canon and synthetic MCP regressions
@@ -74,6 +79,23 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Strict JDK-only Java 21 regression
-        run: sh tools/m3-smart-builder/scripts/verify.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tools/m3-smart-builder/target/pr320-ci
+          sh tools/m3-smart-builder/scripts/verify.sh 2>&1 |
+            tee tools/m3-smart-builder/target/pr320-ci/jdk-only.log
       - name: Python runtime harness contract tests
-        run: python3 -m unittest discover -s tools/m3-smart-builder/scripts/tests -p 'test_*.py' -v
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/m3-smart-builder/scripts/tests -p 'test_*.py' -v 2>&1 |
+            tee tools/m3-smart-builder/target/pr320-ci/python.log
+      - name: Retain JDK-only and Python evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-operator-proof-jdk21-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: tools/m3-smart-builder/target/pr320-ci/*.log
