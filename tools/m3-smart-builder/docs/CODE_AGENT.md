@@ -185,8 +185,8 @@ This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
 the LLM is a constrained speculative operator, while the machine owns evidence,
 recipes, verification, and canonical promotion.
 
-The 18 required M3 laws and eleven additional reviewed analysis, operator, and proof-provenance rules
-(29 in the current packet) are materialized as the packaged resource
+The 18 original mandatory M3 laws and twelve additive analysis, operator, and proof-provenance rules
+(30 in the current packet) are materialized as the packaged resource
 `src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
 `rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
 complete required set, bounded syntax, and an exact schema before any model
@@ -196,7 +196,7 @@ nomination and verification receipts and participates in the model candidate's
 requires a fresh nomination rather than silently replaying an obsolete one.
 New reviewed rules may be appended additively in sorted order (up to 64 rows),
 but cannot claim `MECHANICAL` authority without a corresponding implemented
-gate. The four actually enforced admission rules retain their required labels.
+gate. Five admission rules are mechanically enforced in this version, including source-scoped stage evidence binding. A new MECHANICAL rule must have an actual implemented check.
 
 The four authority classes are deliberately distinct:
 

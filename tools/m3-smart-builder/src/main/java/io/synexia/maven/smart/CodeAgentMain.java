@@ -59,6 +59,8 @@ public final class CodeAgentMain {
             MachineOperatorCatalog.Summary semantic = options.containsKey("--operator-catalog")
                     ? MachineOperatorCatalog.inspect(base, path(base, required(options, "--machine-evidence")),
                     path(base, options.get("--operator-catalog")), machine) : null;
+            MachineRulebook.Policy rules = MachineRulebook.load();
+            String preProofBinding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic);
             boolean proofRequested = List.of("--operator-proof-registry", "--operator-proof-dir",
                     "--operator-proof-key", "--operator-proof-key-sha256").stream().anyMatch(options::containsKey);
             MachineOperatorProofRegistry.Summary proof = proofRequested
@@ -67,8 +69,8 @@ public final class CodeAgentMain {
                     path(base, required(options, "--operator-proof-dir")),
                     path(base, required(options, "--operator-proof-key")),
                     required(options, "--operator-proof-key-sha256"), semantic, catalog,
-                    SourceInventory.inspectSelected(base, source).summary().digest()) : null;
-            MachineRulebook.Policy rules = MachineRulebook.load();
+                    SourceInventory.inspectSelected(base, source).summary().digest(),
+                    preProofBinding) : null;
             Map<?, ?> patternCounts = object(object(TinyJson.parse(preparation)).get("patternCounts"));
             List<RecipeCatalog.Entry> applicable = catalog.applicable(patternCounts);
             String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic, proof);
@@ -103,7 +105,8 @@ public final class CodeAgentMain {
                     path(base, options.get("--operator-proof-dir")),
                     path(base, options.get("--operator-proof-key")),
                     options.get("--operator-proof-key-sha256"), semantic, catalog,
-                    SourceInventory.inspectSelected(base, source).summary().digest()))
+                    SourceInventory.inspectSelected(base, source).summary().digest(),
+                    preProofBinding))
                     || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !catalog.digest().equals(RecipeCatalog.load(base,
                     path(base, options.get("--recipe-catalog"))).digest()))

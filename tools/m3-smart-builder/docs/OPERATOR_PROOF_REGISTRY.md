@@ -161,6 +161,24 @@ leaf identity must match a currently visible leaf's ID, operator name and
 syntactic contract. V2 rows sort by operator ID **then semantic-leaf SHA-256**,
 allowing multiple distinct leaves of the same reviewed operator.
 
+V2 requires the archived stage's **machineRulebookSha256** to match the
+current packaged rulebook and its **evidenceBindingSha256** to match the
+current `MachineRulebook.bind` digest *before adding signed proof facts*.
+This is deliberately a non-circular proof edge: the stage is run before a
+signatory creates the proof registry, then the completed signed proof
+participates in a fresh code-agent nomination. The pre-proof binding is
+computed from the current source-bound preparation, atom, machine, operator,
+rulebook and reviewed recipe catalog. It is rechecked before and after
+staged replay. A signer cannot re-authorize an old policy or unrelated
+nomination just by signing a new proof receipt.
+
+In addition, the archived stage's **afterSourceDigest** must differ from
+its beforeSourceDigest when the staged verifier reports changed Java files.
+A signature or an asserted test status cannot waive this mechanical gate.
+The new `stage-evidence-binding` M3 rule has MECHANICAL authority because
+the Maven consumer implements these exact V2 refusal checks. It remains a
+source-admission gate, not a behavioral equivalence or promotion claim.
+
 V2 also requires the **real 20-field** code-agent staged-verifier receipt,
 not a synthetic minimal stage assertion. The archived stage's
 beforeSourceDigest must match the actual current source inventory digest.

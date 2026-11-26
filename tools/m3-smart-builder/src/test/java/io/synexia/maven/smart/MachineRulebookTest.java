@@ -13,12 +13,12 @@ public final class MachineRulebookTest {
 
     public static void main(String[] args) throws Exception {
         MachineRulebook.Policy rules = MachineRulebook.load();
-        require(rules.rules().size() == 29, "18 mandatory M3 laws and eleven reviewed evidence and semantic-residue laws present");
+        require(rules.rules().size() == 30, "18 mandatory M3 laws and twelve additive reviewed or mechanically enforced laws present");
         require(rules.sha256().matches("[0-9a-f]{64}"), "policy has a strong content digest");
         Map<?, ?> object = object(TinyJson.parse(rules.json()));
         require("m3.machine.rules.v1".equals(object.get("schema")), "policy is machine readable");
         require(rules.sha256().equals(object.get("sha256")), "policy digest serialized");
-        require(rules.rules().stream().filter(rule -> rule.authority().equals("MECHANICAL")).count() == 4,
+        require(rules.rules().stream().filter(rule -> rule.authority().equals("MECHANICAL")).count() == 5,
                 "mechanical authority reserved for actually checked admission boundaries");
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("simhash")
                         && rule.authority().equals("REVIEW_ONLY")), "SimHash stays advisory");
@@ -54,6 +54,9 @@ public final class MachineRulebookTest {
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("source-proof-scope")
                         && rule.authority().equals("REVIEW_ONLY")),
                 "legacy signatures never claim source-specific behavioral proof");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("stage-evidence-binding")
+                        && rule.authority().equals("MECHANICAL")),
+                "source-specific signed stage binding is an actually executed admission gate");
         String original = MachineRulebook.VERSION + "\n" + MachineRulebook.HEADER + "\n";
         for (MachineRulebook.Rule rule : rules.rules())
             original += rule.id() + "\t" + rule.stage() + "\t" + rule.authority() + "\t" + rule.directive() + "\n";
@@ -69,6 +72,8 @@ public final class MachineRulebookTest {
                 "future guidance extends the rulebook additively while retaining all mandatory canon laws");
         refused(original.replace(MachineRulebook.HEADER, "broken\theader"), "schema must match exactly");
         refused(original.replace("logic-hash\t", "file-digest\t"), "duplicate rule refused");
+        refused(original.replaceFirst("(?m)^stage-evidence-binding[^\\n]*\\n", ""),
+                "required mechanically enforced stage rule cannot be dropped");
         refused(original.replace("MECHANICAL", "AUTO_EXECUTE"), "unknown authority refused");
         refused(original + "z-unproven-rule\tRESIDUE\tMECHANICAL\tAn unimplemented rule must not claim authority.\n",
                 "additional rules cannot falsely claim mechanical enforcement");

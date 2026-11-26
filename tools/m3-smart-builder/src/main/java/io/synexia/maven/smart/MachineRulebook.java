@@ -24,7 +24,7 @@ final class MachineRulebook {
             "SIMILARITY", "REWRITE", "VERIFY", "PROMOTION", "RESIDUE");
     private static final Set<String> AUTHORITIES = Set.of("MECHANICAL", "PRODUCER_REPORTED", "REVIEW_ONLY", "EXTERNAL_GATE");
     private static final Set<String> ENFORCED_IDS = Set.of("atom-inventory", "file-digest",
-            "inference-boundary", "recipe-first");
+            "inference-boundary", "recipe-first", "stage-evidence-binding");
 
     record Rule(String id, String stage, String authority, String directive) {
         String json() {
@@ -74,8 +74,9 @@ final class MachineRulebook {
             previous = fields[0];
             rules.add(new Rule(fields[0], fields[1], fields[2], fields[3]));
         }
-        if (!Set.copyOf(rules.stream().map(Rule::id).toList()).containsAll(REQUIRED))
-            throw new IOException("missing mandatory M3 rule");
+        Set<String> covered = Set.copyOf(rules.stream().map(Rule::id).toList());
+        if (!covered.containsAll(REQUIRED) || !covered.containsAll(ENFORCED_IDS))
+            throw new IOException("missing mandatory or mechanically enforced M3 rule");
         return new Policy(Hashes.sha256(bytes), List.copyOf(rules));
     }
 

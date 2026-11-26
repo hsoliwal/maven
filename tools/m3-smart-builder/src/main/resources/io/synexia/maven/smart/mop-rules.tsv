@@ -26,6 +26,7 @@ semantic-residue	RESIDUE	REVIEW_ONLY	Prioritize unclassified and ambiguous seman
 signed-proof-attestation	VERIFY	REVIEW_ONLY	Verify externally pinned Ed25519 proof signatures and M3 artifact hashes; signed declarations are provenance not behavior equivalence or promotion authority.
 simhash	SIMILARITY	REVIEW_ONLY	SimHash Hamming-near atoms are similarity candidates only; never infer equivalence from a distance threshold.
 source-proof-scope	VERIFY	REVIEW_ONLY	Source-specific signed receipts bind the exact current machine ledger semantic leaf and staged source digest; legacy catalogue-only signatures never prove source behavior.
+stage-evidence-binding	VERIFY	MECHANICAL	Source scoped signed proof must bind current rulebook pre proof nomination source inventory and changed staged digest before model inference or staged execution.
 structural-hash	SIMILARITY	PRODUCER_REPORTED	Structural SHA-256 groups code shape independently of identifiers and text; validate normalized structure at the owner.
 typed-residue	RESIDUE	REVIEW_ONLY	Invoke LLM only on bounded typed unsolved semantic residue after deterministic candidate filtering.
 verified-promotion	PROMOTION	EXTERNAL_GATE	Promote serially FILE to PACKAGE to MODULE to REACTOR to API after independent tests behavior proof and provenance sealing.

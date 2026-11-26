@@ -50,7 +50,7 @@ public final class MachineOperatorProofRegistryTest {
                 + "\",\"mavenVerifyPassed\":true,\"fixedPointPassed\":true,"
                 + "\"sourceMutationAuthority\":false,\"semanticProofAuthenticated\":false,\"promoted\":false,"
                 + "\"mode\":\"isolated-execution\",\"rewritePluginSha256\":\"" + "a".repeat(64)
-                + "\",\"machineRulebookSha256\":\"" + "b".repeat(64)
+                + "\",\"machineRulebookSha256\":\"" + MachineRulebook.load().sha256()
                 + "\",\"evidenceBindingSha256\":\"" + "c".repeat(64)
                 + "\",\"stageRelativePath\":\"target/m3-smart/stage-one\","
                 + "\"beforeSourceDigest\":\"" + "6".repeat(64)
@@ -169,7 +169,7 @@ public final class MachineOperatorProofRegistryTest {
                 + String.join("\t", scopedFields) + "\t" + scopedSignature + "\n";
         Files.writeString(registry, scopedRegistry);
         MachineOperatorProofRegistry.Summary scope = MachineOperatorProofRegistry.inspect(
-                base, registry, root, key, pinned, semantic, recipes, "6".repeat(64));
+                base, registry, root, key, pinned, semantic, recipes, "6".repeat(64), "c".repeat(64));
         require(scope.sourceScopedEntries() == 1 && scope.matchedEntries() == 1
                         && scope.candidates().getFirst().semanticLeafSha256() != null,
                 "V2 attestation authenticates one specific machine ledger and semantic leaf");
@@ -179,18 +179,75 @@ public final class MachineOperatorProofRegistryTest {
         MachineOperatorCatalog.Summary changedLedger = new MachineOperatorCatalog.Summary(
                 semantic.catalogSha256(), "9".repeat(64), 1, 1, 0, 0, 0, semantic.details());
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                changedLedger, recipes, "6".repeat(64)), "source-specific signature cannot follow a changed machine ledger");
+                changedLedger, recipes, "6".repeat(64), "c".repeat(64)), "source-specific signature cannot follow a changed machine ledger");
         MachineOperatorCatalog.Summary changedLeaf = new MachineOperatorCatalog.Summary(
                 semantic.catalogSha256(), semantic.evidenceSha256(), 1, 1, 0, 0, 0,
                 List.of(new MachineOperatorCatalog.Leaf("Other.java", "a000009", "8".repeat(64),
                         operatorId, "FOLD", "LOGIC", "CONTRACT_AND_EFFECT_PROOF_REQUIRED", envelope)));
         require(MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                changedLeaf, recipes, "6".repeat(64)).matchedEntries() == 0,
+                changedLeaf, recipes, "6".repeat(64), "c".repeat(64)).matchedEntries() == 0,
                 "same contract and catalogue cannot transfer a V2 proof to another leaf");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
                 semantic, recipes), "source-specific signature requires current source digest");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                semantic, recipes, "7".repeat(64)), "signed staged source cannot move to a different checkout");
+                semantic, recipes, "7".repeat(64), "c".repeat(64)), "signed staged source cannot move to a different checkout");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64)),
+                "source-scoped stage requires the pre-proof nomination evidence binding");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64), "f".repeat(64)),
+                "signed V2 stage cannot be attached to a different current nomination");
+
+        // A validly re-signed stage cannot replay a superseded M3 machine rulebook.
+        String stalePolicyStage = stage.replace(MachineRulebook.load().sha256(), "f".repeat(64));
+        String stalePolicyStageSha = saveJson(root, stalePolicyStage);
+        String stalePolicyProofSha = saveJson(root, sourceProof.replace(stageSha, stalePolicyStageSha));
+        String[] stalePolicyFields = scopedFields.clone();
+        stalePolicyFields[7] = stalePolicyProofSha;
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(stalePolicyFields));
+        Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", stalePolicyFields) + "\t"
+                + HexFormat.of().formatHex(signer.sign()) + "\n");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64), "c".repeat(64)),
+                "validly signed proof from a superseded rulebook is not current proof");
+        Files.writeString(registry, scopedRegistry);
+
+        // Likewise a stale pre-proof nomination digest must be rejected even when re-signed.
+        String oldNominationStage = stage.replace("\"evidenceBindingSha256\":\"" + "c".repeat(64),
+                "\"evidenceBindingSha256\":\"" + "e".repeat(64));
+        String oldNominationStageSha = saveJson(root, oldNominationStage);
+        String oldNominationProofSha = saveJson(root, sourceProof.replace(stageSha, oldNominationStageSha));
+        String[] oldNominationFields = scopedFields.clone();
+        oldNominationFields[7] = oldNominationProofSha;
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(oldNominationFields));
+        Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", oldNominationFields) + "\t"
+                + HexFormat.of().formatHex(signer.sign()) + "\n");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64), "c".repeat(64)),
+                "validly signed stale pre-proof nomination digest is not current proof");
+        Files.writeString(registry, scopedRegistry);
+
+        // The archive must show different input/output content after a nonzero rewrite.
+        String unchangedStage = stage.replace("\"afterSourceDigest\":\"" + "7".repeat(64),
+                "\"afterSourceDigest\":\"" + "6".repeat(64));
+        String unchangedStageSha = saveJson(root, unchangedStage);
+        String unchangedProofSha = saveJson(root, sourceProof.replace(stageSha, unchangedStageSha));
+        String[] unchangedFields = scopedFields.clone();
+        unchangedFields[7] = unchangedProofSha;
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(unchangedFields));
+        Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", unchangedFields) + "\t"
+                + HexFormat.of().formatHex(signer.sign()) + "\n");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64), "c".repeat(64)),
+                "nonzero changes with identical before/after source digest cannot pass");
+        Files.writeString(registry, scopedRegistry);
+
         // A correctly signed V2 chain cannot turn a zero-change or incomplete stage into proof.
         String zeroStage = stage.replace("\"changedJavaFiles\":1", "\"changedJavaFiles\":0");
         String zeroStageSha = saveJson(root, zeroStage);
@@ -203,7 +260,7 @@ public final class MachineOperatorProofRegistryTest {
         Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
                 + String.join("\t", zeroFields) + "\t" + zeroSignature + "\n");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                semantic, recipes, "6".repeat(64)), "signed V2 zero-change staged receipt is not proof");
+                semantic, recipes, "6".repeat(64), "c".repeat(64)), "signed V2 zero-change staged receipt is not proof");
         Files.writeString(registry, scopedRegistry);
         String emptyStage = stage.replace(",\"dryRunPatchSha256\":\"" + "8".repeat(64) + "\"", "");
         String emptyStageSha = saveJson(root, emptyStage);
@@ -215,11 +272,11 @@ public final class MachineOperatorProofRegistryTest {
         Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
                 + String.join("\t", emptyFields) + "\t" + HexFormat.of().formatHex(signer.sign()) + "\n");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                semantic, recipes, "6".repeat(64)), "signed V2 missing dry-run preview is not proof");
+                semantic, recipes, "6".repeat(64), "c".repeat(64)), "signed V2 missing dry-run preview is not proof");
         Files.writeString(registry, scopedRegistry);
         Files.writeString(registry, scopedRegistry.replace(scopedSignature, signature));
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
-                semantic, recipes, "6".repeat(64)), "V1 signature cannot authorize V2 source scoped claim");
+                semantic, recipes, "6".repeat(64), "c".repeat(64)), "V1 signature cannot authorize V2 source scoped claim");
         Files.writeString(registry, valid);
         System.out.println("MACHINE OPERATOR PROOF REGISTRY TESTS PASS: " + checks);
     }

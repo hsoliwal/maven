@@ -333,6 +333,15 @@ public final class CodeAgentVerifyTest {
         require(sourceBinding.equals(verification(project).get("evidenceBindingSha256"))
                         && Boolean.FALSE.equals(verification(project).get("semanticProofAuthenticated")),
                 "even source-specific signed replay cannot authenticate semantic equivalence");
+        String originalRecipeCatalog = Files.readString(catalog);
+        Files.writeString(catalog, originalRecipeCatalog
+                + "z-inapplicable\tBRANCHING\tFILE\tcom.synexia.rewrite.Unused\t"
+                + "e".repeat(64) + "\n");
+        require(runNomination(sourceNomination) == 2,
+                "V2 stage binding rejects changed catalog even when the approved recipe remains identical");
+        Files.writeString(catalog, originalRecipeCatalog);
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "restoring exact pre-proof evidence recovers source-scoped nomination");
         String alteredEvidence = ledger.replace("0000000000000001", "0000000000000002");
         Files.writeString(evidence, alteredEvidence);
         refused(sourceVerify, project, "V2 proof cannot be replayed after machine evidence changes");

@@ -91,12 +91,20 @@ final class MachineOperatorProofRegistry {
     static Summary inspect(Path base, Path registryFile, Path proofDirectory, Path keyFile,
                            String trustedKeySha256, MachineOperatorCatalog.Summary semantic,
                            RecipeCatalog recipes) throws IOException {
-        return inspect(base, registryFile, proofDirectory, keyFile, trustedKeySha256, semantic, recipes, null);
+        return inspect(base, registryFile, proofDirectory, keyFile, trustedKeySha256, semantic, recipes, null, null);
     }
 
     static Summary inspect(Path base, Path registryFile, Path proofDirectory, Path keyFile,
                            String trustedKeySha256, MachineOperatorCatalog.Summary semantic,
                            RecipeCatalog recipes, String currentSourceDigest) throws IOException {
+        return inspect(base, registryFile, proofDirectory, keyFile, trustedKeySha256,
+                semantic, recipes, currentSourceDigest, null);
+    }
+
+    static Summary inspect(Path base, Path registryFile, Path proofDirectory, Path keyFile,
+                           String trustedKeySha256, MachineOperatorCatalog.Summary semantic,
+                           RecipeCatalog recipes, String currentSourceDigest,
+                           String expectedStageEvidenceBindingSha256) throws IOException {
         if (semantic == null || recipes == null) throw new IOException("proof registry needs validated operator candidates");
         if (!isHash(trustedKeySha256)) throw new IOException("missing independent public-key pin");
         byte[] keyBytes = RecipeCatalog.readLocal(base, keyFile, 256);
@@ -106,8 +114,9 @@ final class MachineOperatorProofRegistry {
         byte[] registryBytes = RecipeCatalog.readLocal(base, registryFile, 65_536);
         String[] rows = lines(utf8(registryBytes));
         boolean sourceScoped = SOURCE_HEADER.equals(rows[0]);
-        if (sourceScoped && !isHash(currentSourceDigest))
-            throw new IOException("current source inventory digest required for source-scoped proof");
+        if (sourceScoped && (!isHash(currentSourceDigest)
+                || !isHash(expectedStageEvidenceBindingSha256)))
+            throw new IOException("current source and pre-proof evidence binding required for source-scoped proof");
         if (rows.length < 2 || rows.length > MAX_ROWS + 1
                 || !(HEADER.equals(rows[0]) || sourceScoped))
             throw new IOException("invalid operator proof registry schema");
@@ -153,7 +162,7 @@ final class MachineOperatorProofRegistry {
             String stageSha = hashField(receipt, "stageReceiptSha256");
             String canonSha = hashField(receipt, "canonReceiptSha256");
             checkStage(readJsonProof(base, proofDirectory, stageSha), fields[1], fields[2],
-                    sourceScoped, currentSourceDigest);
+                    sourceScoped, currentSourceDigest, expectedStageEvidenceBindingSha256);
             checkCanon(base, proofDirectory, readJsonProof(base, proofDirectory, canonSha), fields[3]);
             int visible = 0;
             for (MachineOperatorCatalog.Leaf leaf : semantic.details())
@@ -191,7 +200,8 @@ final class MachineOperatorProofRegistry {
     }
 
     private static void checkStage(Map<?, ?> stage, String recipeId, String implementationSha,
-                                   boolean sourceScoped, String currentSourceDigest) throws IOException {
+                                   boolean sourceScoped, String currentSourceDigest,
+                                   String expectedStageEvidenceBindingSha256) throws IOException {
         if (!"m3.smart.code-agent-verify.v1".equals(stage.get("schema"))
                 || !"verified-for-review".equals(stage.get("status"))
                 || !recipeId.equals(stage.get("approvedRecipeId"))
@@ -205,10 +215,11 @@ final class MachineOperatorProofRegistry {
         if (sourceScoped && (!stage.keySet().equals(SOURCE_STAGE_KEYS)
                 || !"isolated-execution".equals(stage.get("mode"))
                 || !hashValue(stage.get("rewritePluginSha256"))
-                || !hashValue(stage.get("machineRulebookSha256"))
-                || !hashValue(stage.get("evidenceBindingSha256"))
+                || !MachineRulebook.load().sha256().equals(stage.get("machineRulebookSha256"))
+                || !expectedStageEvidenceBindingSha256.equals(stage.get("evidenceBindingSha256"))
                 || !currentSourceDigest.equals(stage.get("beforeSourceDigest"))
                 || !hashValue(stage.get("afterSourceDigest"))
+                || currentSourceDigest.equals(stage.get("afterSourceDigest"))
                 || !hashValue(stage.get("dryRunPatchSha256"))
                 || !(stage.get("changedJavaFiles") instanceof String count
                      && count.matches("[1-9][0-9]{0,5}"))
