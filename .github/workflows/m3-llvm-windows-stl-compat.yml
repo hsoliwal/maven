@@ -67,9 +67,9 @@ jobs:
           }
           $lines = @(Get-Content -LiteralPath $receipt)
           foreach ($tool in @('clang', 'clang++', 'llc', 'opt', 'llvm-as', 'llvm-link')) {
-            $matches = @($lines | Where-Object { $_.StartsWith("$tool`t") })
-            if ($matches.Count -ne 1) { throw "Expected exactly one SHA-256 record for $tool" }
-            $parts = $matches[0] -split "`t", 3
+            $records = @($lines | Where-Object { $_.StartsWith("$tool`t") })
+            if ($records.Count -ne 1) { throw "Expected exactly one SHA-256 record for $tool" }
+            $parts = $records[0] -split "`t", 3
             if ($parts.Count -ne 3 -or $parts[1] -notmatch '^[a-f0-9]{64}
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
