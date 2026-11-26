@@ -85,7 +85,15 @@ public final class MachineFlowJava17Switches extends Recipe {
                 } else {
                     return current;
                 }
-                return JavaTemplate.apply(replacement, getCursor(), current.getCoordinates().replace());
+                return JavaTemplate.builder(replacement)
+                        .contextSensitive()
+                        .imports("com.sun.source.tree.MethodTree",
+                                "com.sun.source.tree.LambdaExpressionTree",
+                                "com.sun.source.tree.BlockTree",
+                                "java.util.List",
+                                "java.util.Objects")
+                        .build()
+                        .apply(getCursor(), current.getCoordinates().replace());
             }
         };
     }
