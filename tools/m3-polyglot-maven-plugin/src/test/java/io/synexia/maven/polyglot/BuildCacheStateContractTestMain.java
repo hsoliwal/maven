@@ -286,6 +286,33 @@ public final class BuildCacheStateContractTestMain {
         check(!InputStamps.containsReservedState(provider, cleanExternal),
                 "ordinary external toolchain tree is permitted");
         TaskRunner.validateProviderInputs(providerTask, provider, null, cleanReuse);
+        Path externalCompiler = cleanExternal.resolve("compiler.txt");
+        String originalCleanIdentity = InputStamps.providerIdentity(cleanReuse, provider);
+        FileTime compilerTime = Files.getLastModifiedTime(externalCompiler);
+        Files.writeString(externalCompiler, "other toolchain bytes"); // identical length
+        Files.setLastModifiedTime(externalCompiler, compilerTime);
+        check(!originalCleanIdentity.equals(InputStamps.providerIdentity(cleanReuse, provider)),
+                "external declared toolchain bytes invalidate reuse despite unchanged size and restored mtime");
+        Files.writeString(externalCompiler, "fixed toolchain bytes");
+        Files.setLastModifiedTime(externalCompiler, compilerTime);
+        check(originalCleanIdentity.equals(InputStamps.providerIdentity(cleanReuse, provider)),
+                "restored external toolchain bytes restore the exact original content fingerprint");
+        Path newToolInput = Files.writeString(cleanExternal.resolve("new-tool.txt"), "added");
+        check(!originalCleanIdentity.equals(InputStamps.providerIdentity(cleanReuse, provider)),
+                "adding a new file to an external toolchain tree invalidates reuse");
+        Files.delete(newToolInput);
+        check(originalCleanIdentity.equals(InputStamps.providerIdentity(cleanReuse, provider)),
+                "removing an added external file restores the original toolchain identity");
+        String originalExternalUserIdentity = InputStamps.providerIdentity(directUser, provider);
+        FileTime externalUserTime = Files.getLastModifiedTime(externalUser);
+        Files.writeString(externalUser, "modified"); // same length as ordinary
+        Files.setLastModifiedTime(externalUser, externalUserTime);
+        check(!originalExternalUserIdentity.equals(InputStamps.providerIdentity(directUser, provider)),
+                "direct external ordinary .m3 user file remains a fresh content-hashed provider input");
+        Files.writeString(externalUser, "ordinary");
+        Files.setLastModifiedTime(externalUser, externalUserTime);
+        check(originalExternalUserIdentity.equals(InputStamps.providerIdentity(directUser, provider)),
+                "direct external .m3 user file identity is fully content-defined");
         Path other = Files.createDirectories(directory.resolve("external-watcher-toolchain/child/.m3-watch"));
         Files.writeString(other.resolve("state.bin"), "watch checkpoint");
         M3ToolReuseInputs watchReuse = new M3ToolReuseInputs("m3.external-watch.v1",
