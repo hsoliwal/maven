@@ -200,3 +200,32 @@ that the operator is equivalent, free of effects or safe to promote.
 `semanticProofAuthenticated=false` and `promotionAuthority=false`
 remain required. The additional `source-proof-scope` law is REVIEW_ONLY;
 the locked canonical M3 specification is unchanged.
+
+## Running Java 21 qualification on the PR branch
+
+The existing M3 Smart Maven Builder workflow is already present on the
+repository's default branch and has a workflow_dispatch trigger. It is the
+currently actionable manual acceptance gate for draft PR #320: it runs a
+real Maven plugin clean install, JDK-only compiler/tests, and a real Maven
+runtime harness on a GitHub-hosted Java 21 runner.
+
+A repository maintainer with write access can open GitHub Actions, select
+**M3 Smart Maven Builder**, choose **Run workflow**, select branch
+`feat/m3-semantic-operator-residue-20261126`, and start the run.
+
+An authenticated GitHub CLI equivalent is:
+
+    gh workflow run m3-smart-builder.yml --repo hsoliwal/maven \
+      --ref feat/m3-semantic-operator-residue-20261126
+
+    gh run list --repo hsoliwal/maven --workflow m3-smart-builder.yml \
+      --branch feat/m3-semantic-operator-residue-20261126 --limit 5
+
+The PR-added `m3-operator-proof-qualification.yml` has stricter packaged
+descriptor assertions and log retention. Its workflow_dispatch control
+cannot normally be used until that workflow file exists on the default
+branch; the pull_request trigger is the expected automatic path.
+**No test success is inferred from workflow configuration alone.**
+Review completed run logs and artifacts before any merge or M3 promotion.
+Runner and GitHub credentials must stay outside the repository, prompts,
+and PR comments.
