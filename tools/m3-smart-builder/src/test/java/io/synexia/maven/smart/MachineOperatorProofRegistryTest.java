@@ -48,7 +48,15 @@ public final class MachineOperatorProofRegistryTest {
         String stage = "{\"schema\":\"m3.smart.code-agent-verify.v1\",\"status\":\"verified-for-review\","
                 + "\"approvedRecipeId\":\"" + recipeId + "\",\"recipeJarSha256\":\"" + implementation
                 + "\",\"mavenVerifyPassed\":true,\"fixedPointPassed\":true,"
-                + "\"sourceMutationAuthority\":false,\"semanticProofAuthenticated\":false,\"promoted\":false}";
+                + "\"sourceMutationAuthority\":false,\"semanticProofAuthenticated\":false,\"promoted\":false,"
+                + "\"mode\":\"isolated-execution\",\"rewritePluginSha256\":\"" + "a".repeat(64)
+                + "\",\"machineRulebookSha256\":\"" + "b".repeat(64)
+                + "\",\"evidenceBindingSha256\":\"" + "c".repeat(64)
+                + "\",\"stageRelativePath\":\"target/m3-smart/stage-one\","
+                + "\"beforeSourceDigest\":\"" + "6".repeat(64)
+                + "\",\"afterSourceDigest\":\"" + "7".repeat(64)
+                + "\",\"changedJavaFiles\":1,\"dryRunPatchSha256\":\"" + "8".repeat(64)
+                + "\",\"recipeExecutionAttempted\":true,\"verificationAuthenticated\":false}";
         String stageSha = saveJson(root, stage);
         String proof = "{\"schema\":\"" + MachineOperatorProofRegistry.RECEIPT_SCHEMA
                 + "\",\"operatorId\":\"" + operatorId + "\",\"recipeId\":\"" + recipeId
@@ -141,6 +149,52 @@ public final class MachineOperatorProofRegistryTest {
             refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, link,
                     pinned, semantic, recipes), "symlinked trust anchors refused");
         }
+        // V2 binds an external attestation to the exact currently selected machine ledger and leaf.
+        String sourceProof = "{\"schema\":\"" + MachineOperatorProofRegistry.SOURCE_RECEIPT_SCHEMA
+                + "\",\"operatorId\":\"" + operatorId + "\",\"recipeId\":\"" + recipeId
+                + "\",\"implementationSha256\":\"" + implementation
+                + "\",\"contractSha256\":\"" + contract
+                + "\",\"operatorCatalogSha256\":\"" + semantic.catalogSha256()
+                + "\",\"machineEvidenceSha256\":\"" + semantic.evidenceSha256()
+                + "\",\"semanticLeafSha256\":\"" + semantic.details().getFirst().semanticId()
+                + "\",\"stageReceiptSha256\":\"" + stageSha
+                + "\",\"canonReceiptSha256\":\"" + canonSha + "\",\"status\":\"EXTERNALLY_RATIFIED\"}";
+        String v2proof = saveJson(root, sourceProof);
+        String[] scopedFields = {operatorId, recipeId, implementation, contract, semantic.catalogSha256(),
+                semantic.evidenceSha256(), semantic.details().getFirst().semanticId(), v2proof};
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(scopedFields));
+        String scopedSignature = HexFormat.of().formatHex(signer.sign());
+        String scopedRegistry = MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", scopedFields) + "\t" + scopedSignature + "\n";
+        Files.writeString(registry, scopedRegistry);
+        MachineOperatorProofRegistry.Summary scope = MachineOperatorProofRegistry.inspect(
+                base, registry, root, key, pinned, semantic, recipes, "6".repeat(64));
+        require(scope.sourceScopedEntries() == 1 && scope.matchedEntries() == 1
+                        && scope.candidates().getFirst().semanticLeafSha256() != null,
+                "V2 attestation authenticates one specific machine ledger and semantic leaf");
+        require(scope.json().contains("\"scope\":\"SOURCE_LEAF\"")
+                        && scope.json().contains("\"semanticProofAuthenticated\":false"),
+                "source-specific signature does not grant automatic semantic equivalence");
+        MachineOperatorCatalog.Summary changedLedger = new MachineOperatorCatalog.Summary(
+                semantic.catalogSha256(), "9".repeat(64), 1, 1, 0, 0, 0, semantic.details());
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                changedLedger, recipes, "6".repeat(64)), "source-specific signature cannot follow a changed machine ledger");
+        MachineOperatorCatalog.Summary changedLeaf = new MachineOperatorCatalog.Summary(
+                semantic.catalogSha256(), semantic.evidenceSha256(), 1, 1, 0, 0, 0,
+                List.of(new MachineOperatorCatalog.Leaf("Other.java", "a000009", "8".repeat(64),
+                        operatorId, "FOLD", "LOGIC", "CONTRACT_AND_EFFECT_PROOF_REQUIRED", envelope)));
+        require(MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                changedLeaf, recipes, "6".repeat(64)).matchedEntries() == 0,
+                "same contract and catalogue cannot transfer a V2 proof to another leaf");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes), "source-specific signature requires current source digest");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "7".repeat(64)), "signed staged source cannot move to a different checkout");
+        Files.writeString(registry, scopedRegistry.replace(scopedSignature, signature));
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64)), "V1 signature cannot authorize V2 source scoped claim");
+        Files.writeString(registry, valid);
         System.out.println("MACHINE OPERATOR PROOF REGISTRY TESTS PASS: " + checks);
     }
 

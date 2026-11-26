@@ -221,6 +221,16 @@ before and after a build, including after failed compilation. See [Build advice 
 for setup, failure preservation, the operator-chosen CPU summarizer whose lines join the facts, and
 `failOnError=false` for binding the hook into a POM's lifecycle without letting advice change the build result.
 
+### Source-specific signed provenance (V2)
+
+The newer nine-column signed operator registry pins the **current machine
+evidence SHA-256, exact semantic leaf SHA-256 and archived staged source
+digest** in addition to the reviewed recipe and operator catalogue. The
+original seven-column registry remains supported, but its attestation is
+CATALOGUE_ONLY and does not identify a particular source atom. Source-bound
+signing is recommended for any leaf-level proof review, and neither format
+grants source-mutation or promotion authority.
+
 ### Signed operator-proof provenance (opt-in)
 
 The existing m3:code-agent and m3:code-agent-verify goals can read externally

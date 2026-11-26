@@ -13,7 +13,7 @@ public final class MachineRulebookTest {
 
     public static void main(String[] args) throws Exception {
         MachineRulebook.Policy rules = MachineRulebook.load();
-        require(rules.rules().size() == 28, "18 mandatory M3 laws and ten reviewed evidence and semantic-residue laws present");
+        require(rules.rules().size() == 29, "18 mandatory M3 laws and eleven reviewed evidence and semantic-residue laws present");
         require(rules.sha256().matches("[0-9a-f]{64}"), "policy has a strong content digest");
         Map<?, ?> object = object(TinyJson.parse(rules.json()));
         require("m3.machine.rules.v1".equals(object.get("schema")), "policy is machine readable");
@@ -51,6 +51,9 @@ public final class MachineRulebookTest {
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("signed-proof-attestation")
                         && rule.authority().equals("REVIEW_ONLY")),
                 "authenticated provenance never grants automatic promotion");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("source-proof-scope")
+                        && rule.authority().equals("REVIEW_ONLY")),
+                "legacy signatures never claim source-specific behavioral proof");
         String original = MachineRulebook.VERSION + "\n" + MachineRulebook.HEADER + "\n";
         for (MachineRulebook.Rule rule : rules.rules())
             original += rule.id() + "\t" + rule.stage() + "\t" + rule.authority() + "\t" + rule.directive() + "\n";

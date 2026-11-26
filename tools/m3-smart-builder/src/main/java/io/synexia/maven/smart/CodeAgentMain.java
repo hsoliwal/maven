@@ -66,7 +66,8 @@ public final class CodeAgentMain {
                     path(base, required(options, "--operator-proof-registry")),
                     path(base, required(options, "--operator-proof-dir")),
                     path(base, required(options, "--operator-proof-key")),
-                    required(options, "--operator-proof-key-sha256"), semantic, catalog) : null;
+                    required(options, "--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest()) : null;
             MachineRulebook.Policy rules = MachineRulebook.load();
             Map<?, ?> patternCounts = object(object(TinyJson.parse(preparation)).get("patternCounts"));
             List<RecipeCatalog.Entry> applicable = catalog.applicable(patternCounts);
@@ -101,7 +102,8 @@ public final class CodeAgentMain {
                     path(base, options.get("--operator-proof-registry")),
                     path(base, options.get("--operator-proof-dir")),
                     path(base, options.get("--operator-proof-key")),
-                    options.get("--operator-proof-key-sha256"), semantic, catalog))
+                    options.get("--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest()))
                     || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !catalog.digest().equals(RecipeCatalog.load(base,
                     path(base, options.get("--recipe-catalog"))).digest()))

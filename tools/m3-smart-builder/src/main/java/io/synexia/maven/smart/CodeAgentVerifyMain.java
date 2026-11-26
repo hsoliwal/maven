@@ -72,7 +72,8 @@ public final class CodeAgentVerifyMain {
                     resolve(base, required(argsMap, "--operator-proof-registry")),
                     resolve(base, required(argsMap, "--operator-proof-dir")),
                     resolve(base, required(argsMap, "--operator-proof-key")),
-                    required(argsMap, "--operator-proof-key-sha256"), semantic, catalog) : null;
+                    required(argsMap, "--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest()) : null;
             MachineRulebook.Policy rules = MachineRulebook.load();
             String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic, proof);
             List<RecipeCatalog.Entry> applicable = catalog.applicable(object(object(TinyJson.parse(preparation))
@@ -161,7 +162,8 @@ public final class CodeAgentVerifyMain {
                     resolve(base, argsMap.get("--operator-proof-registry")),
                     resolve(base, argsMap.get("--operator-proof-dir")),
                     resolve(base, argsMap.get("--operator-proof-key")),
-                    argsMap.get("--operator-proof-key-sha256"), semantic, catalog))
+                    argsMap.get("--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest()))
                     || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !pomBefore.equals(Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576)))
                     || !catalog.digest().equals(RecipeCatalog.load(base, catalogFile).digest()))

@@ -26,7 +26,7 @@ The private signing key must remain outside source, build output, browser,
 and LLM context. Neither the model nor checked-in data may establish its
 own trusted signing key.
 
-Registry rows have a trailing LF and this exact seven-column TSV header:
+Legacy catalogue-scoped registry rows have a trailing LF and this exact seven-column TSV header:
 
     operator_id    recipe_id    implementation_sha256    contract_sha256    operator_catalog_sha256    proof_receipt_sha256    signature_ed25519_hex
 
@@ -125,3 +125,60 @@ synthetic evidence, exercising valid signatures, key pinning, tamper
 detection, required M3 outputs, catalogue binding, recipe implementation
 drift, scope refusal and deterministic replay. It is not a qualification
 of a real signing authority, a live model, or real OpenRewrite execution.
+
+
+## V2: stronger source-leaf-scoped attestations
+
+The v1 seven-column format remains accepted and is explicitly reported
+as CATALOGUE_ONLY with sourceBindingVerified=false. It **cannot** be taken as
+an attestation for a specific Java method, even when its operator and contract
+hashes happen to match.
+
+For an operator-signed attestation that applies to one specific source atom,
+use the separate **nine-column** registry header:
+
+    operator_id    recipe_id    implementation_sha256    contract_sha256    operator_catalog_sha256    machine_evidence_sha256    semantic_leaf_sha256    proof_receipt_sha256    signature_ed25519_hex
+
+As before, the actual fields are TAB-separated and the file ends with LF.
+The v2 domain-separated Ed25519 message contains these lines, with LF after
+the last field:
+
+    m3.smart.operator-proof-registry.v2
+    <operator_id>
+    <recipe_id>
+    <implementation_sha256>
+    <contract_sha256>
+    <operator_catalog_sha256>
+    <machine_evidence_sha256>
+    <semantic_leaf_sha256>
+    <proof_receipt_sha256>
+
+The v2 content-addressed proof receipt uses schema
+m3.smart.operator-proof-receipt.v2 and the v1 fields plus
+machineEvidenceSha256 and semanticLeafSha256. Its current machine-evidence
+digest must match the independently source-validated ledger. The semantic
+leaf identity must match a currently visible leaf's ID, operator name and
+syntactic contract. V2 rows sort by operator ID **then semantic-leaf SHA-256**,
+allowing multiple distinct leaves of the same reviewed operator.
+
+V2 also requires the **real 20-field** code-agent staged-verifier receipt,
+not a synthetic minimal stage assertion. The archived stage's
+beforeSourceDigest must match the actual current source inventory digest.
+The staged receipt must record a real nonzero changed-file count, an existing
+OpenRewrite dry-run patch SHA-256, successful recipe execution, Maven verify,
+fixed-point replay and the non-promotion flags. The source digest is gathered
+from current checkout bytes before nomination and independently rechecked
+before final staged verification.
+
+A new or different Java source tree changes the source inventory SHA-256,
+machine evidence and/or semantic-leaf identity and invalidates this
+attestation. A changed signing key, operator catalogue, recipe JAR, proof
+artifact or stage result also invalidates it.
+
+Both formats remain signed **external attestations**, not full semantic proof.
+`sourceBindingVerified=true` means only that the declared
+source/evidence identities were checked against the current checkout, **not**
+that the operator is equivalent, free of effects or safe to promote.
+`semanticProofAuthenticated=false` and `promotionAuthority=false`
+remain required. The additional `source-proof-scope` law is REVIEW_ONLY;
+the locked canonical M3 specification is unchanged.

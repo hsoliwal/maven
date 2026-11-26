@@ -26,8 +26,12 @@ import java.util.Set;
 final class MachineOperatorProofRegistry {
     static final String HEADER = "operator_id\trecipe_id\timplementation_sha256\tcontract_sha256"
             + "\toperator_catalog_sha256\tproof_receipt_sha256\tsignature_ed25519_hex";
+    static final String SOURCE_HEADER = "operator_id\trecipe_id\timplementation_sha256\tcontract_sha256"
+            + "\toperator_catalog_sha256\tmachine_evidence_sha256\tsemantic_leaf_sha256"
+            + "\tproof_receipt_sha256\tsignature_ed25519_hex";
     static final String CANON_SCHEMA = "m3.smart.operator-canon-evidence.v1";
     static final String RECEIPT_SCHEMA = "m3.smart.operator-proof-receipt.v1";
+    static final String SOURCE_RECEIPT_SCHEMA = "m3.smart.operator-proof-receipt.v2";
     private static final int MAX_ROWS = 64;
     private static final int MAX_DETAILS = 24;
     private static final Set<String> M3_ARTIFACTS = Set.of("STATUS.tsv", "FINAL_REPORT.md", "RUN_CONTEXT.tsv",
@@ -35,28 +39,43 @@ final class MachineOperatorProofRegistry {
     private static final Set<String> RECEIPT_KEYS = Set.of("schema", "operatorId", "recipeId",
             "implementationSha256", "contractSha256", "operatorCatalogSha256",
             "stageReceiptSha256", "canonReceiptSha256", "status");
+    private static final Set<String> SOURCE_RECEIPT_KEYS = Set.of("schema", "operatorId", "recipeId",
+            "implementationSha256", "contractSha256", "operatorCatalogSha256",
+            "machineEvidenceSha256", "semanticLeafSha256",
+            "stageReceiptSha256", "canonReceiptSha256", "status");
+    private static final Set<String> SOURCE_STAGE_KEYS = Set.of("schema", "status", "mode",
+            "approvedRecipeId", "recipeJarSha256", "rewritePluginSha256", "machineRulebookSha256",
+            "evidenceBindingSha256", "stageRelativePath", "beforeSourceDigest", "afterSourceDigest",
+            "changedJavaFiles", "dryRunPatchSha256", "recipeExecutionAttempted", "mavenVerifyPassed",
+            "fixedPointPassed", "sourceMutationAuthority", "semanticProofAuthenticated",
+            "verificationAuthenticated", "promoted");
     private static final Set<String> CANON_KEYS = Set.of("schema", "status", "contractSha256", "diffPassed",
             "linterPassed", "compilerPassed", "testsPassed", "runtimePassed", "artifactDigests");
 
     record Candidate(String operatorId, String recipeId, String contractSha256, String proofReceiptSha256,
-                     int matchedVisibleAtoms) {
+                     String semanticLeafSha256, int matchedVisibleAtoms) {
         String json() {
             return "{\"operatorId\":" + TinyJson.quote(operatorId)
                     + ",\"recipeId\":" + TinyJson.quote(recipeId)
                     + ",\"contractSha256\":" + TinyJson.quote(contractSha256)
                     + ",\"signedReceiptSha256\":" + TinyJson.quote(proofReceiptSha256)
                     + ",\"matchedVisibleAtoms\":" + matchedVisibleAtoms
+                    + ",\"semanticLeafSha256\":" + (semanticLeafSha256 == null ? "null" : TinyJson.quote(semanticLeafSha256))
+                    + ",\"sourceBindingVerified\":" + (semanticLeafSha256 != null)
+                    + ",\"scope\":" + TinyJson.quote(semanticLeafSha256 == null
+                    ? "CATALOGUE_ONLY" : "SOURCE_LEAF")
                     + ",\"authority\":\"SIGNED_EXTERNAL_ATTESTATION\"}";
         }
     }
 
     record Summary(String registrySha256, String trustedPublicKeySha256, int signedEntries,
-                   int matchedEntries, List<Candidate> candidates) {
+                   int sourceScopedEntries, int matchedEntries, List<Candidate> candidates) {
         String json() {
             StringBuilder out = new StringBuilder("{\"schema\":\"m3.smart.operator-proof-registry.v1\","
                     + "\"registrySha256\":").append(TinyJson.quote(registrySha256))
                     .append(",\"trustedPublicKeySha256\":").append(TinyJson.quote(trustedPublicKeySha256))
                     .append(",\"signedEntries\":").append(signedEntries)
+                    .append(",\"sourceScopedEntries\":").append(sourceScopedEntries)
                     .append(",\"matchedEntries\":").append(matchedEntries)
                     .append(",\"candidatesTruncated\":").append(matchedEntries > candidates.size())
                     .append(",\"candidateAttestations\":[");
@@ -72,6 +91,12 @@ final class MachineOperatorProofRegistry {
     static Summary inspect(Path base, Path registryFile, Path proofDirectory, Path keyFile,
                            String trustedKeySha256, MachineOperatorCatalog.Summary semantic,
                            RecipeCatalog recipes) throws IOException {
+        return inspect(base, registryFile, proofDirectory, keyFile, trustedKeySha256, semantic, recipes, null);
+    }
+
+    static Summary inspect(Path base, Path registryFile, Path proofDirectory, Path keyFile,
+                           String trustedKeySha256, MachineOperatorCatalog.Summary semantic,
+                           RecipeCatalog recipes, String currentSourceDigest) throws IOException {
         if (semantic == null || recipes == null) throw new IOException("proof registry needs validated operator candidates");
         if (!isHash(trustedKeySha256)) throw new IOException("missing independent public-key pin");
         byte[] keyBytes = RecipeCatalog.readLocal(base, keyFile, 256);
@@ -80,19 +105,30 @@ final class MachineOperatorProofRegistry {
         PublicKey key = decodePublicKey(keyBytes);
         byte[] registryBytes = RecipeCatalog.readLocal(base, registryFile, 65_536);
         String[] rows = lines(utf8(registryBytes));
-        if (rows.length < 2 || rows.length > MAX_ROWS + 1 || !HEADER.equals(rows[0]))
+        boolean sourceScoped = SOURCE_HEADER.equals(rows[0]);
+        if (sourceScoped && !isHash(currentSourceDigest))
+            throw new IOException("current source inventory digest required for source-scoped proof");
+        if (rows.length < 2 || rows.length > MAX_ROWS + 1
+                || !(HEADER.equals(rows[0]) || sourceScoped))
             throw new IOException("invalid operator proof registry schema");
         List<Candidate> matches = new ArrayList<>();
         int totalMatches = 0;
         String previous = "";
         for (int i = 1; i < rows.length; i++) {
             String[] fields = rows[i].split("\t", -1);
-            if (fields.length != 7 || !fields[0].matches("[a-z][a-z0-9-]{0,63}")
+            if (fields.length != (sourceScoped ? 9 : 7) || !fields[0].matches("[a-z][a-z0-9-]{0,63}")
                     || !fields[1].matches("[a-z][a-z0-9-]{0,63}")
-                    || fields[0].compareTo(previous) <= 0 || !isHash(fields[2]) || !isHash(fields[3])
-                    || !isHash(fields[4]) || !isHash(fields[5]) || !fields[6].matches("[0-9a-f]{128}"))
-                throw new IOException("invalid or unsorted operator proof row");
-            previous = fields[0];
+                    || !isHash(fields[2]) || !isHash(fields[3]) || !isHash(fields[4])
+                    || !isHash(fields[sourceScoped ? 7 : 5])
+                    || sourceScoped && (!isHash(fields[5]) || !isHash(fields[6]))
+                    || !fields[sourceScoped ? 8 : 6].matches("[0-9a-f]{128}"))
+                throw new IOException("invalid operator proof row");
+            String keyName = fields[0] + (sourceScoped ? "\t" + fields[6] : "");
+            if (keyName.compareTo(previous) <= 0)
+                throw new IOException("duplicate or unsorted operator proof row");
+            previous = keyName;
+            if (sourceScoped && !fields[5].equals(semantic.evidenceSha256()))
+                throw new IOException("source-scoped proof bound to another machine ledger");
             if (!fields[4].equals(semantic.catalogSha256()))
                 throw new IOException("signed operator proof bound to another operator catalogue");
             RecipeCatalog.Entry recipe = recipes.entries().stream()
@@ -100,39 +136,48 @@ final class MachineOperatorProofRegistry {
                     .orElseThrow(() -> new IOException("proof registry refers to unapproved recipe"));
             if (!recipe.implementationSha256().equals(fields[2]) || !"FILE".equals(recipe.scope()))
                 throw new IOException("proof registry recipe implementation or scope drift");
-            byte[] message = signable(fields);
-            verifySignature(key, message, HexFormat.of().parseHex(fields[6]));
-            Map<?, ?> receipt = readJsonProof(base, proofDirectory, fields[5]);
-            if (!receipt.keySet().equals(RECEIPT_KEYS) || !RECEIPT_SCHEMA.equals(receipt.get("schema"))
+            byte[] message = signable(java.util.Arrays.copyOf(fields, sourceScoped ? 8 : 6));
+            verifySignature(key, message, HexFormat.of().parseHex(fields[sourceScoped ? 8 : 6]));
+            Map<?, ?> receipt = readJsonProof(base, proofDirectory, fields[sourceScoped ? 7 : 5]);
+            if (!receipt.keySet().equals(sourceScoped ? SOURCE_RECEIPT_KEYS : RECEIPT_KEYS)
+                    || !(sourceScoped ? SOURCE_RECEIPT_SCHEMA : RECEIPT_SCHEMA).equals(receipt.get("schema"))
                     || !"EXTERNALLY_RATIFIED".equals(receipt.get("status"))
                     || !fields[0].equals(receipt.get("operatorId"))
                     || !fields[1].equals(receipt.get("recipeId"))
                     || !fields[2].equals(receipt.get("implementationSha256"))
                     || !fields[3].equals(receipt.get("contractSha256"))
-                    || !fields[4].equals(receipt.get("operatorCatalogSha256")))
+                    || !fields[4].equals(receipt.get("operatorCatalogSha256"))
+                    || sourceScoped && (!fields[5].equals(receipt.get("machineEvidenceSha256"))
+                    || !fields[6].equals(receipt.get("semanticLeafSha256"))))
                 throw new IOException("proof receipt does not match signed registry row");
             String stageSha = hashField(receipt, "stageReceiptSha256");
             String canonSha = hashField(receipt, "canonReceiptSha256");
-            checkStage(readJsonProof(base, proofDirectory, stageSha), fields[1], fields[2]);
+            checkStage(readJsonProof(base, proofDirectory, stageSha), fields[1], fields[2],
+                    sourceScoped, currentSourceDigest);
             checkCanon(base, proofDirectory, readJsonProof(base, proofDirectory, canonSha), fields[3]);
             int visible = 0;
             for (MachineOperatorCatalog.Leaf leaf : semantic.details())
                 if (fields[0].equals(leaf.operatorId())
-                        && fields[3].equals(leaf.envelope().syntacticContractSha256())) visible++;
+                        && fields[3].equals(leaf.envelope().syntacticContractSha256())
+                        && (!sourceScoped || fields[6].equals(leaf.semanticId()))) visible++;
             if (visible > 0) {
                 totalMatches++;
                 if (matches.size() < MAX_DETAILS)
-                    matches.add(new Candidate(fields[0], fields[1], fields[3], fields[5], visible));
+                    matches.add(new Candidate(fields[0], fields[1], fields[3],
+                            fields[sourceScoped ? 7 : 5], sourceScoped ? fields[6] : null, visible));
             }
         }
         return new Summary(Hashes.sha256(registryBytes), actualKey, rows.length - 1,
-                totalMatches, List.copyOf(matches));
+                sourceScoped ? rows.length - 1 : 0, totalMatches, List.copyOf(matches));
     }
 
     /** Signs an exact canonical registry row, not its arbitrary path or untrusted presentation. */
     static byte[] signable(String[] fields) {
-        return ("m3.smart.operator-proof-registry.v1\n" + String.join("\n", fields[0], fields[1],
-                fields[2], fields[3], fields[4], fields[5]) + "\n").getBytes(StandardCharsets.UTF_8);
+        if (fields.length != 6 && fields.length != 8)
+            throw new IllegalArgumentException("unsupported signed row width");
+        String domain = fields.length == 8 ? "m3.smart.operator-proof-registry.v2\n"
+                : "m3.smart.operator-proof-registry.v1\n";
+        return (domain + String.join("\n", fields) + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
     private static Map<?, ?> readJsonProof(Path base, Path root, String sha) throws IOException {
@@ -145,7 +190,8 @@ final class MachineOperatorProofRegistry {
         return map;
     }
 
-    private static void checkStage(Map<?, ?> stage, String recipeId, String implementationSha) throws IOException {
+    private static void checkStage(Map<?, ?> stage, String recipeId, String implementationSha,
+                                   boolean sourceScoped, String currentSourceDigest) throws IOException {
         if (!"m3.smart.code-agent-verify.v1".equals(stage.get("schema"))
                 || !"verified-for-review".equals(stage.get("status"))
                 || !recipeId.equals(stage.get("approvedRecipeId"))
@@ -156,6 +202,19 @@ final class MachineOperatorProofRegistry {
                 || !Boolean.FALSE.equals(stage.get("semanticProofAuthenticated"))
                 || !Boolean.FALSE.equals(stage.get("promoted")))
             throw new IOException("stage receipt not an approved verified-for-review replay");
+        if (sourceScoped && (!stage.keySet().equals(SOURCE_STAGE_KEYS)
+                || !"isolated-execution".equals(stage.get("mode"))
+                || !hashValue(stage.get("rewritePluginSha256"))
+                || !hashValue(stage.get("machineRulebookSha256"))
+                || !hashValue(stage.get("evidenceBindingSha256"))
+                || !currentSourceDigest.equals(stage.get("beforeSourceDigest"))
+                || !hashValue(stage.get("afterSourceDigest"))
+                || !hashValue(stage.get("dryRunPatchSha256"))
+                || !(stage.get("changedJavaFiles") instanceof String count
+                     && count.matches("[1-9][0-9]{0,5}"))
+                || !Boolean.TRUE.equals(stage.get("recipeExecutionAttempted"))
+                || !Boolean.FALSE.equals(stage.get("verificationAuthenticated"))))
+            throw new IOException("source-scoped proof refers to incomplete or stale staged run");
     }
 
     private static void checkCanon(Path base, Path root, Map<?, ?> canon, String contract) throws IOException {
@@ -201,6 +260,7 @@ final class MachineOperatorProofRegistry {
         return sha;
     }
 
+    private static boolean hashValue(Object value) { return value instanceof String sha && isHash(sha); }
     private static boolean isHash(String text) { return text != null && text.matches("[0-9a-f]{64}"); }
 
     private static String utf8(byte[] bytes) throws IOException {
