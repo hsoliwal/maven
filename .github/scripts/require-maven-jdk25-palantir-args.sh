@@ -5,6 +5,8 @@
 set -euo pipefail
 expected='-Dversion.palantirJavaFormat=2.71.0'
 seen=false
+# Never expand wildcard-looking Maven arguments into checkout filenames.
+set -f
 for token in ${MAVEN_ARGS:-}; do
   case "$token" in
     -Dversion.palantirJavaFormat=*)
@@ -14,6 +16,8 @@ for token in ${MAVEN_ARGS:-}; do
       fi
       seen=true
       ;;
+    -Dspotless.skip=false)
+      ;; # Explicit false keeps the original check enabled.
     -Dspotless.skip|-Dspotless.skip=*)
       echo 'M3 JDK25 formatter: explicit Spotless bypass is forbidden' >&2
       exit 1
