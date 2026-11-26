@@ -100,6 +100,38 @@ public final class CodeAgentTest {
         refused(plus(withoutCatalog(options), "--recipe-catalog", "linked-catalog.tsv"), project,
                 "symlinked catalog rejected");
         require(run(options) == 0, "offline mode still works after failures");
+
+        Path operatorLedger = receipts.resolve("machine.tsv");
+        String operatorLogic = "c".repeat(64);
+        Files.writeString(operatorLedger, MachineEvidence.HEADER + "\nExample.java\t"
+                + Hashes.sha256(java) + "\ta000001\t" + "b".repeat(64) + "\t"
+                + operatorLogic + "\t0000000000000000\t" + "d".repeat(64) + "\n");
+        Path operators = receipts.resolve("operators.tsv");
+        String operatorRows = MachineOperatorCatalog.HEADER + "\n"
+                + "fold-sum\tFOLD\tLOGIC\t" + operatorLogic + "\n";
+        Files.writeString(operators, operatorRows);
+        refused(plus(options, "--operator-catalog", "receipts/operators.tsv"), project,
+                "operator labels require independently source-bound machine evidence");
+        List<String> semanticOptions = plus(plus(options, "--machine-evidence", "receipts/machine.tsv"),
+                "--operator-catalog", "receipts/operators.tsv");
+        require(run(semanticOptions) == 0, "operator hints enter the deterministic code-agent path");
+        Map<?, ?> semanticReport = result(project);
+        Map<?, ?> semanticFacts = object(semanticReport.get("semanticOperatorFacts"));
+        require("m3.smart.semantic-operator-candidates.v1".equals(semanticFacts.get("schema"))
+                        && "1".equals(String.valueOf(semanticFacts.get("operatorHints")))
+                        && Boolean.FALSE.equals(semanticFacts.get("semanticProofAuthenticated")),
+                "operator hint remains a source-bound review-only semantic residue");
+        String semanticBinding = (String) semanticReport.get("evidenceBindingSha256");
+        require(!binding.equals(semanticBinding), "operator catalogue changes nomination evidence binding");
+        Files.writeString(candidate, nomination.replace(binding, semanticBinding));
+        require(run(plus(semanticOptions, "--candidate-file", "candidate.json")) == 0,
+                "operator-bound candidate can still nominate only approved OpenRewrite recipes");
+        Files.writeString(operators, operatorRows.replace("fold-sum", "fold-mutated"));
+        refused(plus(semanticOptions, "--candidate-file", "candidate.json"), project,
+                "changing operator catalogue invalidates stale nominated recipe evidence");
+        Files.writeString(operators, operatorRows);
+        Files.writeString(candidate, nomination);
+        require(run(options) == 0, "legacy nomination retains its original evidence contract");
         String fixtureJar = System.getProperty("m3.smart.fixtureJar");
         if (fixtureJar != null) {
             Path executable = Files.writeString(project.resolve("synthetic-llama-bin"), "not actually llama.cpp");

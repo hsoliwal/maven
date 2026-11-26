@@ -30,6 +30,7 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/main/java/io/synexia/maven/smart/BuildHookMain.java \
   src/main/java/io/synexia/maven/smart/RecipeCatalog.java \
   src/main/java/io/synexia/maven/smart/MachineEvidence.java \
+  src/main/java/io/synexia/maven/smart/MachineOperatorCatalog.java \
   src/main/java/io/synexia/maven/smart/MachineAtomInventory.java \
   src/main/java/io/synexia/maven/smart/CompilerAttribution.java \
   src/main/java/io/synexia/maven/smart/MachineFlowAnalysis.java \
@@ -45,7 +46,8 @@ javac -encoding UTF-8 -Xlint:all -Werror -d target/jdk-only \
   src/test/java/io/synexia/maven/smart/CodeAgentTest.java \
   src/test/java/io/synexia/maven/smart/CodeAgentVerifyTest.java \
   src/test/java/io/synexia/maven/smart/MachineFingerprintTest.java \
-  src/test/java/io/synexia/maven/smart/MachineRulebookTest.java
+  src/test/java/io/synexia/maven/smart/MachineRulebookTest.java \
+  src/test/java/io/synexia/maven/smart/MachineOperatorCatalogTest.java
 # Packaged rulebook resources are also present on the dependency-free test classpath.
 cp -R src/main/resources/. target/jdk-only/
 # Canon gate: the hard run contract, compiled and tested without any Maven API.
@@ -98,6 +100,7 @@ java --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaage
 java -cp target/jdk-only io.synexia.maven.smart.CanonicalPreparationEvidenceTestMain
 java -cp target/jdk-only io.synexia.maven.smart.MachineFingerprintTest
 java -cp target/jdk-only io.synexia.maven.smart.MachineRulebookTest
+java -cp target/jdk-only io.synexia.maven.smart.MachineOperatorCatalogTest
 java -cp target/jdk-only io.synexia.maven.smart.CodeAgentTest
 java -cp target/jdk-only io.synexia.maven.smart.CodeAgentVerifyTest
 java -Dm3.smart.testRoot="$(pwd)/target" -Dm3.smart.fixtureJar="$(pwd)/target/mcp-fixture.jar" -cp "target/jdk-only${sep}target/adapter-only" io.synexia.maven.smart.SmartBuilderAdapterTest

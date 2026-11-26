@@ -27,6 +27,8 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
     private File recipeCatalog;
     @Parameter(property = "m3.smart.machineEvidence")
     private File machineEvidence;
+    @Parameter(property = "m3.smart.operatorCatalog")
+    private File operatorCatalog;
     @Parameter(property = "m3.smart.approvedRecipeId", required = true)
     private String approvedRecipeId;
     @Parameter(property = "m3.smart.approveRecipeExecution", defaultValue = "false")
@@ -61,6 +63,7 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
                 "--plugin-sha256", rewritePluginSha256,
                 "--timeout-seconds", Integer.toString(timeoutSeconds)));
         if (machineEvidence != null) args.addAll(List.of("--machine-evidence", machineEvidence.toString()));
+        if (operatorCatalog != null) args.addAll(List.of("--operator-catalog", operatorCatalog.toString()));
         int status = CodeAgentVerifyMain.run(args.toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 recipe verification refused (status " + status + ")");
     }

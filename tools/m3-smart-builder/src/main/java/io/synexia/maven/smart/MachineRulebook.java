@@ -81,8 +81,14 @@ final class MachineRulebook {
 
     static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
                        MachineEvidence.Summary machine, Policy rules) {
+        return bind(preparation, atoms, catalog, machine, rules, null);
+    }
+
+    static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
+                       MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic) {
         return Hashes.sha256((preparation + "\n" + atoms.json() + "\n" + catalog.digest()
-                + (machine == null ? "" : "\n" + machine.json()) + "\n" + rules.sha256())
+                + (machine == null ? "" : "\n" + machine.json()) + "\n" + rules.sha256()
+                + (semantic == null ? "" : "\n" + semantic.json()))
                 .getBytes(StandardCharsets.UTF_8));
     }
 }

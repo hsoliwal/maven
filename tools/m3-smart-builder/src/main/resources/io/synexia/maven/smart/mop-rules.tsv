@@ -18,8 +18,10 @@ inference-boundary	RESIDUE	MECHANICAL	LLM emits only one schema-bound applicable
 logic-hash	SIMILARITY	PRODUCER_REPORTED	Normalized logic SHA-256 groups candidate operations but does not establish semantic or behavioral equivalence.
 masked-regex	LEXICAL	EXTERNAL_GATE	Mask strings comments and documentation before applying regex cues; only AST or masked recognition may authorize structural evidence.
 match-priority	PATTERN	REVIEW_ONLY	Rank exact logic cues then exact AST shapes then near SimHash; inspect syntactic contract mismatches and retain typed residue for review.
+operator-catalog	PATTERN	REVIEW_ONLY	Operator catalogue matches are source-bound syntax hints only; ambiguous matches and unlisted operators remain typed residue and never grant rewrite authority.
 pattern-order	PATTERN	PRODUCER_REPORTED	Patternize after atomization using AST structure control flow effects and masked cues then typed residue and a fixed point.
 recipe-first	REWRITE	MECHANICAL	Create or reuse an operator-reviewed Maven OpenRewrite recipe instead of accepting direct LLM source patches.
+semantic-residue	RESIDUE	REVIEW_ONLY	Prioritize unclassified and ambiguous semantic leaves before matched hints; preserve contract effects dispatch and flow proof obligations without claiming equivalence.
 simhash	SIMILARITY	REVIEW_ONLY	SimHash Hamming-near atoms are similarity candidates only; never infer equivalence from a distance threshold.
 structural-hash	SIMILARITY	PRODUCER_REPORTED	Structural SHA-256 groups code shape independently of identifiers and text; validate normalized structure at the owner.
 typed-residue	RESIDUE	REVIEW_ONLY	Invoke LLM only on bounded typed unsolved semantic residue after deterministic candidate filtering.

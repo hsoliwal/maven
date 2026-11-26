@@ -353,3 +353,55 @@ This is an executable **recipe-nomination plus isolated replay** slice of the
 larger distillation workflow, not a model-weight exporter, autonomous
 source-writing agent, or claim that model inference/real OpenRewrite/JUnit
 project verification was run by the synthetic offline tests.
+
+
+## Source-bound semantic operator catalogue (opt-in)
+
+The operator catalogue is a persistent, operator-maintained input used to **guide** the
+coding agent; it is not an executable recipe list, a semantic-equivalence database,
+or a replacement for the sealed M3 canonical specification. In the active project
+checkout, create a sorted UTF-8 TSV with this exact header (trailing LF required):
+
+`operator_id<TAB>family<TAB>match_kind<TAB>fingerprint_sha256`
+
+`operator_id` is a unique lowercase identifier; `family` must be one of
+`MAP FILTER FLATMAP FOLD REDUCE ZIP JOIN GROUP PREDICATE ADAPTER STRATEGY STATE PIPELINE CONTEXT OTHER`.
+`match_kind` is `LOGIC` or `STRUCTURAL`, each matching exactly the corresponding
+producer-reported 64-hex SHA-256 of an atom. Entries are sorted by operator ID,
+strictly parsed, and limited to 128. **No semantic identity or proof is inferred
+from an equal hash.** Colliding entries remain ambiguous; no candidate is
+automatically accepted.
+
+Use both the existing, freshly validated machine evidence and the new optional
+catalogue when nominating and verifying a recipe:
+
+```sh
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=.reports/preparation.json \
+  -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
+  -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
+  -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv \
+  -Dm3.smart.operatorCatalog=.reports/approved-operators.tsv \
+  -Dm3.smart.requireMachineEvidence=true
+```
+
+Supply those same `machineEvidence` and `operatorCatalog` properties to the
+separate `m3:code-agent-verify` invocation. Omitting the catalogue leaves the old
+nomination and verifier schema/digest unchanged. The catalogue cannot be used
+without the machine ledger. Any change to the catalogue or ledger invalidates
+the evidence-bound candidate and must be re-nominated before replay.
+
+The bounded `semanticOperatorFacts` projection provides at most **24** semantic
+leaves, prioritizing unknown and ambiguous labels, with a stable SHA-256 leaf
+identity, optional family/label and a typed residue. Bitmask proof obligations
+remain set for observable contracts (bit 0), effects (bit 1), call dispatch
+(bit 2), unavailable flow (bit 3), and incomplete flow (bit 4).
+`semanticProofAuthenticated` and `promotionAuthority` are always false.
+Labels do not become verified operators until their separate owner supplies
+compiler, contract, effect, behavioral and M3 canon proof.
+
+The packaged rulebook adds two REVIEW_ONLY laws for operator recognition and
+typed residue. It does **not** replace or edit the locked M3 canon. The outcome
+is an explicit, replayable context projection for LLM recipe nomination, not
+training or extraction of a browser model.
