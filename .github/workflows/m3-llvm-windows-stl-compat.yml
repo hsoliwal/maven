@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/m3-llvm-windows-stl-compat.yml'
       - '.github/scripts/require-m3-llvm-windows-stl.ps1'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_WINDOWS_STL_COMPAT.md'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
       - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
   workflow_dispatch:
