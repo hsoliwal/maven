@@ -32,6 +32,22 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
+      - name: Preserve the actual Temurin JDK link inventory before Maven dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='tools/project-db/diagnostics/javac-host-preflight-20261125'
+          mkdir -p qualified-provider-preflight
+          (cd "$input" && sha256sum -c BOOTSTRAP_SHA256SUMS)
+          test "$(git hash-object "$input/M3HostJdkBootstrap.py")" = 'f13bab3d5b6011d9fcbe877a9a255e6b1086d2e6'
+          python3 "$input/M3HostJdkBootstrap.py" --self-test 2>&1 |
+            tee qualified-provider-preflight/PRE_MAVEN_SELFTEST.log
+          grep -Fxq 'M3_PREMAVEN_HOST_BOOTSTRAP_SELFTEST=PASS 12 controls' qualified-provider-preflight/PRE_MAVEN_SELFTEST.log
+          python3 "$input/M3HostJdkBootstrap.py" --inspect --expected-major '${{ matrix.java }}' |
+            tee qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          grep -Fxq M3_PREMAVEN_SELECTED_RUNTIME_V1 qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          grep -Fxq 'jdkMajor=${{ matrix.java }}' qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          (cd qualified-provider-preflight && sha256sum PRE_MAVEN_SELFTEST.log PRE_MAVEN_HOST.txt > PRE_MAVEN_SHA256SUMS && sha256sum -c PRE_MAVEN_SHA256SUMS)
       - name: Checkout exact original Maven compiler provider source
         uses: actions/checkout@v4
         with:
