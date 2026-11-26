@@ -286,6 +286,57 @@ public final class CodeAgentVerifyTest {
         refused(operatorVerify, project, "omitted signed proof options cannot replay signed nomination");
         refused(replace(signedVerify, "--operator-proof-key-sha256", "0".repeat(64)),
                 project, "changed trusted key pin refuses proof replay");
+        // V2 provenance is tied to one source-bound semantic leaf and the real archived staged receipt.
+        Map<?, ?> semanticReport = object(nomination(project).get("semanticOperatorFacts"));
+        List<?> semanticLeaves = (List<?>) semanticReport.get("semanticLeaves");
+        require(semanticLeaves.size() == 1, "one atom is eligible for a leaf-specific attestation");
+        String leafSha = (String) object(semanticLeaves.getFirst()).get("semanticIdSha256");
+        String evidenceSha = Hashes.sha256(Files.readAllBytes(evidence));
+        String sourceProofV2 = "{\"schema\":\"" + MachineOperatorProofRegistry.SOURCE_RECEIPT_SCHEMA
+                + "\",\"operatorId\":\"sum-fold\",\"recipeId\":\"iteration-loop\","
+                + "\"implementationSha256\":\"" + recipeHash
+                + "\",\"contractSha256\":\"" + contractSha
+                + "\",\"operatorCatalogSha256\":\"" + operatorCatalogSha
+                + "\",\"machineEvidenceSha256\":\"" + evidenceSha
+                + "\",\"semanticLeafSha256\":\"" + leafSha
+                + "\",\"stageReceiptSha256\":\"" + stageSha
+                + "\",\"canonReceiptSha256\":\"" + canonSha
+                + "\",\"status\":\"EXTERNALLY_RATIFIED\"}";
+        String sourceProofSha = saveProofJson(proofDirectory, sourceProofV2);
+        String[] sourceFields = {"sum-fold", "iteration-loop", recipeHash, contractSha,
+                operatorCatalogSha, evidenceSha, leafSha, sourceProofSha};
+        signer.initSign(signingPair.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(sourceFields));
+        String sourceSig = java.util.HexFormat.of().formatHex(signer.sign());
+        Files.writeString(receipts.resolve("signed-source-operators.tsv"),
+                MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                        + String.join("\t", sourceFields) + "\t" + sourceSig + "\n");
+        List<String> sourceNomination = replace(signedNomination, "--operator-proof-registry",
+                "receipts/signed-source-operators.tsv");
+        require(runNomination(sourceNomination) == 0,
+                "V2 proof provenance matches the current source and machine ledger");
+        Map<?, ?> scopedProof = object(nomination(project).get("operatorProofFacts"));
+        require("1".equals(scopedProof.get("sourceScopedEntries").toString())
+                        && Boolean.TRUE.equals(object(((List<?>) scopedProof.get("candidateAttestations"))
+                        .getFirst()).get("sourceBindingVerified")),
+                "V2 signed evidence is explicitly bound to one atom, not only an operator catalogue");
+        String sourceBinding = (String) nomination(project).get("evidenceBindingSha256");
+        Files.writeString(project.resolve("source-candidate.json"),
+                "{\"schema\":\"m3.smart.code-agent.candidate.v1\",\"evidenceSha256\":\""
+                        + sourceBinding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "the model candidate is bound to the V2 leaf-scoped evidence");
+        List<String> sourceVerify = replace(signedVerify, "--operator-proof-registry",
+                "receipts/signed-source-operators.tsv");
+        require(runVerify(sourceVerify) == 0,
+                "V2 source digest and the archived real staged verifier report survive replay");
+        require(sourceBinding.equals(verification(project).get("evidenceBindingSha256"))
+                        && Boolean.FALSE.equals(verification(project).get("semanticProofAuthenticated")),
+                "even source-specific signed replay cannot authenticate semantic equivalence");
+        String alteredEvidence = ledger.replace("0000000000000001", "0000000000000002");
+        Files.writeString(evidence, alteredEvidence);
+        refused(sourceVerify, project, "V2 proof cannot be replayed after machine evidence changes");
+        Files.writeString(evidence, ledger);
         require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
                 "non-opted-in callers retain the previous nomination contract");
         System.out.println("CODE AGENT VERIFY TESTS PASS: " + checks + " (synthetic runner only)");

@@ -191,6 +191,32 @@ public final class MachineOperatorProofRegistryTest {
                 semantic, recipes), "source-specific signature requires current source digest");
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
                 semantic, recipes, "7".repeat(64)), "signed staged source cannot move to a different checkout");
+        // A correctly signed V2 chain cannot turn a zero-change or incomplete stage into proof.
+        String zeroStage = stage.replace("\"changedJavaFiles\":1", "\"changedJavaFiles\":0");
+        String zeroStageSha = saveJson(root, zeroStage);
+        String zeroProofSha = saveJson(root, sourceProof.replace(stageSha, zeroStageSha));
+        String[] zeroFields = scopedFields.clone();
+        zeroFields[7] = zeroProofSha;
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(zeroFields));
+        String zeroSignature = HexFormat.of().formatHex(signer.sign());
+        Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", zeroFields) + "\t" + zeroSignature + "\n");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64)), "signed V2 zero-change staged receipt is not proof");
+        Files.writeString(registry, scopedRegistry);
+        String emptyStage = stage.replace(",\"dryRunPatchSha256\":\"" + "8".repeat(64) + "\"", "");
+        String emptyStageSha = saveJson(root, emptyStage);
+        String emptyProofSha = saveJson(root, sourceProof.replace(stageSha, emptyStageSha));
+        String[] emptyFields = scopedFields.clone();
+        emptyFields[7] = emptyProofSha;
+        signer.initSign(keys.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(emptyFields));
+        Files.writeString(registry, MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                + String.join("\t", emptyFields) + "\t" + HexFormat.of().formatHex(signer.sign()) + "\n");
+        refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
+                semantic, recipes, "6".repeat(64)), "signed V2 missing dry-run preview is not proof");
+        Files.writeString(registry, scopedRegistry);
         Files.writeString(registry, scopedRegistry.replace(scopedSignature, signature));
         refused(() -> MachineOperatorProofRegistry.inspect(base, registry, root, key, pinned,
                 semantic, recipes, "6".repeat(64)), "V1 signature cannot authorize V2 source scoped claim");
