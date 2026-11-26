@@ -178,6 +178,31 @@ public final class CodeAgentVerifyTest {
         Files.writeString(file, initial);
         require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
                 "valid original source restores nomination");
+
+        Path operatorCatalog = receipts.resolve("operators.tsv");
+        String operatorRows = MachineOperatorCatalog.HEADER + "\n"
+                + "sum-fold\tFOLD\tLOGIC\t" + "c".repeat(64) + "\n";
+        Files.writeString(operatorCatalog, operatorRows);
+        List<String> operatorNomination = plus(nomination, "--operator-catalog", "receipts/operators.tsv");
+        require(runNomination(operatorNomination) == 0, "optional operator hints are source-bound at nomination");
+        String operatorBinding = (String) nomination(project).get("evidenceBindingSha256");
+        Path operatorCandidate = project.resolve("operator-candidate.json");
+        Files.writeString(operatorCandidate, "{\"schema\":\"m3.smart.code-agent.candidate.v1\","
+                + "\"evidenceSha256\":\"" + operatorBinding
+                + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(operatorNomination, "--candidate-file", "operator-candidate.json")) == 0,
+                "source-bound operator catalogue permits only the existing approved recipe");
+        List<String> operatorVerify = plus(command, "--operator-catalog", "receipts/operators.tsv");
+        require(runVerify(operatorVerify) == 0,
+                "stage verifier accepts the unmodified operator catalogue with explicit approval");
+        require(operatorBinding.equals(verification(project).get("evidenceBindingSha256")),
+                "verification receipt is bound to exactly the operator-guided nomination");
+        Files.writeString(operatorCatalog, operatorRows.replace("sum-fold", "sum-changed"));
+        refused(operatorVerify, project, "operator catalogue mutation invalidates staged approval");
+        Files.writeString(operatorCatalog, operatorRows);
+        refused(command, project, "legacy verifier cannot replay a nomination with omitted semantic catalogue");
+        require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
+                "legacy nomination still replays without an operator catalogue");
         System.out.println("CODE AGENT VERIFY TESTS PASS: " + checks + " (synthetic runner only)");
     }
 
