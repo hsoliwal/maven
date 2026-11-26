@@ -12,6 +12,20 @@ on:
       - 'tools/m3-polyglot-maven-plugin/docs/LLVM_WINDOWS_STL_COMPAT.md'
       - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
       - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
+      - '.gitattributes'
+      - '.github/workflows/maven.yml'
+      - '.github/workflows/m3-polyglot-verify.yml'
+      - 'tools/m3-polyglot-maven-plugin/pom.xml'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolReuseInputs.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskRunner.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskManifest.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/InputStamps.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java'
   workflow_dispatch:
 
 permissions:
