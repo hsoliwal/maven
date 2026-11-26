@@ -7,6 +7,7 @@ callgraph-residue	PATTERN	REVIEW_ONLY	Treat all non-attributed call sites as typ
 canon-proof	VERIFY	EXTERNAL_GATE	Require diff then linter then compiler then tests then optional runtime with M3 canon packet evidence before promotion.
 cfg-defuse	PATTERN	PRODUCER_REPORTED	Bounded may-flow CFG and compiler-symbol local reaching definitions are advisory; incomplete masks preserve switch finally expression heap exception and nested residue.
 compiler-bindings	PATTERN	PRODUCER_REPORTED	Compiler-resolved static call targets and types are guidance only; reject missing dependencies and never claim virtual dispatch or effect equivalence.
+contract-envelope	PATTERN	PRODUCER_REPORTED	Syntactic signature type effect call and flow cues form a bounded contract envelope for review; hash matches never prove API ABI dispatch or observable behavior.
 contract-hash	SIMILARITY	PRODUCER_REPORTED	Contract fingerprints and effect facts are signals only until producer semantics and host verification are authenticated.
 control-flow-cues	PATTERN	PRODUCER_REPORTED	AST branches loops exceptions writes allocations and monitors are candidate cues only; syntax masks are not a control flow graph or effect proof.
 deterministic-first	RESIDUE	REVIEW_ONLY	Prefer deterministic indexing recognizers and registered recipes over probabilistic code generation.

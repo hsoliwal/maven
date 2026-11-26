@@ -405,3 +405,29 @@ The packaged rulebook adds two REVIEW_ONLY laws for operator recognition and
 typed residue. It does **not** replace or edit the locked M3 canon. The outcome
 is an explicit, replayable context projection for LLM recipe nomination, not
 training or extraction of a browser model.
+
+
+### Contract-aware semantic leaves (advisory)
+
+The operator catalogue also accepts a second, strictly validated schema that
+appends `contract_sha256` to every operator row. If the digest of the atom's
+**syntactic** signature does not match an operator's optional pin, a matching
+logic/structural hash is classified as `CONTRACT_CUE_MISMATCH`, not as a matched
+operator. The original four-column catalogue remains valid. Entries cannot
+mix the two schema widths.
+
+Each bounded semantic leaf contains a `contractEnvelope` derived from the
+independently source-validated machine ledger. It may contain the syntactic
+contract SHA-256, control/effect syntax masks, javac-attributed type/call-target
+SHA-256, unresolved-call count, and may-flow/def-use hashes. Missing facts are
+explicitly null or -1, rather than silently interpreted as safe.
+
+The proof-obligation mask is conservative even when a 21-column may-flow
+receipt reports no incomplete paths: observable contracts, effects,
+dynamic/interprocedural dispatch, full flow, and API/ABI compatibility remain
+external proof obligations. An incomplete may-flow mask adds another explicit
+obligation. The envelope is `PRODUCER_REPORTED`; hash matches remain `REVIEW_ONLY`.
+No Java source modification, verified operator promotion or semantic equivalence
+is implied. These additional fields and the new \`contract-envelope\` rule are
+included in the versioned, content-bound model evidence packet and are
+revalidated before staged recipe execution.

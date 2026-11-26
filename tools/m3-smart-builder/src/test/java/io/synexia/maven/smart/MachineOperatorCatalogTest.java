@@ -45,6 +45,45 @@ public final class MachineOperatorCatalogTest {
                 "report states both source binding and lack of semantic proof");
         require(summary.json().equals(MachineOperatorCatalog.inspect(project, evidence, catalog,
                 MachineEvidence.inspect(project, source, evidence)).json()), "deterministic replay");
+        require(summary.equals(MachineOperatorCatalog.inspect(project, evidence, catalog,
+                MachineEvidence.inspect(project, source, evidence))), "semantic receipt has value equality");
+        require((summary.details().getFirst().proofObligationMask() & 0x2f) == 0x2f,
+                "contract effects flow dispatch and API proof obligations remain outstanding");
+        require(summary.json().contains("\"contractEnvelope\":")
+                && summary.json().contains("\"observableContractProven\":false"),
+                "bounded LLM evidence contains explicit syntactic contract and unproven status");
+        String pin = "0".repeat(64);
+        String pinned = MachineOperatorCatalog.CONTRACT_PINNED_HEADER + "\n"
+                + "map-int\tMAP\tLOGIC\t" + logicA + "\t" + pin + "\n"
+                + "shape-int\tADAPTER\tSTRUCTURAL\t" + shapeB + "\t" + pin + "\n";
+        Files.writeString(catalog, pinned);
+        MachineOperatorCatalog.Summary contractBound = MachineOperatorCatalog.inspect(project, evidence, catalog, bound);
+        require(contractBound.operatorHints() == 2 && contractBound.contractCueMismatches() == 0,
+                "optional syntactic-contract pins admit matching reviewed operator cues");
+        Files.writeString(catalog, pinned.replace("map-int\tMAP\tLOGIC\t" + logicA + "\t" + pin,
+                "map-int\tMAP\tLOGIC\t" + logicA + "\t" + "1".repeat(64)));
+        MachineOperatorCatalog.Summary mismatch = MachineOperatorCatalog.inspect(project, evidence, catalog, bound);
+        require(mismatch.contractCueMismatches() == 1 && mismatch.operatorHints() == 1
+                && "CONTRACT_CUE_MISMATCH".equals(mismatch.details().getFirst().residue()),
+                "matching logic with different method signature becomes typed residue");
+        Files.writeString(catalog, pinned.replace(pin, "not-a-digest"));
+        refused(() -> MachineOperatorCatalog.inspect(project, evidence, catalog, bound),
+                "malformed contract pin fails closed");
+        Files.writeString(catalog, approved);
+        String[] syntheticFlow = ("Example.java\t" + fileSha + "\ta000001\t" + "b".repeat(64)
+                + "\t" + logicA + "\t0000000000000000\t" + pin
+                + "\t0010\t0001\t1\t0\t" + "a".repeat(64) + "\t" + "b".repeat(64)
+                + "\t3\t4\t" + "c".repeat(64) + "\t2\t1\t3\t"
+                + "d".repeat(64) + "\t0000").split("\t", -1);
+        MachineContractEnvelope envelope = MachineContractEnvelope.fromValidatedRow(syntheticFlow);
+        require(envelope.outstandingProofMask() == 0x2f
+                && envelope.json().contains("\"flowIncompleteMask\":0")
+                && envelope.json().contains("\"effectsProven\":false"),
+                "even no reported flow gaps does not prove observable equivalence");
+        syntheticFlow[20] = "0010";
+        require((MachineContractEnvelope.fromValidatedRow(syntheticFlow).outstandingProofMask() & 0x10) != 0,
+                "unmodelled paths require an additional review obligation");
+
         Files.writeString(catalog, MachineOperatorCatalog.HEADER + "\n"
                 + "map-int\tMAP\tLOGIC\t" + logicA + "\n"
                 + "map-other\tMAP\tLOGIC\t" + logicA + "\n"

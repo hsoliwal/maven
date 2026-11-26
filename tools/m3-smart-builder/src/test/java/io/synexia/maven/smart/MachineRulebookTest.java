@@ -13,7 +13,7 @@ public final class MachineRulebookTest {
 
     public static void main(String[] args) throws Exception {
         MachineRulebook.Policy rules = MachineRulebook.load();
-        require(rules.rules().size() == 26, "18 mandatory M3 laws and eight reviewed analysis and semantic-residue laws present");
+        require(rules.rules().size() == 27, "18 mandatory M3 laws and nine reviewed evidence and semantic-residue laws present");
         require(rules.sha256().matches("[0-9a-f]{64}"), "policy has a strong content digest");
         Map<?, ?> object = object(TinyJson.parse(rules.json()));
         require("m3.machine.rules.v1".equals(object.get("schema")), "policy is machine readable");
@@ -45,6 +45,9 @@ public final class MachineRulebookTest {
                         && rule.authority().equals("REVIEW_ONLY")), "operator recognition is not proof");
         require(rules.rules().stream().anyMatch(rule -> rule.id().equals("semantic-residue")
                         && rule.authority().equals("REVIEW_ONLY")), "unrecognized atoms remain typed residue");
+        require(rules.rules().stream().anyMatch(rule -> rule.id().equals("contract-envelope")
+                        && rule.authority().equals("PRODUCER_REPORTED")),
+                "syntactic contract envelope remains unverified producer evidence");
         String original = MachineRulebook.VERSION + "\n" + MachineRulebook.HEADER + "\n";
         for (MachineRulebook.Rule rule : rules.rules())
             original += rule.id() + "\t" + rule.stage() + "\t" + rule.authority() + "\t" + rule.directive() + "\n";

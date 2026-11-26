@@ -177,6 +177,8 @@ public final class CodeAgentMain {
                 .append("is zero, implicit exceptions, heap effects and interprocedural contracts remain unproven. ")
                 .append("Pattern candidate mayFlowCompared distinguishes absent flow facts from comparable hashes; ")
                 .append("flow and def-use fingerprint matches remain review hints, never refactoring proof. ")
+                .append("Optional operator contract pins only narrow syntactic candidates. Mismatches are typed residue. ")
+                .append("ContractEnvelope fields are producer-reported hints, not API ABI effect or runtime proof. ")
                 .append("Operator catalogue matches are syntax-only, REVIEW_ONLY labels; contract and effect proof remains ")
                 .append("required. Unclassified or ambiguous operators are typed semantic residue, not an invention request. ")
                 .append("If these cues cannot justify an applicable reviewed recipe, leave typed residue unresolved. ")

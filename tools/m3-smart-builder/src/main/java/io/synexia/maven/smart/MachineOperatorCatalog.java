@@ -20,6 +20,7 @@ import java.util.Set;
  */
 final class MachineOperatorCatalog {
     static final String HEADER = "operator_id\tfamily\tmatch_kind\tfingerprint_sha256";
+    static final String CONTRACT_PINNED_HEADER = HEADER + "\tcontract_sha256";
     private static final Set<String> FAMILIES = Set.of("MAP", "FILTER", "FLATMAP", "FOLD", "REDUCE", "ZIP",
             "JOIN", "GROUP", "PREDICATE", "ADAPTER", "STRATEGY", "STATE", "PIPELINE", "CONTEXT", "OTHER");
     private static final int MAX_OPERATORS = 128;
@@ -27,10 +28,12 @@ final class MachineOperatorCatalog {
 
     private MachineOperatorCatalog() { }
 
-    private record Operator(String id, String family, String matchKind, String fingerprint) { }
+    private record Operator(String id, String family, String matchKind, String fingerprint,
+                            String pinnedContract) { }
 
     record Leaf(String path, String atomId, String semanticId, String operatorId, String family,
-                String matchKind, String residue, int proofObligationMask) {
+                String matchKind, String residue, MachineContractEnvelope envelope) {
+        int proofObligationMask() { return envelope.outstandingProofMask(); }
         String json() {
             return "{\"path\":" + TinyJson.quote(path)
                     + ",\"atomId\":" + TinyJson.quote(atomId)
@@ -39,13 +42,14 @@ final class MachineOperatorCatalog {
                     + ",\"family\":" + (family == null ? "null" : TinyJson.quote(family))
                     + ",\"matchKind\":" + TinyJson.quote(matchKind)
                     + ",\"residue\":" + TinyJson.quote(residue)
-                    + ",\"proofObligationMask\":" + proofObligationMask
+                    + ",\"proofObligationMask\":" + proofObligationMask()
+                    + ",\"contractEnvelope\":" + envelope.json()
                     + ",\"authority\":\"REVIEW_ONLY\"}";
         }
     }
 
     record Summary(String catalogSha256, String evidenceSha256, int atoms, int operatorHints,
-                   int unclassified, int ambiguous, List<Leaf> details) {
+                   int unclassified, int ambiguous, int contractCueMismatches, List<Leaf> details) {
         String json() {
             StringBuilder json = new StringBuilder("{\"schema\":\"m3.smart.semantic-operator-candidates.v1\",\"catalogSha256\":")
                     .append(TinyJson.quote(catalogSha256))
@@ -54,6 +58,7 @@ final class MachineOperatorCatalog {
                     .append(",\"operatorHints\":").append(operatorHints)
                     .append(",\"unclassified\":").append(unclassified)
                     .append(",\"ambiguous\":").append(ambiguous)
+                    .append(",\"contractCueMismatches\":").append(contractCueMismatches)
                     .append(",\"detailsTruncated\":").append(atoms > details.size())
                     .append(",\"semanticLeaves\":[");
             for (int i = 0; i < details.size(); i++)
@@ -85,21 +90,29 @@ final class MachineOperatorCatalog {
                 || !Set.of(MachineEvidence.HEADER, MachineEvidence.EXTENDED_HEADER,
                         MachineEvidence.ATTRIBUTED_HEADER, MachineEvidence.FLOW_HEADER).contains(rows[0]))
             throw new IOException("inconsistent machine evidence rows");
-        int hints = 0, unclassified = 0, ambiguous = 0;
+        int hints = 0, unclassified = 0, ambiguous = 0, contractMismatches = 0;
         List<Leaf> all = new ArrayList<>();
         for (int i = 1; i < rows.length; i++) {
             String[] fields = rows[i].split("\t", -1);
             if (!Set.of(7, 9, 13, 21).contains(fields.length))
                 throw new IOException("invalid machine atom row");
+            MachineContractEnvelope envelope = MachineContractEnvelope.fromValidatedRow(fields);
             List<Operator> matches = logic.getOrDefault(fields[4], List.of());
             String matchKind = "LOGIC";
             if (matches.isEmpty()) {
                 matches = structural.getOrDefault(fields[3], List.of());
                 matchKind = matches.isEmpty() ? "NONE" : "STRUCTURAL";
             }
+            boolean contractMismatch = !matches.isEmpty() && matches.stream().noneMatch(op ->
+                    op.pinnedContract() == null || op.pinnedContract().equals(envelope.syntacticContractSha256()));
+            matches = matches.stream().filter(op -> op.pinnedContract() == null
+                    || op.pinnedContract().equals(envelope.syntacticContractSha256())).toList();
             String residue;
             Operator selected = null;
-            if (matches.isEmpty()) {
+            if (contractMismatch) {
+                residue = "CONTRACT_CUE_MISMATCH";
+                contractMismatches++;
+            } else if (matches.isEmpty()) {
                 residue = "NO_ADMITTED_OPERATOR";
                 unclassified++;
             } else if (matches.size() != 1) {
@@ -110,43 +123,43 @@ final class MachineOperatorCatalog {
                 residue = "CONTRACT_AND_EFFECT_PROOF_REQUIRED";
                 hints++;
             }
-            // Bits represent outstanding proof obligations; matching hashes never clear them.
-            int obligations = 0x01 | 0x02; // observable contract and effects
-            if (fields.length < 13 || Integer.parseInt(fields[10]) != 0) obligations |= 0x04; // calls
-            if (fields.length < 21) obligations |= 0x08; // complete flow not available
-            else if (Integer.parseInt(fields[20], 16) != 0) obligations |= 0x10; // unmodelled paths
             String identity = Hashes.sha256(("m3.semantic-leaf.v1\n" + fields[0] + "\n" + fields[1]
                     + "\n" + fields[2] + "\n" + fields[3] + "\n" + fields[4]
                     + "\n" + fields[6]).getBytes(StandardCharsets.UTF_8));
             all.add(new Leaf(fields[0], fields[2], identity,
                     selected == null ? null : selected.id(), selected == null ? null : selected.family(),
-                    matchKind, residue, obligations));
+                    matchKind, residue, envelope));
         }
         // Spend the bounded prompt budget on unsolved/ambiguous atoms first, not easy matches.
         all.sort(Comparator.comparingInt((Leaf leaf) -> switch (leaf.residue()) {
-            case "NO_ADMITTED_OPERATOR" -> 0;
-            case "AMBIGUOUS_OPERATOR" -> 1;
-            default -> 2;
+            case "CONTRACT_CUE_MISMATCH" -> 0;
+            case "NO_ADMITTED_OPERATOR" -> 1;
+            case "AMBIGUOUS_OPERATOR" -> 2;
+            default -> 3;
         }).thenComparing(Leaf::path).thenComparing(Leaf::atomId));
         return new Summary(Hashes.sha256(approved), evidenceSha, all.size(), hints, unclassified,
-                ambiguous, List.copyOf(all.subList(0, Math.min(MAX_DETAILS, all.size()))));
+                ambiguous, contractMismatches, List.copyOf(all.subList(0, Math.min(MAX_DETAILS, all.size()))));
     }
 
     private static List<Operator> parseCatalog(String text) throws IOException {
         String[] rows = rows(text);
-        if (rows.length < 2 || rows.length > MAX_OPERATORS + 1 || !HEADER.equals(rows[0]))
+        boolean contractPinned = CONTRACT_PINNED_HEADER.equals(rows[0]);
+        if (rows.length < 2 || rows.length > MAX_OPERATORS + 1
+                || !(HEADER.equals(rows[0]) || contractPinned))
             throw new IOException("invalid semantic operator catalogue schema");
         String previous = "";
         List<Operator> operators = new ArrayList<>();
         for (int i = 1; i < rows.length; i++) {
             String[] fields = rows[i].split("\t", -1);
-            if (fields.length != 4 || !fields[0].matches("[a-z][a-z0-9-]{0,63}")
+            if (fields.length != (contractPinned ? 5 : 4) || !fields[0].matches("[a-z][a-z0-9-]{0,63}")
                     || fields[0].compareTo(previous) <= 0 || !FAMILIES.contains(fields[1])
                     || !Set.of("LOGIC", "STRUCTURAL").contains(fields[2])
-                    || !fields[3].matches("[0-9a-f]{64}"))
+                    || !fields[3].matches("[0-9a-f]{64}")
+                    || contractPinned && !fields[4].matches("[0-9a-f]{64}"))
                 throw new IOException("invalid or unsorted semantic operator row");
             previous = fields[0];
-            operators.add(new Operator(fields[0], fields[1], fields[2], fields[3]));
+            operators.add(new Operator(fields[0], fields[1], fields[2], fields[3],
+                    contractPinned ? fields[4] : null));
         }
         return List.copyOf(operators);
     }
