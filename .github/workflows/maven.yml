@@ -61,6 +61,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Maven may add -ntp or other harmless flags at distribution startup.
+      - name: Validate Java 25 formatter-args admission logic
+        shell: bash
+        run: bash .github/scripts/test-maven-jdk25-palantir-args.sh
+
       - name: Hash the POMs for the Mimir cache key
         id: pom-hash
         shell: bash
@@ -301,7 +306,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$MAVEN_ARGS" = "-Dversion.palantirJavaFormat=2.71.0"
+          bash .github/scripts/require-maven-jdk25-palantir-args.sh
           actual="$(mvn -q -f plugins/maven-clean-plugin/pom.xml help:evaluate -Dexpression=version.palantirJavaFormat -DforceStdout)"
           test "$actual" = "2.71.0"
           # Genuine Spotless check of the failing inherited plugin's Java sources;
@@ -436,7 +441,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$MAVEN_ARGS" = "-Dversion.palantirJavaFormat=2.71.0"
+          bash .github/scripts/require-maven-jdk25-palantir-args.sh
           actual="$(mvn -q -f plugins/maven-clean-plugin/pom.xml help:evaluate -Dexpression=version.palantirJavaFormat -DforceStdout)"
           test "$actual" = "2.71.0"
           # Genuine Spotless check of the failing inherited plugin's Java sources;
