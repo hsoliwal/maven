@@ -48,6 +48,8 @@ a failed build needs an explicit post step after Maven.
   original files, and its retained output lines enter the model prompt. Configure it to emit only the information
   appropriate for that prompt.
 - **Run:** the command runs in the project directory.
+- **Admission:** rejected requested preparation or atom/pattern receipts prevent command launch. The report records
+  `summaryStatus: blocked-admission` and empty `summaryLines`; an earlier summary file is not consumed as current facts.
 - **Recorded:** `summaryStatus`, and up to 40 non-blank output lines of at most 300 characters as `summaryLines`
   among the facts the model sees. Truncation preserves complete Unicode characters.
 - **Output file:** at most 1 MiB of standard output is kept as `<phase>.summary.txt` next to the report.
@@ -137,7 +139,12 @@ The report and the model prompt carry the manifest, source-set and checkpoint-se
 `atomPatternStatus: structurally-validated` and `semanticProofAuthenticated: false`.
 
 Missing, stale, malformed, incomplete or misordered evidence writes `atomPatternStatus: rejected`, a bounded reason
-code and `adviceStatus: blocked-evidence`. The hook then exits non-zero **before launching the provider**.
+code and `adviceStatus: blocked-evidence`. The hook then exits non-zero **before launching the summarizer or provider**.
+After summary collection and again before publishing a successful advisory result, the hook reruns the same evidence
+parser and compares the admitted manifest, source-set and checkpoint-set identities. Source membership changes,
+changed bytes and replacement valid receipts refuse the current advisory. A refusal after summary collection skips
+provider construction; a refusal after inference clears the candidate. The report retains the original receipt facts
+for diagnosis with a rejected status. These boundary checks do not lock source files against other writers.
 
 Limits:
 
@@ -175,7 +182,10 @@ A second, independent source-bound admission:
 - **Input:** a canonical private OpenRewrite runner emits `synexia.smart-build.preparation.v1` outside the selected
   source root. The hook does not run that runner, and does not accept a recipe from model output.
 - **Refusal:** when a requested report is missing, incomplete, stale or refused, the hook exits 2 **before** any
-  model call.
+  summarizer or model call. The original receipt and source binding are checked again after summary collection and
+  after a successful model call. Even a replacement receipt that parses successfully must match the admitted identity.
+  Drift records `preparationStatus: refused` and `adviceStatus: blocked-preparation` (or `blocked-evidence` when the
+  independent checkpoint gate also fails), clears any candidate and retains the supplied Maven `buildOutcome`.
 - **Explicit opt-in:** supplying a preparation report without requiring it is rejected.
 - **Authority:** preparation facts are `PRODUCER_REPORTED_NOT_REEXECUTED`. They do not authenticate the OpenRewrite
   execution, and do not authorize source mutation.
