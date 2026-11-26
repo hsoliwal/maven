@@ -431,3 +431,14 @@ No Java source modification, verified operator promotion or semantic equivalence
 is implied. These additional fields and the new \`contract-envelope\` rule are
 included in the versioned, content-bound model evidence packet and are
 revalidated before staged recipe execution.
+
+## Signed evidence from an external M3 proof owner
+
+The optional, Ed25519-signed and independently pinned operator-proof registry
+is specified in [OPERATOR_PROOF_REGISTRY.md](OPERATOR_PROOF_REGISTRY.md).
+It augments the source-bound operator catalogue with authenticated provenance
+and all six mandatory M3 output-artifact digests. The model receives bounded
+review-only attestation facts; staged verification rechecks them. An external
+signature **never** authenticates semantic equivalence or authorizes a
+FILE-to-PACKAGE/API promotion. Omitting the registry retains the legacy
+nomination and verification contract.

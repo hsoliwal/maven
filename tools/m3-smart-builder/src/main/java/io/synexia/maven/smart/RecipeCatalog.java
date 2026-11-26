@@ -72,6 +72,7 @@ final class RecipeCatalog {
     }
 
     String digest() { return digest; }
+    List<Entry> entries() { return entries; }
 
     /** All caller inputs remain in the checkout, with symlink components forbidden. */
     static byte[] readLocal(Path base, Path file, int maximum) throws IOException {

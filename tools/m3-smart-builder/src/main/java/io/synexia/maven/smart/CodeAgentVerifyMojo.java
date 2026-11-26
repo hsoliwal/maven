@@ -29,6 +29,14 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
     private File machineEvidence;
     @Parameter(property = "m3.smart.operatorCatalog")
     private File operatorCatalog;
+    @Parameter(property = "m3.smart.operatorProofRegistry")
+    private File operatorProofRegistry;
+    @Parameter(property = "m3.smart.operatorProofDir")
+    private File operatorProofDir;
+    @Parameter(property = "m3.smart.operatorProofPublicKey")
+    private File operatorProofPublicKey;
+    @Parameter(property = "m3.smart.operatorProofPublicKeySha256")
+    private String operatorProofPublicKeySha256;
     @Parameter(property = "m3.smart.approvedRecipeId", required = true)
     private String approvedRecipeId;
     @Parameter(property = "m3.smart.approveRecipeExecution", defaultValue = "false")
@@ -64,6 +72,11 @@ public final class CodeAgentVerifyMojo extends AbstractMojo {
                 "--timeout-seconds", Integer.toString(timeoutSeconds)));
         if (machineEvidence != null) args.addAll(List.of("--machine-evidence", machineEvidence.toString()));
         if (operatorCatalog != null) args.addAll(List.of("--operator-catalog", operatorCatalog.toString()));
+        if (operatorProofRegistry != null) args.addAll(List.of("--operator-proof-registry", operatorProofRegistry.toString()));
+        if (operatorProofDir != null) args.addAll(List.of("--operator-proof-dir", operatorProofDir.toString()));
+        if (operatorProofPublicKey != null) args.addAll(List.of("--operator-proof-key", operatorProofPublicKey.toString()));
+        if (operatorProofPublicKeySha256 != null)
+            args.addAll(List.of("--operator-proof-key-sha256", operatorProofPublicKeySha256));
         int status = CodeAgentVerifyMain.run(args.toArray(String[]::new), System.out, System.err);
         if (status != 0) throw new MojoExecutionException("M3 recipe verification refused (status " + status + ")");
     }

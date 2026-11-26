@@ -27,7 +27,9 @@ public final class CodeAgentVerifyMain {
     private static final String REWRITE_PLUGIN = "org.openrewrite.maven:rewrite-maven-plugin:" + REWRITE_VERSION + ":";
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
             "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence",
-            "--operator-catalog", "--approved-recipe-id", "--approve-execution", "--maven-executable", "--maven-repository",
+            "--operator-catalog", "--operator-proof-registry", "--operator-proof-dir",
+            "--operator-proof-key", "--operator-proof-key-sha256",
+            "--approved-recipe-id", "--approve-execution", "--maven-executable", "--maven-repository",
             "--recipe-coordinates", "--plugin-sha256", "--timeout-seconds");
     private static final long MAX_STAGE_BYTES = 268_435_456L;
     private static final int MAX_STAGE_FILES = 20_000;
@@ -63,8 +65,16 @@ public final class CodeAgentVerifyMain {
             MachineOperatorCatalog.Summary semantic = argsMap.containsKey("--operator-catalog")
                     ? MachineOperatorCatalog.inspect(base, resolve(base, required(argsMap, "--machine-evidence")),
                     resolve(base, argsMap.get("--operator-catalog")), machine) : null;
+            boolean proofRequested = List.of("--operator-proof-registry", "--operator-proof-dir",
+                    "--operator-proof-key", "--operator-proof-key-sha256").stream().anyMatch(argsMap::containsKey);
+            MachineOperatorProofRegistry.Summary proof = proofRequested
+                    ? MachineOperatorProofRegistry.inspect(base,
+                    resolve(base, required(argsMap, "--operator-proof-registry")),
+                    resolve(base, required(argsMap, "--operator-proof-dir")),
+                    resolve(base, required(argsMap, "--operator-proof-key")),
+                    required(argsMap, "--operator-proof-key-sha256"), semantic, catalog) : null;
             MachineRulebook.Policy rules = MachineRulebook.load();
-            String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic);
+            String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic, proof);
             List<RecipeCatalog.Entry> applicable = catalog.applicable(object(object(TinyJson.parse(preparation))
                     .get("patternCounts")));
             String approvedId = required(argsMap, "--approved-recipe-id");
@@ -73,7 +83,7 @@ public final class CodeAgentVerifyMain {
             if (!"FILE".equals(entry.scope()))
                 throw new IOException("only FILE scope may run without higher-scope contracts");
             validateNomination(base, output.resolve("code-agent.json"), binding, preparation,
-                    atom, machine, semantic, rules, catalog, applicable, entry);
+                    atom, machine, semantic, proof, rules, catalog, applicable, entry);
             String pomBefore = Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576));
 
             Path runner = Path.of(required(argsMap, "--maven-executable")).toAbsolutePath().normalize();
@@ -147,6 +157,11 @@ public final class CodeAgentVerifyMain {
                     || semantic != null && !semantic.equals(MachineOperatorCatalog.inspect(base, machineFile,
                     resolve(base, argsMap.get("--operator-catalog")),
                     MachineEvidence.inspect(base, source, machineFile)))
+                    || proof != null && !proof.equals(MachineOperatorProofRegistry.inspect(base,
+                    resolve(base, argsMap.get("--operator-proof-registry")),
+                    resolve(base, argsMap.get("--operator-proof-dir")),
+                    resolve(base, argsMap.get("--operator-proof-key")),
+                    argsMap.get("--operator-proof-key-sha256"), semantic, catalog))
                     || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !pomBefore.equals(Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576)))
                     || !catalog.digest().equals(RecipeCatalog.load(base, catalogFile).digest()))
@@ -181,7 +196,8 @@ public final class CodeAgentVerifyMain {
 
     private static void validateNomination(Path base, Path file, String binding, String preparation,
                                            AtomPatternEvidence.Summary atom, MachineEvidence.Summary machine,
-                                           MachineOperatorCatalog.Summary semantic, MachineRulebook.Policy rules,
+                                           MachineOperatorCatalog.Summary semantic, MachineOperatorProofRegistry.Summary proof,
+                                           MachineRulebook.Policy rules,
                                            RecipeCatalog catalog, List<RecipeCatalog.Entry> applicable,
                                            RecipeCatalog.Entry entry) throws IOException {
         Map<?, ?> report = object(TinyJson.parse(new String(RecipeCatalog.readLocal(base, file, 1_048_576),
@@ -194,6 +210,7 @@ public final class CodeAgentVerifyMain {
                     "modelConfidence", "modelOutputTrusted", "recipeApproved", "recipeExecuted",
                     "semanticProofAuthenticated", "verificationAuthenticated"));
         if (semantic != null) expectedKeys.add("semanticOperatorFacts");
+        if (proof != null) expectedKeys.add("operatorProofFacts");
         if (!report.keySet().equals(expectedKeys)
                 || !"m3.smart.code-agent.v1".equals(report.get("schema"))
                 || !"review-only".equals(report.get("mode")) || !"proposed".equals(report.get("status"))
@@ -210,6 +227,8 @@ public final class CodeAgentVerifyMain {
                         : object(TinyJson.parse(machine.json())).equals(report.get("machineEvidenceFacts")))
                 || !(semantic == null ? !report.containsKey("semanticOperatorFacts")
                         : object(TinyJson.parse(semantic.json())).equals(report.get("semanticOperatorFacts")))
+                || !(proof == null ? !report.containsKey("operatorProofFacts")
+                        : object(TinyJson.parse(proof.json())).equals(report.get("operatorProofFacts")))
                 || !expected.equals(report.get("applicableRecipes"))
                 || !object(TinyJson.parse(entry.json())).equals(report.get("selectedRecipe"))
                 || !Boolean.FALSE.equals(report.get("modelOutputTrusted"))

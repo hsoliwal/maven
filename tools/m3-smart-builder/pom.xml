@@ -79,6 +79,10 @@ limitations under the License.
       <execution><id>machine-operator-catalog-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
         <configuration><mainClass>io.synexia.maven.smart.MachineOperatorCatalogTest</mainClass>
           <classpathScope>test</classpathScope></configuration>
+      </execution>
+      <execution><id>machine-operator-proof-registry-tests</id><phase>verify</phase><goals><goal>java</goal></goals>
+        <configuration><mainClass>io.synexia.maven.smart.MachineOperatorProofRegistryTest</mainClass>
+          <classpathScope>test</classpathScope></configuration>
       </execution></executions>
     </plugin>
   </plugins></build>

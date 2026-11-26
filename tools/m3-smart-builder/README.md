@@ -221,6 +221,22 @@ before and after a build, including after failed compilation. See [Build advice 
 for setup, failure preservation, the operator-chosen CPU summarizer whose lines join the facts, and
 `failOnError=false` for binding the hook into a POM's lifecycle without letting advice change the build result.
 
+### Signed operator-proof provenance (opt-in)
+
+The existing m3:code-agent and m3:code-agent-verify goals can read externally
+signed operator-proof receipts via m3.smart.operatorProofRegistry,
+m3.smart.operatorProofDir, m3.smart.operatorProofPublicKey, and an independently
+verified m3.smart.operatorProofPublicKeySha256. This additionally requires
+source-bound machineEvidence and operatorCatalog inputs. The signed data pins
+an approved FILE-scoped recipe implementation, the **exact operator catalogue**,
+the syntactic contract, a successful staged verifier receipt, an external canon
+declaration and the six mandatory M3 output artifacts. Maven authenticates
+their Ed25519 signatures and SHA-256 digests, **not** their semantic truth.
+All evidence is rechecked by the separate staged verifier; no direct source
+mutation, automatic promotion, model-supplied commands or changes to default
+Maven behavior are permitted. See
+[OPERATOR_PROOF_REGISTRY.md](docs/OPERATOR_PROOF_REGISTRY.md).
+
 ## Coding agent — pinned OpenRewrite recipes
 
 `m3:code-agent` reuses the already installed ChromeLLM provider and existing
