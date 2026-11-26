@@ -189,9 +189,13 @@ def main() -> None:
     workflow_contract(workflow)
     preflight_contract(script)
     for name in REQUIRED:
-        path = root / name
-        if not path.is_file() or path.is_symlink() or not path.resolve(strict=True).is_relative_to(root):
-            raise ValueError("missing, aliased or escaping Windows LLVM owner: " + name)
+        path = root
+        for component in Path(name).parts:
+            path = path / component
+            if path.is_symlink():
+                raise ValueError("aliased Windows LLVM owner or ancestor: " + name)
+        if not path.is_file() or not path.resolve(strict=True).is_relative_to(root):
+            raise ValueError("missing or escaping Windows LLVM owner: " + name)
     print(f"PASS: {len(REQUIRED)} literal native owners, read-only CI, SHA-256 and required native execution")
 
 
