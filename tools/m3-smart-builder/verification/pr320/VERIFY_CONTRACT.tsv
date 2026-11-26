@@ -1,0 +1,8 @@
+order	gate	status	result_or_required_artifact
+1	diff_scope	PASS_STATIC	PR #320 changes confined to tools/m3-smart-builder and one targeted workflow
+1a	metadata_and_schema	PASS_STATIC	42/42 checks on exact source refs and workflow wiring
+2	linter	NOT_EXECUTED_CURRENT_PASS	No comprehensive lint output for latest head
+3	javac_compile	PASS_SCOPED_PRIOR	Focused Java 21 -Xlint:all -Werror only; full project compile unexecuted
+4	full_tests	NOT_EXECUTED	Actual Maven install and full JDK-only suite awaiting CI
+5	runtime	NOT_EXECUTED	Live Chrome and real pinned Rewrite 6.66.0 not qualified
+6	canon	NOT_AUTHENTICATED	External API/ABI/JNI/behavior proof and serial ratification outstanding
