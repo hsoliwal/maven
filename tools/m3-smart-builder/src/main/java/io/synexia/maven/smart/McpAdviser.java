@@ -21,6 +21,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
@@ -41,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 public final class McpAdviser {
     private static final int MAX_PROMPT_BYTES = 65_536;
     private static final int MAX_CANDIDATE_BYTES = 32_768;
+    private static final long MAX_ARTIFACT_BYTES = 64L * 1024 * 1024 * 1024;
 
     public record Config(Path moduleJar, String backend, Path binary, Path model, int timeoutSeconds) {
         public Config {
@@ -60,7 +62,7 @@ public final class McpAdviser {
         Future<?> result = null;
         boolean failed = false;
         try {
-            Config config = arguments(args);
+            Invocation config = arguments(args);
             worker = daemonWorker("maven-native-advisory-entry");
             result = worker.submit(() -> {
                 byte[] input = System.in.readNBytes(MAX_PROMPT_BYTES + 1);
@@ -69,7 +71,7 @@ public final class McpAdviser {
                         .onMalformedInput(CodingErrorAction.REPORT)
                         .onUnmappableCharacter(CodingErrorAction.REPORT)
                         .decode(ByteBuffer.wrap(input)).toString();
-                byte[] candidate = utf8(propose(config, prompt), MAX_CANDIDATE_BYTES);
+                byte[] candidate = utf8(propose(config.command(), config.timeoutSeconds(), prompt), MAX_CANDIDATE_BYTES);
                 System.out.write(candidate);
                 System.out.flush();
                 if (System.out.checkError()) throw new IOException("advisory output unavailable");
@@ -97,9 +99,19 @@ public final class McpAdviser {
         }
     }
 
-    private static Config arguments(String[] args) {
-        if (args == null || args.length != 10) throw new IllegalArgumentException("invalid advisory arguments");
-        Set<String> allowed = Set.of("--module-jar", "--backend", "--binary", "--model", "--timeout-seconds");
+    /** Validated provider command; artifact acquisition remains owned by ChromeLLM. */
+    private record Invocation(List<String> command, int timeoutSeconds) {
+        private Invocation {
+            command = List.copyOf(command);
+        }
+    }
+
+    private static Invocation arguments(String[] args) {
+        if (args == null || args.length == 0 || args.length % 2 != 0)
+            throw new IllegalArgumentException("invalid advisory arguments");
+        Set<String> allowed = Set.of("--module-jar", "--backend", "--binary", "--model", "--timeout-seconds",
+                "--offline", "--model-url", "--model-sha256", "--model-cache-dir", "--model-bytes", "--model-follow-redirects",
+                "--jni-url", "--jni-sha256", "--jni-cache-dir", "--jni-bytes");
         Map<String, String> values = new HashMap<>();
         for (int i = 0; i < args.length; i += 2) {
             if (!allowed.contains(args[i]) || args[i + 1] == null || args[i + 1].isBlank()
@@ -112,8 +124,70 @@ public final class McpAdviser {
             throw new IllegalArgumentException("invalid advisory timeout");
         int timeout = Integer.parseInt(rawTimeout);
         if (timeout < 1 || timeout > 120) throw new IllegalArgumentException("invalid advisory timeout");
-        return new Config(Path.of(values.get("--module-jar")), values.get("--backend"),
-                Path.of(values.get("--binary")), Path.of(values.get("--model")), timeout);
+        Path module = existing(values, "--module-jar");
+        String backend = values.get("--backend");
+        if (!"cli".equals(backend) && !"jni".equals(backend))
+            throw new IllegalArgumentException("backend must be cli or jni");
+        String offline = values.getOrDefault("--offline", "true");
+        if (!offline.equals("true") && !offline.equals("false"))
+            throw new IllegalArgumentException("invalid offline flag");
+        List<String> command = command(module);
+        command.addAll(List.of("--backend", backend, "--offline", offline));
+        if (hasArtifact(values, "jni")) {
+            if (!backend.equals("jni") || values.containsKey("--binary"))
+                throw new IllegalArgumentException("choose one matching native artifact source");
+            artifact(values, "jni", command);
+        } else {
+            command.addAll(List.of(backend.equals("jni") ? "--jni-lib" : "--llama-bin",
+                    existing(values, "--binary").toString()));
+        }
+        if (hasArtifact(values, "model")) {
+            if (values.containsKey("--model")) throw new IllegalArgumentException("choose one model source");
+            artifact(values, "model", command);
+            String redirects = values.getOrDefault("--model-follow-redirects", "false");
+            if (!redirects.equals("true") && !redirects.equals("false"))
+                throw new IllegalArgumentException("invalid model redirect flag");
+            command.addAll(List.of("--model-max-bytes", values.get("--model-bytes"),
+                    "--model-download-timeout-seconds", Integer.toString(timeout),
+                    "--model-follow-redirects", redirects));
+        } else {
+            command.addAll(List.of("--model", existing(values, "--model").toString()));
+        }
+        return new Invocation(command, timeout);
+    }
+
+    private static Path existing(Map<String, String> values, String name) {
+        String value = values.get(name);
+        if (value == null) throw new IllegalArgumentException("explicit existing provider file required");
+        Path path = Path.of(value);
+        if (!Files.isRegularFile(path)) throw new IllegalArgumentException("explicit existing provider file required");
+        return path;
+    }
+
+    private static boolean hasArtifact(Map<String, String> values, String prefix) {
+        return values.keySet().stream().anyMatch(key -> key.startsWith("--" + prefix + "-"));
+    }
+
+    /** Validate the complete operator-supplied tuple before any provider process or cache write. */
+    private static void artifact(Map<String, String> values, String prefix, List<String> command) {
+        String flag = "--" + prefix;
+        for (String suffix : List.of("-url", "-sha256", "-cache-dir", "-bytes")) {
+            if (!values.containsKey(flag + suffix)) throw new IllegalArgumentException("incomplete artifact identity");
+        }
+        URI uri = URI.create(values.get(flag + "-url"));
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                || uri.getRawUserInfo() != null || uri.getRawFragment() != null)
+            throw new IllegalArgumentException("explicit HTTPS artifact URL required");
+        if (!values.get(flag + "-sha256").matches("[0-9a-f]{64}"))
+            throw new IllegalArgumentException("invalid artifact digest");
+        if (!Path.of(values.get(flag + "-cache-dir")).isAbsolute())
+            throw new IllegalArgumentException("absolute artifact cache required");
+        String rawSize = values.get(flag + "-bytes");
+        if (!rawSize.matches("[0-9]{1,11}")) throw new IllegalArgumentException("invalid artifact size");
+        long size = Long.parseLong(rawSize);
+        if (size < 1 || size > MAX_ARTIFACT_BYTES) throw new IllegalArgumentException("invalid artifact size");
+        for (String suffix : List.of("-url", "-sha256", "-cache-dir", "-bytes"))
+            command.addAll(List.of(flag + suffix, values.get(flag + suffix)));
     }
 
     public static String propose(Config config, String prompt) throws Exception {

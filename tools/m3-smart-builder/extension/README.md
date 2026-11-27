@@ -216,9 +216,15 @@ mvn -f tools/m3-smart-builder/pom.xml install
 mvn -f tools/m3-polyglot-maven-plugin/pom.xml install
 mvn -f tools/m3-smart-builder/extension/pom.xml install
 export MAVEN_OPTS="-Dmaven.ext.class.path=$HOME/.m2/repository/io/synexia/smart-maven-extension/0.1.0-SNAPSHOT/smart-maven-extension-0.1.0-SNAPSHOT.jar:$HOME/.m2/repository/io/synexia/m3-polyglot-maven-plugin/0.1.0-SNAPSHOT/m3-polyglot-maven-plugin-0.1.0-SNAPSHOT.jar"
-mvn -Dchromellm.advice=true -Dm3.smart.llmBackend=bridge \
-    -Dm3.smart.chromeLlmJar=/path/to/chromellm-standalone.jar verify
+mvn -Dchromellm.advice=true -Dm3.smart.llmBackend=cli \
+    -Dm3.smart.chromeLlmJar=/path/to/chromellm-standalone.jar \
+    -Dm3.smart.llamaBin=/path/to/llama-cli -Dm3.smart.modelPath=/path/to/model.gguf verify
 ```
+
+For the native JNI provider, use `-Dm3.smart.llmBackend=jni` and
+`-Dm3.smart.jniLib=/path/to/native-library` instead of `m3.smart.llamaBin`; keep the
+ChromeLLM JAR and model settings. The supported provider choices are `none`, `cli`,
+and `jni`. The removed `chrome` and `bridge` providers are rejected.
 
 `MAVEN_OPTS` set for the user makes every Maven build of that user able to take advice; the property keeps it
 off until asked for. Reports: `target/m3-smart/{pre-build,post-build}.json` in each project.

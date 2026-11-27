@@ -22,8 +22,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -48,6 +50,114 @@ class M3BuildSuggestionsTest {
 
     @TempDir
     Path temporary;
+
+    @Test
+    void lazyModelKeepsDownloadsOffUnlessExplicitlyAllowedAndMavenIsOnline() throws Exception {
+        Properties config = localConfiguration();
+        config.remove("m3.smart.modelPath");
+        artifact(config, "model");
+        Path cache = Path.of(config.getProperty("m3.smart.modelCacheDir"));
+        List<String> defaultOffline = M3BuildSuggestions.nativeCommand(config, null, false, 20);
+        assertEquals("true", argument(defaultOffline, "--offline"));
+        assertFalse(defaultOffline.contains("--model"));
+        assertEquals("https://example.invalid/model", argument(defaultOffline, "--model-url"));
+        assertFalse(Files.exists(cache), "configuration must not provision an artifact or create its cache");
+
+        config.setProperty("m3.smart.llmAllowDownloads", "true");
+        assertEquals("false", argument(M3BuildSuggestions.nativeCommand(config, null, false, 20), "--offline"));
+        assertEquals("true", argument(M3BuildSuggestions.nativeCommand(config, null, true, 20), "--offline"));
+        Properties system = new Properties();
+        system.setProperty("m3.smart.llmAllowDownloads", "true");
+        config.setProperty("m3.smart.llmAllowDownloads", "false");
+        assertEquals("true", argument(M3BuildSuggestions.nativeCommand(config, system, false, 20), "--offline"));
+        assertFalse(Files.exists(cache));
+    }
+
+    @Test
+    void lazyJniAndLocalModelsUseTheExistingBackendWithoutAnInstalledLibrary() throws Exception {
+        Properties config = localConfiguration();
+        config.setProperty("m3.smart.llmBackend", "jni");
+        config.remove("m3.smart.llamaBin");
+        artifact(config, "jni");
+        List<String> command = M3BuildSuggestions.nativeCommand(config, null, false, 20);
+        assertFalse(command.contains("--binary"));
+        assertEquals("jni", argument(command, "--backend"));
+        assertEquals(
+                Path.of(config.getProperty("m3.smart.modelPath")).toRealPath().toString(),
+                argument(command, "--model"));
+        assertEquals("https://example.invalid/jni", argument(command, "--jni-url"));
+        assertFalse(Files.exists(Path.of(config.getProperty("m3.smart.jniCacheDir"))));
+        config.remove("m3.smart.modelPath");
+        artifact(config, "model");
+        assertTrue(M3BuildSuggestions.nativeCommand(config, null, true, 20).contains("--model-url"));
+    }
+
+    @Test
+    void incompleteMixedOrUnpinnedArtifactsAreRefusedBeforeProviderStartup() throws Exception {
+        for (String absent : List.of("Url", "Sha256", "CacheDir", "Bytes")) {
+            Properties config = localConfiguration();
+            config.remove("m3.smart.modelPath");
+            artifact(config, "model");
+            config.remove("m3.smart.model" + absent);
+            assertThrows(
+                    IllegalArgumentException.class, () -> M3BuildSuggestions.nativeCommand(config, null, false, 20));
+        }
+        for (String[] invalid : List.of(
+                new String[] {"Url", "http://example.invalid/model"},
+                new String[] {"Url", "https://user:password@example.invalid/model"},
+                new String[] {"Url", "https://example.invalid/model#fragment"},
+                new String[] {"Sha256", "A".repeat(64)},
+                new String[] {"Bytes", "0"},
+                new String[] {"Bytes", "68719476737"},
+                new String[] {"Bytes", "1e8"},
+                new String[] {"CacheDir", "relative/cache"})) {
+            Properties config = localConfiguration();
+            config.remove("m3.smart.modelPath");
+            artifact(config, "model");
+            config.setProperty("m3.smart.model" + invalid[0], invalid[1]);
+            assertThrows(
+                    IllegalArgumentException.class, () -> M3BuildSuggestions.nativeCommand(config, null, false, 20));
+        }
+        Properties mixed = localConfiguration();
+        artifact(mixed, "model");
+        assertThrows(IllegalArgumentException.class, () -> M3BuildSuggestions.nativeCommand(mixed, null, false, 20));
+        Properties wrongBackend = localConfiguration();
+        artifact(wrongBackend, "jni");
+        assertThrows(
+                IllegalArgumentException.class, () -> M3BuildSuggestions.nativeCommand(wrongBackend, null, false, 20));
+        Properties badJar = localConfiguration();
+        badJar.setProperty("m3.smart.adviserJarSha256", "0".repeat(64));
+        assertThrows(IOException.class, () -> M3BuildSuggestions.nativeCommand(badJar, null, false, 20));
+    }
+
+    private Properties localConfiguration() throws Exception {
+        Properties config = properties(true, true);
+        Path fixture = temporary.resolve("operator-owned-artifact");
+        Files.writeString(fixture, "configuration fixture; never executed");
+        String hash =
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(fixture)));
+        config.setProperty("m3.smart.adviserJar", fixture.toString());
+        config.setProperty("m3.smart.adviserJarSha256", hash);
+        config.setProperty("m3.smart.chromeLlmJar", fixture.toString());
+        config.setProperty("m3.smart.chromeLlmJarSha256", hash);
+        config.setProperty("m3.smart.llmBackend", "cli");
+        config.setProperty("m3.smart.llamaBin", fixture.toString());
+        config.setProperty("m3.smart.modelPath", fixture.toString());
+        return config;
+    }
+
+    private void artifact(Properties config, String kind) {
+        config.setProperty("m3.smart." + kind + "Url", "https://example.invalid/" + kind);
+        config.setProperty("m3.smart." + kind + "Sha256", "1".repeat(64));
+        config.setProperty("m3.smart." + kind + "Bytes", "1234");
+        config.setProperty(
+                "m3.smart." + kind + "CacheDir",
+                temporary.resolve(kind + "-absent-cache").toString());
+    }
+
+    private static String argument(List<String> command, String name) {
+        return command.get(command.indexOf(name) + 1);
+    }
 
     @Test
     void disabledAndOptionllmOnlyDoNotReadSnapshotConfigOrProvider() {
