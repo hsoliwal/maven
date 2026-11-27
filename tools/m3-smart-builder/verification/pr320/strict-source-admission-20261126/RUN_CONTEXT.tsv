@@ -1,0 +1,21 @@
+key	value
+task_packet	active
+run_id	m3-pr320-strict-source-admission-2026-11-26
+source_doc	M3-SCALE locked v3 canon; Code Agent and Operator Proof Registry contracts
+invariant_id	SOURCE_SCOPED_SIGNED_RECIPE_ADMISSION
+run.mode	apply-to-feature-branch-only
+run.profile	bounded-offline-source-audit
+run.workers	1
+shard_count	1
+shard_index	0
+targets	tools/m3-smart-builder; approved PR branch
+invariant_locks	PUBLIC_API=LOCKED;EXTERNAL_BEHAVIOR=LOCKED;DISABLED_PATHS=FORBIDDEN;EXCLUDED_PATHS=FORBIDDEN
+allowed_delta	Strict proof flag and allowlist gate; full source-leaf inventory; tests and M3 docs
+forbidden	Unpinned model-selected recipes; broad code mutation; default Maven lifecycle change; automatic promotion
+verify_order	diff then linter then compiler then tests then runtime then independent canon
+output_contract	STATUS.tsv FINAL_REPORT.md RUN_CONTEXT.tsv PROVENANCE.tsv VERIFY_CONTRACT.tsv OUTPUT_CONTRACT.tsv
+stop_conditions	full Maven and live OpenRewrite qualification unavailable; semantic proof missing
+source_commit	e7d36c6c0a7ff7a4de175c53d7d65ab2f65b7ce0
+source_base	62499c2051a6152f8e4951728264efb4fd5b1fb8
+host_jdk	OpenJDK 21.0.12.1
+host_maven_executable	MISSING

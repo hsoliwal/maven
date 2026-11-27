@@ -1,0 +1,22 @@
+key	value
+task_packet	active
+run_id	m3-pr320-stage-binding-2026-11-26
+source_doc	M3-SCALE v3.0 locked canon; M3 CODE_AGENT and OPERATOR_PROOF_REGISTRY docs
+invariant_id	STAGE_RULEBOOK_SOURCE_PREPROOF_BINDING
+run.mode	dry-run
+run.profile	bounded-source-audit
+run.workers	1
+shard_count	1
+shard_index	0
+target	tools/m3-smart-builder stage proof registry; code agent; verifier; rules; fixtures; offline script
+invariant_locks	PUBLIC_API=LOCKED;EXTERNAL_BEHAVIOR=LOCKED;DISABLED_PATHS=FORBIDDEN;EXCLUDED_PATHS=FORBIDDEN
+allowed_delta	V2 source-scoped signed proof replay gate; additive tests docs; test scheduling order
+forbidden	unapproved source mutation; credentials; automatic scope promotion; changed default Maven lifecycle
+verify_order	diff then lint then compiler then tests then runtime then independent canon
+output_contract	STATUS.tsv FINAL_REPORT.md RUN_CONTEXT.tsv PROVENANCE.tsv VERIFY_CONTRACT.tsv OUTPUT_CONTRACT.tsv
+stop_conditions	full Maven CI unavailable; live rewrite and semantic contract proof outstanding
+base_sha	62499c2051a6152f8e4951728264efb4fd5b1fb8
+code_commit_sha	13694afd41bc91a596d8bb44504fa09283f142e1
+host_jdk	OpenJDK 21.0.12.1
+maven_executable	UNAVAILABLE
+github_actions_head_runs	NONE_REPORTED

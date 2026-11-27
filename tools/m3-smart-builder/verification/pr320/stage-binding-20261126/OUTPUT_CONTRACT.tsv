@@ -1,0 +1,7 @@
+artifact	status	meaning
+STATUS.tsv	EMITTED	full gate status without inferred execution
+FINAL_REPORT.md	EMITTED	implementation and verification report
+RUN_CONTEXT.tsv	EMITTED	task packet, scope and locks
+PROVENANCE.tsv	EMITTED	source and artifact identification
+VERIFY_CONTRACT.tsv	EMITTED	ordered proof gates and blockers
+OUTPUT_CONTRACT.tsv	EMITTED	mandatory M3 artifact index

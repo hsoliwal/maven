@@ -1,0 +1,8 @@
+source	object_kind	object_id	note
+hsoliwal/maven feature head	git_commit_sha1	6ec318f3cf68e26432b9a0fc93e940ff79f9580f	source snapshot audited, not promotion authority
+MachineOperatorProofRegistry.java	git_blob_sha1	25dda8c8c1afd4051cc08aa70d0f54b0c8e4416d	signed provenance consumer
+CodeAgentMain.java	git_blob_sha1	bafee061d16eab525470e9e02f5703f79126943e	nomination authority boundary
+CodeAgentVerifyMain.java	git_blob_sha1	69e6c632cb11b727bee35dfd7dd13ddd9aee734a	isolated verifier boundary
+mop-rules.tsv	git_blob_sha1	edd65fb0c3a4f53cddd86353ebdacd0e805f3844	29 bounded M3 reviewed rules
+m3-operator-proof-qualification.yml	git_blob_sha1	72f1fce88ae8d11744bc48ec455f70f92226b936	real Maven/JDK21 workflow, unexecuted
+OpenRewrite rewrite-maven-plugin v6.66.0	github_release_tag	v6.66.0	released 2026-11-15; authenticated Code Genome repository, not presumed Maven Central

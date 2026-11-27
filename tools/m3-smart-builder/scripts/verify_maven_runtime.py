@@ -198,13 +198,195 @@ def acceptance(maven: str, plugin: Path, repository: Path, work: Path,
             "nativeOrBrowserHardwareQualified": False}
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def completion_distribution(maven: Path) -> dict:
+    """Require the packaged completion owner, not a stock Maven or loose classpath."""
+    if maven.is_symlink() or not maven.is_file() or maven.parent.name != "bin":
+        raise ValueError("Core acceptance requires an ordinary packaged Maven bin launcher")
+    if maven.resolve(strict=True) != maven:
+        raise ValueError("Packaged Maven launcher must use an absolute path without symlink parents")
+    home = maven.parent.parent.resolve(strict=True)
+    configuration = home / "bin/m2.conf"
+    libraries = sorted((home / "lib").rglob("*.jar"))
+    boot = sorted((home / "boot").glob("*.jar"))
+    if not configuration.is_file() or not libraries or not boot:
+        raise AssertionError("Complete packaged Maven conf, boot and lib directories are required")
+    names = ("org/apache/maven/cling/invoker/mvn/M3BuildSuggestions.class",
+             "org/apache/maven/cling/invoker/mvn/MavenInvoker.class")
+    owners = []
+    for library in libraries:
+        with zipfile.ZipFile(library) as archive:
+            if names[0] in archive.namelist():
+                if names[1] not in archive.namelist():
+                    raise AssertionError("Packaged advice owner has no original Maven invoker")
+                owners.append({"path": str(library.relative_to(home)),
+                               "classes": {name: sha256(archive.read(name)) for name in names}})
+    if len(owners) != 1:
+        raise AssertionError("Exactly one packaged Maven optional-advice owner is required")
+    inputs = []
+    directories = ["bin", "conf", "boot", "lib"]
+    bundled_repository = home / "repository"
+    if (bundled_repository.exists() or bundled_repository.is_symlink()
+            or (home / "conf/maven-boot-repository.properties").exists()):
+        # Distributions built with -Pplugins resolve their inline plugins
+        # and dependencies from this read-only local-repository tail.
+        directories.append("repository")
+    for directory in directories:
+        runtime_root = home / directory
+        if runtime_root.is_symlink() or not runtime_root.is_dir():
+            raise ValueError("Packaged runtime directories must be ordinary directories")
+        for path in sorted(runtime_root.rglob("*")):
+            if path.is_symlink() or (not path.is_file() and not path.is_dir()):
+                raise ValueError("Packaged runtime inputs must be ordinary files and directories")
+            if path.is_file():
+                inputs.append(path)
+    return {"home": str(home), "owner": owners[0],
+            "inputs": {str(path.relative_to(home)): file_sha256(path) for path in inputs}}
+
+
+def completion_fixture(work: Path) -> dict[str, Path]:
+    """Two deterministic POMs exercise the original completed result and nested errors."""
+    fixture = work / "fixture"
+    fixture.mkdir(mode=0o700)
+    ordinary = fixture / "ordinary"
+    parent_failure = fixture / "missing-parent"
+    user_configuration = fixture / "user-conf"
+    user_configuration.mkdir()
+    write_new(user_configuration / "settings.xml",
+              b'<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"/>\n')
+    write_new(user_configuration / "extensions.xml", b'<extensions/>\n')
+    for project in (ordinary, parent_failure):
+        (project / ".mvn").mkdir(parents=True)
+    common = '<project xmlns="http://maven.apache.org/POM/4.0.0">\n  <modelVersion>4.0.0</modelVersion>\n'
+    write_new(ordinary / "pom.xml", (common +
+              '  <groupId>org.apache.maven.suggestions.fixture</groupId>\n'
+              '  <artifactId>packaged-completion</artifactId><version>1</version>\n'
+              '  <packaging>pom</packaging>\n</project>\n').encode("utf-8"))
+    write_new(parent_failure / "pom.xml", (common +
+              '  <parent><groupId>org.apache.maven.suggestions.fixture</groupId>\n'
+              '    <artifactId>unavailable-parent</artifactId><version>0-never-published</version>\n'
+              '    <relativePath/></parent><artifactId>missing-parent</artifactId>\n'
+              '  <packaging>pom</packaging>\n</project>\n').encode("utf-8"))
+    return {"fixture": fixture, "ordinary": ordinary, "missing-parent": parent_failure,
+            "user-settings": user_configuration / "settings.xml",
+            "user-extensions": user_configuration / "extensions.xml",
+            "forbidden-cache": fixture / "must-not-initialize-cache"}
+
+
+def check_completion_inputs(fx: dict[str, Path], before: dict[str, str]) -> list[str]:
+    # Maven may create its ordinary build outputs even for validate (including
+    # .mvn/target/project-local-repo). Those are not completion-pass source edits.
+    paths = list(fx["fixture"].rglob("*"))
+    if any(path.is_symlink() for path in paths):
+        raise AssertionError("Completion fixture contains an unexpected symbolic link")
+    after = {str(path.relative_to(fx["fixture"])): file_sha256(path)
+             for path in paths if path.is_file()}
+    if any(after.get(name) != digest for name, digest in before.items()) or fx["forbidden-cache"].exists():
+        raise AssertionError("Completion pass changed fixture inputs or initialized an inert provider cache")
+    generated = sorted(set(after).difference(before))
+    build_outputs = tuple(project + prefix for project in ("ordinary", "missing-parent")
+                          for prefix in ("/.mvn/target/", "/target/"))
+    if any(not path.startswith(build_outputs) for path in generated):
+        raise AssertionError("Completion fixture created a file outside Maven build-output directories")
+    return generated
+
+
+def completion_acceptance(maven: str, repository: Path, work: Path,
+                          distribution: dict) -> dict:
+    logs = work / "logs"
+    logs.mkdir()
+    fx = completion_fixture(work)
+    before = {str(p.relative_to(fx["fixture"])): file_sha256(p)
+              for p in fx["fixture"].rglob("*") if p.is_file()}
+    # User-installed extensions/settings are outside this distribution fixture.
+    # Preserve installation configuration, but keep these offline cases independent
+    # of the invoking account's Mimir extension and repository configuration.
+    base = [maven, "-B", "-ntp", "-o", "-Dstyle.color=never", f"-Dmaven.repo.local={repository}",
+            "-s", str(fx["user-settings"]), f"-Dmaven.user.extensions={fx['user-extensions']}"]
+    version_log = logs / "00-maven-version.log"
+    if run_logged(base + ["--version"], fx["ordinary"], version_log, timeout=30) != 0:
+        raise AssertionError("Packaged Maven launcher did not start")
+    if "Apache Maven" not in version_log.read_text(encoding="utf-8", errors="replace"):
+        raise AssertionError("Packaged Maven version identity is missing")
+    malformed = ["-Dm3.smart.adviserJar=not-an-absolute-jar", "-Dm3.smart.chromeLlmJarSha256=invalid",
+                 f"-Dm3.smart.modelCacheDir={fx['forbidden-cache']}", "-Dm3.smart.llmAllowDownloads=true"]
+    both = ["-Dm3.smart.suggest=true", "-Doptionllm=true"]
+    failure = "m3-advice-not-a-lifecycle-phase"
+    marker = "[M3] Build suggestions"
+    unavailable = "suggestions unavailable; Maven's result is unchanged"
+    llm = "[UNTRUSTED LLM]"
+    cases = [
+        ("01-default-success", "ordinary", ["validate"], 0, [], [marker, llm]),
+        ("02-optionllm-success", "ordinary", ["-Doptionllm=true"] + malformed + ["validate"], 0, [], [marker, llm]),
+        ("03-default-failure", "ordinary", [failure], 1, ["Unknown lifecycle phase"], [marker, llm]),
+        ("04-optionllm-failure", "ordinary", ["-Doptionllm=true"] + malformed + [failure], 1, ["Unknown lifecycle phase"], [marker, llm]),
+        ("05-deterministic-failure", "ordinary", ["-Dm3.smart.suggest=true", failure], 1,
+         [marker, "requested lifecycle phase"], [llm, unavailable]),
+        ("06-success-inert-provider", "ordinary", both + malformed + ["validate"], 0,
+         ["No completed build diagnostics require suggestions"], [llm, unavailable]),
+        ("07-unavailable-provider", "ordinary", both + malformed + [failure], 1,
+         ["requested lifecycle phase", unavailable], [llm]),
+        ("08-fail-never-baseline", "ordinary", ["--fail-never", failure], 0,
+         ["Build failures were ignored"], [marker, llm]),
+        ("09-fail-never-advice", "ordinary", ["--fail-never"] + both + malformed + [failure], 0,
+         ["Build failures were ignored", unavailable], [llm]),
+        ("10-nested-model-baseline", "missing-parent", ["validate"], 1, [], [marker, llm]),
+        ("11-nested-model-advice", "missing-parent", ["-Dm3.smart.suggest=true", "validate"], 1,
+         ["reported POM, parent and reactor", "dependency coordinates"], [llm]),
+    ]
+    results = []
+    for label, project, options, expected, required, forbidden in cases:
+        log = logs / (label + ".log")
+        code = run_logged(base + ["-f", str(fx[project] / "pom.xml")] + options,
+                          fx[project], log, timeout=90)
+        output = log.read_text(encoding="utf-8", errors="replace")
+        if code != expected or any(value not in output for value in required) or any(value in output for value in forbidden):
+            raise AssertionError(f"Packaged completion contract failed: {label}; exit={code}; see {log}")
+        generated = check_completion_inputs(fx, before)
+        results.append({"case": label, "exitCode": code, "expectedExitCode": expected,
+                        "logSha256": file_sha256(log), "mavenBuildOutputs": generated})
+    if completion_distribution(Path(maven)) != distribution:
+        raise AssertionError("Packaged runtime inputs changed during acceptance")
+    return {"schema": "m3.smart.packaged-completion.acceptance.v1", "status": "PASS",
+            "distribution": distribution, "versionLogSha256": file_sha256(version_log),
+            "cases": results, "realMavenInvocations": len(results), "fixtureInputs": before,
+            "nativeInferenceQualified": False, "offline": True}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--maven", default="mvn", help="Existing Maven executable name/path")
     parser.add_argument("--local-repo", help="Pre-existing approved absolute Maven local repository")
     parser.add_argument("--prepare-only", action="store_true", help="Fixture check only; no Maven qualification")
+    parser.add_argument("--core-completion", action="store_true", help="Qualify the packaged Maven completion pass")
+    parser.add_argument("--work", type=Path, help="New absolute output directory for --core-completion")
     args = parser.parse_args(argv)
     plugin = Path(__file__).resolve().parent.parent
+    if args.core_completion:
+        if args.prepare_only or not args.local_repo:
+            raise ValueError("Core completion requires real packaged Maven and --local-repo; prepare-only is not a qualification")
+        maven = shutil.which(args.maven)
+        if maven is None:
+            raise ValueError("Packaged Maven executable is required")
+        distribution = completion_distribution(Path(maven).absolute())
+        repository = approve_repository(args.local_repo, plugin)
+        work = args.work or plugin / "target/m3-completion-acceptance"
+        if not work.is_absolute() or work.exists() or work.is_symlink() or work.parent.resolve() != work.parent:
+            raise ValueError("Core acceptance output must be a new absolute path without symlink parents")
+        work.mkdir(mode=0o700)
+        receipt = completion_acceptance(str(Path(maven).absolute()), repository, work, distribution)
+        write_new(work / "acceptance.json", (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode("utf-8"))
+        print("PASS: packaged Maven completion pass; 11 actual invocations; receipt in", work)
+        return 0
+    if args.work is not None:
+        raise ValueError("--work is only supported with --core-completion")
     target = plugin / "target"
     if target.is_symlink() or (target.exists() and not target.is_dir()):
         raise ValueError("Maven target must be an ordinary directory")

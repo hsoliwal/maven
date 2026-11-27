@@ -1,0 +1,12 @@
+source	ref_type	ref	meaning
+hsoliwal/maven	git-commit-sha1	13694afd41bc91a596d8bb44504fa09283f142e1	last audited code commit before this report
+master	git-commit-sha1	62499c2051a6152f8e4951728264efb4fd5b1fb8	PR base
+MachineOperatorProofRegistry.java	git-blob-sha1	80310fb1b8717aafc136e36906dc8a875b14ec6a	actual source-bound gate
+MachineRulebook.java	git-blob-sha1	0a96f724fc037d4f70c6b385fa07f78c220776ec	mechanical policy parser
+mop-rules.tsv	git-blob-sha1	1082b307c328b25b6116b637d696f10364e6be26	30 versioned rules
+CodeAgentMain.java	git-blob-sha1	56505b46a6ed23086bf8a6e748d72741f1f84d7f	pre-proof binding and candidate admission
+CodeAgentVerifyMain.java	git-blob-sha1	83b3f96e8c95d05a47095f0bbeda4468ede6b189	isolated staged replay
+MachineOperatorProofRegistryTest.java	git-blob-sha1	4493af0c31da68f4a88a7953795428e368c71ad6	new signed negative test fixture
+MachineRulebookTest.java	git-blob-sha1	c2a0c94d19b5aab819964c0ca501b3b23f982375	five mechanical gates and removal refusal
+CodeAgentVerifyTest.java	git-blob-sha1	752c4d7dfa137faf5abbc795ccead9676d4ff45d	synthetic integration tests including changed catalogue
+verify.sh	git-blob-sha1	6cb090f1de59a500dee4a35810107b54e38fda5d	focused tests before unrelated syntax probes

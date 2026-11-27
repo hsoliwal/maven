@@ -32,6 +32,22 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
+      - name: Preserve the actual Temurin JDK link inventory before Maven dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='tools/project-db/diagnostics/javac-host-preflight-20261125'
+          mkdir -p qualified-provider-preflight
+          (cd "$input" && sha256sum -c BOOTSTRAP_SHA256SUMS)
+          test "$(git hash-object "$input/M3HostJdkBootstrap.py")" = 'f13bab3d5b6011d9fcbe877a9a255e6b1086d2e6'
+          python3 "$input/M3HostJdkBootstrap.py" --self-test 2>&1 |
+            tee qualified-provider-preflight/PRE_MAVEN_SELFTEST.log
+          grep -Fxq 'M3_PREMAVEN_HOST_BOOTSTRAP_SELFTEST=PASS 12 controls' qualified-provider-preflight/PRE_MAVEN_SELFTEST.log
+          python3 "$input/M3HostJdkBootstrap.py" --inspect --expected-major '${{ matrix.java }}' |
+            tee qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          grep -Fxq M3_PREMAVEN_SELECTED_RUNTIME_V1 qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          grep -Fxq 'jdkMajor=${{ matrix.java }}' qualified-provider-preflight/PRE_MAVEN_HOST.txt
+          (cd qualified-provider-preflight && sha256sum PRE_MAVEN_SELFTEST.log PRE_MAVEN_HOST.txt > PRE_MAVEN_SHA256SUMS && sha256sum -c PRE_MAVEN_SHA256SUMS)
       - name: Checkout exact original Maven compiler provider source
         uses: actions/checkout@v4
         with:
@@ -78,5 +94,56 @@ jobs:
         with:
           name: m3-maven-host-javac-preflight-jdk-${{ matrix.java }}
           path: qualified-provider-preflight/
+          if-no-files-found: warn
+          retention-days: 14
+  independent-host-jdk-preflight:
+    name: independent-original-host-JDK (${{ matrix.java }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        java: ['17', '21']
+    steps:
+      - name: Checkout only the Synexia-received read-only host probe
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/m3-javac-host-preflight-20261125.yml
+            tools/project-db/diagnostics/javac-host-preflight-20261125/
+          sparse-checkout-cone-mode: false
+      - name: Select the exact Temurin host for this isolated check
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Observe selected JDK before any Maven plugin is resolved
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='tools/project-db/diagnostics/javac-host-preflight-20261125'
+          output='qualified-independent-host'
+          mkdir -p "$output"
+          test -f "$input/M3HostJdkBootstrap.py" && test ! -L "$input/M3HostJdkBootstrap.py"
+          test -f "$input/BOOTSTRAP_SHA256SUMS" && test ! -L "$input/BOOTSTRAP_SHA256SUMS"
+          (cd "$input" && sha256sum -c BOOTSTRAP_SHA256SUMS)
+          test "$(git hash-object "$input/M3HostJdkBootstrap.py")" = 'f13bab3d5b6011d9fcbe877a9a255e6b1086d2e6'
+          test "$(git hash-object "$input/BOOTSTRAP_SHA256SUMS")" = 'e6df5add5629c7e62bc77f566b7ef9150115f6a5'
+          python3 "$input/M3HostJdkBootstrap.py" --self-test > "$output/SELF_TEST.log" 2>&1
+          grep -Fxq 'M3_PREMAVEN_HOST_BOOTSTRAP_SELFTEST=PASS 12 controls' "$output/SELF_TEST.log"
+          python3 "$input/M3HostJdkBootstrap.py" --inspect --expected-major '${{ matrix.java }}' > "$output/HOST_JDK.txt"
+          grep -Fxq M3_PREMAVEN_SELECTED_RUNTIME_V1 "$output/HOST_JDK.txt"
+          grep -Fxq 'jdkMajor=${{ matrix.java }}' "$output/HOST_JDK.txt"
+          printf '%s\n' 'HOLD: original Maven class qualification and Gradle provider reuse are NOT_RUN here' > "$output/DIAGNOSTIC_ONLY.txt"
+          (cd "$output" && sha256sum SELF_TEST.log HOST_JDK.txt DIAGNOSTIC_ONLY.txt > SHA256SUMS && sha256sum -c SHA256SUMS)
+          (cd "$input" && sha256sum -c BOOTSTRAP_SHA256SUMS)
+      - name: Preserve independent JDK evidence even when its probe fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-jdk-host-independent-${{ matrix.java }}
+          path: qualified-independent-host/
           if-no-files-found: warn
           retention-days: 14

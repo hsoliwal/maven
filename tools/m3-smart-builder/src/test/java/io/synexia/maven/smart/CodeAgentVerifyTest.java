@@ -178,7 +178,212 @@ public final class CodeAgentVerifyTest {
         Files.writeString(file, initial);
         require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
                 "valid original source restores nomination");
+
+        Path operatorCatalog = receipts.resolve("operators.tsv");
+        String operatorRows = MachineOperatorCatalog.HEADER + "\n"
+                + "sum-fold\tFOLD\tLOGIC\t" + "c".repeat(64) + "\n";
+        Files.writeString(operatorCatalog, operatorRows);
+        List<String> operatorNomination = plus(nomination, "--operator-catalog", "receipts/operators.tsv");
+        require(runNomination(operatorNomination) == 0, "optional operator hints are source-bound at nomination");
+        String operatorBinding = (String) nomination(project).get("evidenceBindingSha256");
+        Path operatorCandidate = project.resolve("operator-candidate.json");
+        Files.writeString(operatorCandidate, "{\"schema\":\"m3.smart.code-agent.candidate.v1\","
+                + "\"evidenceSha256\":\"" + operatorBinding
+                + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(operatorNomination, "--candidate-file", "operator-candidate.json")) == 0,
+                "source-bound operator catalogue permits only the existing approved recipe");
+        List<String> operatorVerify = plus(command, "--operator-catalog", "receipts/operators.tsv");
+        require(runVerify(operatorVerify) == 0,
+                "stage verifier accepts the unmodified operator catalogue with explicit approval");
+        require(operatorBinding.equals(verification(project).get("evidenceBindingSha256")),
+                "verification receipt is bound to exactly the operator-guided nomination");
+        Files.writeString(operatorCatalog, operatorRows.replace("sum-fold", "sum-changed"));
+        refused(operatorVerify, project, "operator catalogue mutation invalidates staged approval");
+        Files.writeString(operatorCatalog, operatorRows);
+        refused(command, project, "legacy verifier cannot replay a nomination with omitted semantic catalogue");
+        require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
+                "legacy nomination still replays without an operator catalogue");
+
+        // Positive end-to-end signed provenance stays separate from behavioral proof.
+        require(runNomination(plus(operatorNomination, "--candidate-file", "operator-candidate.json")) == 0
+                        && runVerify(operatorVerify) == 0,
+                "the external signed receipt starts with a successful source-bound staged review");
+        Path proofDirectory = Files.createDirectory(receipts.resolve("operator-proof-artifacts"));
+        String stageJson = Files.readString(project.resolve("target/m3-smart/code-agent-verify.json"));
+        String stageSha = saveProofJson(proofDirectory, stageJson);
+        String contractSha = "d".repeat(64);
+        Map<String, String> outputs = new java.util.LinkedHashMap<>();
+        for (String name : List.of("STATUS.tsv", "FINAL_REPORT.md", "RUN_CONTEXT.tsv",
+                "PROVENANCE.tsv", "VERIFY_CONTRACT.tsv", "OUTPUT_CONTRACT.tsv")) {
+            String body = "synthetic external " + name + "\n";
+            String sha = Hashes.sha256(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Files.writeString(proofDirectory.resolve(sha + ".artifact"), body);
+            outputs.put(name, sha);
+        }
+        StringBuilder digestJson = new StringBuilder("{");
+        for (var item : outputs.entrySet()) {
+            if (digestJson.length() > 1) digestJson.append(',');
+            digestJson.append(TinyJson.quote(item.getKey())).append(':').append(TinyJson.quote(item.getValue()));
+        }
+        digestJson.append('}');
+        String canonReceipt = "{\"schema\":\"m3.smart.operator-canon-evidence.v1\","
+                + "\"status\":\"PASS\",\"contractSha256\":\"" + contractSha
+                + "\",\"diffPassed\":true,\"linterPassed\":true,\"compilerPassed\":true,"
+                + "\"testsPassed\":true,\"runtimePassed\":true,\"artifactDigests\":" + digestJson + "}";
+        String canonSha = saveProofJson(proofDirectory, canonReceipt);
+        String recipeHash = Hashes.sha256(recipeJar);
+        String operatorCatalogSha = Hashes.sha256(Files.readAllBytes(operatorCatalog));
+        String proofReceipt = "{\"schema\":\"m3.smart.operator-proof-receipt.v1\","
+                + "\"operatorId\":\"sum-fold\",\"recipeId\":\"iteration-loop\","
+                + "\"implementationSha256\":\"" + recipeHash
+                + "\",\"contractSha256\":\"" + contractSha
+                + "\",\"operatorCatalogSha256\":\"" + operatorCatalogSha
+                + "\",\"stageReceiptSha256\":\"" + stageSha
+                + "\",\"canonReceiptSha256\":\"" + canonSha
+                + "\",\"status\":\"EXTERNALLY_RATIFIED\"}";
+        String proofSha = saveProofJson(proofDirectory, proofReceipt);
+        var signingPair = java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        Path publicKey = Files.write(receipts.resolve("proof-public.der"), signingPair.getPublic().getEncoded());
+        String keyPin = Hashes.sha256(Files.readAllBytes(publicKey));
+        String[] signedFields = {"sum-fold", "iteration-loop", recipeHash, contractSha, operatorCatalogSha, proofSha};
+        var signer = java.security.Signature.getInstance("Ed25519");
+        signer.initSign(signingPair.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(signedFields));
+        String signature = java.util.HexFormat.of().formatHex(signer.sign());
+        Path proofRegistry = Files.writeString(receipts.resolve("signed-operators.tsv"),
+                MachineOperatorProofRegistry.HEADER + "\n" + String.join("\t", signedFields)
+                        + "\t" + signature + "\n");
+        List<String> signedNomination = new ArrayList<>(operatorNomination);
+        List<String> proofOptions = List.of("--operator-proof-registry", "receipts/signed-operators.tsv",
+                "--operator-proof-dir", "receipts/operator-proof-artifacts",
+                "--operator-proof-key", "receipts/proof-public.der",
+                "--operator-proof-key-sha256", keyPin);
+        signedNomination.addAll(proofOptions);
+        require(runNomination(signedNomination) == 0,
+                "signed staged/canon receipts and six M3 artifacts admit only a review-only proposal");
+        Map<?, ?> signedFacts = object(nomination(project).get("operatorProofFacts"));
+        require("1".equals(signedFacts.get("signedEntries").toString())
+                        && Boolean.TRUE.equals(signedFacts.get("signatureVerified"))
+                        && Boolean.FALSE.equals(signedFacts.get("semanticProofAuthenticated")),
+                "validated external signature does not become behavioral proof");
+        String signedBinding = (String) nomination(project).get("evidenceBindingSha256");
+        Path signedCandidate = Files.writeString(project.resolve("signed-candidate.json"),
+                "{\"schema\":\"m3.smart.code-agent.candidate.v1\",\"evidenceSha256\":\""
+                        + signedBinding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(signedNomination, "--candidate-file", "signed-candidate.json")) == 0,
+                "signed review-only evidence can nominate only an approved recipe");
+        List<String> signedVerify = new ArrayList<>(operatorVerify);
+        signedVerify.addAll(proofOptions);
+        require(runVerify(signedVerify) == 0,
+                "the isolated verifier replays the exact signed proof evidence before running a recipe");
+        require(signedBinding.equals(verification(project).get("evidenceBindingSha256"))
+                        && Boolean.FALSE.equals(verification(project).get("promoted")),
+                "signed provenance is bound into the stage but cannot promote code");
+        Files.writeString(proofDirectory.resolve(outputs.get("STATUS.tsv") + ".artifact"), "tampered\n");
+        refused(signedVerify, project, "altered required M3 artifact refuses signed replay");
+        Files.writeString(proofDirectory.resolve(outputs.get("STATUS.tsv") + ".artifact"),
+                "synthetic external STATUS.tsv\n");
+        refused(operatorVerify, project, "omitted signed proof options cannot replay signed nomination");
+        refused(replace(signedVerify, "--operator-proof-key-sha256", "0".repeat(64)),
+                project, "changed trusted key pin refuses proof replay");
+        // V2 provenance is tied to one source-bound semantic leaf and the real archived staged receipt.
+        Map<?, ?> semanticReport = object(nomination(project).get("semanticOperatorFacts"));
+        List<?> semanticLeaves = (List<?>) semanticReport.get("semanticLeaves");
+        require(semanticLeaves.size() == 1, "one atom is eligible for a leaf-specific attestation");
+        String leafSha = (String) object(semanticLeaves.getFirst()).get("semanticIdSha256");
+        String evidenceSha = Hashes.sha256(Files.readAllBytes(evidence));
+        String sourceProofV2 = "{\"schema\":\"" + MachineOperatorProofRegistry.SOURCE_RECEIPT_SCHEMA
+                + "\",\"operatorId\":\"sum-fold\",\"recipeId\":\"iteration-loop\","
+                + "\"implementationSha256\":\"" + recipeHash
+                + "\",\"contractSha256\":\"" + contractSha
+                + "\",\"operatorCatalogSha256\":\"" + operatorCatalogSha
+                + "\",\"machineEvidenceSha256\":\"" + evidenceSha
+                + "\",\"semanticLeafSha256\":\"" + leafSha
+                + "\",\"stageReceiptSha256\":\"" + stageSha
+                + "\",\"canonReceiptSha256\":\"" + canonSha
+                + "\",\"status\":\"EXTERNALLY_RATIFIED\"}";
+        String sourceProofSha = saveProofJson(proofDirectory, sourceProofV2);
+        String[] sourceFields = {"sum-fold", "iteration-loop", recipeHash, contractSha,
+                operatorCatalogSha, evidenceSha, leafSha, sourceProofSha};
+        signer.initSign(signingPair.getPrivate());
+        signer.update(MachineOperatorProofRegistry.signable(sourceFields));
+        String sourceSig = java.util.HexFormat.of().formatHex(signer.sign());
+        Files.writeString(receipts.resolve("signed-source-operators.tsv"),
+                MachineOperatorProofRegistry.SOURCE_HEADER + "\n"
+                        + String.join("\t", sourceFields) + "\t" + sourceSig + "\n");
+        List<String> sourceNomination = replace(signedNomination, "--operator-proof-registry",
+                "receipts/signed-source-operators.tsv");
+        require(runNomination(sourceNomination) == 0,
+                "V2 proof provenance matches the current source and machine ledger");
+        Map<?, ?> scopedProof = object(nomination(project).get("operatorProofFacts"));
+        require("1".equals(scopedProof.get("sourceScopedEntries").toString())
+                        && Boolean.TRUE.equals(object(((List<?>) scopedProof.get("candidateAttestations"))
+                        .getFirst()).get("sourceBindingVerified")),
+                "V2 signed evidence is explicitly bound to one atom, not only an operator catalogue");
+        String sourceBinding = (String) nomination(project).get("evidenceBindingSha256");
+        Files.writeString(project.resolve("source-candidate.json"),
+                "{\"schema\":\"m3.smart.code-agent.candidate.v1\",\"evidenceSha256\":\""
+                        + sourceBinding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "the model candidate is bound to the V2 leaf-scoped evidence");
+        List<String> sourceVerify = replace(signedVerify, "--operator-proof-registry",
+                "receipts/signed-source-operators.tsv");
+        require(runVerify(sourceVerify) == 0,
+                "V2 source digest and the archived real staged verifier report survive replay");
+        require(sourceBinding.equals(verification(project).get("evidenceBindingSha256"))
+                        && Boolean.FALSE.equals(verification(project).get("semanticProofAuthenticated")),
+                "even source-specific signed replay cannot authenticate semantic equivalence");
+        // Explicit opt-in: a signed V1 catalogue hint cannot satisfy source-scoped recipe admission.
+        List<String> strictV1 = plus(signedNomination, "--require-source-scoped-recipe-proof", "true");
+        require(runNomination(strictV1) == 2,
+                "strict recipe selection refuses legacy catalogue-only signed proof");
+        List<String> strictSource = plus(sourceNomination, "--require-source-scoped-recipe-proof", "true");
+        require(runNomination(strictSource) == 0,
+                "strict recipe mode accepts the matching signed V2 source-leaf attestation");
+        Map<?, ?> strictReport = nomination(project);
+        require(Boolean.TRUE.equals(strictReport.get("sourceScopedRecipeProofRequired"))
+                        && ((List<?>) strictReport.get("applicableRecipes")).size() == 1,
+                "strict mode only exposes the signed, applicable reviewed recipe");
+        String strictBinding = (String) strictReport.get("evidenceBindingSha256");
+        require(!sourceBinding.equals(strictBinding),
+                "signed strict recipe admission has a distinct replay digest");
+        Files.writeString(project.resolve("strict-source-candidate.json"),
+                "{\"schema\":\"m3.smart.code-agent.candidate.v1\",\"evidenceSha256\":\""
+                        + strictBinding + "\",\"recipeId\":\"iteration-loop\",\"confidence\":\"LOW\"}");
+        require(runNomination(plus(strictSource, "--candidate-file", "strict-source-candidate.json")) == 0,
+                "strict signed nomination stays schema-bound to one approved recipe");
+        List<String> strictVerify = plus(sourceVerify, "--require-source-scoped-recipe-proof", "true");
+        require(runVerify(strictVerify) == 0,
+                "strict mode verifies a matching V2 signed leaf and unchanged stage inputs");
+        require(strictBinding.equals(verification(project).get("evidenceBindingSha256")),
+                "staged verifier retains the exact signed strict-mode evidence digest");
+        refused(sourceVerify, project,
+                "a strict signed nomination cannot be replayed by omitting its strict execution mode");
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "legacy opt-in signed V2 nomination recovers without strict selection");
+        String originalRecipeCatalog = Files.readString(catalog);
+        Files.writeString(catalog, originalRecipeCatalog
+                + "z-inapplicable\tBRANCHING\tFILE\tcom.synexia.rewrite.Unused\t"
+                + "e".repeat(64) + "\n");
+        require(runNomination(sourceNomination) == 2,
+                "V2 stage binding rejects changed catalog even when the approved recipe remains identical");
+        Files.writeString(catalog, originalRecipeCatalog);
+        require(runNomination(plus(sourceNomination, "--candidate-file", "source-candidate.json")) == 0,
+                "restoring exact pre-proof evidence recovers source-scoped nomination");
+        String alteredEvidence = ledger.replace("0000000000000001", "0000000000000002");
+        Files.writeString(evidence, alteredEvidence);
+        refused(sourceVerify, project, "V2 proof cannot be replayed after machine evidence changes");
+        Files.writeString(evidence, ledger);
+        require(runNomination(plus(nomination, "--candidate-file", "candidate.json")) == 0,
+                "non-opted-in callers retain the previous nomination contract");
         System.out.println("CODE AGENT VERIFY TESTS PASS: " + checks + " (synthetic runner only)");
+    }
+
+    private static String saveProofJson(Path proofDirectory, String contents) throws Exception {
+        byte[] raw = contents.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String sha = Hashes.sha256(raw);
+        Files.write(proofDirectory.resolve(sha + ".json"), raw);
+        return sha;
     }
 
     private static void refused(List<String> args, Path project, String why) throws Exception {

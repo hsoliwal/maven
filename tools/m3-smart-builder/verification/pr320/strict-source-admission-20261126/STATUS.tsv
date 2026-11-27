@@ -1,0 +1,13 @@
+gate	status	evidence
+code_published	YES	commit e7d36c6c0a7ff7a4de175c53d7d65ab2f65b7ce0
+strict_signed_V2_recipe_selection	CODE_COMMITTED	m3.smart.requireSourceScopedRecipeProof true
+legacy_V1_strict_refusal	TEST_ADDED_UNEXECUTED	negative regression fixture committed
+legacy_default_behavior	SOURCE_AUDIT_PASS	strict property defaults false and leaves old digest unchanged
+full_source_atom_index	SOURCE_AUDIT_PASS	allLeaves retained independently of 24 display items
+hidden_leaf_V2_match	TEST_ADDED_UNEXECUTED	matching signed leaf outside displayed 24 is retained
+incomplete_inventory_refusal	SOURCE_AUDIT_PASS	internal atom count checked against full leaf inventory
+source_contract_audit	PASS_STATIC	40/40 checks at source commit e7d36c6c0a7ff7a4de175c53d7d65ab2f65b7ce0
+full_maven_plugin_build	NOT_EXECUTED	No Maven executable and no PR CI run reported
+real_openrewrite_6_66_0	NOT_EXECUTED	Approved offline artifacts and real plugin execution outstanding
+api_abi_jni_semantic_proof	OUTSTANDING	Independent M3 proof-owner ratification required
+canonical_promotion	HOLD	Draft PR unmerged

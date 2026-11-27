@@ -1,0 +1,9 @@
+gate	status	evidence
+source_contract_audit	PASS_STATIC	42/42 cross-file schema/authority/wiring assertions on 6ec318f3cf68e26432b9a0fc93e940ff79f9580f
+rulebook_integrity	PASS_STATIC	29 sorted rules; exactly 4 locally enforced MECHANICAL laws
+signed_proof_test_prior	PASS_SCOPED_PRIOR	23 focused Java 21 test assertions reported in previous turn with source-blob verification
+full_maven_plugin_build	NOT_EXECUTED	Maven binary absent in this container and no GitHub run reported
+full_jdk_only_suite	NOT_EXECUTED	CI workflow committed; results not yet reported
+live_rewrite_6_66_0	NOT_EXECUTED	Authenticated CGP artifact provision and pinned real recipe required
+semantic_and_api_proof	OUTSTANDING	No claimed API/ABI/JNI or behavior equivalence
+canonical_promotion	HOLD	Draft PR #320; no file/package/module/reactor/API promotion

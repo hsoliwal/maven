@@ -185,8 +185,8 @@ This is the `AtomizerPattenrizerM3` Machine-Oriented Programming rule substrate:
 the LLM is a constrained speculative operator, while the machine owns evidence,
 recipes, verification, and canonical promotion.
 
-The 18 required M3 laws and five additional reviewed analysis/ranking rules
-(23 in the current packet) are materialized as the packaged resource
+The 18 original mandatory M3 laws and thirteen additive analysis, operator, and proof-provenance rules
+(31 in the current packet) are materialized as the packaged resource
 `src/main/resources/io/synexia/maven/smart/mop-rules.tsv`. Each sorted row is
 `rule_id<TAB>stage<TAB>authority<TAB>directive`; the Java rulebook checks the
 complete required set, bounded syntax, and an exact schema before any model
@@ -196,7 +196,7 @@ nomination and verification receipts and participates in the model candidate's
 requires a fresh nomination rather than silently replaying an obsolete one.
 New reviewed rules may be appended additively in sorted order (up to 64 rows),
 but cannot claim `MECHANICAL` authority without a corresponding implemented
-gate. The four actually enforced admission rules retain their required labels.
+gate. Six admission rules are mechanically enforced in this version, including source-scoped stage evidence binding and strict signed recipe selection. A new MECHANICAL rule must have an actual implemented check.
 
 The four authority classes are deliberately distinct:
 
@@ -308,6 +308,23 @@ LLM text or shell fragments. The rulebook digest from nomination must match
 the verifier's packaged rulebook. Only `FILE`-scoped recipes are executable in this
 slice. Other scopes require their independent contract gates first.
 
+**OpenRewrite 6.66.0 artifact provenance and offline qualification.** The upstream
+[release v6.66.0](https://github.com/openrewrite/rewrite-maven-plugin/releases/tag/v6.66.0)
+was published on 2026-11-15. Newer OpenRewrite artifacts are published to
+the authenticated [Code Genome Project Maven repository](https://artifacts.codegenomeproject.org/maven),
+**not Maven Central**. Its upstream README explicitly requires a user/token
+for downloads. Consequently, this verifier **must not assume** that the exact
+6.66.0 plugin JAR or a chosen recipe JAR can be resolved anonymously from
+Maven Central. An authorized operator must provision these artifacts and
+their transitive dependencies in the approved offline Maven repository,
+verify their real SHA-256 digests independently, and only then invoke the
+verifier. The verifier itself stays offline and never requests credentials,
+performs model-directed downloads, or falls back to an unpinned plugin version.
+Do not place repository tokens in command-line arguments, model prompts,
+logs, receipts, or the source tree. This qualification is distinct from the
+M3 Smart Builder Maven-plugin **packaging** check: packaging the Synexia plugin
+does not prove the OpenRewrite 6.66.0 staged execution.
+
 The goal makes a bounded, symlink-free project copy inside
 `target/m3-smart/code-agent-stage-*`, omitting `.git` and previous `target`
 trees. It then executes, in order:
@@ -353,3 +370,117 @@ This is an executable **recipe-nomination plus isolated replay** slice of the
 larger distillation workflow, not a model-weight exporter, autonomous
 source-writing agent, or claim that model inference/real OpenRewrite/JUnit
 project verification was run by the synthetic offline tests.
+
+
+## Source-bound semantic operator catalogue (opt-in)
+
+The operator catalogue is a persistent, operator-maintained input used to **guide** the
+coding agent; it is not an executable recipe list, a semantic-equivalence database,
+or a replacement for the sealed M3 canonical specification. In the active project
+checkout, create a sorted UTF-8 TSV with this exact header (trailing LF required):
+
+`operator_id<TAB>family<TAB>match_kind<TAB>fingerprint_sha256`
+
+`operator_id` is a unique lowercase identifier; `family` must be one of
+`MAP FILTER FLATMAP FOLD REDUCE ZIP JOIN GROUP PREDICATE ADAPTER STRATEGY STATE PIPELINE CONTEXT OTHER`.
+`match_kind` is `LOGIC` or `STRUCTURAL`, each matching exactly the corresponding
+producer-reported 64-hex SHA-256 of an atom. Entries are sorted by operator ID,
+strictly parsed, and limited to 128. **No semantic identity or proof is inferred
+from an equal hash.** Colliding entries remain ambiguous; no candidate is
+automatically accepted.
+
+Use both the existing, freshly validated machine evidence and the new optional
+catalogue when nominating and verifying a recipe:
+
+```sh
+mvn io.synexia:m3-smart-maven-plugin:0.1.0-SNAPSHOT:code-agent \
+  -Dm3.smart.sourceRoot=src/main/java \
+  -Dm3.smart.preparationReport=.reports/preparation.json \
+  -Dm3.smart.atomPatternManifest=.reports/atom-pattern.tsv \
+  -Dm3.smart.recipeCatalog=.reports/approved-recipes.tsv \
+  -Dm3.smart.machineEvidence=target/m3-smart/machine-evidence.tsv \
+  -Dm3.smart.operatorCatalog=.reports/approved-operators.tsv \
+  -Dm3.smart.requireMachineEvidence=true
+```
+
+Supply those same `machineEvidence` and `operatorCatalog` properties to the
+separate `m3:code-agent-verify` invocation. Omitting the catalogue leaves the old
+nomination and verifier schema/digest unchanged. The catalogue cannot be used
+without the machine ledger. Any change to the catalogue or ledger invalidates
+the evidence-bound candidate and must be re-nominated before replay.
+
+The bounded `semanticOperatorFacts` projection provides at most **24** semantic
+leaves, prioritizing unknown and ambiguous labels, with a stable SHA-256 leaf
+identity, optional family/label and a typed residue. Bitmask proof obligations
+remain set for observable contracts (bit 0), effects (bit 1), call dispatch
+(bit 2), unavailable flow (bit 3), and incomplete flow (bit 4).
+`semanticProofAuthenticated` and `promotionAuthority` are always false.
+Labels do not become verified operators until their separate owner supplies
+compiler, contract, effect, behavioral and M3 canon proof.
+
+The packaged rulebook adds two REVIEW_ONLY laws for operator recognition and
+typed residue. It does **not** replace or edit the locked M3 canon. The outcome
+is an explicit, replayable context projection for LLM recipe nomination, not
+training or extraction of a browser model.
+
+
+### Contract-aware semantic leaves (advisory)
+
+The operator catalogue also accepts a second, strictly validated schema that
+appends `contract_sha256` to every operator row. If the digest of the atom's
+**syntactic** signature does not match an operator's optional pin, a matching
+logic/structural hash is classified as `CONTRACT_CUE_MISMATCH`, not as a matched
+operator. The original four-column catalogue remains valid. Entries cannot
+mix the two schema widths.
+
+Each bounded semantic leaf contains a `contractEnvelope` derived from the
+independently source-validated machine ledger. It may contain the syntactic
+contract SHA-256, control/effect syntax masks, javac-attributed type/call-target
+SHA-256, unresolved-call count, and may-flow/def-use hashes. Missing facts are
+explicitly null or -1, rather than silently interpreted as safe.
+
+The proof-obligation mask is conservative even when a 21-column may-flow
+receipt reports no incomplete paths: observable contracts, effects,
+dynamic/interprocedural dispatch, full flow, and API/ABI compatibility remain
+external proof obligations. An incomplete may-flow mask adds another explicit
+obligation. The envelope is `PRODUCER_REPORTED`; hash matches remain `REVIEW_ONLY`.
+No Java source modification, verified operator promotion or semantic equivalence
+is implied. These additional fields and the new \`contract-envelope\` rule are
+included in the versioned, content-bound model evidence packet and are
+revalidated before staged recipe execution.
+
+## Signed evidence from an external M3 proof owner
+
+The optional, Ed25519-signed and independently pinned operator-proof registry
+is specified in [OPERATOR_PROOF_REGISTRY.md](OPERATOR_PROOF_REGISTRY.md).
+It augments the source-bound operator catalogue with authenticated provenance
+and all six mandatory M3 output-artifact digests. The model receives bounded
+review-only attestation facts; staged verification rechecks them. An external
+signature **never** authenticates semantic equivalence or authorizes a
+FILE-to-PACKAGE/API promotion. Omitting the registry retains the legacy
+nomination and verification contract.
+
+
+## Optional strict source-leaf signed recipe gate
+
+The boolean property `m3.smart.requireSourceScopedRecipeProof=true` may be supplied to
+both `m3:code-agent` and the separate `m3:code-agent-verify` goal. It defaults
+to false. When enabled, a source-bound machine ledger, operator catalogue
+and valid signed **V2** proof registry are mandatory. Before any model call,
+Maven intersects the existing *applicable reviewed recipe catalogue* with
+the deterministic set of recipe IDs referenced by signed V2 receipts for
+currently matched semantic leaves. It rejects a missing registry, a V1-only
+registry, or an empty intersection. Matching proof entries beyond the first
+24 display candidates still participate in admission; the LLM continues to
+receive a bounded context projection.
+
+The strict flag is independently parsed and included in the SHA-256 evidence
+binding with domain separation. The source-scoped receipt records
+`sourceScopedRecipeProofRequired=true`, and the verifier requires the
+identical flag and the exact filtered allowlist. A strict nomination cannot
+be replayed with a legacy verifier invocation or vice versa. The new
+`signed-recipe-admission` M3 rule has MECHANICAL authority because
+both nomination and staged verification enforce it. Other semantics remain
+unchanged: the model can only nominate an operator-reviewed recipe, and
+even a valid V2 signature does **not** prove semantic equivalence or authorize
+automatic source edits, promotion, or expansion beyond FILE scope.

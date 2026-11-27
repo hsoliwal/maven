@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Synexia Project
+# SPDX-License-Identifier: Apache-2.0
+name: M3 LLVM Windows MSVC STL native qualification
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [master]
+    paths:
+      - '.github/workflows/m3-llvm-windows-stl-compat.yml'
+      - '.github/scripts/require-m3-llvm-windows-stl.ps1'
+      - '.github/scripts/verify-m3-llvm-windows-triggers.py'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_WINDOWS_STL_COMPAT.md'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/LlvmCompilerProvider.java'
+      - '.gitattributes'
+      - '.github/workflows/maven.yml'
+      - '.github/workflows/m3-polyglot-verify.yml'
+      - 'tools/m3-polyglot-maven-plugin/pom.xml'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProvider.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolProviders.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/M3ToolReuseInputs.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskRunner.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/TaskManifest.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/InputStamps.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/java/io/synexia/maven/polyglot/BuildCache.java'
+      - 'tools/m3-polyglot-maven-plugin/src/main/resources/META-INF/services/io.synexia.maven.polyglot.M3ToolProvider'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmCompilerSelectionContractTestMain.java'
+      - 'tools/m3-polyglot-maven-plugin/src/test/java/io/synexia/maven/polyglot/LlvmInstallationSelectionContractTestMain.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msvc-llvm:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out original Maven fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify original Windows native owner triggers and negative refusal contracts
+        shell: pwsh
+        run: |
+          python -B .github/scripts/verify-m3-llvm-windows-triggers.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native trigger refusal tests failed.' }
+          python -B .github/scripts/verify-m3-llvm-windows-triggers.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native LLVM owner trigger check failed.' }
+      - name: Select Java 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned ABI-compatible LLVM and prove real C++20 MSVC STL
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE '.github/scripts/require-m3-llvm-windows-stl.ps1')
+      - name: Compile the original Maven polyglot native contract owners
+        shell: pwsh
+        run: |
+          mvn -B -ntp -f tools/m3-polyglot-maven-plugin/pom.xml test-compile
+          if ($LASTEXITCODE -ne 0) { throw 'Original Maven plugin test compilation failed.' }
+      - name: Require original Maven TaskRunner C/C++/IR/Objective-C native execution
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:GITHUB_WORKSPACE 'tools/m3-polyglot-maven-plugin'
+          $classpath = "$project/target/test-classes;$project/target/classes"
+          $log = Join-Path $env:RUNNER_TEMP 'm3-llvm-windows-stl-proof/maven-native.log'
+          & java -cp $classpath io.synexia.maven.polyglot.LlvmCompilerIntegrationTestMain --required `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw 'Original Maven LLVM native integration failed.' }
+          foreach ($required in @(
+            'PASS: LLVM C17/C++20 compile/link/run',
+            'PASS: LLVM IR llc object, clang link and native run',
+            'PASS: Objective-C and both Objective-C++ spellings compile',
+            'LLVM native integration assertions')) {
+            if (-not (Select-String -LiteralPath $log -SimpleMatch -Quiet -Pattern $required)) {
+              throw "Required original Maven native proof absent: $required"
+            }
+          }
+      - name: Fail closed if installed LLVM tool bytes changed during native execution
+        shell: pwsh
+        run: |
+          $receipt = Join-Path $env:RUNNER_TEMP 'm3-llvm-windows-stl-proof/host-binary-receipt.tsv'
+          if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
+            throw 'Missing original Windows compiler SHA-256 receipt.'
+          }
+          $lines = @(Get-Content -LiteralPath $receipt)
+          foreach ($tool in @('clang', 'clang++', 'llc', 'opt', 'llvm-as', 'llvm-link')) {
+            $records = @($lines | Where-Object { $_.StartsWith("$tool`t") })
+            if ($records.Count -ne 1) { throw "Expected exactly one SHA-256 record for $tool" }
+            $parts = $records[0] -split "`t", 3
+            if ($parts.Count -ne 3 -or $parts[1] -notmatch '^[a-f0-9]{64}
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-windows-llvm22-msvc-stl-native
+          retention-days: 14
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/m3-llvm-windows-stl-proof/
+) {
+              throw "Malformed SHA-256 record for $tool"
+            }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $parts[2]).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[1]) { throw "LLVM binary drift during native run: $tool" }
+          }
+          Write-Output 'PASS: all six original Windows host LLVM executable digests unchanged'
+      - name: Retain original Windows compiler and Maven TaskRunner evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-windows-llvm22-msvc-stl-native
+          retention-days: 14
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/m3-llvm-windows-stl-proof/
