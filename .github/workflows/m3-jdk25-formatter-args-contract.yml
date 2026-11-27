@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 Java 25 formatter argument contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/maven.yml'
+      - '.github/scripts/require-maven-jdk25-palantir-args.sh'
+      - '.github/scripts/test-maven-jdk25-palantir-args.sh'
+      - '.github/workflows/m3-jdk25-formatter-args-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  token-contract:
+    name: Token admission (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate 16 real shell admission cases without Maven or network
+        shell: bash
+        run: bash .github/scripts/test-maven-jdk25-palantir-args.sh
+      - name: Verify captured Maven distribution startup arguments
+        shell: bash
+        env:
+          MAVEN_ARGS: -Dversion.palantirJavaFormat=2.71.0 -ntp
+        run: bash .github/scripts/require-maven-jdk25-palantir-args.sh
