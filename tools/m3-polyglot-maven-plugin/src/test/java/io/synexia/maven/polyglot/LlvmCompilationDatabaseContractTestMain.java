@@ -171,13 +171,29 @@ public final class LlvmCompilationDatabaseContractTestMain {
                     "-foptimization-record-file=target/optimization.yaml",
                     "-fmodules-cache-path=target/modules", "-fmodule-output=target/out.pcm",
                     "-fprofile-instr-generate", "-fprofile-generate",
-                    "-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker")) {
+                    "-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker",
+                    "-Wp,-MD,target/invisible.d", "-Wp,-MMD,target/invisible.d",
+                    "-Wa,-adhln=target/invisible.lst", "-Wl,-Map=target/invisible.map",
+                    "-Xarch_x86_64", "-mllvm", "-mllvm=-print-after-all",
+                    "-fplugin=/path/to/plugin.so", "-fpass-plugin=/path/to/pass.so",
+                    "-fplugin-arg-sample-option=value", "-fimplicit-modules",
+                    "-fimplicit-module-maps", "-fmodules-cache-path=target/cache")) {
                 refuses(() -> LlvmCompilationDatabase.render(
                         load(root, valid.replace("arg\tclang-c\t-c\n",
                                 "arg\tclang-c\t-c\narg\tclang-c\t" + sideEffect + "\n")),
                         root, "all"),
                         "implicit or opaque compiler side effect is not fully declared: " + sideEffect);
             }
+            // Even explicitly declaring the forwarded filename does not prove
+            // the forwarded preprocessor command's full output effects.
+            refuses(() -> LlvmCompilationDatabase.render(
+                    load(root, valid.replace("arg\tclang-c\t-c\n",
+                            "arg\tclang-c\t-c\n"
+                            + "arg\tclang-c\t-Wp,-MD,target/hidden.d\n")
+                            .replace("output\tclang-c\ttarget/hello.o\n",
+                                    "output\tclang-c\ttarget/hello.o\n"
+                                    + "output\tclang-c\ttarget/hidden.d\n")),
+                    root, "all"), "forwarded -Wp depfile is opaque despite a matching output declaration");
             refuses(() -> LlvmCompilationDatabase.render(graph, root, "standalone"),
                     "link-only closure must not produce fake compile entries");
             Files.delete(root.resolve("src/hello.c"));
