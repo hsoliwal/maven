@@ -1,0 +1,14 @@
+order	gate	result	proof_or_blocker
+1	changed_file_scope	PASS_STATIC	Only targeted Maven smart builder sources tests docs
+1a	machine_law_order	PASS_STATIC	31 sorted rules; six mechanical IDs
+1b	strict_flag_maven_wiring	PASS_STATIC	Both Mojos and main executors carry the opt in
+1c	proof_eligibility	PASS_STATIC	Full leaf inventory matches validated signed V2 rows
+1d	legacy_compatibility	PASS_STATIC	No strict mode retains legacy evidence binding and receipt keys
+1e	source_contract_consistency	PASS_STATIC	40/40 cross file source checks at recorded source commit
+1f	whitespace_hygiene	PASS_STATIC	No trailing whitespace in 15 inspected files
+2	Java21_javac_compile_new_batch	NOT_EXECUTED	Exact updated connected GitHub source cannot be mounted into JDK environment
+3	runtime_JUnit_and_synthetic_Maven_tests	NOT_EXECUTED	No complete source checkout and Maven executable
+4	GitHub_Actions	NOT_REPORTED	No PR head run reported at inspection time
+5	real_pinned_OpenRewrite	NOT_EXECUTED	Signed approved recipes and offline dependencies required
+6	semantic_API_ABI_JNI_contracts	NOT_AUTHENTICATED	Independent evidence and ratification required
+7	serial_M3_canon_promotion	NOT_PERFORMED	Draft PR stays unmerged

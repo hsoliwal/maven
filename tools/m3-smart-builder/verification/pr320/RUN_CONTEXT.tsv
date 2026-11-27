@@ -1,0 +1,21 @@
+key	value
+run_id	pr320-source-audit-2026-11-26
+task_packet	active
+source_doc	M3-SCALE v3 locked canon and current Maven plugin contracts
+invariant_id	SOURCE_BOUND_PROOF_AND_RECIPE_FIRST
+run_mode	dry-run-report-only
+profile	bounded-review
+workers	1
+shard_count	1
+shard_index	0
+targets	tools/m3-smart-builder; .github/workflows/m3-operator-proof-qualification.yml
+baseline_commit	62499c2051a6152f8e4951728264efb4fd5b1fb8
+audited_head	6ec318f3cf68e26432b9a0fc93e940ff79f9580f
+public_api_lock	LOCKED
+external_behavior_lock	LOCKED
+allowed_delta	verification evidence documents only
+forbidden	secret material; unreviewed promotion; Maven core/default lifecycle edits
+verify_order	diff->lint->compile->tests->runtime->canon
+stop_conditions	missing full Maven/CI proof; missing API/ABI/JNI behavior proof
+output_contract	STATUS.tsv;FINAL_REPORT.md;RUN_CONTEXT.tsv;PROVENANCE.tsv;VERIFY_CONTRACT.tsv;OUTPUT_CONTRACT.tsv
+host_java	OpenJDK 21.0.12.1 available; no Maven executable available

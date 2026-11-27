@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: Apache-2.0
+# Opt-in M3 source-bound operator proof qualification; no code promotion.
+name: M3 operator proof real Java 21 qualification
+
+"on":
+  pull_request:
+    paths:
+      - 'tools/m3-smart-builder/**'
+      - '.github/workflows/m3-operator-proof-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-maven-plugin:
+    name: Actual Maven plugin build, descriptor and synthetic replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: tools/m3-smart-builder/pom.xml
+      - name: Maven 3 runtime and actual plugin packaging
+        working-directory: tools/m3-smart-builder
+        run: |
+          set -euo pipefail
+          mvn -version
+          mvn -B -ntp clean install
+      - name: Inspect generated Maven plugin descriptor and operator-proof options
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from zipfile import ZipFile
+          jars = sorted(Path("tools/m3-smart-builder/target").glob("m3-smart-maven-plugin-*.jar"))
+          assert len(jars) == 1, f"expected one packaged Maven plugin JAR; got {jars}"
+          with ZipFile(jars[0]) as jar:
+              descriptor = jar.read("META-INF/maven/plugin.xml")
+          root = ET.fromstring(descriptor)
+          goals = {t.text for t in root.findall(".//{*}mojo/{*}goal")}
+          for goal in ("code-agent", "code-agent-verify", "machine-fingerprints"):
+              assert goal in goals, f"missing real Maven descriptor goal: {goal}; got {sorted(goals)}"
+          names = {t.text for t in root.findall(".//{*}mojo/{*}parameters/{*}parameter/{*}name")}
+          for name in ("operatorCatalog", "operatorProofRegistry", "operatorProofDir",
+                       "operatorProofPublicKey", "operatorProofPublicKeySha256",
+                       "requireSourceScopedRecipeProof"):
+              assert name in names, f"missing Maven parameter in actual plugin descriptor: {name}"
+          print("PASS: actual Maven plugin packaged and all M3 operator proof goals/parameters described")
+          PY
+      - name: Retain packaged Maven plugin and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-operator-proof-real-maven-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            tools/m3-smart-builder/target/m3-smart-maven-plugin-*.jar
+            tools/m3-smart-builder/target/surefire-reports/**
+            tools/m3-smart-builder/target/m3-runtime-acceptance/logs/*.log
+
+  full-jdk-no-maven-api:
+    name: Full JDK-only lint, compiler, canon and synthetic MCP regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Strict JDK-only Java 21 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tools/m3-smart-builder/target/pr320-ci
+          sh tools/m3-smart-builder/scripts/verify.sh 2>&1 |
+            tee tools/m3-smart-builder/target/pr320-ci/jdk-only.log
+      - name: Python runtime harness contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/m3-smart-builder/scripts/tests -p 'test_*.py' -v 2>&1 |
+            tee tools/m3-smart-builder/target/pr320-ci/python.log
+      - name: Retain JDK-only and Python evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-operator-proof-jdk21-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: tools/m3-smart-builder/target/pr320-ci/*.log

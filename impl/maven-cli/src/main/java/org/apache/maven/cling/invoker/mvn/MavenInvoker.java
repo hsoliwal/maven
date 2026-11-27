@@ -626,6 +626,7 @@ public class MavenInvoker extends LookupInvoker<MavenContext> {
             M3BuildSuggestions.afterBuild(
                     request.getUserProperties(),
                     request.getSystemProperties(),
+                    request.isOffline(),
                     () -> suggestionSnapshot(result, suggestionSummaries),
                     context.logger::info);
 
@@ -639,6 +640,7 @@ public class MavenInvoker extends LookupInvoker<MavenContext> {
             M3BuildSuggestions.afterBuild(
                     request.getUserProperties(),
                     request.getSystemProperties(),
+                    request.isOffline(),
                     () -> suggestionSnapshot(result, List.of()),
                     context.logger::info);
             return 0;

@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
@@ -33,6 +34,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
@@ -158,7 +160,17 @@ final class M3BuildSuggestions {
 
     static void afterBuild(
             Properties user, Properties system, Supplier<BuildSnapshot> completed, Consumer<String> log) {
-        afterBuild(user, system, completed, log, M3BuildSuggestions::nativeAdvice);
+        afterBuild(user, system, true, completed, log);
+    }
+
+    /** Maven's effective offline request is authoritative over optional download configuration. */
+    static void afterBuild(
+            Properties user,
+            Properties system,
+            boolean offline,
+            Supplier<BuildSnapshot> completed,
+            Consumer<String> log) {
+        afterBuild(user, system, completed, log, (u, s, prompt) -> nativeAdvice(u, s, offline, prompt));
     }
 
     /* The injected package-local boundary observes calls; it is not a production provider registry. */
@@ -314,15 +326,25 @@ final class M3BuildSuggestions {
         return out.toString();
     }
 
-    private static String nativeAdvice(Properties user, Properties system, String prompt) throws Exception {
+    private static String nativeAdvice(Properties user, Properties system, boolean offline, String prompt)
+            throws Exception {
         // This method is reached only after both opt-ins and useful completed diagnostics.
-        String backend = required(user, system, "m3.smart.llmBackend");
-        if (!backend.equals("cli") && !backend.equals("jni")) {
-            throw new IllegalArgumentException("unsupported native backend");
-        }
         int timeout = Integer.parseInt(property(user, system, "m3.smart.llmTimeoutSeconds", "120"));
         if (timeout < 1 || timeout > 120) {
             throw new IllegalArgumentException("advisory timeout outside 1..120 seconds");
+        }
+        return runProcess(nativeCommand(user, system, offline, timeout), prompt, timeout);
+    }
+
+    /** Admit only explicit local artifacts or complete pinned tuples for the existing lazy provider. */
+    static List<String> nativeCommand(Properties user, Properties system, boolean offline, int timeout)
+            throws IOException {
+        if (timeout < 1 || timeout > 120) {
+            throw new IllegalArgumentException("advisory timeout outside 1..120 seconds");
+        }
+        String backend = required(user, system, "m3.smart.llmBackend");
+        if (!backend.equals("cli") && !backend.equals("jni")) {
+            throw new IllegalArgumentException("unsupported native backend");
         }
         String adviserHash = requiredHash(user, system, "m3.smart.adviserJarSha256");
         String chromeHash = requiredHash(user, system, "m3.smart.chromeLlmJarSha256");
@@ -330,15 +352,12 @@ final class M3BuildSuggestions {
         Path chrome = regularFile(required(user, system, "m3.smart.chromeLlmJar"));
         verifyJar(adviser, adviserHash);
         verifyJar(chrome, chromeHash);
-        Path binary =
-                regularFile(required(user, system, backend.equals("jni") ? "m3.smart.jniLib" : "m3.smart.llamaBin"));
-        Path model = regularFile(required(user, system, "m3.smart.modelPath"));
         String javaHome = property(user, system, "m3.smart.llmJavaHome", System.getProperty("java.home"));
         Path java = regularFile(Path.of(javaHome)
                 .resolve("bin")
                 .resolve(System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java")
                 .toString());
-        List<String> command = List.of(
+        List<String> command = new ArrayList<>(List.of(
                 java.toString(),
                 "-cp",
                 adviser.toString(),
@@ -347,13 +366,82 @@ final class M3BuildSuggestions {
                 chrome.toString(),
                 "--backend",
                 backend,
-                "--binary",
-                binary.toString(),
-                "--model",
-                model.toString(),
+                "--offline",
+                Boolean.toString(offline
+                        || !"true".equalsIgnoreCase(property(user, system, "m3.smart.llmAllowDownloads", "false"))),
                 "--timeout-seconds",
-                Integer.toString(timeout));
-        return runProcess(command, prompt, timeout);
+                Integer.toString(timeout)));
+        boolean lazyJni = artifactConfigured(user, system, "jni");
+        if (lazyJni) {
+            if (!backend.equals("jni")
+                    || property(user, system, "m3.smart.jniLib", null) != null
+                    || property(user, system, "m3.smart.llamaBin", null) != null) {
+                throw new IllegalArgumentException("choose one matching native artifact source");
+            }
+            artifactArguments(user, system, "jni", command);
+        } else {
+            Path binary = regularFile(
+                    required(user, system, backend.equals("jni") ? "m3.smart.jniLib" : "m3.smart.llamaBin"));
+            command.addAll(List.of("--binary", binary.toString()));
+        }
+        if (artifactConfigured(user, system, "model")
+                || property(user, system, "m3.smart.modelFollowRedirects", null) != null) {
+            if (property(user, system, "m3.smart.modelPath", null) != null) {
+                throw new IllegalArgumentException("choose one model source");
+            }
+            artifactArguments(user, system, "model", command);
+            String redirects = property(user, system, "m3.smart.modelFollowRedirects", "false");
+            if (!redirects.equals("true") && !redirects.equals("false")) {
+                throw new IllegalArgumentException("invalid model redirect flag");
+            }
+            command.addAll(List.of("--model-follow-redirects", redirects));
+        } else {
+            command.addAll(List.of(
+                    "--model",
+                    regularFile(required(user, system, "m3.smart.modelPath")).toString()));
+        }
+        return List.copyOf(command);
+    }
+
+    private static boolean artifactConfigured(Properties user, Properties system, String prefix) {
+        for (String suffix : List.of("Url", "Sha256", "CacheDir", "Bytes")) {
+            if (property(user, system, "m3.smart." + prefix + suffix, null) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void artifactArguments(Properties user, Properties system, String prefix, List<String> command) {
+        String propertyPrefix = "m3.smart." + prefix;
+        String url = required(user, system, propertyPrefix + "Url");
+        URI uri = URI.create(url);
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || uri.getHost() == null
+                || uri.getRawUserInfo() != null
+                || uri.getRawFragment() != null) {
+            throw new IllegalArgumentException("explicit HTTPS artifact URL required");
+        }
+        String hash = requiredHash(user, system, propertyPrefix + "Sha256");
+        String cache = required(user, system, propertyPrefix + "CacheDir");
+        if (!Path.of(cache).isAbsolute()) {
+            throw new IllegalArgumentException("absolute artifact cache required");
+        }
+        String size = required(user, system, propertyPrefix + "Bytes");
+        if (!size.matches("[0-9]{1,11}")
+                || Long.parseLong(size) < 1
+                || Long.parseLong(size) > 64L * 1024 * 1024 * 1024) {
+            throw new IllegalArgumentException("invalid artifact size");
+        }
+        command.addAll(List.of(
+                "--" + prefix + "-url",
+                url,
+                "--" + prefix + "-sha256",
+                hash,
+                "--" + prefix + "-cache-dir",
+                cache,
+                "--" + prefix + "-bytes",
+                size));
     }
 
     private static String property(Properties user, Properties system, String name, String fallback) {

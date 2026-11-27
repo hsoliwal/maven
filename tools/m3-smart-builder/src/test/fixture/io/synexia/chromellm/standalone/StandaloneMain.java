@@ -41,12 +41,18 @@ public final class StandaloneMain {
         for (int i = 0; i + 1 < args.length; i += 2) {
             if (args[i].equals("--model")) model = Path.of(args[i + 1]);
             if (args[i].equals("--backend")) backend = args[i + 1];
-            if (args[i].equals("--jni-lib") || args[i].equals("--llama-bin")) nativeFlag = args[i];
+            if (args[i].equals("--jni-lib") || args[i].equals("--llama-bin") || args[i].equals("--jni-url")) nativeFlag = args[i];
+        }
+        if (options.containsKey("--model-url")) {
+            model = Path.of(options.get("--model-cache-dir")).resolve("lazy-fixture.gguf");
+            if (!options.get("--model-max-bytes").equals(options.get("--model-bytes")))
+                throw new IllegalArgumentException("expected exact lazy artifact bound");
         }
         if (model == null) throw new IllegalArgumentException("expected explicit model");
         if (!("cli".equals(backend) && "--llama-bin".equals(nativeFlag))
-                && !("jni".equals(backend) && "--jni-lib".equals(nativeFlag)))
+                && !("jni".equals(backend) && ("--jni-lib".equals(nativeFlag) || "--jni-url".equals(nativeFlag))))
             throw new IllegalArgumentException("expected explicit matching native backend");
+        Files.writeString(Path.of(model + ".arguments"), new java.util.TreeMap<>(options).toString());
         Files.writeString(Path.of(model + ".started"), Long.toString(ProcessHandle.current().pid()));
         var lines = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         String initialization = lines.readLine();
@@ -128,6 +134,17 @@ public final class StandaloneMain {
             String request = lines.readLine();
             if (observeEvidence) Files.writeString(Path.of(model + ".request"), request);
             if (!request.contains("infer_text")) throw new IllegalArgumentException("expected infer_text");
+            if (scenario.startsWith("hook-drift-")) {
+                Path project = Path.of(model).getParent();
+                Path target = project.resolve(switch (scenario) {
+                    case "hook-drift-source" -> "src/Example.java";
+                    case "hook-drift-receipt" -> ".reports/preparation.json";
+                    case "hook-drift-checkpoint" -> "synthetic-checkpoints/source-0.tsv";
+                    default -> throw new IllegalArgumentException("unknown hook drift fixture");
+                });
+                Files.writeString(target, " ", java.nio.file.StandardOpenOption.APPEND);
+                Files.writeString(Path.of(model + ".mutated"), "synthetic mutation before successful reply\n");
+            }
             if (request.contains("fixture-provider-error")) scenario = "call-is-error";
             if (request.contains("fixture timeout")) Thread.sleep(15000);
             if (request.contains("fixture invalid content")) scenario = "call-nontext";

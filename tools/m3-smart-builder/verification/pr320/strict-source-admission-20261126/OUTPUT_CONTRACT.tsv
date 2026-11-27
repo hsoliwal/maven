@@ -1,0 +1,7 @@
+artifact	status	purpose
+STATUS.tsv	EMITTED	gate outcomes
+FINAL_REPORT.md	EMITTED	committed code and truthful qualification notes
+RUN_CONTEXT.tsv	EMITTED	M3 task packet and locked boundaries
+PROVENANCE.tsv	EMITTED	current source identifiers and origin
+VERIFY_CONTRACT.tsv	EMITTED	mechanical order and unknown proof gates
+OUTPUT_CONTRACT.tsv	EMITTED	complete output contract

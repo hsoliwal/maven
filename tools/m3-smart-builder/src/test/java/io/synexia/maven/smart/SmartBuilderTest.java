@@ -397,6 +397,64 @@ public final class SmartBuilderTest {
         refused(entry(blocked, null, null, null));
         require(!Files.exists(Path.of(blocked.model() + ".started")), "blocked stdin never starts provider");
         passed++;
+        testLazyMcpEntry(jar, cli);
+    }
+
+    private static void testLazyMcpEntry(Path jar, Path cli) throws Exception {
+        Path cache = Files.createDirectory(root.resolve("lazy-model-cache"));
+        List<String> args = new ArrayList<>(List.of("--module-jar", jar.toString(), "--backend", "cli",
+                "--binary", cli.toString(), "--timeout-seconds", "7",
+                "--model-url", "https://example.invalid/model.gguf", "--model-sha256", "1".repeat(64),
+                "--model-cache-dir", cache.toString(), "--model-bytes", "1234"));
+        Entry lazy = entry(args, "FIXTURE_UNICODE".getBytes(StandardCharsets.UTF_8));
+        require(lazy.exit() == 0 && lazy.out().equals("Review é 🔧"), "lazy model uses existing MCP exchange");
+        Path receipt = cache.resolve("lazy-fixture.gguf.arguments");
+        String seen = Files.readString(receipt);
+        require(seen.contains("--offline=true") && seen.contains("--model-max-bytes=1234")
+                && seen.contains("--model-download-timeout-seconds=7"), "lazy acquisition defaults offline and stays bounded");
+        args.addAll(List.of("--offline", "false"));
+        require(entry(args, "review".getBytes(StandardCharsets.UTF_8)).exit() == 0, "explicit online command admitted");
+        require(Files.readString(receipt).contains("--offline=false"), "online permission reaches existing owner");
+        passed++;
+
+        args.set(args.indexOf("--backend") + 1, "jni");
+        int binary = args.indexOf("--binary");
+        args.remove(binary + 1);
+        args.remove(binary);
+        args.addAll(List.of("--jni-url", "https://example.invalid/native.bin", "--jni-sha256", "2".repeat(64),
+                "--jni-cache-dir", root.resolve("uncreated-native-cache").toString(), "--jni-bytes", "5678"));
+        require(entry(args, "review".getBytes(StandardCharsets.UTF_8)).exit() == 0, "lazy JNI and model accepted together");
+        require(Files.readString(receipt).contains("--jni-bytes=5678"), "pinned JNI identity forwarded");
+        require(!Files.exists(root.resolve("uncreated-native-cache")), "adviser never creates a cache itself");
+        passed++;
+
+        for (String absent : List.of("--model-url", "--model-sha256", "--model-cache-dir", "--model-bytes",
+                "--jni-url", "--jni-sha256", "--jni-cache-dir", "--jni-bytes")) {
+            List<String> invalid = new ArrayList<>(args);
+            int at = invalid.indexOf(absent);
+            invalid.remove(at + 1);
+            invalid.remove(at);
+            Files.delete(receipt);
+            refused(entry(invalid, "review".getBytes(StandardCharsets.UTF_8)));
+            require(!Files.exists(receipt), "partial artifact refused before provider start");
+            Files.writeString(receipt, "next refusal marker");
+            passed++;
+        }
+        for (String[] invalidValue : new String[][]{{"--offline", "yes"}, {"--model-bytes", "68719476737"},
+                {"--model-sha256", "bad"}, {"--model-url", "http://example.invalid/model"},
+                {"--jni-cache-dir", "relative"}, {"--jni-bytes", "0"}}) {
+            List<String> invalid = new ArrayList<>(args);
+            invalid.set(invalid.indexOf(invalidValue[0]) + 1, invalidValue[1]);
+            refused(entry(invalid, "review".getBytes(StandardCharsets.UTF_8)));
+            passed++;
+        }
+        List<String> mixed = new ArrayList<>(args);
+        mixed.addAll(List.of("--model", cli.toString()));
+        refused(entry(mixed, "review".getBytes(StandardCharsets.UTF_8)));
+        List<String> wrongBackend = new ArrayList<>(args);
+        wrongBackend.set(wrongBackend.indexOf("--backend") + 1, "cli");
+        refused(entry(wrongBackend, "review".getBytes(StandardCharsets.UTF_8)));
+        passed++;
     }
 
     private static McpAdviser.Config config(Path jar, Path cli, String name, int seconds) throws IOException {
@@ -438,6 +496,20 @@ public final class SmartBuilderTest {
             } else if (index >= 0) command.set(index + 1, value);
             else { command.set(command.indexOf("--binary"), replaceFlag); command.set(command.indexOf(config.binary().toString()), value); }
         }
+        return entryProcess(command, input);
+    }
+
+    private static Entry entry(List<String> args, byte[] input) throws Exception {
+        Path java = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
+        List<String> command = new ArrayList<>(List.of(java.toString(), "-XX:-UsePerfData", "-cp",
+                Path.of(McpAdviser.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString(),
+                "io.synexia.maven.smart.McpAdviser"));
+        command.addAll(args);
+        return entryProcess(command, input);
+    }
+
+    private static Entry entryProcess(List<String> command, byte[] input) throws Exception {
         Process child = new ProcessBuilder(command).start();
         try {
             if (input != null) {

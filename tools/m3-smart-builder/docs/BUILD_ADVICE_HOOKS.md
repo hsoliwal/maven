@@ -43,13 +43,27 @@ a failed build needs an explicit post step after Maven.
 
 `--summarizer "<command line>"` (Maven: `m3.smart.summarizer`) adds a CPU summarizer of the operator's choice:
 
-- **Command line:** double or single quotes group an argument.
-- **Input:** the hook appends the project's `pom.xml` and, after a build, the given log.
+- **Command line:** double or single quotes group an argument; an unterminated quote is refused before launch.
+- **Input:** the hook appends the project's `pom.xml` and, after a build, the given log. The command receives these
+  original files, and its retained output lines enter the model prompt. Configure it to emit only the information
+  appropriate for that prompt.
 - **Run:** the command runs in the project directory.
-- **Recorded:** `summaryStatus`, and up to 40 non-blank output lines as `summaryLines` among the facts the model sees.
-- **Output file:** standard output is kept as `<phase>.summary.txt` next to the report.
+- **Admission:** rejected requested preparation or atom/pattern receipts prevent command launch. The report records
+  `summaryStatus: blocked-admission` and empty `summaryLines`; an earlier summary file is not consumed as current facts.
+- **Recorded:** `summaryStatus`, and up to 40 non-blank output lines of at most 300 characters as `summaryLines`
+  among the facts the model sees. Truncation preserves complete Unicode characters.
+- **Output file:** at most 1 MiB of standard output is kept as `<phase>.summary.txt` next to the report.
+  Existing links and non-files are refused before launch. The bounded output replaces an ordinary file atomically;
+  a command that cannot start leaves an earlier output unchanged. A started command replaces it with the output
+  captured during this attempt, including a partial prefix on failure. The current report's `summaryStatus`
+  determines whether that output is valid advice; failed output never contributes `summaryLines`.
 - **Failure:** a command that exits non-zero, outlives `--summarizer-timeout-seconds` (default 60) or cannot start is
-  recorded as `summaryStatus: failed: ...`, and the hook goes on.
+  recorded as `summaryStatus: failed: ...`, and the hook goes on. Output beyond 1 MiB is refused as
+  `failed: output-limit`. The deadline covers stdout collection and process completion. The hook retires its
+  child and observed descendants on completion, timeout or cancellation, with a bounded cleanup wait.
+  Descendant observation is best effort; this is not a sandbox for a daemonizing or hostile command.
+- **Cancellation:** an interrupted caller retains its interrupt flag, records `failed: interrupted`, skips model
+  inference and returns hook status 130. An already interrupted caller does not launch the summarizer.
 
 `m3.smart.failOnError` (default `true`) keeps the goal's contract: a hook that does not complete fails the goal. Set it
 to `false` where `build-hook` is bound into a POM's lifecycle, so that advice never changes a build result. The report
@@ -125,7 +139,12 @@ The report and the model prompt carry the manifest, source-set and checkpoint-se
 `atomPatternStatus: structurally-validated` and `semanticProofAuthenticated: false`.
 
 Missing, stale, malformed, incomplete or misordered evidence writes `atomPatternStatus: rejected`, a bounded reason
-code and `adviceStatus: blocked-evidence`. The hook then exits non-zero **before launching the provider**.
+code and `adviceStatus: blocked-evidence`. The hook then exits non-zero **before launching the summarizer or provider**.
+After summary collection and again before publishing a successful advisory result, the hook reruns the same evidence
+parser and compares the admitted manifest, source-set and checkpoint-set identities. Source membership changes,
+changed bytes and replacement valid receipts refuse the current advisory. A refusal after summary collection skips
+provider construction; a refusal after inference clears the candidate. The report retains the original receipt facts
+for diagnosis with a rejected status. These boundary checks do not lock source files against other writers.
 
 Limits:
 
@@ -144,8 +163,10 @@ Schema `m3.smart.build-hook.v1` records:
 - the selected provider and the advice status;
 - bounded POM, log and source facts.
 
-Raw log lines and source contents are never sent to the model. A provider failure writes `adviceStatus: failed` and
-a non-zero hook status. Model prose cannot change the observed `buildOutcome`.
+Built-in fact extraction sends bounded counts and hashes without raw log lines or source contents. An explicitly
+configured CPU summarizer receives the original POM and log; its bounded output is untrusted and is included in the
+model prompt. A provider failure writes `adviceStatus: failed` and a non-zero hook status. Model prose cannot change
+the observed `buildOutcome`.
 
 `scripts/verify.sh` runs the core, adapter and synthetic subprocess tests. The provider scenarios use a protocol
 fixture selected by the model file name (`mcp-<scenario>.gguf`). `scripts/verify-build-hook-workflow.sh` runs a
@@ -161,7 +182,10 @@ A second, independent source-bound admission:
 - **Input:** a canonical private OpenRewrite runner emits `synexia.smart-build.preparation.v1` outside the selected
   source root. The hook does not run that runner, and does not accept a recipe from model output.
 - **Refusal:** when a requested report is missing, incomplete, stale or refused, the hook exits 2 **before** any
-  model call.
+  summarizer or model call. The original receipt and source binding are checked again after summary collection and
+  after a successful model call. Even a replacement receipt that parses successfully must match the admitted identity.
+  Drift records `preparationStatus: refused` and `adviceStatus: blocked-preparation` (or `blocked-evidence` when the
+  independent checkpoint gate also fails), clears any candidate and retains the supplied Maven `buildOutcome`.
 - **Explicit opt-in:** supplying a preparation report without requiring it is rejected.
 - **Authority:** preparation facts are `PRODUCER_REPORTED_NOT_REEXECUTED`. They do not authenticate the OpenRewrite
   execution, and do not authorize source mutation.

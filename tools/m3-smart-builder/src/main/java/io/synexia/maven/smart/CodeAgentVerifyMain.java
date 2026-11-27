@@ -27,6 +27,9 @@ public final class CodeAgentVerifyMain {
     private static final String REWRITE_PLUGIN = "org.openrewrite.maven:rewrite-maven-plugin:" + REWRITE_VERSION + ":";
     private static final Set<String> OPTIONS = Set.of("--project-dir", "--build-dir", "--source-root",
             "--preparation-report", "--atom-pattern-manifest", "--recipe-catalog", "--machine-evidence",
+            "--operator-catalog", "--operator-proof-registry", "--operator-proof-dir",
+            "--operator-proof-key", "--operator-proof-key-sha256",
+            "--require-source-scoped-recipe-proof",
             "--approved-recipe-id", "--approve-execution", "--maven-executable", "--maven-repository",
             "--recipe-coordinates", "--plugin-sha256", "--timeout-seconds");
     private static final long MAX_STAGE_BYTES = 268_435_456L;
@@ -60,17 +63,44 @@ public final class CodeAgentVerifyMain {
             AtomPatternEvidence.Summary atom = AtomPatternEvidence.inspect(base, source, atomFile);
             RecipeCatalog catalog = RecipeCatalog.load(base, catalogFile);
             MachineEvidence.Summary machine = machineFile == null ? null : MachineEvidence.inspect(base, source, machineFile);
+            MachineOperatorCatalog.Summary semantic = argsMap.containsKey("--operator-catalog")
+                    ? MachineOperatorCatalog.inspect(base, resolve(base, required(argsMap, "--machine-evidence")),
+                    resolve(base, argsMap.get("--operator-catalog")), machine) : null;
             MachineRulebook.Policy rules = MachineRulebook.load();
-            String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules);
+            String preProofBinding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic);
+            boolean proofRequested = List.of("--operator-proof-registry", "--operator-proof-dir",
+                    "--operator-proof-key", "--operator-proof-key-sha256").stream().anyMatch(argsMap::containsKey);
+            MachineOperatorProofRegistry.Summary proof = proofRequested
+                    ? MachineOperatorProofRegistry.inspect(base,
+                    resolve(base, required(argsMap, "--operator-proof-registry")),
+                    resolve(base, required(argsMap, "--operator-proof-dir")),
+                    resolve(base, required(argsMap, "--operator-proof-key")),
+                    required(argsMap, "--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest(),
+                    preProofBinding) : null;
+            String strictValue = argsMap.getOrDefault("--require-source-scoped-recipe-proof", "false");
+            if (!Set.of("true", "false").contains(strictValue))
+                throw new IOException("strict source-leaf proof flag must be a literal boolean");
+            boolean requireSourceProof = Boolean.parseBoolean(strictValue);
+            if (requireSourceProof && (proof == null || proof.sourceScopedRecipeIds().isEmpty()))
+                throw new IOException("strict staged execution requires a matched V2 source-leaf proof");
+            String binding = MachineRulebook.bind(preparation, atom, catalog, machine, rules, semantic,
+                    proof, requireSourceProof);
             List<RecipeCatalog.Entry> applicable = catalog.applicable(object(object(TinyJson.parse(preparation))
                     .get("patternCounts")));
+            if (requireSourceProof) {
+                applicable = applicable.stream().filter(entry -> proof.hasSourceScopedRecipe(entry.id())).toList();
+                if (applicable.isEmpty())
+                    throw new IOException("no applicable recipe has an approved V2 source-leaf attestation");
+            }
             String approvedId = required(argsMap, "--approved-recipe-id");
             RecipeCatalog.Entry entry = applicable.stream().filter(candidate -> candidate.id().equals(approvedId))
                     .findFirst().orElseThrow(() -> new IOException("recipe not in applicable catalogue"));
             if (!"FILE".equals(entry.scope()))
                 throw new IOException("only FILE scope may run without higher-scope contracts");
             validateNomination(base, output.resolve("code-agent.json"), binding, preparation,
-                    atom, machine, rules, catalog, applicable, entry);
+                    atom, machine, semantic, proof, rules, catalog, applicable, entry,
+                    requireSourceProof);
             String pomBefore = Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576));
 
             Path runner = Path.of(required(argsMap, "--maven-executable")).toAbsolutePath().normalize();
@@ -141,6 +171,16 @@ public final class CodeAgentVerifyMain {
             if (!preparation.equals(CanonicalPreparationEvidence.inspect(base, source, preparationFile))
                     || !atom.equals(AtomPatternEvidence.inspect(base, source, atomFile))
                     || machine != null && !machine.equals(MachineEvidence.inspect(base, source, machineFile))
+                    || semantic != null && !semantic.equals(MachineOperatorCatalog.inspect(base, machineFile,
+                    resolve(base, argsMap.get("--operator-catalog")),
+                    MachineEvidence.inspect(base, source, machineFile)))
+                    || proof != null && !proof.equals(MachineOperatorProofRegistry.inspect(base,
+                    resolve(base, argsMap.get("--operator-proof-registry")),
+                    resolve(base, argsMap.get("--operator-proof-dir")),
+                    resolve(base, argsMap.get("--operator-proof-key")),
+                    argsMap.get("--operator-proof-key-sha256"), semantic, catalog,
+                    SourceInventory.inspectSelected(base, source).summary().digest(),
+                    preProofBinding))
                     || !rules.sha256().equals(MachineRulebook.load().sha256())
                     || !pomBefore.equals(Hashes.sha256(RecipeCatalog.readLocal(base, base.resolve("pom.xml"), 1_048_576)))
                     || !catalog.digest().equals(RecipeCatalog.load(base, catalogFile).digest()))
@@ -175,18 +215,23 @@ public final class CodeAgentVerifyMain {
 
     private static void validateNomination(Path base, Path file, String binding, String preparation,
                                            AtomPatternEvidence.Summary atom, MachineEvidence.Summary machine,
+                                           MachineOperatorCatalog.Summary semantic, MachineOperatorProofRegistry.Summary proof,
                                            MachineRulebook.Policy rules,
                                            RecipeCatalog catalog, List<RecipeCatalog.Entry> applicable,
-                                           RecipeCatalog.Entry entry) throws IOException {
+                                           RecipeCatalog.Entry entry, boolean requireSourceProof) throws IOException {
         Map<?, ?> report = object(TinyJson.parse(new String(RecipeCatalog.readLocal(base, file, 1_048_576),
                 StandardCharsets.UTF_8)));
         List<Object> expected = new ArrayList<>();
         for (RecipeCatalog.Entry available : applicable) expected.add(TinyJson.parse(available.json()));
-        if (!report.keySet().equals(Set.of("schema", "mode", "status", "candidateOrigin",
+        Set<String> expectedKeys = new java.util.HashSet<>(Set.of("schema", "mode", "status", "candidateOrigin",
                     "evidenceBindingSha256", "catalogSha256", "machineRulebookSha256", "atomPatternFacts", "machineEvidenceFacts",
                     "preparationFacts", "candidateSha256", "applicableRecipes", "selectedRecipe",
                     "modelConfidence", "modelOutputTrusted", "recipeApproved", "recipeExecuted",
-                    "semanticProofAuthenticated", "verificationAuthenticated"))
+                    "semanticProofAuthenticated", "verificationAuthenticated"));
+        if (semantic != null) expectedKeys.add("semanticOperatorFacts");
+        if (proof != null) expectedKeys.add("operatorProofFacts");
+        if (requireSourceProof) expectedKeys.add("sourceScopedRecipeProofRequired");
+        if (!report.keySet().equals(expectedKeys)
                 || !"m3.smart.code-agent.v1".equals(report.get("schema"))
                 || !"review-only".equals(report.get("mode")) || !"proposed".equals(report.get("status"))
                 || !Set.of("candidate-file", "cli", "jni")
@@ -200,6 +245,11 @@ public final class CodeAgentVerifyMain {
                 || !object(TinyJson.parse(atom.json())).equals(report.get("atomPatternFacts"))
                 || !(machine == null ? report.get("machineEvidenceFacts") == null
                         : object(TinyJson.parse(machine.json())).equals(report.get("machineEvidenceFacts")))
+                || !(semantic == null ? !report.containsKey("semanticOperatorFacts")
+                        : object(TinyJson.parse(semantic.json())).equals(report.get("semanticOperatorFacts")))
+                || !(proof == null ? !report.containsKey("operatorProofFacts")
+                        : object(TinyJson.parse(proof.json())).equals(report.get("operatorProofFacts")))
+                || (requireSourceProof && !Boolean.TRUE.equals(report.get("sourceScopedRecipeProofRequired")))
                 || !expected.equals(report.get("applicableRecipes"))
                 || !object(TinyJson.parse(entry.json())).equals(report.get("selectedRecipe"))
                 || !Boolean.FALSE.equals(report.get("modelOutputTrusted"))
