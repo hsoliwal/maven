@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+name: M3 external provider state admission
+
+on:
+  pull_request:
+    paths:
+      - 'tools/m3-polyglot-maven-plugin/**'
+      - '.github/workflows/m3-external-provider-state-admission.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-built-contract:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Original Maven polyglot plugin compile, tests, and contract mains
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/m3-polyglot-maven-plugin/scripts/retry-maven-central-429.sh \
+            mvn --batch-mode --no-transfer-progress \
+            -f tools/m3-polyglot-maven-plugin/pom.xml verify \
+            | tee "$RUNNER_TEMP/m3-provider-state-${{ matrix.os }}-${{ matrix.java }}.log"
+          grep -Eq 'PASS: [0-9]+ build-cache/module-state integration checks' \
+            "$RUNNER_TEMP/m3-provider-state-${{ matrix.os }}-${{ matrix.java }}.log"
+      - name: Preserve source-built proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m3-external-provider-state-${{ matrix.os }}-java-${{ matrix.java }}
+          path: |
+            tools/m3-polyglot-maven-plugin/target/surefire-reports/**
+            tools/m3-polyglot-maven-plugin/target/*.log
+          if-no-files-found: warn
+          retention-days: 14
