@@ -40,7 +40,7 @@ if [[ -n "$(git -C "$SOURCE" status --porcelain --untracked-files=normal)" ]]; t
   echo 'LLVM fork checkout has uncommitted or untracked source changes' >&2
   exit 66
 fi
-for required in llvm/CMakeLists.txt clang/tools/driver/CMakeLists.txt cmake/Modules/LLVMVersion.cmake third-party libc; do
+for required in llvm/CMakeLists.txt clang/tools/driver/CMakeLists.txt cmake/Modules/LLVMVersion.cmake third-party libc lld/CMakeLists.txt lld/tools/lld/CMakeLists.txt; do
   test -e "$SOURCE/$required" || { printf 'Missing pinned source closure: %s\n' "$required" >&2; exit 66; }
 done
 # The source under proof is LLVM 24, but the commit identity is the actual gate.
@@ -104,7 +104,7 @@ mkdir -p -- "$BUILD" "$EVIDENCE"
 } > "$EVIDENCE/source-receipt.tsv"
 (
   cd "$SOURCE"
-  sha256sum llvm/CMakeLists.txt clang/tools/driver/CMakeLists.txt cmake/Modules/LLVMVersion.cmake
+  sha256sum llvm/CMakeLists.txt clang/tools/driver/CMakeLists.txt cmake/Modules/LLVMVersion.cmake lld/CMakeLists.txt lld/tools/lld/CMakeLists.txt
 ) > "$EVIDENCE/source-file-sha256.txt"
 
 # Resolve and compile the original Maven prerequisite before the costly native
@@ -153,23 +153,23 @@ test -f "$TEST_CLASSES/io/synexia/maven/polyglot/LlvmCompilerIntegrationTestMain
 # Maven task vectors are rewritten. GCC/host SDK remains an external input.
 cmake -S "$SOURCE/llvm" -B "$BUILD" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_ENABLE_PROJECTS=clang \
+  -DLLVM_ENABLE_PROJECTS="clang;lld" \
   -DCLANG_ENABLE_CIR=OFF \
-  -DLLVM_TARGETS_TO_BUILD=X86 \
+  -DLLVM_TARGETS_TO_BUILD="X86;WebAssembly" \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_EXAMPLES=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF \
   -DLLVM_PARALLEL_COMPILE_JOBS=2 \
   -DLLVM_PARALLEL_LINK_JOBS=1 \
   2>&1 | tee "$EVIDENCE/configure.log"
-cmake --build "$BUILD" --target clang llc opt llvm-as llvm-link --parallel 2 \
+cmake --build "$BUILD" --target clang llc opt llvm-as llvm-link lld --parallel 2 \
   2>&1 | tee "$EVIDENCE/native-build.log"
-for tool in clang clang++ llc opt llvm-as llvm-link; do
+for tool in clang clang++ llc opt llvm-as llvm-link ld.lld wasm-ld lld-link; do
   test -x "$BUILD/bin/$tool" || { printf 'Expected source-built tool missing: %s\n' "$tool" >&2; exit 67; }
 done
 {
   printf 'source_revision\t%s\n' "$ACTUAL"
-  for tool in clang clang++ llc opt llvm-as llvm-link; do
+  for tool in clang clang++ llc opt llvm-as llvm-link ld.lld wasm-ld lld-link; do
     printf 'tool\t%s\n' "$tool"
     sha256sum "$BUILD/bin/$tool"
     "$BUILD/bin/$tool" --version | sed -n '1p'

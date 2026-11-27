@@ -276,7 +276,8 @@ class MavenPrerequisiteFixture:
             directory.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(SOURCE_SCRIPT, self.script)
         for name in ("llvm/CMakeLists.txt", "clang/tools/driver/CMakeLists.txt",
-                     "cmake/Modules/LLVMVersion.cmake"):
+                     "cmake/Modules/LLVMVersion.cmake", "lld/CMakeLists.txt",
+                     "lld/tools/lld/CMakeLists.txt"):
             path = self.source / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("set(LLVM_VERSION_MAJOR 24)\n", encoding="utf-8")
@@ -445,6 +446,14 @@ class MavenPrerequisiteAdmissionTests(unittest.TestCase):
 
     def test_missing_source_closure_refuses_before_maven_or_outputs(self) -> None:
         (self.f.source / "libc").rmdir()
+        result = self.f.run()
+        self.assertEqual(result.returncode, 66, result.stdout)
+        self.assertEqual(self.f.observed(), [])
+        self.assertFalse(self.f.build.exists())
+        self.assertFalse(self.f.evidence.exists())
+
+    def test_missing_lld_source_closure_refuses_before_maven(self) -> None:
+        (self.f.source / "lld/tools/lld/CMakeLists.txt").unlink()
         result = self.f.run()
         self.assertEqual(result.returncode, 66, result.stdout)
         self.assertEqual(self.f.observed(), [])
