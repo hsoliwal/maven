@@ -24,7 +24,7 @@ final class MachineRulebook {
             "SIMILARITY", "REWRITE", "VERIFY", "PROMOTION", "RESIDUE");
     private static final Set<String> AUTHORITIES = Set.of("MECHANICAL", "PRODUCER_REPORTED", "REVIEW_ONLY", "EXTERNAL_GATE");
     private static final Set<String> ENFORCED_IDS = Set.of("atom-inventory", "file-digest",
-            "inference-boundary", "recipe-first");
+            "inference-boundary", "recipe-first", "stage-evidence-binding", "signed-recipe-admission");
 
     record Rule(String id, String stage, String authority, String directive) {
         String json() {
@@ -74,15 +74,38 @@ final class MachineRulebook {
             previous = fields[0];
             rules.add(new Rule(fields[0], fields[1], fields[2], fields[3]));
         }
-        if (!Set.copyOf(rules.stream().map(Rule::id).toList()).containsAll(REQUIRED))
-            throw new IOException("missing mandatory M3 rule");
+        Set<String> covered = Set.copyOf(rules.stream().map(Rule::id).toList());
+        if (!covered.containsAll(REQUIRED) || !covered.containsAll(ENFORCED_IDS))
+            throw new IOException("missing mandatory or mechanically enforced M3 rule");
         return new Policy(Hashes.sha256(bytes), List.copyOf(rules));
     }
 
     static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
                        MachineEvidence.Summary machine, Policy rules) {
+        return bind(preparation, atoms, catalog, machine, rules, null);
+    }
+
+    static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
+                       MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic) {
+        return bind(preparation, atoms, catalog, machine, rules, semantic, null);
+    }
+
+    static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
+                       MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic,
+                       MachineOperatorProofRegistry.Summary proof, boolean requireSourceScopedRecipeProof) {
+        String regular = bind(preparation, atoms, catalog, machine, rules, semantic, proof);
+        if (!requireSourceScopedRecipeProof) return regular;
+        return Hashes.sha256((regular + "\nM3_REQUIRE_SOURCE_SCOPED_RECIPE_PROOF_V1")
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String bind(String preparation, AtomPatternEvidence.Summary atoms, RecipeCatalog catalog,
+                       MachineEvidence.Summary machine, Policy rules, MachineOperatorCatalog.Summary semantic,
+                       MachineOperatorProofRegistry.Summary proof) {
         return Hashes.sha256((preparation + "\n" + atoms.json() + "\n" + catalog.digest()
-                + (machine == null ? "" : "\n" + machine.json()) + "\n" + rules.sha256())
+                + (machine == null ? "" : "\n" + machine.json()) + "\n" + rules.sha256()
+                + (semantic == null ? "" : "\n" + semantic.json())
+                + (proof == null ? "" : "\n" + proof.json()))
                 .getBytes(StandardCharsets.UTF_8));
     }
 }

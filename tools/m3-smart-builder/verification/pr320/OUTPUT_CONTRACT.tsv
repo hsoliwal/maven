@@ -1,0 +1,7 @@
+artifact	status	purpose
+STATUS.tsv	EMITTED	explicit current verification status and no-promotion flags
+FINAL_REPORT.md	EMITTED	scope, precise changes, executed checks, blockers, next gates
+RUN_CONTEXT.tsv	EMITTED	task packet context and invariant locks
+PROVENANCE.tsv	EMITTED	identity of source commit, objects and donor release
+VERIFY_CONTRACT.tsv	EMITTED	mechanical proof order and unexecuted gates
+OUTPUT_CONTRACT.tsv	EMITTED	required M3 evidence deliverable index

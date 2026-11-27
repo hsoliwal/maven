@@ -27,6 +27,18 @@ public final class CodeAgentMojo extends AbstractMojo {
     private File recipeCatalog;
     @Parameter(property = "m3.smart.machineEvidence")
     private File machineEvidence;
+    @Parameter(property = "m3.smart.operatorCatalog")
+    private File operatorCatalog;
+    @Parameter(property = "m3.smart.operatorProofRegistry")
+    private File operatorProofRegistry;
+    @Parameter(property = "m3.smart.operatorProofDir")
+    private File operatorProofDir;
+    @Parameter(property = "m3.smart.operatorProofPublicKey")
+    private File operatorProofPublicKey;
+    @Parameter(property = "m3.smart.operatorProofPublicKeySha256")
+    private String operatorProofPublicKeySha256;
+    @Parameter(property = "m3.smart.requireSourceScopedRecipeProof", defaultValue = "false")
+    private boolean requireSourceScopedRecipeProof;
     @Parameter(property = "m3.smart.requireMachineEvidence", defaultValue = "false")
     private boolean requireMachineEvidence;
     @Parameter(property = "m3.smart.codeAgentCandidate")
@@ -57,6 +69,14 @@ public final class CodeAgentMojo extends AbstractMojo {
                 "--timeout-seconds", Integer.toString(llmTimeoutSeconds)));
         add(args, "--candidate-file", candidateFile);
         add(args, "--machine-evidence", machineEvidence);
+        add(args, "--operator-catalog", operatorCatalog);
+        add(args, "--operator-proof-registry", operatorProofRegistry);
+        add(args, "--operator-proof-dir", operatorProofDir);
+        add(args, "--operator-proof-key", operatorProofPublicKey);
+        if (operatorProofPublicKeySha256 != null)
+            args.addAll(List.of("--operator-proof-key-sha256", operatorProofPublicKeySha256));
+        if (requireSourceScopedRecipeProof)
+            args.addAll(List.of("--require-source-scoped-recipe-proof", "true"));
         if (requireMachineEvidence) args.addAll(List.of("--require-machine-evidence", "true"));
         add(args, "--chrome-llm-jar", chromeLlmJar);
         add(args, "--llama-bin", llamaBin);
