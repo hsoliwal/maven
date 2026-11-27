@@ -199,8 +199,16 @@ modes are refused. Known implicit-output modes including
 coverage/profiling/optimization-record output and module caches are
 not qualified for this bounded export, because they can create
 additional compiler-derived files outside the declared outputs.
-Opaque `-Xclang`, `-Xpreprocessor`, `-Xassembler`, `-Xlinker`
-forwarding and `@response` operands are also refused. This avoids
+Opaque `-Xclang`, `-Xpreprocessor`, `-Xassembler`, `-Xlinker`,
+`-mllvm`, `-Wp,`, `-Wa,`, `-Wl,`, target-specific `-Xarch_`
+forwarding, and Clang pass/plugin loading (`-fplugin`,
+`-fpass-plugin`) are also refused. In particular, native Clang
+`-Wp,-MD,hidden.d` can create a real depfile **without** a driver-level
+`-MF`, so a compdb exporter that simply skips unknown `-...` flags
+cannot assert complete declared-output ownership. Direct `@response`
+operands remain refused. These are output-accounting restrictions only;
+Maven/Clang's original compile/run interface and CMake's own
+`compile_commands.json` are unaffected. This avoids
 presenting an incompletely accounted command as fully owned by M3.
 Link steps,
 Flang and LLVM IR are not misidentified as source compiles. Untracked
