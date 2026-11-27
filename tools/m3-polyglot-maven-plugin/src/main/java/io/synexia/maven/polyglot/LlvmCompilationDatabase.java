@@ -51,7 +51,18 @@ public final class LlvmCompilationDatabase {
     // Arbitrary cc1/plugin forwarded options can create files which the
     // public Clang driver argument model cannot infer reliably.
     private static final Set<String> OPAQUE_FORWARDED_OPTIONS =
-            Set.of("-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker");
+            Set.of("-Xclang", "-Xpreprocessor", "-Xassembler", "-Xlinker",
+                    "-mllvm", "-fplugin", "-fpass-plugin");
+    // Clang/GCC's -Wp,-MD,path is a documented example of forwarding an
+    // output-producing command through the preprocessor without -MF. Keep
+    // this projection bounded: driver-level -Wa/-Wl, target-specific -Xarch,
+    // and plugin/LLVM backend forwarding also lack a verified output closure.
+    // Never treat such arguments as harmless flags merely because they begin
+    // with '-' and are not explicit translation-unit operands.
+    private static final List<String> OPAQUE_FORWARDED_PREFIXES = List.of(
+            "-Wp,", "-Wa,", "-Wl,", "-Xarch_", "-mllvm=",
+            "-fplugin=", "-fplugin-arg-", "-fpass-plugin=",
+            "-fmodules-", "-fimplicit-modules", "-fimplicit-module-maps");
     private static final Set<String> NEXT_OPERAND = Set.of("-o", "-MF", "-MJ",
             "-serialize-diagnostics", "-MT", "-MQ", "-I", "-isystem",
             "-iquote", "-idirafter", "-include", "-include-pch", "-imacros",
@@ -212,6 +223,7 @@ public final class LlvmCompilationDatabase {
                 continue;
             }
             if (OPAQUE_FORWARDED_OPTIONS.contains(arg)
+                    || OPAQUE_FORWARDED_PREFIXES.stream().anyMatch(arg::startsWith)
                     || IMPLICIT_OUTPUT_FLAGS.contains(arg)
                     || IMPLICIT_OUTPUT_PREFIXES.stream().anyMatch(arg::startsWith)) {
                 throw new IOException("unqualified Clang output/forwarding option: " + arg);

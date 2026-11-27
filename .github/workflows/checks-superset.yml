@@ -574,6 +574,21 @@ jobs:
             test -s traced.json
           )
           echo 'PASS: original Clang implicitly generated additional .i, .s and timing JSON files'
+          # -Wp forwarding hides a native depfile from naive driver-argv
+          # scanning. Its bytes and dependencies must remain observable here.
+          clang -std=c17 -c native/hello.c \
+            -o target/m3-llvm/forwarded.o \
+            -Wp,-MD,target/m3-llvm/forwarded.d
+          test -s target/m3-llvm/forwarded.o
+          test -s target/m3-llvm/forwarded.d
+          grep -F 'native/message.h' target/m3-llvm/forwarded.d
+          clang -std=c17 -c native/hello.c \
+            -o target/m3-llvm/forwarded-mmd.o \
+            -Wp,-MMD,target/m3-llvm/forwarded-mmd.d
+          test -s target/m3-llvm/forwarded-mmd.o
+          test -s target/m3-llvm/forwarded-mmd.d
+          grep -F 'native/message.h' target/m3-llvm/forwarded-mmd.d
+          echo 'PASS: Clang -Wp forwarding produces depfiles not represented by -MF'
       - name: Core extension compile and lifecycle admission contracts
         run: mvn --batch-mode --no-transfer-progress -f tools/m3-smart-builder/extension/pom.xml verify
       - name: Prepare pinned authentic JDBC test runtimes
