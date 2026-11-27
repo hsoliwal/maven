@@ -1210,7 +1210,11 @@ fragments and diagnostic sidecars must also be declared, including
 joined `-o...`, `-MF...` and `-MJ...` spellings. Opaque compiler
 forwarding, response files, implicit depfile/output side effects
 (e.g. `-save-temps`, `-ftime-trace`, split DWARF and module caches),
-and untracked sources fail closed. See
+forwarded `-Wp,` dependency files, `-Wa,`/`-Wl,` and
+`-mllvm` flags, Clang plugins and untracked sources fail closed.
+The original Maven compiler provider still accepts unchanged native
+arguments for build execution; only this bounded IDE metadata export
+declines commands whose complete side-effect ownership is unproven. See
 [LLVM toolchain / compilation database](docs/LLVM_TOOLCHAIN.md).
 
 The existing `PolyglotCli` also accepts
