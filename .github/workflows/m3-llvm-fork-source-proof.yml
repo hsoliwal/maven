@@ -26,6 +26,9 @@ on:
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh'
       - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py'
       - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_LLD_SOURCE_PROOF.md'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_LLD_RECEIPT_AUDIT.md'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-lld-receipts.py'
+      - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld_receipts.py'
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-lld.sh'
       - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld.py'
       - 'tools/m3-llvm-tools-provider/src/test/java/io/synexia/maven/llvm/LlvmWasmCoffIntegrationTestMain.java'
@@ -55,6 +58,9 @@ on:
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-ir-tools.sh'
       - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py'
       - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_LLD_SOURCE_PROOF.md'
+      - 'tools/m3-polyglot-maven-plugin/docs/LLVM_FORK_LLD_RECEIPT_AUDIT.md'
+      - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-lld-receipts.py'
+      - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld_receipts.py'
       - 'tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-lld.sh'
       - 'tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld.py'
       - 'tools/m3-llvm-tools-provider/src/test/java/io/synexia/maven/llvm/LlvmWasmCoffIntegrationTestMain.java'
@@ -89,6 +95,7 @@ jobs:
           python3 -B tools/m3-polyglot-maven-plugin/scripts/verify-llvm-fork-source-triggers.py
           python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_ir_tools.py
           python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld.py
+          python3 -B tools/m3-polyglot-maven-plugin/scripts/test_verify_pinned_llvm_lld_receipts.py
       - name: Fetch exactly pinned LLVM fork source with sparse partial clone
         shell: bash
         run: |
@@ -286,6 +293,13 @@ jobs:
             "$GITHUB_WORKSPACE/llvm-source" \
             "$RUNNER_TEMP/m3-llvm-original-build" \
             "$RUNNER_TEMP/m3-llvm-fork-native-receipt" 17
+      - name: Independently verify nine-tool and six-stage LLVM native evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B tools/m3-polyglot-maven-plugin/scripts/verify-pinned-llvm-lld-receipts.py \
+            --evidence "$RUNNER_TEMP/m3-llvm-fork-native-receipt" \
+            --build "$RUNNER_TEMP/m3-llvm-original-build"
       - name: Retain exact-source and original binary execution receipts
         if: always()
         uses: actions/upload-artifact@v4
