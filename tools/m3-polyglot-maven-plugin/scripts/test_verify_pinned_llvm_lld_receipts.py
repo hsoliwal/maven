@@ -60,8 +60,8 @@ class Fixture:
             transcript = "".join(f"{self.digest[tool]}  {self.build / 'bin' / tool}\n" for tool in names)
             self.write(stage + "-binaries-before.sha256", transcript)
             self.write(stage + "-binaries-after.sha256", transcript)
-        self.write("maven-native-run.log", "\n".join(V.COMPILER_MARKERS) + "\n")
-        self.write("maven-native-jdk17.log", "\n".join(V.COMPILER_MARKERS) + "\n")
+        self.write("maven-native-run.log", "\n".join((*V.COMPILER_MARKERS[:3], "PASS: 46 " + V.COMPILER_MARKERS[-1])) + "\n")
+        self.write("maven-native-jdk17.log", "\n".join((*V.COMPILER_MARKERS[:3], "PASS: 46 " + V.COMPILER_MARKERS[-1])) + "\n")
         for lane in (17, 21):
             self.write(f"llvm-ir-jdk{lane}-native.log", "PASS: 44 " + V.IR_MARKER + "\n")
             self.write(f"llvm-lld-jdk{lane}-native.log", "PASS: 55 " + V.LLD_MARKER + "\n")
@@ -285,6 +285,61 @@ class ReceiptAuditTests(unittest.TestCase):
         r = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(path)],
                            capture_output=True, text=True, check=False)
         self.assertNotEqual(r.returncode, 0)
+
+    def test_archive_refuses_unrecognized_receipt(self) -> None:
+        path = self.f.archive("unowned.zip")
+        with ZipFile(path, "a", ZIP_DEFLATED) as z:
+            z.writestr(V.RECEIPTS_PREFIX + "unowned-proof.txt", "not a registered source-owner file")
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(path)],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unrecognized", result.stderr)
+
+    def test_archive_refuses_noncanonical_separator(self) -> None:
+        path = self.f.archive("noncanonical.zip")
+        with ZipFile(path, "a", ZIP_DEFLATED) as z:
+            z.writestr(V.RECEIPTS_PREFIX + "/configure.log", "alternate filename")
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(path)],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("noncanonical", result.stderr)
+
+    def test_known_original_maven_retry_log_is_admitted(self) -> None:
+        self.f.write("maven-test-compile-attempt-1.log", "[INFO] BUILD SUCCESS\n")
+        result = self.f.cli(archived=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_maven_failure_cannot_be_masked_by_success(self) -> None:
+        self.f.write("maven-jdk17-test-compile.log", "[ERROR] BUILD FAILURE\n[INFO] BUILD SUCCESS\n")
+        self.refuses("contradictory Maven terminal evidence")
+        self.refuses("contradictory archived Maven terminal evidence", archived=True)
+
+    def test_native_failure_cannot_be_masked_by_pass(self) -> None:
+        path = self.f.evidence / "llvm-lld-jdk21-native.log"
+        path.write_text(path.read_text() + "FAIL: native linker failed\n", encoding="utf-8")
+        self.refuses("contradictory LLD PASS/FAIL")
+
+    def test_uncaught_compiler_exception_cannot_be_masked_by_pass(self) -> None:
+        path = self.f.evidence / "maven-native-run.log"
+        path.write_text(path.read_text() + 'Exception in thread "main" java.lang.Error: abort\n',
+                        encoding="utf-8")
+        self.refuses("compiler uncaught exception")
+
+    def test_bare_compiler_marker_cannot_substitute_for_pass(self) -> None:
+        self.f.change("maven-native-run.log", "PASS: 46 LLVM native integration assertions",
+                      "LLVM native integration assertions")
+        self.refuses("compiler lacked final PASS line")
+
+    def test_bare_ir_marker_cannot_substitute_for_pass(self) -> None:
+        self.f.change("llvm-ir-jdk17-native.log", "PASS: 44 ", "")
+        self.refuses("IR lacked final PASS line")
+
+    def test_caught_compiler_diagnostic_and_fortran_skip_remain_admissible(self) -> None:
+        path = self.f.evidence / "maven-native-run.log"
+        path.write_text(path.read_text() + "source.c:1: error: deliberate negative test\n"
+                        + "NOT_RUN: Fortran compile/link/run (flang unavailable)\n", encoding="utf-8")
+        result = self.f.cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_prior_successful_jdk17_archive_does_not_prove_lld(self) -> None:
         # Always present on all CI hosts; never depends on a local user archive.
