@@ -47,6 +47,48 @@ IR_MARKER = "LLVM opt -> llvm-as -> llvm-link -> opt host-native assertions"
 LLD_MARKER = "LLVM WASM and PE/COFF native output, invalidation and cache-exclusion assertions"
 
 
+# The artifact upload owns one CMake cache plus explicitly named receipts.
+# Reject new/unknown archive members until the source-producing stage and this
+# inventory are both reviewed, instead of silently accepting untrusted extras.
+BASE_RECEIPTS = frozenset({
+    "source-receipt.tsv", "source-file-sha256.txt", "binary-receipt.txt",
+    "configure.log", "native-build.log", "maven-test-compile.log",
+    "maven-native-run.log", "maven-jdk17-test-compile.log", "maven-native-jdk17.log",
+    "java17-version.log", "maven17-version.log",
+    "jdk17-binaries-before.sha256", "jdk17-binaries-after.sha256",
+    *(f"maven-test-compile-attempt-{n}.log" for n in (1, 2, 3)),
+})
+LANE_RECEIPTS = frozenset(
+    f"{owner}-{suffix}"
+    for lane in (17, 21)
+    for owner in (f"llvm-ir-jdk{lane}", f"llvm-lld-jdk{lane}")
+    for suffix in ("binaries-before.sha256", "binaries-after.sha256", "compile.log", "native.log")
+) | frozenset(
+    f"llvm-{kind}-{runtime}{lane}-version.log"
+    for kind in ("ir", "lld")
+    for runtime in ("java", "maven")
+    for lane in (17, 21)
+)
+ALLOWED_MEMBERS = frozenset({
+    *(RECEIPTS_PREFIX + name for name in BASE_RECEIPTS | LANE_RECEIPTS),
+    BUILD_PREFIX + "CMakeCache.txt",
+})
+# Avoid declaring expected negative-test compiler diagnostics to be failures.
+# Only unambiguous terminal process-failure witnesses are prohibited.
+TERMINAL_FAILURE = re.compile(
+    r"(?m)^(?:\[ERROR\](?:\s|$)|(?:\[INFO\]\s*)?BUILD FAILURE(?:\s|$)|"
+    r"FAIL:(?:\s|$)|Exception in thread(?:\s|$))"
+)
+
+
+def coherent_log(log: str, name: str) -> None:
+    require(not TERMINAL_FAILURE.search(log), "contradictory terminal failure in: " + name)
+
+
+def numbered_pass(log: str, marker: str) -> bool:
+    return re.search(r"(?m)^PASS: [1-9][0-9]* " + re.escape(marker), log) is not None
+
+
 def require(ok: bool, why: str) -> None:
     if not ok:
         raise ValueError(why)
@@ -103,10 +145,10 @@ class ArchiveReader(Reader):
                 continue
             path = PurePosixPath(name)
             require(name not in self.entries, "duplicate ZIP member: " + name)
-            require((name.startswith(RECEIPTS_PREFIX) or name == BUILD_PREFIX + "CMakeCache.txt")
+            require(name in ALLOWED_MEMBERS and name == "/".join(path.parts)
                     and len(path.parts) == 2 and all(p not in (".", "..") for p in path.parts)
                     and not name.startswith("/") and "\\" not in name,
-                    "unexpected ZIP path: " + name)
+                    "unrecognized or noncanonical ZIP member: " + name)
             require(not stat.S_ISLNK(item.external_attr >> 16), "symlink ZIP member: " + name)
             require(item.file_size <= MAX_SIZE, "oversized ZIP member: " + name)
             total += item.file_size
@@ -226,15 +268,22 @@ def cmake(reader: Reader) -> None:
 def native_logs(reader: Reader) -> None:
     for name in ("maven-native-run.log", "maven-native-jdk17.log"):
         log = text(reader, RECEIPTS_PREFIX + name)
-        require(all(marker in log for marker in COMPILER_MARKERS), "missing original Clang/llc native witness: " + name)
+        coherent_log(log, name)
+        require(all(any(line.startswith(marker) for line in log.splitlines())
+                    for marker in COMPILER_MARKERS[:3])
+                and numbered_pass(log, COMPILER_MARKERS[3]),
+                "missing original Clang/llc terminal native witness: " + name)
     for lane in (21, 17):
         for category, marker in (("ir", IR_MARKER), ("lld", LLD_MARKER)):
             name = f"llvm-{category}-jdk{lane}-native.log"
             log = text(reader, RECEIPTS_PREFIX + name)
-            require(marker in log and "PASS: " in log and "NOT_RUN:" not in log,
+            coherent_log(log, name)
+            require(numbered_pass(log, marker) and "NOT_RUN:" not in log,
                     "native provider result missing or skipped: " + name)
     for name in ("maven-test-compile.log", "maven-jdk17-test-compile.log"):
-        require("BUILD SUCCESS" in text(reader, RECEIPTS_PREFIX + name),
+        log = text(reader, RECEIPTS_PREFIX + name)
+        coherent_log(log, name)
+        require(re.search(r"(?m)^\[INFO\] BUILD SUCCESS$", log) is not None,
                 "Maven consumer compilation not proven: " + name)
 
 
