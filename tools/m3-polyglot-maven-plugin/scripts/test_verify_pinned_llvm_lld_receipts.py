@@ -104,6 +104,50 @@ class ReceiptAuditTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.f = Fixture(Path(self.temp.name))
 
+    def test_runner_unknown_evidence_member_refused(self) -> None:
+        self.f.write("unregistered-pass-marker.txt", "PASS: substituted proof\n")
+        self.refuses("unexpected runner evidence filename")
+
+    def test_runner_alias_evidence_member_refused(self) -> None:
+        foreign = self.f.home / "foreign-proof"
+        foreign.write_text("PASS: substituted proof\n", encoding="utf-8")
+        (self.f.evidence / "extra-alias").symlink_to(foreign)
+        self.refuses("aliased runner evidence member")
+
+    def test_archive_unknown_evidence_member_refused(self) -> None:
+        from zipfile import ZIP_DEFLATED
+        archive = self.f.archive()
+        with ZipFile(archive, "a", ZIP_DEFLATED) as zip_out:
+            zip_out.writestr("m3-llvm-fork-native-receipt/undeclared-pass.txt", "PASS: forged\n")
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(archive)],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected ZIP path", result.stderr)
+
+    def test_archive_dot_alias_member_refused(self) -> None:
+        archive = self.f.archive()
+        with ZipFile(archive, "a", ZIP_DEFLATED) as zip_out:
+            zip_out.writestr("m3-llvm-fork-native-receipt/./foreign.txt", "hidden-path\n")
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(archive)],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected ZIP path", result.stderr)
+
+    def test_archive_unbounded_retry_log_refused(self) -> None:
+        self.f.write("maven-test-compile-attempt-4.log", "unexpected fourth attempt\n")
+        self.refuses("unknown retry attempt in runner receipt")
+        archive = self.f.archive()
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "--archive", str(archive)],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected ZIP path", result.stderr)
+
+    def test_known_retry_logs_preserve_proof(self) -> None:
+        for n in (1, 2, 3):
+            self.f.write(f"maven-test-compile-attempt-{n}.log", "[INFO] bounded retry log\n")
+        self.assertEqual(self.f.cli().returncode, 0)
+        self.assertEqual(self.f.cli(archived=True).returncode, 0)
+
     def refuses(self, reason: str, *, archived: bool = False) -> None:
         result = self.f.cli(archived=archived)
         self.assertNotEqual(result.returncode, 0, reason + ": " + result.stdout)
