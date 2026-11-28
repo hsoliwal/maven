@@ -85,3 +85,40 @@ absent hosted run never counts as qualification. Replaying an existing
 archive does not establish cross-platform ABI or source-built MLIR,
 Flang, target runtime SDK, native artifact-cache restoration, or
 reproducible whole-environment provenance.
+
+## Strict archive ownership and contradictory-log refusal (v1 refinement)
+
+The initial independent auditor admitted two incorrect successes: a GitHub
+artifact ZIP could carry unrecognized files under the otherwise valid
+receipt prefix, and a Maven compilation log could contain both
+`BUILD FAILURE` and `BUILD SUCCESS`. Both conditions must fail closed.
+They were reproduced against the previously published auditor before
+any corrective change was prepared.
+
+The archive member inventory is **closed** to the exact source-build owners:
+source/binary/CMake receipts, configuration/build logs, up to three original
+bounded Maven Central retry attempts, each original Maven/JDK17 runtime and
+native log, and the declared IR/LLD JDK17/21 version, compilation, native
+and digest transcripts. New artifact-producing stages must explicitly update
+this owner registry and its negative tests before admission. Unknown file
+names, duplicate aliases, or noncanonical ZIP separators are not accepted
+as harmless extras. Existing original artifact names and contents are not
+renamed or removed.
+
+Each required Maven log must have a real `BUILD SUCCESS` witness **and**
+must not contain contradictory terminal `BUILD FAILURE`, `[ERROR]`
+or an uncaught exception. The required native logs must carry the original
+`PASS:` output on an actual completed line; stray marker text and any
+terminal `FAIL:`, `BUILD FAILURE` or uncaught exception must fail.
+The native source compiler tests deliberately exercise invalid C and IR,
+so ordinary compiler `error:` diagnostics from a caught negative test
+remain permitted. A `NOT_RUN: Fortran` diagnostic in the compiler lane
+remains permitted: source-built Flang is not part of this gate. IR and
+LLD native lanes continue to refuse every `NOT_RUN:` result.
+
+These are structural, read-only evidence checks, **not cryptographic proof
+that a retained archive contains native compiler binaries**. Runner mode
+must still hash the real nine executables. CI gates retain the original
+proof order, including existing source-build and binary-hash verification.
+The additional negative tests cannot authorize native cache restoration,
+cross-platform ABI or full-toolchain provenance.
