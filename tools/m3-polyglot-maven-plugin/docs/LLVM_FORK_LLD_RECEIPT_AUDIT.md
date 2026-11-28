@@ -122,3 +122,32 @@ must still hash the real nine executables. CI gates retain the original
 proof order, including existing source-build and binary-hash verification.
 The additional negative tests cannot authorize native cache restoration,
 cross-platform ABI or full-toolchain provenance.
+
+## Exact artifact member inventory
+
+The source-built proof archive is a finite, named collection: the original
+source/binary/CMake receipts, Maven/native logs, the JDK17 compiler identity
+transcripts, and the per-JDK IR and LLD compile, version, native and binary
+identity logs. Its only variable member name is
+`maven-test-compile-attempt-[1..3].log`, corresponding to the existing
+bounded Maven Central HTTP-429 retry policy.
+
+**Do not admit arbitrary extra evidence names.** A ZIP containing an
+unknown file inside the otherwise valid receipt directory, including a
+`./`-aliased member name, previously passed because its known files
+matched the audit. The runner evidence directory had the same weakness.
+This follow-up requires the *exact established producer vocabulary* in
+both runner and archive modes; unsupported paths, extra files,
+unrecognized retry numbering, alternate directories, or aliased file
+names refuse before any successful receipt can be reported. Existing
+regular source-build outputs remain unmodified.
+
+The auditor continues to read only the known required receipts, and
+does not confuse structural validation with proof that archive-absent
+compiler bytes have been rehashed. The allowlist does not grant new
+LLVM behavior, a larger declared-output contract, or native-cache
+reuse. The original source-build workflow and public Maven providers
+remain unchanged; the existing auditor test owner is extended with
+negative inventory cases and genuine prior-artifact compatibility
+checks. Hosted exact-fork LLD source-build qualification remains an
+independent release gate.

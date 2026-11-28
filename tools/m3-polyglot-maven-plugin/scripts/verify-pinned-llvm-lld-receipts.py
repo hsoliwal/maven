@@ -30,6 +30,37 @@ SOURCE_FILES = (
     "lld/CMakeLists.txt",
     "lld/tools/lld/CMakeLists.txt",
 )
+# Exact filenames emitted by the existing pinned LLVM source-build owners.
+# The retry sequence is separately bounded by the original Maven Central 429 gate.
+KNOWN_RECEIPTS = frozenset({
+    "source-receipt.tsv", "source-file-sha256.txt", "binary-receipt.txt",
+    "configure.log", "native-build.log", "maven-test-compile.log",
+    "maven-native-run.log", "java17-version.log", "maven17-version.log",
+    "jdk17-binaries-before.sha256", "jdk17-binaries-after.sha256",
+    "maven-jdk17-test-compile.log", "maven-native-jdk17.log",
+} | {
+    f"llvm-{kind}-{prefix}{lane}{suffix}"
+    for kind in ("ir", "lld") for lane in (17, 21)
+    for prefix, suffix in (
+        ("java", "-version.log"), ("maven", "-version.log"),
+        ("jdk", "-compile.log"), ("jdk", "-native.log"),
+        ("jdk", "-binaries-before.sha256"),
+        ("jdk", "-binaries-after.sha256"),
+    )
+})
+RETRY_LOG = re.compile(r"maven-test-compile-attempt-[123]\.log\Z")
+
+
+def known_evidence_member(name: str) -> bool:
+    """Recognize only the exact published evidence file vocabulary."""
+    if name == BUILD_PREFIX + "CMakeCache.txt":
+        return True
+    if not name.startswith(RECEIPTS_PREFIX):
+        return False
+    leaf = name[len(RECEIPTS_PREFIX):]
+    return leaf in KNOWN_RECEIPTS or RETRY_LOG.fullmatch(leaf) is not None
+
+
 STAGES = {
     "jdk17": TOOLS[:3],
     "llvm-ir-jdk21": TOOLS[:6],
@@ -106,6 +137,12 @@ class DirectoryReader(Reader):
             require(root.is_dir() and not root.is_symlink(), "evidence/build root absent or aliased")
         self.evidence = evidence.resolve(strict=True)
         self.build = build.resolve(strict=True)
+        entries = list(self.evidence.iterdir())
+        require(len(entries) <= MAX_ENTRIES, "oversized runner evidence entry count")
+        for leaf in entries:
+            member = RECEIPTS_PREFIX + leaf.name
+            require(known_evidence_member(member) and leaf.is_file() and not leaf.is_symlink(),
+                    "unrecognized or aliased runner evidence member: " + member)
 
     def get(self, name: str) -> bytes:
         if name.startswith(RECEIPTS_PREFIX):
@@ -145,10 +182,11 @@ class ArchiveReader(Reader):
                 continue
             path = PurePosixPath(name)
             require(name not in self.entries, "duplicate ZIP member: " + name)
-            require(name in ALLOWED_MEMBERS and name == "/".join(path.parts)
+            require(name in ALLOWED_MEMBERS and known_evidence_member(name)
+                    and name == "/".join(path.parts) and str(path) == name
                     and len(path.parts) == 2 and all(p not in (".", "..") for p in path.parts)
                     and not name.startswith("/") and "\\" not in name,
-                    "unrecognized or noncanonical ZIP member: " + name)
+                    "unexpected ZIP path (unrecognized or noncanonical ZIP member): " + name)
             require(not stat.S_ISLNK(item.external_attr >> 16), "symlink ZIP member: " + name)
             require(item.file_size <= MAX_SIZE, "oversized ZIP member: " + name)
             total += item.file_size
